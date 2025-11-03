@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl" class="rtl">
+<head>
+    <meta charset="utf-8" />
+    <title>{{ title if title else "מערכת ניהול" }}</title>
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 font-heebo text-gray-800">
+    <header class="bg-white border-b shadow-sm p-4 flex justify-between">
+        <h1 class="text-xl font-bold">מערכת סידור עבודה</h1>
+        <nav class="flex gap-4">
+            <a href="/">סידור עבודה</a>
+            <a href="/employees">עובדים</a>
+            <a href="/reports">דוחות</a>
+        </nav>
+    </header>
+    <main class="p-4">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
