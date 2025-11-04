@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-lg font-semibold mb-4">רשימת עובדים</h2>
-<table class="w-full border border-gray-300 bg-white text-sm">
+<div class="card">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-4">
+    <div>
+      <h2 class="text-xl font-semibold mb-2">רשימת עובדים</h2>
+      <p class="text-sm text-gray-600">נתוני בסיס וניווט מהיר לפרופיל, סידור וזמינות.</p>
+    </div>
+  </div>
+  <table class="w-full text-sm">
   <thead class="bg-gray-200">
     <tr>
       <th class="p-2 border">שם</th>
@@ -33,4 +39,5 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

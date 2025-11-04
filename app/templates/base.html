@@ -1,26 +1,31 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl" class="rtl">
+<html lang="he" dir="rtl">
 <head>
-    <meta charset="utf-8" />
-    <title>{{ title if title else "מערכת ניהול" }}</title>
-    <link href="/static/style.css" rel="stylesheet">
+    <meta charset="utf-8">
+    <title>{{ title if title else "מערכת HDS" }}</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="bg-gray-100 font-heebo text-gray-800">
-    <header class="bg-white border-b shadow-sm p-4 flex justify-between">
-        <h1 class="text-xl font-bold">מערכת סידור עבודה</h1>
-        <nav class="flex gap-4 items-center text-sm">
-            <a href="/">סידור עבודה</a>
-            <a href="/employees">עובדים</a>
-            <a href="/reports">דוחות</a>
-            {% if request.session.get('employee_id') %}
-            <a href="/portal/shifts">דיווח משמרת</a>
-            <a href="/portal/logout">התנתק</a>
-            {% else %}
-            <a href="/portal/login">כניסת עובד</a>
-            {% endif %}
-        </nav>
+<body class="bg-gray-100 text-gray-900">
+    <header class="bg-white shadow-sm border-b mb-6">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <h1 class="text-xl font-semibold">מערכת HDS - סידור עבודה</h1>
+            <nav class="flex gap-4 text-sm items-center">
+                {% if request.session.get('employee_id') %}
+                    <a href="/">סידור עבודה</a>
+                    <a href="/reports">דוחות</a>
+                    {% if request.session.get('is_admin') %}
+                        <a href="/employees">עובדים</a>
+                        <a href="/admin/overview">ניהול</a>
+                    {% endif %}
+                    <a href="/portal/shifts">דיווח משמרת</a>
+                    <a href="/logout">התנתק</a>
+                {% else %}
+                    <a href="/login">כניסה למערכת</a>
+                {% endif %}
+            </nav>
+        </div>
     </header>
-    <main class="p-4">
+    <main class="max-w-6xl mx-auto px-4 pb-12">
         {% block content %}{% endblock %}
     </main>
 </body>

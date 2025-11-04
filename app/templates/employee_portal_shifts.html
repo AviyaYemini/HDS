@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <h2 class="text-lg font-semibold mb-4">שלום {{ employee['name'] }}!</h2>
-<p class="mb-4 text-sm text-gray-600">כאן ניתן להזין משמרות שביצעת ולהישאר מעודכנים בהיסטוריה האישית שלך.</p>
+<p class="mb-4 text-sm text-gray-600">
+  כאן ניתן להזין משמרות שביצעת ולהישאר מעודכנים בהיסטוריה האישית שלך.
+  ניתן להפיק דו"ח מלא ב<a class="text-blue-600" href="/reports">עמוד הדוחות</a>.
+</p>
 
 {% if message %}
 <div class="mb-4 p-3 bg-green-100 border border-green-200 rounded text-green-800 text-sm">

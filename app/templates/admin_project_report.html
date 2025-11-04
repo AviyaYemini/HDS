@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card mb-6">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-3">
+    <div>
+      <h2 class="text-xl font-semibold mb-1">דו"ח פרויקט - {{ project['name'] }}</h2>
+      <p class="text-sm text-gray-600">סיכום ביצועים, שעות ושווי כספי לפרויקט.</p>
+    </div>
+    <a class="btn" href="/admin/projects">חזרה לרשימת הפרויקטים</a>
+  </div>
+  <dl class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
+    <div>
+      <dt class="font-medium text-gray-600">שם הפרויקט</dt>
+      <dd>{{ project['name'] }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">תעריף שעתי</dt>
+      <dd>{{ '%.2f'|format(project['hourly_rate'] or 0) }} ₪</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">סטטוס</dt>
+      <dd>{{ 'פתוח' if project['active'] else 'סגור' }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">סה״כ שעות אדם</dt>
+      <dd>{{ '%.2f'|format(total_hours) }}</dd>
+    </div>
+  </dl>
+  </div>
+
+<section class="card mb-6">
+  <h3 class="font-semibold mb-3 text-sm">סיכום לפי עובדים</h3>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">שם עובד</th>
+        <th class="p-2 border">שעות</th>
+        <th class="p-2 border">שווי שכר</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for employee in employee_summary %}
+      <tr>
+        <td class="p-2 border">{{ employee['name'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(employee['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(employee['amount']) }} ₪</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="text-center p-4 text-gray-500">אין משמרות להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </section>
+
+<section class="card">
+  <h3 class="font-semibold mb-3 text-sm">פירוט משמרות</h3>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">עובד</th>
+        <th class="p-2 border">תאריך</th>
+        <th class="p-2 border">מיקום</th>
+        <th class="p-2 border">שעת התחלה</th>
+        <th class="p-2 border">שעת סיום</th>
+        <th class="p-2 border">שעות</th>
+        <th class="p-2 border">שווי</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in detailed_rows %}
+      <tr>
+        <td class="p-2 border">{{ row['employee_name'] }}</td>
+        <td class="p-2 border">{{ row['date'] }}</td>
+        <td class="p-2 border">{{ row['location'] or '-' }}</td>
+        <td class="p-2 border">{{ row['start_time'] }}</td>
+        <td class="p-2 border">{{ row['end_time'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(row['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(row['amount']) }} ₪</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-center p-4 text-gray-500">אין משמרות להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </section>
+{% endblock %}

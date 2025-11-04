@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-4">
+    <div>
+      <h2 class="text-xl font-semibold mb-1">זמינות עובדים</h2>
+      <p class="text-sm text-gray-600">ריכוז ההגבלות והזמינות לפי העובד.</p>
+    </div>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">עובד</th>
+        <th class="p-2 border">דוא״ל</th>
+        <th class="p-2 border">טלפון</th>
+        <th class="p-2 border">סטטוס</th>
+        <th class="p-2 border">הגבלות/זמינות</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for employee in employees %}
+      <tr>
+        <td class="p-2 border">{{ employee['name'] }}</td>
+        <td class="p-2 border">{{ employee['email'] or '-' }}</td>
+        <td class="p-2 border">{{ employee['phone'] or '-' }}</td>
+        <td class="p-2 border">{{ 'פעיל' if employee['active'] else 'לא פעיל' }}</td>
+        <td class="p-2 border">
+          {% set constraints = availability_map.get(employee['id'], []) %}
+          {% if constraints %}
+          <ul class="space-y-1">
+            {% for constraint in constraints %}
+            <li>
+              <strong>{{ constraint['kind'] }} ({{ constraint['scope'] }}):</strong>
+              {{ constraint['value_json'] }}
+              {% if constraint['valid_from'] or constraint['valid_to'] %}
+                <span class="text-xs text-gray-500">
+                  {{ constraint['valid_from'] or 'מיידי' }} - {{ constraint['valid_to'] or 'ללא הגבלה' }}
+                </span>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="text-gray-500">לא הוגדרה זמינות</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-center p-4 text-gray-500">אין עובדים להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

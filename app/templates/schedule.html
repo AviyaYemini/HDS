@@ -1,7 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-lg font-semibold mb-4">סידור עבודה שבועי</h2>
-<table class="w-full border border-gray-300 bg-white text-sm">
+<div class="card">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-4">
+    <div>
+      <h2 class="text-xl font-semibold mb-2">סידור עבודה שבועי</h2>
+      <p class="text-sm text-gray-600">כל המשמרות הקרובות כפי שנקבעו במערכת.</p>
+    </div>
+  </div>
+  {% if message %}
+  <div class="alert alert-success mb-4">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-error mb-4">{{ error }}</div>
+  {% endif %}
+  <table class="w-full text-sm">
     <thead class="bg-gray-200">
         <tr>
             <th class="p-2 border">עובדים</th>
@@ -27,4 +39,5 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 {% endblock %}

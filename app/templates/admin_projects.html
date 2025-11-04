@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-col gap-4 mb-6">
+  <div class="card">
+    <div class="flex md:items-center md:justify-between flex-col md:flex-row gap-3 mb-3">
+      <div>
+        <h2 class="text-xl font-semibold mb-1">ניהול פרויקטים</h2>
+        <p class="text-sm text-gray-600">צפה בכל הפרויקטים, עדכן תעריפים והגדר זמינות לפרויקטים חדשים.</p>
+      </div>
+    </div>
+    {% if message %}
+    <div class="alert alert-success mb-3">
+      {{ message }}
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-error mb-3">
+      {{ error }}
+    </div>
+    {% endif %}
+    <h3 class="font-semibold mb-3 text-sm">הוספת פרויקט חדש</h3>
+    <form method="post" action="/admin/projects" class="grid gap-4 text-sm">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">שם פרויקט</span>
+          <input name="name" placeholder="למשל: קניון עזריאלי" required>
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">תעריף שעתי (₪)</span>
+          <input name="hourly_rate" type="number" step="0.01" value="0">
+        </label>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">משמרות בוקר</span>
+          <input name="morning_required" type="number" min="0" value="0">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">משמרות צהריים</span>
+          <input name="afternoon_required" type="number" min="0" value="0">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">משמרות לילה</span>
+          <input name="night_required" type="number" min="0" value="0">
+        </label>
+      </div>
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded self-start">שמור פרויקט</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h3 class="font-semibold mb-3 text-sm">פרויקטים קיימים</h3>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">שם</th>
+        <th class="p-2 border">תעריף (₪)</th>
+        <th class="p-2 border">דרישות משמרת</th>
+        <th class="p-2 border">משמרות</th>
+        <th class="p-2 border">שיוכים</th>
+        <th class="p-2 border">שעות אדם</th>
+        <th class="p-2 border">שווי שכר</th>
+        <th class="p-2 border">סטטוס</th>
+        <th class="p-2 border">פעולות</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for project in projects %}
+      <tr>
+        <td class="p-2 border"><a class="text-blue-600" href="/admin/projects/{{ project['id'] }}/report">{{ project['name'] }}</a></td>
+        <td class="p-2 border">{{ '%.2f'|format(project['hourly_rate']) }}</td>
+        <td class="p-2 border text-sm">
+          <div class="space-y-1">
+            <div><span class="text-gray-600">בוקר:</span> {{ project['morning_required'] }}</div>
+            <div><span class="text-gray-600">צהריים:</span> {{ project['afternoon_required'] }}</div>
+            <div><span class="text-gray-600">לילה:</span> {{ project['night_required'] }}</div>
+          </div>
+        </td>
+        <td class="p-2 border">{{ project['shift_count'] }}</td>
+        <td class="p-2 border">{{ project['assignment_count'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(project['person_hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(project['payout']) }} ₪</td>
+        <td class="p-2 border">
+          <span class="badge {{ 'status-open' if project['active'] else 'status-closed' }}">
+            {{ 'פתוח' if project['active'] else 'סגור' }}
+          </span>
+        </td>
+        <td class="p-2 border space-y-2">
+          <form method="post" action="/admin/projects/{{ project['id'] }}/rate" class="flex items-center gap-2 text-xs">
+            <label>תעריף חדש:</label>
+            <input name="hourly_rate" type="number" step="0.01" class="w-24" value="{{ '%.2f'|format(project['hourly_rate']) }}">
+            <button type="submit" class="bg-blue-500 text-white px-3 py-1 rounded">עדכן</button>
+          </form>
+          <form method="post" action="/admin/projects/{{ project['id'] }}/requirements" class="grid grid-cols-3 gap-2 text-xs">
+            <input name="morning_required" type="number" min="0" class="p-1" value="{{ project['morning_required'] }}" title="בוקר">
+            <input name="afternoon_required" type="number" min="0" class="p-1" value="{{ project['afternoon_required'] }}" title="צהריים">
+            <input name="night_required" type="number" min="0" class="p-1" value="{{ project['night_required'] }}" title="לילה">
+            <button type="submit" class="bg-blue-500 text-white px-3 py-1 rounded col-span-3">עדכן דרישות</button>
+          </form>
+          <form method="post" action="/admin/projects/{{ project['id'] }}/status" class="flex items-center gap-2 text-xs">
+            <input type="hidden" name="active" value="{{ 'close' if project['active'] else 'open' }}">
+            <button type="submit" class="bg-{{ 'red' if project['active'] else 'green' }}-500 text-white px-3 py-1 rounded">
+              {{ 'סגור פרויקט' if project['active'] else 'פתח פרויקט' }}
+            </button>
+          </form>
+          <a class="btn bg-blue-600 text-white px-3 py-1 rounded text-xs" href="/admin/projects/{{ project['id'] }}/generate">גנרטור סידור</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="9" class="text-center p-4 text-gray-500">אין פרויקטים במערכת</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

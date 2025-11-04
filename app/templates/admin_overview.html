@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-2">תמונת מצב עסקית</h2>
+<p class="text-sm text-gray-600 mb-6">
+  <a class="text-blue-600" href="/admin/projects">ניהול פרויקטים</a> ·
+  <a class="text-blue-600" href="/admin/availability">זמינות עובדים</a> ·
+  <a class="text-blue-600" href="/reports">דו"ח פרויקטים</a>
+</p>
+
+<form method="get" class="card grid gap-3 text-sm mb-6">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <label class="flex flex-col gap-1">
+      <span class="font-medium text-gray-600">מתאריך</span>
+      <input type="date" name="start_date" value="{{ start_date }}" class="border rounded p-2">
+    </label>
+    <label class="flex flex-col gap-1">
+      <span class="font-medium text-gray-600">עד תאריך</span>
+      <input type="date" name="end_date" value="{{ end_date }}" class="border rounded p-2">
+    </label>
+  </div>
+  <div class="flex gap-2">
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">סנן</button>
+    <a href="/admin/overview" class="text-sm text-gray-600">נקה פילטרים</a>
+  </div>
+</form>
+
+<section class="card mb-6">
+  <h3 class="font-semibold mb-3 text-sm">מדדים כלליים</h3>
+  <dl class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
+    <div>
+      <dt class="font-medium text-gray-600">סה״כ משמרות</dt>
+      <dd>{{ total_shifts }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">משמרות מאוישות</dt>
+      <dd>{{ covered_shifts }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">סה״כ שעות אדם</dt>
+      <dd>{{ '%.2f'|format(total_person_hours) }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">שווי שכר צפוי</dt>
+      <dd>{{ '%.2f'|format(total_payout) }} ₪</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="card mb-6">
+  <h3 class="font-semibold mb-3 text-sm">פרויקטים</h3>
+  <table class="w-full border border-gray-300 text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">שם פרויקט</th>
+        <th class="p-2 border">תעריף (₪)</th>
+        <th class="p-2 border">שעות אדם</th>
+        <th class="p-2 border">שווי שכר</th>
+        <th class="p-2 border">מס׳ שיוכים</th>
+        <th class="p-2 border">מס׳ עובדים</th>
+        <th class="p-2 border">סטטוס</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for project in project_overview %}
+      <tr>
+        <td class="p-2 border">
+          {% if project['project_id'] %}
+          <a class="text-blue-600" href="/admin/projects/{{ project['project_id'] }}/report">{{ project['project_name'] }}</a>
+          {% else %}
+          {{ project['project_name'] }}
+          {% endif %}
+        </td>
+        <td class="p-2 border">{{ project['amount'] and '%.2f'|format(project['amount'] / project['hours']) if project['hours'] else '-' }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(project['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(project['amount']) }} ₪</td>
+        <td class="p-2 border">{{ project['assignments'] }}</td>
+        <td class="p-2 border">{{ project['employee_count'] }}</td>
+        <td class="p-2 border">{{ 'פתוח' if project['active'] else 'סגור' }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-center p-4 text-gray-500">אין נתונים להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3 class="font-semibold mb-3 text-sm">פעילות לפי עובדים</h3>
+  <table class="w-full border border-gray-300 text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">שם עובד</th>
+        <th class="p-2 border">שעות אדם</th>
+        <th class="p-2 border">שווי שכר</th>
+        <th class="p-2 border">מס׳ שיוכים</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for employee in employee_overview %}
+      <tr>
+        <td class="p-2 border">{{ employee['employee_name'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(employee['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(employee['amount']) }} ₪</td>
+        <td class="p-2 border">{{ employee['assignments'] }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" class="text-center p-4 text-gray-500">אין נתונים להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

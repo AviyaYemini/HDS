@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.db import init_db, get_connection
-from app.routes import employee  # מודול הנתיבים של העובד
+from app.routes import employee, admin  # מודולי הנתיבים
 
 # יצירת האפליקציה הראשית
 app = FastAPI(title="מערכת סידור עבודה - חברת אבטחה")
@@ -13,7 +13,7 @@ app = FastAPI(title="מערכת סידור עבודה - חברת אבטחה")
 # הגדרת סשנים (בשביל לשמור מידע על העובד המחובר)
 app.add_middleware(SessionMiddleware, secret_key="supersecretkey")
 
-# חיבור תקיות סטטיות ותבניות
+# חיבור תיקיות סטטיות ותבניות
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 app.state.templates = templates
@@ -21,12 +21,15 @@ app.state.templates = templates
 # ייבוא מסד הנתונים והקמת הטבלאות אם לא קיימות
 init_db()
 
-# חיבור הנתיבים של העובדים
+# חיבור הנתיבים של העובדים והאדמין
 app.include_router(employee.router)
+app.include_router(admin.router)
 
 # דף הבית – מציג את סידור העבודה הכללי
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse) #א.י - סידור עבודה אישי או כללי לפרוייקט?
 def root(request: Request):
+    if not request.session.get("employee_id"):
+        return RedirectResponse("/login", status_code=303)
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -47,19 +50,17 @@ def root(request: Request):
     """)
     shifts = cur.fetchall()
     conn.close()
+    message = request.query_params.get("message")
+    error = request.query_params.get("error")
     return templates.TemplateResponse(
         "schedule.html",
-        {"request": request, "shifts": shifts}
+        {
+            "request": request,
+            "shifts": shifts,
+            "message": message,
+            "error": error,
+        }
     )
-
-
-@app.get("/reports", response_class=HTMLResponse)
-def reports(request: Request):
-    return templates.TemplateResponse(
-        "reports.html",
-        {"request": request}
-    )
-
 # מאפשר להריץ ישירות עם python app/main.py
 if __name__ == "__main__":
     import uvicorn

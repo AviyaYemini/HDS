@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-4">דו"ח שעות ושכר - {{ employee['name'] }}</h2>
+<p class="text-sm text-gray-600 mb-4">
+  ניתן לבחור טווח תאריכים כדי לראות כמה שעות עבדת וכמה שכר צפוי לפי תעריפי הפרויקטים.
+</p>
+
+<form method="get" class="bg-white border border-gray-200 rounded p-4 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-3 text-sm mb-6">
+  <label class="flex flex-col gap-1">
+    <span class="font-medium text-gray-600">מתאריך</span>
+    <input type="date" name="start_date" value="{{ start_date }}" class="border rounded p-2">
+  </label>
+  <label class="flex flex-col gap-1">
+    <span class="font-medium text-gray-600">עד תאריך</span>
+    <input type="date" name="end_date" value="{{ end_date }}" class="border rounded p-2">
+  </label>
+  <div class="flex items-end gap-2">
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">הצג דו"ח</button>
+    <a href="/reports" class="text-sm text-gray-600">נקה סינונים</a>
+  </div>
+</form>
+
+<section class="bg-white border border-gray-200 rounded p-4 shadow-sm mb-6">
+  <h3 class="font-semibold mb-3 text-sm">סיכום כולל</h3>
+  <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+    <div>
+      <dt class="font-medium text-gray-600">סה״כ שעות</dt>
+      <dd>{{ '%.2f'|format(total_hours) }}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">שווי שכר צפוי</dt>
+      <dd>{{ '%.2f'|format(total_amount) }} ₪</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-gray-600">מספר משמרות</dt>
+      <dd>{{ rows|length }}</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="bg-white border border-gray-200 rounded p-4 shadow-sm mb-6">
+  <h3 class="font-semibold mb-3 text-sm">פירוט לפי פרויקט</h3>
+  <table class="w-full border border-gray-300 text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">פרויקט</th>
+        <th class="p-2 border">סה״כ שעות</th>
+        <th class="p-2 border">שווי שכר</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for summary in project_totals %}
+      <tr>
+        <td class="p-2 border">{{ summary['project'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(summary['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(summary['amount']) }} ₪</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="text-center p-4 text-gray-500">אין נתונים להצגה</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="bg-white border border-gray-200 rounded p-4 shadow-sm">
+  <h3 class="font-semibold mb-3 text-sm">פירוט משמרות</h3>
+  <table class="w-full border border-gray-300 text-sm">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2 border">תאריך</th>
+        <th class="p-2 border">מיקום</th>
+        <th class="p-2 border">פרויקט</th>
+        <th class="p-2 border">שעת התחלה</th>
+        <th class="p-2 border">שעת סיום</th>
+        <th class="p-2 border">שעות</th>
+        <th class="p-2 border">תעריף</th>
+        <th class="p-2 border">שווי</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="p-2 border">{{ row['date'] }}</td>
+        <td class="p-2 border">{{ row['location'] or '-' }}</td>
+        <td class="p-2 border">{{ row['project'] }}</td>
+        <td class="p-2 border">{{ row['start_time'] }}</td>
+        <td class="p-2 border">{{ row['end_time'] }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(row['hours']) }}</td>
+        <td class="p-2 border">{{ '%.2f'|format(row['hourly_rate']) }} ₪</td>
+        <td class="p-2 border">{{ '%.2f'|format(row['amount']) }} ₪</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-center p-4 text-gray-500">לא נמצאו משמרות בטווח התאריכים המבוקש</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,5 +1,255 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-lg font-semibold mb-4">דוחות</h2>
-<p class="text-sm text-gray-600">מסך הדוחות בבנייה. בקרוב ניתן יהיה להפיק דוחות מהמערכת.</p>
+<div class="card mb-6">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-3">
+    <div>
+      <h2 class="text-xl font-semibold mb-1">דוחות</h2>
+      <p class="text-sm text-gray-600">צפה בסיכום האישי שלך ובדו"חות ניהוליים (למנהלים).</p>
+    </div>
+  </div>
+</div>
+
+<section class="grid gap-6">
+  <div class="card">
+    <h3 class="font-semibold mb-3 text-sm">דו"ח שעות אישי</h3>
+    <form method="get" class="grid gap-3 text-sm mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">מתאריך</span>
+          <input type="date" name="start_date" value="{{ personal.start_date }}">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-medium text-gray-600">עד תאריך</span>
+          <input type="date" name="end_date" value="{{ personal.end_date }}">
+        </label>
+      </div>
+      {% if is_admin %}
+      <div class="flex gap-2">
+        <input type="hidden" name="admin_start" value="{{ admin_reports.start_date if admin_reports else '' }}">
+        <input type="hidden" name="admin_end" value="{{ admin_reports.end_date if admin_reports else '' }}">
+        {% if admin_reports %}
+          {% for pid in admin_reports.selected_ids %}
+          <input type="hidden" name="project" value="{{ pid }}">
+          {% endfor %}
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="flex gap-2">
+        <button type="submit" class="btn">הצג דו"ח</button>
+        <a href="/reports" class="text-sm text-gray-600">נקה סינון</a>
+      </div>
+    </form>
+    <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mb-4">
+      <div>
+        <dt class="font-medium text-gray-600">סה"כ שעות</dt>
+        <dd>{{ '%.2f'|format(personal.total_hours) }}</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-gray-600">שווי צפוי</dt>
+        <dd>{{ '%.2f'|format(personal.total_amount) }} ₪</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-gray-600">מספר משמרות</dt>
+        <dd>{{ personal.rows|length }}</dd>
+      </div>
+    </dl>
+    <h4 class="font-semibold mb-2 text-sm">פירוט לפי פרויקט</h4>
+    <table class="w-full text-sm mb-6">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">פרויקט</th>
+          <th class="p-2 border">שעות</th>
+          <th class="p-2 border">שווי</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in personal.project_totals %}
+        <tr>
+          <td class="p-2 border">{{ item.project }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.hours) }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.amount) }} ₪</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="text-center p-4 text-gray-500">לא נמצאו נתונים</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h4 class="font-semibold mb-2 text-sm">פירוט משמרות</h4>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">תאריך</th>
+          <th class="p-2 border">מיקום</th>
+          <th class="p-2 border">פרויקט</th>
+          <th class="p-2 border">שעת התחלה</th>
+          <th class="p-2 border">שעת סיום</th>
+          <th class="p-2 border">שעות</th>
+          <th class="p-2 border">תעריף</th>
+          <th class="p-2 border">שווי</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in personal.rows %}
+        <tr>
+          <td class="p-2 border">{{ row.date }}</td>
+          <td class="p-2 border">{{ row.location or '-' }}</td>
+          <td class="p-2 border">{{ row.project }}</td>
+          <td class="p-2 border">{{ row.start_time }}</td>
+          <td class="p-2 border">{{ row.end_time }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(row.hours) }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(row.hourly_rate) }} ₪</td>
+          <td class="p-2 border">{{ '%.2f'|format(row.amount) }} ₪</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center p-4 text-gray-500">אין משמרות להצגה</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if is_admin and admin_reports %}
+  <div class="card">
+    <h3 class="font-semibold mb-3 text-sm">דו"ח ניהולי - פרויקטים</h3>
+    <form method="get" class="grid gap-4 text-sm mb-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <fieldset class="border rounded p-3">
+          <legend class="font-medium text-sm">בחירת פרויקטים</legend>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            {% for project in admin_reports.projects %}
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="project" value="{{ project['id'] }}"
+                     {% if project['id'] in admin_reports.selected_ids %}checked{% endif %}>
+              <span>{{ project['name'] }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="font-medium text-gray-600">מתאריך</span>
+            <input type="date" name="admin_start" value="{{ admin_reports.start_date }}">
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-medium text-gray-600">עד תאריך</span>
+            <input type="date" name="admin_end" value="{{ admin_reports.end_date }}">
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <input type="hidden" name="start_date" value="{{ personal.start_date }}">
+        <input type="hidden" name="end_date" value="{{ personal.end_date }}">
+        <button type="submit" class="btn">הצג דו"ח ניהולי</button>
+        <a href="/reports" class="text-sm text-gray-600">נקה סינון</a>
+      </div>
+    </form>
+    <dl class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm mb-4">
+      <div>
+        <dt class="font-medium text-gray-600">סה"כ שעות</dt>
+        <dd>{{ '%.2f'|format(admin_reports.total_hours) }}</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-gray-600">סה"כ שווי</dt>
+        <dd>{{ '%.2f'|format(admin_reports.total_amount) }} ₪</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-gray-600">מס' פרויקטים</dt>
+        <dd>{{ admin_reports.project_totals|length }}</dd>
+      </div>
+      <div>
+        <dt class="font-medium text-gray-600">מס' עובדים</dt>
+        <dd>{{ admin_reports.employee_totals|length }}</dd>
+      </div>
+    </dl>
+    <h4 class="font-semibold mb-2 text-sm">פירוט לפי פרויקט</h4>
+    <table class="w-full text-sm mb-6">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">פרויקט</th>
+          <th class="p-2 border">שעות אדם</th>
+          <th class="p-2 border">שיוכים</th>
+          <th class="p-2 border">מס' עובדים</th>
+          <th class="p-2 border">שווי</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in admin_reports.project_totals %}
+        <tr>
+          <td class="p-2 border">{{ item.project_name }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.hours) }}</td>
+          <td class="p-2 border">{{ item.assignments }}</td>
+          <td class="p-2 border">{{ item.employee_count }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.amount) }} ₪</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center p-4 text-gray-500">לא נבחרו פרויקטים</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h4 class="font-semibold mb-2 text-sm">פירוט לפי עובד</h4>
+    <table class="w-full text-sm mb-6">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">עובד</th>
+          <th class="p-2 border">שיוכים</th>
+          <th class="p-2 border">שעות אדם</th>
+          <th class="p-2 border">שווי</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in admin_reports.employee_totals %}
+        <tr>
+          <td class="p-2 border">{{ item.employee_name }}</td>
+          <td class="p-2 border">{{ item.assignments }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.hours) }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(item.amount) }} ₪</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center p-4 text-gray-500">לא נבחרו פרויקטים</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h4 class="font-semibold mb-2 text-sm">פירוט משמרות</h4>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">פרויקט</th>
+          <th class="p-2 border">עובד</th>
+          <th class="p-2 border">תאריך</th>
+          <th class="p-2 border">מיקום</th>
+          <th class="p-2 border">התחלה</th>
+          <th class="p-2 border">סיום</th>
+          <th class="p-2 border">שעות</th>
+          <th class="p-2 border">שווי</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in admin_reports.report_rows %}
+        <tr>
+          <td class="p-2 border">{{ row.project_name }}</td>
+          <td class="p-2 border">{{ row.employee_name }}</td>
+          <td class="p-2 border">{{ row.date }}</td>
+          <td class="p-2 border">{{ row.location }}</td>
+          <td class="p-2 border">{{ row.start_time }}</td>
+          <td class="p-2 border">{{ row.end_time }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(row.hours) }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(row.amount) }} ₪</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center p-4 text-gray-500">לא נבחרו פרויקטים</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

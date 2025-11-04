@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card mb-6">
+  <div class="flex md:justify-between md:items-center flex-col md:flex-row gap-3 mb-3">
+    <div>
+      <h2 class="text-xl font-semibold mb-1">גנרטור סידור - {{ project['name'] }}</h2>
+      <p class="text-sm text-gray-600">בחר טווח תאריכים וכמות משמרות נדרשת לכל סוג.</p>
+    </div>
+    <a class="btn" href="/admin/projects">חזרה לניהול פרויקטים</a>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+    <div class="p-3 border rounded">
+      <span class="text-gray-600">משמרות בוקר נדרשות</span>
+      <div class="text-lg font-semibold">{{ requirements['morning'] }}</div>
+    </div>
+    <div class="p-3 border rounded">
+      <span class="text-gray-600">משמרות צהריים נדרשות</span>
+      <div class="text-lg font-semibold">{{ requirements['afternoon'] }}</div>
+    </div>
+    <div class="p-3 border rounded">
+      <span class="text-gray-600">משמרות לילה נדרשות</span>
+      <div class="text-lg font-semibold">{{ requirements['night'] }}</div>
+    </div>
+  </div>
+  {% if message %}
+  <div class="alert alert-success mb-3">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-error mb-3">{{ error }}</div>
+  {% endif %}
+  <form method="post" class="grid gap-4 text-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">תאריך התחלה</span>
+        <input type="date" name="start_date" required>
+      </label>
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">תאריך סיום</span>
+        <input type="date" name="end_date" required>
+      </label>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">בוקר (override)</span>
+        <input type="number" min="0" name="morning_override" placeholder="{{ requirements['morning'] }}">
+      </label>
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">צהריים (override)</span>
+        <input type="number" min="0" name="afternoon_override" placeholder="{{ requirements['afternoon'] }}">
+      </label>
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">לילה (override)</span>
+        <input type="number" min="0" name="night_override" placeholder="{{ requirements['night'] }}">
+      </label>
+    </div>
+    <label class="flex flex-col gap-1">
+      <span class="font-medium text-gray-600">מיקום משמרת (אופציונלי)</span>
+      <input type="text" name="location" placeholder="{{ project['name'] }}">
+    </label>
+    <button type="submit" class="btn self-start">צור סידור</button>
+  </form>
+</div>
+
+{% if schedule_result %}
+<section class="grid gap-6">
+  {% if warnings %}
+  <div class="alert alert-error">
+    {% for warn in warnings %}
+    <div>{{ warn }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="card">
+    <h3 class="font-semibold mb-3 text-sm">סיכום הפקה</h3>
+    <dl class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
+      <div>
+        <dt class="text-gray-600">טווח תאריכים</dt>
+        <dd>{{ generated_range['start'] }} - {{ generated_range['end'] }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-600">שיוכים שנוצרו</dt>
+        <dd>{{ schedule_result['total_assignments'] }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-600">משמרות שנוצרו</dt>
+        <dd>{{ schedule_result['shifts_created'] }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-600">בוקר/צהריים/לילה</dt>
+        <dd>{{ overrides['morning'] }}/{{ overrides['afternoon'] }}/{{ overrides['night'] }}</dd>
+      </div>
+    </dl>
+    <div class="mt-4">
+      <a class="btn" href="/admin/projects/{{ project['id'] }}/schedule.ics?start_date={{ generated_range['start'] }}&end_date={{ generated_range['end'] }}">הורד קובץ iCal</a>
+    </div>
+  </div>
+  <div class="card">
+    <h3 class="font-semibold mb-3 text-sm">שיוכים שנוצרו</h3>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">תאריך</th>
+          <th class="p-2 border">משמרת</th>
+          <th class="p-2 border">עובד</th>
+          <th class="p-2 border">שעות</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in schedule_result['assignments_created'] %}
+        <tr>
+          <td class="p-2 border">{{ row['date'] }}</td>
+          <td class="p-2 border">{{ row['shift'] }}</td>
+          <td class="p-2 border">{{ row['employee'] }}</td>
+          <td class="p-2 border">{{ '%.2f'|format(row['hours']) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center p-4 text-gray-500">לא נוצרו שיוכים</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
