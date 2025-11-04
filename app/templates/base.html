@@ -8,10 +8,16 @@
 <body class="bg-gray-100 font-heebo text-gray-800">
     <header class="bg-white border-b shadow-sm p-4 flex justify-between">
         <h1 class="text-xl font-bold">מערכת סידור עבודה</h1>
-        <nav class="flex gap-4">
+        <nav class="flex gap-4 items-center text-sm">
             <a href="/">סידור עבודה</a>
             <a href="/employees">עובדים</a>
             <a href="/reports">דוחות</a>
+            {% if request.session.get('employee_id') %}
+            <a href="/portal/shifts">דיווח משמרת</a>
+            <a href="/portal/logout">התנתק</a>
+            {% else %}
+            <a href="/portal/login">כניסת עובד</a>
+            {% endif %}
         </nav>
     </header>
     <main class="p-4">

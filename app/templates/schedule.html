@@ -4,7 +4,8 @@
 <table class="w-full border border-gray-300 bg-white text-sm">
     <thead class="bg-gray-200">
         <tr>
-            <th class="p-2 border">עובד</th>
+            <th class="p-2 border">עובדים</th>
+            <th class="p-2 border">מיקום</th>
             <th class="p-2 border">פרויקט</th>
             <th class="p-2 border">תאריך</th>
             <th class="p-2 border">שעת התחלה</th>
@@ -14,14 +15,15 @@
     <tbody>
         {% for shift in shifts %}
         <tr>
-            <td class="p-2 border">{{ shift['employee'] or '-' }}</td>
+            <td class="p-2 border">{{ shift['employees'] or '-' }}</td>
+            <td class="p-2 border">{{ shift['location'] or '-' }}</td>
             <td class="p-2 border">{{ shift['project'] or '-' }}</td>
             <td class="p-2 border">{{ shift['date'] }}</td>
             <td class="p-2 border">{{ shift['start_time'] }}</td>
             <td class="p-2 border">{{ shift['end_time'] }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center p-4 text-gray-500">אין נתונים להצגה</td></tr>
+        <tr><td colspan="6" class="text-center p-4 text-gray-500">אין נתונים להצגה</td></tr>
         {% endfor %}
     </tbody>
 </table>

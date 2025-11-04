@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-4">זמינות והגבלות - {{ employee['name'] }}</h2>
+<div class="mb-4">
+  <a href="/employees/{{ employee['id'] }}/profile">חזרה לפרופיל</a>
+</div>
+
+{% if message %}
+<div class="mb-4 p-3 bg-green-100 border border-green-200 rounded text-green-800 text-sm">
+  {{ message }}
+</div>
+{% endif %}
+{% if error %}
+<div class="mb-4 p-3 bg-red-100 border border-red-200 rounded text-red-700 text-sm">
+  {{ error }}
+</div>
+{% endif %}
+
+<table class="w-full border border-gray-300 bg-white text-sm">
+  <thead class="bg-gray-200">
+    <tr>
+      <th class="p-2 border">סוג</th>
+      <th class="p-2 border">היקף</th>
+      <th class="p-2 border">ערך</th>
+      <th class="p-2 border">מתאריך</th>
+      <th class="p-2 border">עד תאריך</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for constraint in constraints %}
+    <tr>
+      <td class="p-2 border">{{ constraint['kind'] }}</td>
+      <td class="p-2 border">{{ constraint['scope'] }}</td>
+      <td class="p-2 border">{{ constraint['display_value'] }}</td>
+      <td class="p-2 border">{{ constraint['valid_from'] or '-' }}</td>
+      <td class="p-2 border">{{ constraint['valid_to'] or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="5" class="text-center p-4 text-gray-500">לא הוזנה זמינות עבור עובד זה</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<section class="bg-white border border-gray-200 rounded p-4 shadow-sm mt-6">
+  <h3 class="font-semibold mb-3 text-sm">הוספת עדיפות/הגבלה</h3>
+  <form method="post" class="grid gap-3 text-sm">
+    <div class="grid grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">סוג</span>
+        <input name="kind" class="border rounded p-2" placeholder="לדוגמה: זמינות" required>
+      </label>
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">היקף</span>
+        <input name="scope" class="border rounded p-2" placeholder="לדוגמה: שבועי, יומי" required>
+      </label>
+    </div>
+    <label class="flex flex-col gap-1">
+      <span class="font-medium text-gray-600">ערך</span>
+      <textarea name="value" class="border rounded p-2" rows="3" placeholder='לדוגמה: {"days": ["ראשון","שלישי"]}' required></textarea>
+    </label>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">בתוקף מ</span>
+        <input type="date" name="valid_from" class="border rounded p-2">
+      </label>
+      <label class="flex flex-col gap-1">
+        <span class="font-medium text-gray-600">בתוקף עד</span>
+        <input type="date" name="valid_to" class="border rounded p-2">
+      </label>
+    </div>
+    <button type="submit" class="self-start bg-blue-600 text-white px-4 py-2 rounded">
+      שמור העדפה
+    </button>
+  </form>
+</section>
+{% endblock %}

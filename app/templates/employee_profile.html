@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-4">פרופיל עובד</h2>
+<section class="bg-white border border-gray-200 rounded p-4 shadow-sm mb-6">
+  <dl class="grid grid-cols-2 gap-y-2 text-sm">
+    <dt class="font-medium text-gray-600">שם מלא</dt>
+    <dd>{{ employee['name'] }}</dd>
+    <dt class="font-medium text-gray-600">דוא״ל</dt>
+    <dd>{{ employee['email'] or 'לא הוזן' }}</dd>
+    <dt class="font-medium text-gray-600">טלפון</dt>
+    <dd>{{ employee['phone'] or 'לא הוזן' }}</dd>
+    <dt class="font-medium text-gray-600">סטטוס</dt>
+    <dd>{{ 'פעיל' if employee['active'] else 'לא פעיל' }}</dd>
+    <dt class="font-medium text-gray-600">מספר משמרות משויכות</dt>
+    <dd>{{ assignment_count }}</dd>
+  </dl>
+</section>
+
+<div class="flex gap-4 text-sm">
+  <a class="text-blue-600" href="/employees/{{ employee['id'] }}/schedule">סידור עבודה אישי</a>
+  <a class="text-blue-600" href="/employees/{{ employee['id'] }}/availability">זמינות והגבלות</a>
+</div>
+{% endblock %}

@@ -11,30 +11,76 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.executescript('''
+    cur.executescript("""
     CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        hourly_rate REAL
+        email TEXT,
+        phone TEXT,
+        active INTEGER DEFAULT 1,
+        password_hash TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS EmployeeAuthTokens (
+        employee_id INTEGER,
+        token TEXT PRIMARY KEY,
+        expires_at TEXT,
+        FOREIGN KEY(employee_id) REFERENCES employees(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS EmployeeConstraints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        valid_from TEXT,
+        valid_to TEXT,
+        FOREIGN KEY(employee_id) REFERENCES employees(id)
     );
 
     CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        client TEXT
+        name TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS shifts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id INTEGER,
         project_id INTEGER,
         date TEXT,
         start_time TEXT,
         end_time TEXT,
-        FOREIGN KEY(employee_id) REFERENCES employees(id),
+        location TEXT,
         FOREIGN KEY(project_id) REFERENCES projects(id)
     );
-    ''')
+
+    CREATE TABLE IF NOT EXISTS ShiftAssignments (
+        shift_id INTEGER,
+        employee_id INTEGER,
+        PRIMARY KEY (shift_id, employee_id),
+        FOREIGN KEY(shift_id) REFERENCES shifts(id),
+        FOREIGN KEY(employee_id) REFERENCES employees(id)
+    );
+    """)
+
+    # אם השדה employee_id עדיין קיים בטבלת shifts הישנה, נמפה נתונים לטבלת השיוכים החדשה
+    cur.execute("PRAGMA table_info(employees)")
+    employee_columns = [row[1] for row in cur.fetchall()]
+    if "password_hash" not in employee_columns:
+        cur.execute("ALTER TABLE employees ADD COLUMN password_hash TEXT")
+
+    cur.execute("PRAGMA table_info(shifts)")
+    shift_columns = [row[1] for row in cur.fetchall()]
+    if "location" not in shift_columns:
+        cur.execute("ALTER TABLE shifts ADD COLUMN location TEXT")
+
+    if "employee_id" in shift_columns:
+        cur.execute("""
+            INSERT OR IGNORE INTO ShiftAssignments (shift_id, employee_id)
+            SELECT id, employee_id
+            FROM shifts
+            WHERE employee_id IS NOT NULL
+        """)
 
     conn.commit()
     conn.close()

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-4">כניסת עובד</h2>
+{% if message %}
+<div class="mb-4 p-3 bg-green-100 border border-green-200 rounded text-green-800 text-sm">
+  {{ message }}
+</div>
+{% endif %}
+{% if error %}
+<div class="mb-4 p-3 bg-red-100 border border-red-200 rounded text-red-700 text-sm">
+  {{ error }}
+</div>
+{% endif %}
+<form method="post" class="max-w-md bg-white border border-gray-200 rounded p-6 shadow-sm grid gap-4 text-sm">
+  <label class="flex flex-col gap-1">
+    <span class="font-medium text-gray-600">דוא״ל</span>
+    <input type="email" name="email" value="{{ email }}" class="border rounded p-2" required autofocus>
+  </label>
+  <label class="flex flex-col gap-1">
+    <span class="font-medium text-gray-600">סיסמה</span>
+    <input type="password" name="password" class="border rounded p-2" required>
+  </label>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded self-start">
+    התחברות
+  </button>
+</form>
+{% endblock %}

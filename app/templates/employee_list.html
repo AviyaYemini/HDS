@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-lg font-semibold mb-4">רשימת עובדים</h2>
+<table class="w-full border border-gray-300 bg-white text-sm">
+  <thead class="bg-gray-200">
+    <tr>
+      <th class="p-2 border">שם</th>
+      <th class="p-2 border">דוא״ל</th>
+      <th class="p-2 border">טלפון</th>
+      <th class="p-2 border">סטטוס</th>
+      <th class="p-2 border">שיוכים</th>
+      <th class="p-2 border">פעולות</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for employee in employees %}
+    <tr>
+      <td class="p-2 border">{{ employee['name'] }}</td>
+      <td class="p-2 border">{{ employee['email'] or '-' }}</td>
+      <td class="p-2 border">{{ employee['phone'] or '-' }}</td>
+      <td class="p-2 border">{{ 'פעיל' if employee['active'] else 'לא פעיל' }}</td>
+      <td class="p-2 border text-center">{{ employee['assigned_shifts'] }}</td>
+      <td class="p-2 border space-x-2 space-x-reverse">
+        <a href="/employees/{{ employee['id'] }}/profile">פרופיל</a> |
+        <a href="/employees/{{ employee['id'] }}/schedule">סידור</a> |
+        <a href="/employees/{{ employee['id'] }}/availability">זמינות</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="6" class="text-center p-4 text-gray-500">לא נמצאו עובדים</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
