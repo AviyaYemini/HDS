@@ -94,6 +94,12 @@ These tests cover the scheduling engine and constraint handling logic.
 - Push/SMS notifications for new or changed assignments.
 - Public reporting API for BI dashboards.
 
+## UI Preview
+
+| Main Schedule | Admin Dashboard | Project Creation |
+| --- | --- | --- |
+| ![Main schedule](Screenshots/main_screen.png) | ![Admin dashboard](Screenshots/admin_view.png) | ![Add project](Screenshots/add_projects.png) |
+
 ---
 
 Built with ❤️ for security teams. Open issues/PRs with ideas and improvements.
