@@ -26,6 +26,10 @@ def _project(client_id: uuid.UUID | None = None) -> MagicMock:
     return p
 
 
+def _svc(repo: AsyncMock) -> ProjectService:
+    return ProjectService(project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock())
+
+
 @pytest.mark.asyncio
 async def test_list_projects_client_scoped_to_own_client() -> None:
     client_user = _user(role=UserRole.client)
@@ -34,7 +38,7 @@ async def test_list_projects_client_scoped_to_own_client() -> None:
     repo = AsyncMock()
     repo.list_by_org = AsyncMock(return_value=[_project(client_id=expected_client_id)])
 
-    svc = ProjectService(project_repo=repo)
+    svc = _svc(repo)
     await svc.list_projects(
         org_id=client_user.organization_id,
         current_user=client_user,
@@ -53,7 +57,7 @@ async def test_list_projects_client_ignores_external_client_id_filter() -> None:
     repo = AsyncMock()
     repo.list_by_org = AsyncMock(return_value=[])
 
-    svc = ProjectService(project_repo=repo)
+    svc = _svc(repo)
     await svc.list_projects(
         org_id=client_user.organization_id,
         current_user=client_user,
@@ -73,7 +77,7 @@ async def test_get_project_client_with_unowned_project_raises_forbidden() -> Non
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=project)
 
-    svc = ProjectService(project_repo=repo)
+    svc = _svc(repo)
     with pytest.raises(ForbiddenError) as exc_info:
         await svc.get_project(
             id=project.id, org_id=client_user.organization_id, current_user=client_user

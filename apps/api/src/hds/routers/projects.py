@@ -12,7 +12,9 @@ from hds.core.database import get_db
 from hds.core.deps import get_current_user, require_admin, require_manager
 from hds.models.project import ProjectStatus, ProjectType
 from hds.models.user import User
+from hds.repositories.client import ClientRepository
 from hds.repositories.project import ProjectRepository
+from hds.repositories.site import SiteRepository
 from hds.services.project import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -57,7 +59,11 @@ class ProjectListResponse(BaseModel):
 
 
 def _svc(db: AsyncSession) -> ProjectService:
-    return ProjectService(project_repo=ProjectRepository(db))
+    return ProjectService(
+        project_repo=ProjectRepository(db),
+        client_repo=ClientRepository(db),
+        site_repo=SiteRepository(db),
+    )
 
 
 @router.get("", response_model=ProjectListResponse)

@@ -188,3 +188,39 @@ async def test_refresh_rotates_token() -> None:
 
     token_repo.revoke.assert_awaited_with(old_token.id)
     assert isinstance(result, TokenResponse)
+
+
+def _refresh_fixture(user: User | None) -> tuple[AuthService, AsyncMock]:
+    old_token = MagicMock()
+    old_token.id = uuid.uuid4()
+    old_token.user_id = uuid.uuid4()
+    old_token.revoked_at = None
+    old_token.expires_at = datetime.now(UTC) + timedelta(days=1)
+    user_repo = AsyncMock()
+    user_repo.get_for_auth = AsyncMock(return_value=user)
+    token_repo = AsyncMock()
+    token_repo.get_by_hash = AsyncMock(return_value=old_token)
+    return AuthService(user_repo, token_repo, _make_config()), token_repo
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_inactive_user_and_issues_nothing() -> None:
+    service, token_repo = _refresh_fixture(_make_user(is_active=False))
+
+    with pytest.raises(AuthError) as exc_info:
+        await service.refresh("raw-token")
+
+    assert exc_info.value.code == "auth.invalid_token"
+    token_repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_deleted_user_and_issues_nothing() -> None:
+    # Soft-deleted users are never returned by the repository.
+    service, token_repo = _refresh_fixture(None)
+
+    with pytest.raises(AuthError) as exc_info:
+        await service.refresh("raw-token")
+
+    assert exc_info.value.code == "auth.invalid_token"
+    token_repo.create.assert_not_awaited()
