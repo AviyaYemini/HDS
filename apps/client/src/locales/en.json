@@ -1,0 +1,12 @@
+{
+  "auth.sign_in": "Sign In",
+  "auth.sign_out": "Sign Out",
+  "auth.invalid_credentials": "Invalid email or password.",
+  "auth.account_locked": "Account locked",
+  "auth.account_locked_detail": "Your account has been temporarily locked due to too many failed sign-in attempts. Please try again later.",
+  "profile.my_profile": "My Profile",
+  "profile.full_name": "Full name",
+  "profile.phone": "Phone",
+  "profile.save": "Save",
+  "profile.field_not_allowed": "This field cannot be updated."
+}

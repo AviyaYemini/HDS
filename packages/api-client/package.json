@@ -1,0 +1,6 @@
+{
+  "name": "@hds/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated TypeScript API client — deferred until apps/client feature"
+}

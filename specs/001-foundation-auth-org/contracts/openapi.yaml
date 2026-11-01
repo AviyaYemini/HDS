@@ -1,0 +1,1821 @@
+openapi: "3.1.0"
+
+info:
+  title: HDS API — Foundation (Auth + Organisation)
+  version: "1.0.0"
+  description: |
+    Authentication and organisation-management endpoints for HDS 2.0.
+    All protected endpoints require a Bearer JWT access token.
+    Errors follow RFC 9457 problem-details with a stable machine-readable `code` field.
+    Timestamps are ISO 8601 in UTC; clients render in the site's or org's timezone.
+    Writes that can be safely retried accept an `Idempotency-Key` header.
+
+servers:
+  - url: /api/v1
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # -------------------------------------------------------------------------
+  # Reusable schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # ── Primitives ───────────────────────────────────────────────────────────
+
+    UUIDv4:
+      type: string
+      format: uuid
+      example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    ISODateTime:
+      type: string
+      format: date-time
+      description: ISO 8601 timestamp in UTC (Z suffix).
+      example: "2026-11-01T10:00:00Z"
+
+    ISODate:
+      type: string
+      format: date
+      example: "2026-11-01"
+
+    MoneyAmount:
+      type: string
+      format: decimal
+      description: >
+        Exact decimal string representation (e.g. "125.5000"). Never a float.
+        Stored as NUMERIC(12,4) in the database.
+      example: "125.5000"
+
+    IANATimezone:
+      type: string
+      description: IANA timezone identifier.
+      example: "Asia/Jerusalem"
+
+    UserRole:
+      type: string
+      enum: [employee, manager, admin, client]
+
+    ProjectType:
+      type: string
+      enum: [security, training]
+
+    ProjectStatus:
+      type: string
+      enum: [active, ended]
+
+    # ── Problem Details (RFC 9457) ───────────────────────────────────────────
+
+    ProblemDetail:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: "about:blank"
+        title:
+          type: string
+          example: "Unauthorized"
+        status:
+          type: integer
+          example: 401
+        detail:
+          type: string
+          example: "Invalid or expired access token."
+        code:
+          type: string
+          description: Stable machine-readable error code.
+          example: "auth.token_invalid"
+        instance:
+          type: string
+          format: uri
+
+    # ── Auth ─────────────────────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 1
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, refresh_token]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [bearer]
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds (≤ 900).
+          example: 900
+        refresh_token:
+          type: string
+          description: Opaque rotating refresh token.
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    # ── Organisation ──────────────────────────────────────────────────────────
+
+    OrganisationRead:
+      type: object
+      required: [id, name, timezone, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        timezone:
+          $ref: "#/components/schemas/IANATimezone"
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    # ── Users / Employees ─────────────────────────────────────────────────────
+
+    UserRead:
+      type: object
+      required: [id, organization_id, email, full_name, role, is_active, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        role:
+          $ref: "#/components/schemas/UserRole"
+        is_active:
+          type: boolean
+        default_hourly_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+          nullable: true
+          description: Visible to Managers/Admins and the user themselves (read-only for employees).
+        client_id:
+          $ref: "#/components/schemas/UUIDv4"
+          nullable: true
+          description: Non-null only for role=client.
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    ClientUserRead:
+      type: object
+      description: A client-portal user. Carries no role or rate fields.
+      required: [id, organization_id, email, full_name, is_active, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        client_id:
+          $ref: "#/components/schemas/UUIDv4"
+          nullable: true
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    UserCreateRequest:
+      type: object
+      required: [email, full_name, role, initial_password]
+      properties:
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 32
+        role:
+          $ref: "#/components/schemas/UserRole"
+        default_hourly_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+          nullable: true
+        client_id:
+          $ref: "#/components/schemas/UUIDv4"
+          nullable: true
+          description: Required when role=client.
+        initial_password:
+          type: string
+          minLength: 12
+          writeOnly: true
+          description: Initial password supplied by the Manager (Proposed; min 12 characters).
+
+    UserUpdateRequest:
+      type: object
+      description: >
+        PATCH — all fields optional. Employees may only send full_name and phone.
+        Managers may additionally send role and default_hourly_rate.
+        Admins may send any field.
+      properties:
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 32
+        role:
+          $ref: "#/components/schemas/UserRole"
+        default_hourly_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+          nullable: true
+
+    UserListResponse:
+      type: object
+      required: [items, next_cursor, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserRead"
+        next_cursor:
+          type: string
+          nullable: true
+          description: Opaque cursor for the next page; null when exhausted.
+        total:
+          type: integer
+          description: Total matching records (ignoring pagination).
+
+    # ── Groups ────────────────────────────────────────────────────────────────
+
+    GroupRead:
+      type: object
+      required: [id, organization_id, name, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    GroupWriteRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    GroupListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupRead"
+
+    IDListRequest:
+      type: object
+      required: [ids]
+      description: Full-replacement list of UUIDs (used for group/qualification assignments).
+      properties:
+        ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/UUIDv4"
+          uniqueItems: true
+
+    # ── Qualifications ────────────────────────────────────────────────────────
+
+    QualificationRead:
+      type: object
+      required: [id, organization_id, name, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    QualificationWriteRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    QualificationListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualificationRead"
+
+    # ── Clients ───────────────────────────────────────────────────────────────
+
+    ClientRead:
+      type: object
+      required: [id, organization_id, name, contract_start, is_active, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        contact_name:
+          type: string
+          nullable: true
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        contract_start:
+          $ref: "#/components/schemas/ISODate"
+        contract_end:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    ClientCreateRequest:
+      type: object
+      required: [name, contract_start]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contact_name:
+          type: string
+        contact_email:
+          type: string
+          format: email
+        contact_phone:
+          type: string
+          maxLength: 32
+        contract_start:
+          $ref: "#/components/schemas/ISODate"
+        contract_end:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+
+    ClientUpdateRequest:
+      type: object
+      description: PATCH — all fields optional.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contact_name:
+          type: string
+        contact_email:
+          type: string
+          format: email
+        contact_phone:
+          type: string
+          maxLength: 32
+        contract_end:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        is_active:
+          type: boolean
+
+    ClientListResponse:
+      type: object
+      required: [items, next_cursor, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientRead"
+        next_cursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+
+    # ── Sites ─────────────────────────────────────────────────────────────────
+
+    SiteRead:
+      type: object
+      required: [id, organization_id, name, address, timezone, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        address:
+          type: string
+        timezone:
+          $ref: "#/components/schemas/IANATimezone"
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    SiteCreateRequest:
+      type: object
+      required: [name, address, timezone]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        address:
+          type: string
+          minLength: 1
+        timezone:
+          $ref: "#/components/schemas/IANATimezone"
+
+    SiteUpdateRequest:
+      type: object
+      description: PATCH — all fields optional.
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        timezone:
+          $ref: "#/components/schemas/IANATimezone"
+
+    SiteListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteRead"
+
+    # ── Projects ──────────────────────────────────────────────────────────────
+
+    ProjectRead:
+      type: object
+      required: [id, organization_id, client_id, site_id, name, type, billing_rate, start_date, status, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        organization_id:
+          $ref: "#/components/schemas/UUIDv4"
+        client_id:
+          $ref: "#/components/schemas/UUIDv4"
+        site_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ProjectType"
+        billing_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+        start_date:
+          $ref: "#/components/schemas/ISODate"
+        end_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    ProjectCreateRequest:
+      type: object
+      required: [client_id, site_id, name, type, billing_rate, start_date]
+      properties:
+        client_id:
+          $ref: "#/components/schemas/UUIDv4"
+        site_id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        type:
+          $ref: "#/components/schemas/ProjectType"
+        billing_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+        start_date:
+          $ref: "#/components/schemas/ISODate"
+        end_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+
+    ProjectUpdateRequest:
+      type: object
+      description: PATCH — all fields optional.
+      properties:
+        name:
+          type: string
+        billing_rate:
+          $ref: "#/components/schemas/MoneyAmount"
+        end_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+
+    ProjectListResponse:
+      type: object
+      required: [items, next_cursor, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectRead"
+        next_cursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+
+  # ── Reusable parameters ───────────────────────────────────────────────────
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional UUID for safe retries on POST endpoints.
+
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque pagination cursor returned by a previous list response.
+
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 200
+
+  # ── Reusable responses ────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    Forbidden:
+      description: Authenticated but insufficient role or data scope.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    NotFound:
+      description: Resource not found (or hidden by soft delete / scope filter).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    Conflict:
+      description: Uniqueness conflict (e.g. duplicate email within the organisation).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    UnprocessableEntity:
+      description: Validation error (invalid field values).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+# ---------------------------------------------------------------------------
+# Global security (overridden on public auth endpoints)
+# ---------------------------------------------------------------------------
+security:
+  - bearerAuth: []
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /auth/login:
+    post:
+      operationId: auth_login
+      summary: Sign in with email and password
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Successful sign-in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Unauthorized"
+                status: 401
+                code: "auth.invalid_credentials"
+        "423":
+          description: Account locked due to too many failed attempts.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Locked"
+                status: 423
+                detail: "Account locked for 15 minutes. Contact your manager if urgent."
+                code: "auth.account_locked"
+
+  /auth/refresh:
+    post:
+      operationId: auth_refresh
+      summary: Exchange a refresh token for a new access token
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New access token issued; old refresh token revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout:
+    post:
+      operationId: auth_logout
+      summary: Sign out (invalidate current refresh token)
+      tags: [Auth]
+      responses:
+        "204":
+          description: Session invalidated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout-all:
+    post:
+      operationId: auth_logout_all
+      summary: Sign out of all devices (invalidate all refresh tokens)
+      tags: [Auth]
+      responses:
+        "204":
+          description: All sessions invalidated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/invite:
+    post:
+      operationId: auth_invite
+      summary: Invite a user by email (Manager+)
+      description: >
+        Always answers 202 with an empty body. The invitation token is delivered only by email.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  $ref: "#/components/schemas/UserRole"
+      responses:
+        "202":
+          description: Invitation accepted for delivery.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /auth/invite/accept:
+    post:
+      operationId: auth_invite_accept
+      summary: Accept an invitation and set a password
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 12
+                  writeOnly: true
+      responses:
+        "204":
+          description: Account activated; the user can now sign in.
+        "401":
+          description: Token invalid, expired or already used.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /auth/password-reset/request:
+    post:
+      operationId: auth_password_reset_request
+      summary: Request a password-reset email
+      description: >
+        Always answers 202 with an empty body, whether or not the email is known.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Request accepted.
+
+  /auth/password-reset/confirm:
+    post:
+      operationId: auth_password_reset_confirm
+      summary: Set a new password using a reset token
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 12
+                  writeOnly: true
+      responses:
+        "204":
+          description: Password changed.
+        "401":
+          description: Token invalid, expired or already used.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  # ── Current user (self) ───────────────────────────────────────────────────
+
+  /me:
+    get:
+      operationId: me_get
+      summary: Get the current user's profile
+      tags: [Me]
+      responses:
+        "200":
+          description: Current user's profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      operationId: me_update
+      summary: Update the current user's own profile (name and phone only)
+      tags: [Me]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                phone:
+                  type: string
+                  maxLength: 32
+      responses:
+        "200":
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Employees ─────────────────────────────────────────────────────────────
+
+  /employees:
+    get:
+      operationId: employees_list
+      summary: List employees (Manager+)
+      tags: [Employees]
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Full-name or email search.
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: group_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+        - name: qualification_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: Paginated employee list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: employees_create
+      summary: Create a new employee (Manager+)
+      tags: [Employees]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "201":
+          description: Employee created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /employees/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: employees_get
+      summary: Get an employee by ID (Manager+, or self)
+      tags: [Employees]
+      responses:
+        "200":
+          description: Employee record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: employees_update
+      summary: Update an employee (Manager+ or self with restricted fields)
+      tags: [Employees]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: Updated employee record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: employees_delete
+      summary: Soft-delete an employee record (Admin only)
+      tags: [Employees]
+      responses:
+        "204":
+          description: Employee hidden (soft-deleted); history preserved.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /employees/{id}/deactivate:
+    post:
+      operationId: employees_deactivate
+      summary: Deactivate an employee (Manager+)
+      tags: [Employees]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: Employee deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot deactivate the last active Admin.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                code: "users.last_admin"
+
+  /employees/{id}/reactivate:
+    post:
+      operationId: employees_reactivate
+      summary: Reactivate a deactivated employee (Manager+)
+      tags: [Employees]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: Employee reactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /employees/{id}/groups:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: employees_groups_list
+      summary: List groups the employee belongs to (Manager+ or self)
+      tags: [Employees]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupListResponse"
+          description: Group list.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: employees_groups_replace
+      summary: Replace all group memberships for an employee (Manager+)
+      tags: [Employees]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDListRequest"
+      responses:
+        "204":
+          description: Memberships replaced.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /employees/{id}/qualifications:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: employees_qualifications_list
+      summary: List qualifications held by the employee (Manager+ or self)
+      tags: [Employees]
+      responses:
+        "200":
+          description: Qualification list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: employees_qualifications_replace
+      summary: Replace all qualifications for an employee (Manager+)
+      tags: [Employees]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IDListRequest"
+      responses:
+        "204":
+          description: Qualifications replaced.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Groups ────────────────────────────────────────────────────────────────
+
+  /groups:
+    get:
+      operationId: groups_list
+      summary: List all groups in the organisation (Manager+)
+      tags: [Groups]
+      responses:
+        "200":
+          description: Group list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: groups_create
+      summary: Create a new group (Manager+)
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupWriteRequest"
+      responses:
+        "201":
+          description: Group created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /groups/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: groups_update
+      summary: Rename a group (Manager+)
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupWriteRequest"
+      responses:
+        "200":
+          description: Updated group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+    delete:
+      operationId: groups_delete
+      summary: Delete a group (Manager+)
+      tags: [Groups]
+      responses:
+        "204":
+          description: Group deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Qualifications ────────────────────────────────────────────────────────
+
+  /qualifications:
+    get:
+      operationId: qualifications_list
+      summary: List all qualifications in the organisation (Manager+)
+      tags: [Qualifications]
+      responses:
+        "200":
+          description: Qualification list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: qualifications_create
+      summary: Create a new qualification (Manager+)
+      tags: [Qualifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QualificationWriteRequest"
+      responses:
+        "201":
+          description: Qualification created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualificationRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /qualifications/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: qualifications_update
+      summary: Rename a qualification (Manager+)
+      tags: [Qualifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QualificationWriteRequest"
+      responses:
+        "200":
+          description: Updated qualification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualificationRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+    delete:
+      operationId: qualifications_delete
+      summary: Delete a qualification (Manager+)
+      tags: [Qualifications]
+      responses:
+        "204":
+          description: Qualification deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Clients ───────────────────────────────────────────────────────────────
+
+  /clients:
+    get:
+      operationId: clients_list
+      summary: List clients (Manager+)
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Paginated client list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: clients_create
+      summary: Create a new client (Manager+)
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreateRequest"
+      responses:
+        "201":
+          description: Client created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /clients/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: clients_get
+      summary: Get a client by ID (Manager+)
+      tags: [Clients]
+      responses:
+        "200":
+          description: Client record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: clients_update
+      summary: Update a client (Manager+)
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdateRequest"
+      responses:
+        "200":
+          description: Updated client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: clients_delete
+      summary: Soft-delete a client (Admin only); cascades deactivation to client users
+      tags: [Clients]
+      responses:
+        "204":
+          description: Client hidden; associated client users deactivated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /clients/{id}/users:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: client_users_list
+      summary: List users linked to this client (Manager+)
+      tags: [Clients]
+      responses:
+        "200":
+          description: Client user list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientUserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      operationId: client_users_create
+      summary: Add a client user to this client (Manager+)
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, full_name, initial_password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                full_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                phone:
+                  type: string
+                  maxLength: 32
+                initial_password:
+                  type: string
+                  minLength: 12
+                  writeOnly: true
+                  description: Initial password supplied by the Manager (Proposed; min 12 characters).
+      responses:
+        "201":
+          description: Client user created and linked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientUserRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /clients/{id}/users/{user_id}:
+    delete:
+      operationId: client_users_remove
+      summary: Remove a client user from this client (Manager+)
+      tags: [Clients]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "204":
+          description: Client user removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Sites ─────────────────────────────────────────────────────────────────
+
+  /sites:
+    get:
+      operationId: sites_list
+      summary: List all sites (Manager+)
+      tags: [Sites]
+      responses:
+        "200":
+          description: Site list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: sites_create
+      summary: Create a new site (Manager+)
+      tags: [Sites]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCreateRequest"
+      responses:
+        "201":
+          description: Site created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /sites/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: sites_get
+      summary: Get a site by ID (Manager+)
+      tags: [Sites]
+      responses:
+        "200":
+          description: Site record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: sites_update
+      summary: Update a site (Manager+)
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteUpdateRequest"
+      responses:
+        "200":
+          description: Updated site.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Projects ──────────────────────────────────────────────────────────────
+
+  /projects:
+    get:
+      operationId: projects_list
+      summary: >
+        List projects. Manager+: all projects in the org (default: active only).
+        Client: own client's projects only.
+      tags: [Projects]
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProjectStatus"
+          description: Filter by status. Omit for active only.
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: Paginated project list (scoped to caller's role).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: projects_create
+      summary: Create a new project (Manager+)
+      tags: [Projects]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreateRequest"
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /projects/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: projects_get
+      summary: Get a project by ID (Manager+ or Client for own projects)
+      tags: [Projects]
+      responses:
+        "200":
+          description: Project record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: projects_update
+      summary: Update a project (Manager+)
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdateRequest"
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: projects_delete
+      summary: Soft-delete a project (Admin only); history preserved
+      tags: [Projects]
+      responses:
+        "204":
+          description: Project hidden; billing and shift history preserved.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"

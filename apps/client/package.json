@@ -1,0 +1,6 @@
+{
+  "name": "hds-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HDS frontend (TypeScript/Expo) — deferred to next feature"
+}

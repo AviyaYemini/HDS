@@ -1,0 +1,82 @@
+import enum
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    SmallInteger,
+    String,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from hds.models.base import TimestampedBase
+
+if TYPE_CHECKING:
+    from hds.models.client import Client
+    from hds.models.group import Group
+    from hds.models.qualification import Qualification
+    from hds.models.refresh_token import RefreshToken
+
+
+class UserRole(str, enum.Enum):
+    employee = "employee"
+    manager = "manager"
+    admin = "admin"
+    client = "client"
+
+
+class User(TimestampedBase):
+    __tablename__ = "users"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(32))
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    default_hourly_rate: Mapped[Decimal | None] = mapped_column(
+        Numeric(precision=12, scale=4, asdecimal=True)
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clients.id"))
+    failed_login_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    client: Mapped["Client | None"] = relationship("Client", back_populates="users")
+    groups: Mapped[list["Group"]] = relationship(
+        "Group", secondary="user_groups", back_populates="users"
+    )
+    qualifications: Mapped[list["Qualification"]] = relationship(
+        "Qualification", secondary="user_qualifications", back_populates="users"
+    )
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        "RefreshToken", back_populates="user"
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_users_org_email",
+            "organization_id",
+            "email",
+            unique=True,
+            postgresql_where=text("is_deleted = false"),
+        ),
+        Index("idx_users_org", "organization_id"),
+        Index(
+            "idx_users_client",
+            "client_id",
+            postgresql_where=text("client_id IS NOT NULL"),
+        ),
+    )

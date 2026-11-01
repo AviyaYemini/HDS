@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+        args: [--check]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        args: [--strict, apps/api/src/]
+        additional_dependencies:
+          - "pydantic>=2"
+          - "sqlalchemy[mypy]>=2"
+          - "fastapi"
+
+  - repo: https://github.com/conventional-changelog/commitlint
+    rev: v19.3.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies:
+          - "@commitlint/config-conventional"

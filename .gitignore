@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+# uv.lock is intentionally committed — do NOT add it here
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Database volumes
+infra/volumes/
+
+# SQLite test databases
+*.db
+*.sqlite3
+
+# Node / pnpm
+node_modules/
+# pnpm-lock.yaml is intentionally committed — do NOT add it here
+
+# Test artefacts
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+coverage.xml
+
+# Type checker
+.mypy_cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# Playwright
+apps/client/test-results/
+apps/client/playwright-report/
+
+# Build output
+apps/client/dist/
+packages/api-client/dist/
+packages/api-client/src/

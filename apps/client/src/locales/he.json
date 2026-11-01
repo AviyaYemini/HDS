@@ -1,0 +1,12 @@
+{
+  "auth.sign_in": "כניסה",
+  "auth.sign_out": "יציאה",
+  "auth.invalid_credentials": "כתובת דוא״ל או סיסמה שגויים.",
+  "auth.account_locked": "החשבון נעול",
+  "auth.account_locked_detail": "החשבון שלך ננעל זמנית עקב יותר מדי ניסיונות כניסה כושלים. אנא נסה שוב מאוחר יותר.",
+  "profile.my_profile": "הפרופיל שלי",
+  "profile.full_name": "שם מלא",
+  "profile.phone": "טלפון",
+  "profile.save": "שמור",
+  "profile.field_not_allowed": "לא ניתן לעדכן שדה זה."
+}

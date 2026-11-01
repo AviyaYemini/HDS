@@ -1,0 +1,319 @@
+"""Unit tests for EmployeeService manager operations (roles, last-admin, token revocation)."""
+
+import uuid
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from hds.core.exceptions import ConflictError, DomainValidationError, ForbiddenError
+from hds.models.user import User, UserRole
+from hds.services.employee import EmployeeService
+
+
+def _make_user(**kwargs: object) -> User:
+    user = MagicMock(spec=User)
+    user.id = kwargs.get("id", uuid.uuid4())
+    user.organization_id = kwargs.get("org_id", uuid.uuid4())
+    user.email = kwargs.get("email", "emp@hds.test")
+    user.full_name = kwargs.get("full_name", "Test Employee")
+    user.role = kwargs.get("role", UserRole.employee)
+    user.is_active = kwargs.get("is_active", True)
+    user.is_deleted = kwargs.get("is_deleted", False)
+    return user
+
+
+def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock, AsyncMock]:
+    user_repo = user_repo or AsyncMock()
+    token_repo = AsyncMock()
+    return EmployeeService(user_repo=user_repo, token_repo=token_repo), user_repo, token_repo
+
+
+_VALID = {
+    "email": "new@hds.test",
+    "full_name": "New Emp",
+    "initial_password": "correct-horse-battery",
+}
+
+
+# ── create ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_employee_success_hashes_password() -> None:
+    actor = _make_user(role=UserRole.manager)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    created = _make_user()
+    user_repo.create = AsyncMock(return_value=created)
+
+    result = await svc.create_employee(actor, dict(_VALID))
+
+    assert result is created
+    org_id, data = user_repo.create.await_args.args
+    assert org_id == actor.organization_id
+    assert "initial_password" not in data
+    assert data["password_hash"].startswith("$argon2id$")
+    assert data["role"] == UserRole.employee
+
+
+@pytest.mark.asyncio
+async def test_create_employee_by_employee_forbidden() -> None:
+    svc, user_repo, _ = _svc()
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.create_employee(_make_user(role=UserRole.employee), dict(_VALID))
+    assert exc.value.code == "users.manager_required"
+    user_repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_employee_duplicate_email_raises_conflict() -> None:
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=_make_user())
+    with pytest.raises(ConflictError) as exc:
+        await svc.create_employee(_make_user(role=UserRole.manager), dict(_VALID))
+    assert exc.value.code == "users.duplicate_email"
+
+
+@pytest.mark.asyncio
+async def test_create_employee_short_initial_password_rejected() -> None:
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    with pytest.raises(DomainValidationError) as exc:
+        await svc.create_employee(
+            _make_user(role=UserRole.manager), {**_VALID, "initial_password": "short"}
+        )
+    assert exc.value.code == "users.password_too_short"
+    user_repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_employee_password_of_exactly_12_chars_accepted() -> None:
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.create = AsyncMock(return_value=_make_user())
+    await svc.create_employee(
+        _make_user(role=UserRole.manager), {**_VALID, "initial_password": "x" * 12}
+    )
+    user_repo.create.assert_awaited_once()
+
+
+@pytest.mark.parametrize("rate", [Decimal("0"), Decimal("-1")])
+@pytest.mark.asyncio
+async def test_create_employee_non_positive_hourly_rate_rejected(rate: Decimal) -> None:
+    svc, user_repo, _ = _svc()
+    with pytest.raises(DomainValidationError) as exc:
+        await svc.create_employee(
+            _make_user(role=UserRole.manager), {**_VALID, "default_hourly_rate": rate}
+        )
+    assert exc.value.code == "users.hourly_rate_invalid"
+
+
+@pytest.mark.asyncio
+async def test_create_employee_with_client_role_rejected() -> None:
+    svc, _, _ = _svc()
+    with pytest.raises(DomainValidationError) as exc:
+        await svc.create_employee(
+            _make_user(role=UserRole.admin), {**_VALID, "role": UserRole.client}
+        )
+    assert exc.value.code == "users.role_invalid"
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_create_admin() -> None:
+    svc, _, _ = _svc()
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.create_employee(
+            _make_user(role=UserRole.manager), {**_VALID, "role": UserRole.admin}
+        )
+    assert exc.value.code == "users.admin_required"
+
+
+# ── promote ─────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_promote_to_manager_by_manager_revokes_sessions() -> None:
+    target = _make_user(role=UserRole.employee)
+    svc, user_repo, token_repo = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(role=UserRole.manager))
+
+    result = await svc.promote_to_manager(_make_user(role=UserRole.manager), target.id)
+
+    assert result.role == UserRole.manager
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+
+
+@pytest.mark.asyncio
+async def test_promote_to_admin_by_manager_forbidden() -> None:
+    target = _make_user()
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.promote_to_admin(_make_user(role=UserRole.manager), target.id)
+    assert exc.value.code == "users.admin_required"
+
+
+@pytest.mark.asyncio
+async def test_promote_to_admin_by_admin_succeeds() -> None:
+    target = _make_user()
+    svc, user_repo, token_repo = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(role=UserRole.admin))
+
+    await svc.promote_to_admin(_make_user(role=UserRole.admin), target.id)
+
+    user_repo.update.assert_awaited_once_with(target.id, role=UserRole.admin)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+
+
+# ── FR-011a: only an Admin may change an Admin ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_edit_admin() -> None:
+    target = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError):
+        await svc.edit_employee(_make_user(role=UserRole.manager), target.id, {"full_name": "X"})
+    user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_deactivate_admin() -> None:
+    target = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError):
+        await svc.deactivate(_make_user(role=UserRole.manager), target.id)
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_demote_admin_via_promote_to_manager() -> None:
+    target = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError):
+        await svc.promote_to_manager(_make_user(role=UserRole.manager), target.id)
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_reactivate_admin() -> None:
+    target = _make_user(role=UserRole.admin, is_active=False)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError):
+        await svc.reactivate(_make_user(role=UserRole.manager), target.id)
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_set_role_admin_via_edit() -> None:
+    target = _make_user(role=UserRole.employee)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    with pytest.raises(ForbiddenError):
+        await svc.edit_employee(_make_user(role=UserRole.manager), target.id, {"role": "admin"})
+
+
+# ── deactivate / reactivate ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_deactivate_revokes_all_sessions() -> None:
+    target = _make_user(role=UserRole.employee)
+    svc, user_repo, token_repo = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(is_active=False))
+
+    await svc.deactivate(_make_user(role=UserRole.manager), target.id)
+
+    user_repo.update.assert_awaited_once_with(target.id, is_active=False)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+
+
+@pytest.mark.asyncio
+async def test_reactivate_employee() -> None:
+    target = _make_user(is_active=False)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(is_active=True))
+    await svc.reactivate(_make_user(role=UserRole.manager), target.id)
+    user_repo.update.assert_awaited_once_with(target.id, is_active=True)
+
+
+# ── FR-011: last active Admin ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_last_admin_raises_conflict() -> None:
+    org_id = uuid.uuid4()
+    actor = _make_user(role=UserRole.admin, org_id=org_id)
+    target = _make_user(role=UserRole.admin, org_id=org_id)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.count_active_admins = AsyncMock(return_value=1)
+
+    with pytest.raises(ConflictError) as exc:
+        await svc.soft_delete(actor, target.id)
+
+    assert exc.value.code == "users.last_admin"
+    user_repo.soft_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_non_last_admin_succeeds_and_revokes() -> None:
+    org_id = uuid.uuid4()
+    actor = _make_user(role=UserRole.admin, org_id=org_id)
+    target = _make_user(role=UserRole.admin, org_id=org_id)
+    svc, user_repo, token_repo = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.count_active_admins = AsyncMock(return_value=2)
+
+    await svc.soft_delete(actor, target.id)
+
+    user_repo.soft_delete.assert_awaited_once_with(target.id)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_by_manager_forbidden() -> None:
+    svc, user_repo, _ = _svc()
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.soft_delete(_make_user(role=UserRole.manager), uuid.uuid4())
+    assert exc.value.code == "users.admin_required"
+    user_repo.soft_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deactivate_last_admin_raises_conflict() -> None:
+    target = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.count_active_admins = AsyncMock(return_value=1)
+    with pytest.raises(ConflictError) as exc:
+        await svc.deactivate(_make_user(role=UserRole.admin), target.id)
+    assert exc.value.code == "users.last_admin"
+
+
+@pytest.mark.asyncio
+async def test_demote_last_admin_via_edit_raises_conflict() -> None:
+    target = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.count_active_admins = AsyncMock(return_value=1)
+    with pytest.raises(ConflictError) as exc:
+        await svc.edit_employee(_make_user(role=UserRole.admin), target.id, {"role": "manager"})
+    assert exc.value.code == "users.last_admin"
+
+
+@pytest.mark.asyncio
+async def test_deactivating_already_inactive_admin_skips_last_admin_guard() -> None:
+    target = _make_user(role=UserRole.admin, is_active=False)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.count_active_admins = AsyncMock(return_value=1)
+    user_repo.update = AsyncMock(return_value=target)
+    await svc.deactivate(_make_user(role=UserRole.admin), target.id)
+    user_repo.update.assert_awaited_once()
