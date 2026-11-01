@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "004_users"
 down_revision: str | None = "003_sites"
@@ -25,7 +26,7 @@ def upgrade() -> None:
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column("full_name", sa.String(255), nullable=False),
         sa.Column("phone", sa.String(32), nullable=True),
-        sa.Column("role", sa.Enum("employee", "manager", "admin", "client", name="user_role"), nullable=False),
+        sa.Column("role", postgresql.ENUM("employee", "manager", "admin", "client", name="user_role", create_type=False), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("deleted_at", sa.TIMESTAMP(timezone=True), nullable=True),

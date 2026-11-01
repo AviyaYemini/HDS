@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "010_projects"
 down_revision: str | None = "009_user_qualifications"
@@ -24,7 +25,7 @@ def upgrade() -> None:
         sa.Column("client_id", sa.UUID(), nullable=False),
         sa.Column("site_id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("type", sa.Enum("security", "training", name="project_type"), nullable=False),
+        sa.Column("type", postgresql.ENUM("security", "training", name="project_type", create_type=False), nullable=False),
         sa.Column(
             "billing_rate",
             sa.Numeric(12, 4),
@@ -35,7 +36,7 @@ def upgrade() -> None:
         sa.Column("end_date", sa.Date(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("active", "ended", name="project_status"),
+            postgresql.ENUM("active", "ended", name="project_status", create_type=False),
             nullable=False,
             server_default="active",
         ),

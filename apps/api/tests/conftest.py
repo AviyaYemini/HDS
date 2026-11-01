@@ -1,14 +1,23 @@
 """Shared pytest fixtures for HDS API tests."""
 
+import asyncio
+import os
+import subprocess
+import sys
 import uuid
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 
 import email_validator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from hds.core.database import get_db
 from hds.core.mail import get_mail_sender
 from hds.core.security import hash_password
 from hds.main import app
@@ -19,8 +28,49 @@ from hds.models.user import User, UserRole
 # Allow the reserved ``.test`` domain used by the seeded fixtures.
 email_validator.TEST_ENVIRONMENT = True
 
-# Use SQLite for in-process integration fixtures; real PG for integration/ tests
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Integration tests run on PostgreSQL (Constitution); SQLite stays for pure unit tests only.
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
+)
+_API_DIR = Path(__file__).resolve().parent.parent
+
+
+def _assert_safe_test_db(url: str) -> str:
+    """Refuse to run against anything that is not a dedicated *_test database."""
+    name = make_url(url).database or ""
+    if not name.endswith("_test"):
+        raise RuntimeError(f"TEST_DATABASE_URL must point at a '*_test' database, got {name!r}")
+    return name
+
+
+async def _create_database_if_missing(url: str) -> None:
+    name = _assert_safe_test_db(url)
+    admin = create_async_engine(
+        make_url(url).set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
+    )
+    try:
+        async with admin.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": name}
+            )
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    finally:
+        await admin.dispose()
+
+
+@pytest.fixture(scope="session")
+def migrated_test_db() -> str:
+    """Create the test database if missing and run Alembic migrations to head once."""
+    asyncio.run(_create_database_if_missing(TEST_DATABASE_URL))
+    env = {**os.environ, "DATABASE_URL": TEST_DATABASE_URL}
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=_API_DIR,
+        env=env,
+        check=True,
+    )
+    return TEST_DATABASE_URL
 
 
 @pytest.fixture(scope="session")
@@ -61,16 +111,25 @@ def outbox() -> Generator[OutboxMailSender, None, None]:
 
 
 @pytest_asyncio.fixture
-async def test_db() -> AsyncGenerator[AsyncSession, None]:
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def test_db(migrated_test_db: str) -> AsyncGenerator[AsyncSession, None]:
+    """PostgreSQL session shared with the app (via get_db); all tables truncated after each test."""
+    engine = create_async_engine(migrated_test_db, echo=False, poolclass=NullPool)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_factory() as session:
-        yield session
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+
+    async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = _override_get_db
+    try:
+        async with session_factory() as session:
+            yield session
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+        async with engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture

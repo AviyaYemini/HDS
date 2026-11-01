@@ -34,6 +34,10 @@ class UserRead(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
+    # Extra keys are kept so the service can reject them with 403 (profile.field_not_allowed)
+    # instead of the schema silently dropping e.g. ``role``.
+    model_config = {"extra": "allow"}
+
     full_name: str | None = None
     phone: str | None = None
 
