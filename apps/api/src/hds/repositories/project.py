@@ -5,10 +5,10 @@ from typing import Any
 from sqlalchemy import select, update
 
 from hds.models.project import Project, ProjectStatus
-from hds.repositories.base import BaseRepository
+from hds.repositories.base import OrgScopedRepository
 
 
-class ProjectRepository(BaseRepository[Project]):
+class ProjectRepository(OrgScopedRepository[Project]):
     model = Project
 
     async def list_by_org(
@@ -28,18 +28,23 @@ class ProjectRepository(BaseRepository[Project]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_by_client(self, client_id: uuid.UUID) -> list[Project]:
+    async def list_by_client(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[Project]:
         result = await self.session.execute(
             select(Project).where(
                 Project.client_id == client_id,
+                Project.organization_id == org_id,
                 Project.is_deleted.is_(False),
             )
         )
         return list(result.scalars().all())
 
-    async def get_by_id(self, id: uuid.UUID) -> Project | None:
+    async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
         result = await self.session.execute(
-            select(Project).where(Project.id == id, Project.is_deleted.is_(False))
+            select(Project).where(
+                Project.id == id,
+                Project.organization_id == org_id,
+                Project.is_deleted.is_(False),
+            )
         )
         return result.scalar_one_or_none()
 
@@ -53,7 +58,7 @@ class ProjectRepository(BaseRepository[Project]):
     async def update(self, id: uuid.UUID, **fields: Any) -> Project:
         await self.session.execute(update(Project).where(Project.id == id).values(**fields))
         await self.session.commit()
-        project = await self.get_by_id(id)
+        project = await self._get_unscoped(id)
         assert project is not None
         return project
 

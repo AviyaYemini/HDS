@@ -41,7 +41,7 @@ class ProjectService:
 
     async def edit_project(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Project:
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_id(id)
+        existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
         if "billing_rate" in data:
@@ -51,14 +51,14 @@ class ProjectService:
 
     async def set_status(self, actor: User, id: uuid.UUID, status: str) -> Project:
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_id(id)
+        existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
         return await self._repo.update(id, status=status)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
-        existing = await self._repo.get_by_id(id)
+        existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
         await self._repo.soft_delete(id)
@@ -75,7 +75,7 @@ class ProjectService:
         return await self._repo.list_by_org(org_id, status=status, client_id=client_id)
 
     async def get_project(self, id: uuid.UUID, org_id: uuid.UUID, current_user: User) -> Project:
-        project = await self._repo.get_by_id(id)
+        project = await self._repo.get_by_id(id, org_id)
         if project is None:
             raise NotFoundError(resource="Project", id=id)
         if current_user.role == UserRole.client:

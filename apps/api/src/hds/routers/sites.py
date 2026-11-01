@@ -71,7 +71,7 @@ async def get_site(
 ) -> object:
     from hds.core.exceptions import NotFoundError
 
-    site = await SiteRepository(db).get_by_id(id)
+    site = await SiteRepository(db).get_by_id(id, current_user.organization_id)
     if site is None:
         raise NotFoundError(resource="Site", id=id)
     return site

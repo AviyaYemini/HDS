@@ -9,6 +9,7 @@ from hds.core.deps import require_manager
 from hds.core.mail import MailSender, get_mail_sender
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.invitation import InvitationService
 
@@ -39,6 +40,7 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
         user_repo=UserRepository(db),
         token_repo=InvitationTokenRepository(db),
         mailer=mailer,
+        refresh_token_repo=RefreshTokenRepository(db),
     )
 
 

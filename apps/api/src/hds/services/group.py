@@ -25,7 +25,7 @@ class GroupService:
 
     async def rename_group(self, actor: User, group_id: uuid.UUID, new_name: str) -> Group:
         ensure_role(actor, *MANAGER_ROLES)
-        group = await self._repo.get_by_id(group_id)
+        group = await self._repo.get_by_id(group_id, actor.organization_id)
         if group is None:
             raise NotFoundError(resource="Group", id=group_id)
         conflict = await self._repo.get_by_name_and_org(new_name, actor.organization_id)
@@ -38,7 +38,7 @@ class GroupService:
 
     async def delete_group(self, actor: User, group_id: uuid.UUID) -> None:
         ensure_role(actor, *MANAGER_ROLES)
-        group = await self._repo.get_by_id(group_id)
+        group = await self._repo.get_by_id(group_id, actor.organization_id)
         if group is None:
             raise NotFoundError(resource="Group", id=group_id)
         await self._repo.delete(group_id)
@@ -47,4 +47,7 @@ class GroupService:
         self, actor: User, user_id: uuid.UUID, group_ids: list[uuid.UUID]
     ) -> None:
         ensure_role(actor, *MANAGER_ROLES)
+        for group_id in group_ids:
+            if await self._repo.get_by_id(group_id, actor.organization_id) is None:
+                raise NotFoundError(resource="Group", id=group_id)
         await self._repo.replace_user_groups(user_id, group_ids)

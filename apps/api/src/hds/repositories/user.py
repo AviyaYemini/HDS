@@ -5,10 +5,10 @@ from typing import Any
 from sqlalchemy import func, select, update
 
 from hds.models.user import User, UserRole
-from hds.repositories.base import BaseRepository
+from hds.repositories.base import OrgScopedRepository
 
 
-class UserRepository(BaseRepository[User]):
+class UserRepository(OrgScopedRepository[User]):
     model = User
 
     async def get_by_email(self, email: str) -> User | None:
@@ -18,7 +18,22 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, id: uuid.UUID) -> User | None:
+    async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> User | None:
+        result = await self.session.execute(
+            select(User).where(
+                User.id == id,
+                User.organization_id == org_id,
+                User.is_deleted.is_(False),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_for_auth(self, id: uuid.UUID) -> User | None:
+        """Resolve the owner of a verified credential (access/refresh token).
+
+        The ONLY unscoped user lookup: the organisation is not known until the credential's
+        owner is loaded. Never call this with an id taken from a request path or body.
+        """
         result = await self.session.execute(
             select(User).where(User.id == id, User.is_deleted.is_(False))
         )
@@ -60,7 +75,7 @@ class UserRepository(BaseRepository[User]):
     async def update(self, user_id: uuid.UUID, **fields: Any) -> User:
         await self.session.execute(update(User).where(User.id == user_id).values(**fields))
         await self.session.commit()
-        user = await self.get_by_id(user_id)
+        user = await self._get_unscoped(user_id)
         assert user is not None
         return user
 

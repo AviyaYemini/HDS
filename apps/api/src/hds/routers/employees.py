@@ -80,6 +80,13 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
     return EmployeeService(user_repo=UserRepository(db), token_repo=RefreshTokenRepository(db))
 
 
+async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: User) -> None:
+    from hds.core.exceptions import NotFoundError
+
+    if await UserRepository(db).get_by_id(user_id, caller.organization_id) is None:
+        raise NotFoundError(resource="User", id=user_id)
+
+
 @router.get("", response_model=UserListResponse)
 async def list_employees(
     current_user: User = Depends(require_manager),
@@ -107,7 +114,7 @@ async def get_employee(
 ) -> User:
     from hds.core.exceptions import NotFoundError
 
-    user = await UserRepository(db).get_by_id(id)
+    user = await UserRepository(db).get_by_id(id, current_user.organization_id)
     if user is None:
         raise NotFoundError(resource="User", id=id)
     return user
@@ -161,7 +168,8 @@ async def get_employee_groups(
     current_user: User = Depends(get_current_user_or_self),
     db: AsyncSession = Depends(get_db),
 ) -> list[Group]:
-    return await GroupRepository(db).get_groups_for_user(id)
+    await _require_user_in_org(db, id, current_user)
+    return await GroupRepository(db).get_groups_for_user(id, current_user.organization_id)
 
 
 @router.put("/{id}/groups", status_code=204)
@@ -171,6 +179,7 @@ async def replace_employee_groups(
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    await _require_user_in_org(db, id, current_user)
     svc = GroupService(group_repo=GroupRepository(db))
     await svc.replace_employee_groups(actor=current_user, user_id=id, group_ids=body.ids)
 
@@ -181,7 +190,10 @@ async def get_employee_qualifications(
     current_user: User = Depends(get_current_user_or_self),
     db: AsyncSession = Depends(get_db),
 ) -> list[Qualification]:
-    return await QualificationRepository(db).get_qualifications_for_user(id)
+    await _require_user_in_org(db, id, current_user)
+    return await QualificationRepository(db).get_qualifications_for_user(
+        id, current_user.organization_id
+    )
 
 
 @router.put("/{id}/qualifications", status_code=204)
@@ -191,5 +203,6 @@ async def replace_employee_qualifications(
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    await _require_user_in_org(db, id, current_user)
     svc = QualificationService(qual_repo=QualificationRepository(db))
     await svc.replace_employee_qualifications(actor=current_user, user_id=id, qual_ids=body.ids)

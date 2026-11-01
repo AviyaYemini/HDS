@@ -176,7 +176,7 @@ async def test_refresh_rotates_token() -> None:
 
     user = _make_user(id=user_id)
     user_repo = AsyncMock()
-    user_repo.get_by_id = AsyncMock(return_value=user)
+    user_repo.get_for_auth = AsyncMock(return_value=user)
 
     token_repo = AsyncMock()
     token_repo.get_by_hash = AsyncMock(return_value=old_token)

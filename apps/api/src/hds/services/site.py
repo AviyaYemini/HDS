@@ -20,7 +20,7 @@ class SiteService:
 
     async def edit_site(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Site:
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_id(id)
+        existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Site", id=id)
         return await self._repo.update(id, **data)

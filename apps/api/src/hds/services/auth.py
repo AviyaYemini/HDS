@@ -96,7 +96,7 @@ class AuthService:
         if datetime.now(UTC) >= expires_at:
             raise AuthError(code="auth.token_expired", detail="Refresh token expired")
 
-        user = await self._user_repo.get_by_id(stored.user_id)
+        user = await self._user_repo.get_for_auth(stored.user_id)
         if user is None or not user.is_active:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
 

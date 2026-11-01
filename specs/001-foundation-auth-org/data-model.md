@@ -40,7 +40,7 @@ use this record as their workforce profile. Client users (role = `client`) are l
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
 | `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
-| `email` | `VARCHAR(320)` | NOT NULL | Unique within org (partial index below) |
+| `email` | `VARCHAR(320)` | NOT NULL | Unique across all organisations (partial index below) |
 | `password_hash` | `VARCHAR(255)` | NOT NULL | Argon2id; never store plaintext |
 | `full_name` | `VARCHAR(255)` | NOT NULL | |
 | `phone` | `VARCHAR(32)` | NULL | |
@@ -57,9 +57,9 @@ use this record as their workforce profile. Client users (role = `client`) are l
 
 **Indexes**:
 ```sql
--- Email unique within org, excluding soft-deleted rows
-CREATE UNIQUE INDEX uq_users_org_email
-    ON users (organization_id, email)
+-- Email unique across ALL organisations (sign-in looks up by email), excluding soft-deleted rows
+CREATE UNIQUE INDEX uq_users_email
+    ON users (email)
     WHERE is_deleted = false;
 
 -- Lookup by org (list queries)

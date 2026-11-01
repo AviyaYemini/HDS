@@ -67,8 +67,7 @@ class User(TimestampedBase):
 
     __table_args__ = (
         Index(
-            "uq_users_org_email",
-            "organization_id",
+            "uq_users_email",
             "email",
             unique=True,
             postgresql_where=text("is_deleted = false"),

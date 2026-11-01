@@ -35,7 +35,9 @@ def _svc() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock]:
     user_repo = AsyncMock()
     token_repo = AsyncMock()
     mailer = AsyncMock()
-    return InvitationService(user_repo, token_repo, mailer), user_repo, token_repo, mailer
+    refresh_repo = AsyncMock()
+    svc = InvitationService(user_repo, token_repo, mailer, refresh_repo)
+    return svc, user_repo, token_repo, mailer
 
 
 @pytest.mark.asyncio
@@ -228,6 +230,18 @@ async def test_reset_password_valid_token_succeeds() -> None:
 
     user_repo.update.assert_awaited_once()
     token_repo.mark_used.assert_awaited_once_with(token.id)
+    svc._refresh_token_repo.revoke_all_for_user.assert_awaited_once_with(user.id)
+
+
+@pytest.mark.asyncio
+async def test_reset_password_invalid_token_revokes_nothing() -> None:
+    svc, _, token_repo, _ = _svc()
+    token_repo.get_by_hash = AsyncMock(return_value=None)
+
+    with pytest.raises(AuthError):
+        await svc.reset_password("bad", "NewPass123456!")
+
+    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -4,10 +4,10 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from hds.models.group import Group, user_groups
-from hds.repositories.base import BaseRepository
+from hds.repositories.base import OrgScopedRepository
 
 
-class GroupRepository(BaseRepository[Group]):
+class GroupRepository(OrgScopedRepository[Group]):
     model = Group
 
     async def list_by_org(self, org_id: uuid.UUID) -> list[Group]:
@@ -34,21 +34,21 @@ class GroupRepository(BaseRepository[Group]):
 
         await self.session.execute(sa_update(Group).where(Group.id == id).values(**fields))
         await self.session.commit()
-        group = await self.get_by_id(id)
+        group = await self._get_unscoped(id)
         assert group is not None
         return group
 
     async def delete(self, id: uuid.UUID) -> None:
-        group = await self.get_by_id(id)
+        group = await self._get_unscoped(id)
         if group is not None:
             await self.session.delete(group)
             await self.session.commit()
 
-    async def get_groups_for_user(self, user_id: uuid.UUID) -> list[Group]:
+    async def get_groups_for_user(self, user_id: uuid.UUID, org_id: uuid.UUID) -> list[Group]:
         result = await self.session.execute(
             select(Group)
             .join(user_groups, Group.id == user_groups.c.group_id)
-            .where(user_groups.c.user_id == user_id)
+            .where(user_groups.c.user_id == user_id, Group.organization_id == org_id)
         )
         return list(result.scalars().all())
 

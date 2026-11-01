@@ -76,4 +76,30 @@ async def test_get_profile_returns_user_with_hourly_rate() -> None:
     result = await svc.get_profile(user.id, user.organization_id)
 
     assert result.default_hourly_rate == Decimal("75.0000")
-    user_repo.get_by_id.assert_awaited_once_with(user.id)
+    user_repo.get_by_id.assert_awaited_once_with(user.id, user.organization_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field", ["role", "is_active", "organization_id", "default_hourly_rate", "email", "bogus"]
+)
+async def test_update_own_profile_never_passes_forbidden_fields_to_repo(field: str) -> None:
+    user = _make_user()
+    user_repo = AsyncMock()
+    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock())
+
+    with pytest.raises(ForbiddenError):
+        await svc.update_own_profile(user, {"full_name": "Ok", field: "x"})
+
+    user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_own_profile_passes_only_whitelisted_fields() -> None:
+    user = _make_user()
+    user_repo = AsyncMock()
+    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock())
+
+    await svc.update_own_profile(user, {"full_name": "New", "phone": "123"})
+
+    user_repo.update.assert_awaited_once_with(user.id, full_name="New", phone="123")

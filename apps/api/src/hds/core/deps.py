@@ -43,7 +43,7 @@ async def get_current_user(
         raise AuthError(code="auth.invalid_token", detail="Invalid subject") from exc
 
     # Constitution Principle II: repos are the only code that touches the DB
-    user = await UserRepository(db).get_by_id(user_id)
+    user = await UserRepository(db).get_for_auth(user_id)
     if user is None:
         raise AuthError(code="auth.user_not_found", detail="User not found")
     if not user.is_active:

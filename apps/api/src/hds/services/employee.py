@@ -46,7 +46,7 @@ class EmployeeService:
     # ── Self-service ─────────────────────────────────────────────────────────
 
     async def get_profile(self, user_id: uuid.UUID, org_id: uuid.UUID) -> User:
-        user = await self._user_repo.get_by_id(user_id)
+        user = await self._user_repo.get_by_id(user_id, org_id)
         if user is None:
             raise NotFoundError(resource="User", id=user_id)
         return user
@@ -59,7 +59,9 @@ class EmployeeService:
                 code="profile.field_not_allowed",
                 detail=f"Field '{field}' cannot be updated by the employee.",
             )
-        return await self._user_repo.update(current_user.id, **data)
+        # Explicit whitelist: only these keys are ever passed on to the repository.
+        changes = {key: data[key] for key in _ALLOWED_SELF_FIELDS if key in data}
+        return await self._user_repo.update(current_user.id, **changes)
 
     # ── Manager operations ───────────────────────────────────────────────────
 
@@ -85,7 +87,7 @@ class EmployeeService:
 
     async def promote_to_manager(self, actor: User, target_id: uuid.UUID) -> User:
         ensure_role(actor, *MANAGER_ROLES)
-        target = await self._get_target(target_id)
+        target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
@@ -95,14 +97,14 @@ class EmployeeService:
 
     async def promote_to_admin(self, actor: User, target_id: uuid.UUID) -> User:
         ensure_role(actor, *ADMIN_ROLES)
-        await self._get_target(target_id)
+        await self._get_target(actor, target_id)
         updated = await self._user_repo.update(target_id, role=UserRole.admin)
         await self._token_repo.revoke_all_for_user(target_id)
         return updated
 
     async def edit_employee(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> User:
         ensure_role(actor, *MANAGER_ROLES)
-        target = await self._get_target(target_id)
+        target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         data = dict(data)
         validate_hourly_rate(data.get("default_hourly_rate"))
@@ -123,7 +125,7 @@ class EmployeeService:
 
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:
         ensure_role(actor, *MANAGER_ROLES)
-        target = await self._get_target(target_id)
+        target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
@@ -133,13 +135,13 @@ class EmployeeService:
 
     async def reactivate(self, actor: User, target_id: uuid.UUID) -> User:
         ensure_role(actor, *MANAGER_ROLES)
-        target = await self._get_target(target_id)
+        target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         return await self._user_repo.update(target_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
-        target = await self._get_target(target_id)
+        target = await self._get_target(actor, target_id)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
         await self._user_repo.soft_delete(target_id)
@@ -147,8 +149,8 @@ class EmployeeService:
 
     # ── Guards ───────────────────────────────────────────────────────────────
 
-    async def _get_target(self, target_id: uuid.UUID) -> User:
-        target = await self._user_repo.get_by_id(target_id)
+    async def _get_target(self, actor: User, target_id: uuid.UUID) -> User:
+        target = await self._user_repo.get_by_id(target_id, actor.organization_id)
         if target is None:
             raise NotFoundError(resource="User", id=target_id)
         return target

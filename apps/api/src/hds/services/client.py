@@ -24,7 +24,7 @@ class ClientService:
 
     async def edit_client(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Client:
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._client_repo.get_by_id(id)
+        existing = await self._client_repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         if data.get("is_active") is False and existing.is_active:
@@ -35,6 +35,8 @@ class ClientService:
         self, actor: User, client_id: uuid.UUID, data: dict[str, Any]
     ) -> User:
         ensure_role(actor, *MANAGER_ROLES)
+        if await self._client_repo.get_by_id(client_id, actor.organization_id) is None:
+            raise NotFoundError(resource="Client", id=client_id)
         email = data.get("email", "")
         if await self._user_repo.get_by_email(email) is not None:
             raise ConflictError(
@@ -54,14 +56,14 @@ class ClientService:
         self, actor: User, client_id: uuid.UUID, user_id: uuid.UUID
     ) -> None:
         ensure_role(actor, *MANAGER_ROLES)
-        user = await self._user_repo.get_by_id(user_id)
+        user = await self._user_repo.get_by_id(user_id, actor.organization_id)
         if user is None or user.role != UserRole.client or user.client_id != client_id:
             raise NotFoundError(resource="User", id=user_id)
         await self._user_repo.soft_delete(user_id)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
-        existing = await self._client_repo.get_by_id(id)
+        existing = await self._client_repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         count = await self._client_repo.count_non_deleted_projects(id)

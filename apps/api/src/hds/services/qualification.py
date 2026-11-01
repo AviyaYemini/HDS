@@ -27,7 +27,7 @@ class QualificationService:
         self, actor: User, qual_id: uuid.UUID, new_name: str
     ) -> Qualification:
         ensure_role(actor, *MANAGER_ROLES)
-        qual = await self._repo.get_by_id(qual_id)
+        qual = await self._repo.get_by_id(qual_id, actor.organization_id)
         if qual is None:
             raise NotFoundError(resource="Qualification", id=qual_id)
         conflict = await self._repo.get_by_name_and_org(new_name, actor.organization_id)
@@ -40,7 +40,7 @@ class QualificationService:
 
     async def delete_qualification(self, actor: User, qual_id: uuid.UUID) -> None:
         ensure_role(actor, *MANAGER_ROLES)
-        qual = await self._repo.get_by_id(qual_id)
+        qual = await self._repo.get_by_id(qual_id, actor.organization_id)
         if qual is None:
             raise NotFoundError(resource="Qualification", id=qual_id)
         await self._repo.delete(qual_id)
@@ -49,4 +49,7 @@ class QualificationService:
         self, actor: User, user_id: uuid.UUID, qual_ids: list[uuid.UUID]
     ) -> None:
         ensure_role(actor, *MANAGER_ROLES)
+        for qual_id in qual_ids:
+            if await self._repo.get_by_id(qual_id, actor.organization_id) is None:
+                raise NotFoundError(resource="Qualification", id=qual_id)
         await self._repo.replace_user_qualifications(user_id, qual_ids)

@@ -11,6 +11,7 @@ from hds.core.mail import MailSender
 from hds.core.security import generate_refresh_token, hash_password
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
 _INVITE_TTL_DAYS = 7
@@ -23,11 +24,16 @@ def _hash_token(raw: str) -> str:
 
 class InvitationService:
     def __init__(
-        self, user_repo: UserRepository, token_repo: InvitationTokenRepository, mailer: MailSender
+        self,
+        user_repo: UserRepository,
+        token_repo: InvitationTokenRepository,
+        mailer: MailSender,
+        refresh_token_repo: RefreshTokenRepository,
     ) -> None:
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._mailer = mailer
+        self._refresh_token_repo = refresh_token_repo
 
     async def create_invitation(self, actor: User, email: str, role: UserRole) -> None:
         ensure_role(actor, *MANAGER_ROLES)
@@ -112,6 +118,8 @@ class InvitationService:
             password_hash=hash_password(new_password),
         )
         await self._token_repo.mark_used(token.id)
+        # A reset means the old credentials may be compromised: sign out every device.
+        await self._refresh_token_repo.revoke_all_for_user(token.user_id)
 
     async def _valid_token(self, raw_token: str, purpose: str) -> Any:
         token = await self._token_repo.get_by_hash(_hash_token(raw_token))

@@ -4,10 +4,10 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from hds.models.qualification import Qualification, user_qualifications
-from hds.repositories.base import BaseRepository
+from hds.repositories.base import OrgScopedRepository
 
 
-class QualificationRepository(BaseRepository[Qualification]):
+class QualificationRepository(OrgScopedRepository[Qualification]):
     model = Qualification
 
     async def list_by_org(self, org_id: uuid.UUID) -> list[Qualification]:
@@ -41,24 +41,29 @@ class QualificationRepository(BaseRepository[Qualification]):
             sa_update(Qualification).where(Qualification.id == id).values(**fields)
         )
         await self.session.commit()
-        qual = await self.get_by_id(id)
+        qual = await self._get_unscoped(id)
         assert qual is not None
         return qual
 
     async def delete(self, id: uuid.UUID) -> None:
-        qual = await self.get_by_id(id)
+        qual = await self._get_unscoped(id)
         if qual is not None:
             await self.session.delete(qual)
             await self.session.commit()
 
-    async def get_qualifications_for_user(self, user_id: uuid.UUID) -> list[Qualification]:
+    async def get_qualifications_for_user(
+        self, user_id: uuid.UUID, org_id: uuid.UUID
+    ) -> list[Qualification]:
         result = await self.session.execute(
             select(Qualification)
             .join(
                 user_qualifications,
                 Qualification.id == user_qualifications.c.qualification_id,
             )
-            .where(user_qualifications.c.user_id == user_id)
+            .where(
+                user_qualifications.c.user_id == user_id,
+                Qualification.organization_id == org_id,
+            )
         )
         return list(result.scalars().all())
 

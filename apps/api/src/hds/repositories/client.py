@@ -7,10 +7,10 @@ from sqlalchemy import func, select, update
 from hds.models.client import Client
 from hds.models.project import Project
 from hds.models.user import User
-from hds.repositories.base import BaseRepository
+from hds.repositories.base import OrgScopedRepository
 
 
-class ClientRepository(BaseRepository[Client]):
+class ClientRepository(OrgScopedRepository[Client]):
     model = Client
 
     async def list_by_org(self, org_id: uuid.UUID, is_active: bool | None = None) -> list[Client]:
@@ -23,9 +23,13 @@ class ClientRepository(BaseRepository[Client]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_id(self, id: uuid.UUID) -> Client | None:
+    async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Client | None:
         result = await self.session.execute(
-            select(Client).where(Client.id == id, Client.is_deleted.is_(False))
+            select(Client).where(
+                Client.id == id,
+                Client.organization_id == org_id,
+                Client.is_deleted.is_(False),
+            )
         )
         return result.scalar_one_or_none()
 
@@ -39,7 +43,7 @@ class ClientRepository(BaseRepository[Client]):
     async def update(self, id: uuid.UUID, **fields: Any) -> Client:
         await self.session.execute(update(Client).where(Client.id == id).values(**fields))
         await self.session.commit()
-        client = await self.get_by_id(id)
+        client = await self._get_unscoped(id)
         assert client is not None
         return client
 
@@ -59,9 +63,13 @@ class ClientRepository(BaseRepository[Client]):
         )
         await self.session.commit()
 
-    async def list_users(self, client_id: uuid.UUID) -> list[User]:
+    async def list_users(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[User]:
         result = await self.session.execute(
-            select(User).where(User.client_id == client_id, User.is_deleted.is_(False))
+            select(User).where(
+                User.client_id == client_id,
+                User.organization_id == org_id,
+                User.is_deleted.is_(False),
+            )
         )
         return list(result.scalars().all())
 
