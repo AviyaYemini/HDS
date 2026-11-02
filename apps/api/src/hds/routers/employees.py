@@ -19,6 +19,7 @@ from hds.core.types import AssignableRole, Email, Money, Name, Password, Phone
 from hds.models.group import Group
 from hds.models.qualification import Qualification
 from hds.models.user import User, UserRole
+from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.qualification import QualificationRepository
@@ -113,6 +114,7 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
         link_repo=InvitationTokenRepository(db),
         group_repo=GroupRepository(db),
         qualification_repo=QualificationRepository(db),
+        client_repo=ClientRepository(db),
     )
 
 
@@ -299,7 +301,8 @@ async def deactivate_employee(
         "Manager or Admin. Allow a deactivated user to sign in again. Only an Admin may "
         "reactivate an Admin. An account that was invited but never accepted cannot be "
         "reactivated: it returns 409 (`users.pending_cannot_reactivate`) and stays pending, "
-        "because only accepting the invitation activates it."
+        "because only accepting the invitation activates it. A portal user whose client "
+        "is inactive or deleted returns 409 (`users.client_inactive`)."
     ),
 )
 async def reactivate_employee(
@@ -312,7 +315,8 @@ async def reactivate_employee(
     Manager or Admin. Allow a deactivated user to sign in again. Only an Admin may reactivate an
     Admin. An account that was invited but never accepted cannot be reactivated: it returns 409
     (`users.pending_cannot_reactivate`) and stays pending, because only accepting the invitation
-    activates it.
+    activates it. A portal user whose client is inactive or deleted returns 409
+    (`users.client_inactive`).
     """
     svc = _employee_svc(db)
     return await svc.reactivate(actor=current_user, target_id=id)

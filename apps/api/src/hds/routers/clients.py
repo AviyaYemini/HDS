@@ -17,6 +17,7 @@ from hds.core.types import Email, Name, Password, Phone, StrictDate
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.client import ClientService
 
@@ -99,6 +100,7 @@ def _svc(db: AsyncSession) -> ClientService:
         client_repo=ClientRepository(db),
         user_repo=UserRepository(db),
         link_repo=InvitationTokenRepository(db),
+        token_repo=RefreshTokenRepository(db),
     )
 
 
@@ -180,8 +182,8 @@ async def get_client(
     summary="Edit a client",
     description=(
         "Manager or Admin. Update contact details, contract end or active state. "
-        "Deactivating an active client also deactivates its portal users; reactivating "
-        "the client does not reactivate them."
+        "Deactivating an active client also deactivates its portal users and ends their "
+        "sessions; reactivating the client does not reactivate them."
     ),
 )
 async def edit_client(
@@ -193,8 +195,8 @@ async def edit_client(
     """Edit a client.
 
     Manager or Admin. Update contact details, contract end or active state. Deactivating an
-    active client also deactivates its portal users; reactivating the client does not reactivate
-    them.
+    active client also deactivates its portal users and ends their sessions; reactivating the
+    client does not reactivate them.
     """
     svc = _svc(db)
     return await svc.edit_client(
@@ -209,8 +211,9 @@ async def edit_client(
     status_code=204,
     summary="Delete a client",
     description=(
-        "Admin only. Soft-delete a client and deactivate its portal users. Refused with "
-        "409 (`clients.has_projects`) while the client still has projects."
+        "Admin only. Soft-delete a client, deactivate its portal users and end their "
+        "sessions. Refused with 409 (`clients.has_projects`) while the client still has "
+        "projects."
     ),
 )
 async def delete_client(
@@ -220,8 +223,8 @@ async def delete_client(
 ) -> None:
     """Delete a client.
 
-    Admin only. Soft-delete a client and deactivate its portal users. Refused with 409
-    (`clients.has_projects`) while the client still has projects.
+    Admin only. Soft-delete a client, deactivate its portal users and end their sessions. Refused
+    with 409 (`clients.has_projects`) while the client still has projects.
     """
     svc = _svc(db)
     await svc.soft_delete(actor=current_user, id=id)
@@ -286,8 +289,9 @@ async def create_client_user(
     status_code=204,
     summary="Remove a client user",
     description=(
-        "Manager or Admin. Soft-delete a portal account of this client. Staff accounts "
-        "cannot be removed here and return 404."
+        "Manager or Admin. Soft-delete a portal account of this client, ending its "
+        "sessions and cancelling its links. Staff accounts cannot be removed here and "
+        "return 404."
     ),
 )
 async def remove_client_user(
@@ -298,8 +302,8 @@ async def remove_client_user(
 ) -> None:
     """Remove a client user.
 
-    Manager or Admin. Soft-delete a portal account of this client. Staff accounts cannot be
-    removed here and return 404.
+    Manager or Admin. Soft-delete a portal account of this client, ending its sessions and
+    cancelling its links. Staff accounts cannot be removed here and return 404.
     """
     svc = _svc(db)
     await svc.remove_client_user(actor=current_user, client_id=id, user_id=user_id)

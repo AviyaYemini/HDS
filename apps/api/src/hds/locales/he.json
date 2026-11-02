@@ -49,5 +49,6 @@
   "validation.request_invalid": "גוף הבקשה או הפרמטרים אינם תקינים.",
   "http.method_not_allowed": "שיטה זו אינה מותרת עבור המשאב.",
   "http.bad_request": "לא ניתן היה לנתח את הבקשה.",
-  "sites.timezone_invalid": "אזור הזמן חייב להיות שם IANA תקין, למשל Asia/Jerusalem."
+  "sites.timezone_invalid": "אזור הזמן חייב להיות שם IANA תקין, למשל Asia/Jerusalem.",
+  "users.client_inactive": "הלקוח של משתמש זה אינו פעיל או נמחק; יש להפעיל קודם את הלקוח."
 }

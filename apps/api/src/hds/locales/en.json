@@ -49,5 +49,6 @@
   "validation.request_invalid": "The request body or parameters are invalid.",
   "http.method_not_allowed": "This method is not allowed for the resource.",
   "http.bad_request": "The request could not be parsed.",
-  "sites.timezone_invalid": "The time zone must be an IANA name such as Asia/Jerusalem."
+  "sites.timezone_invalid": "The time zone must be an IANA name such as Asia/Jerusalem.",
+  "users.client_inactive": "This user's client is inactive or deleted; reactivate the client first."
 }

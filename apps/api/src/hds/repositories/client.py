@@ -118,14 +118,17 @@ class ClientRepository(OrgScopedRepository[Client]):
             org_id: The caller's organisation.
 
         Returns:
-            The client's portal users.
+            The client's portal users in ascending id order. The order is fixed so that callers
+            that lock or update these users row by row always take them in the same order.
         """
         result = await self.session.execute(
-            select(User).where(
+            select(User)
+            .where(
                 User.client_id == client_id,
                 User.organization_id == org_id,
                 User.is_deleted.is_(False),
             )
+            .order_by(User.id)
         )
         return list(result.scalars().all())
 

@@ -23,6 +23,7 @@ from hds.core.exceptions import (
 from hds.core.security import hash_password
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
+from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.qualification import QualificationRepository
@@ -77,6 +78,7 @@ class EmployeeService:
         link_repo: InvitationTokenRepository,
         group_repo: GroupRepository,
         qualification_repo: QualificationRepository,
+        client_repo: ClientRepository,
     ) -> None:
         """Wire the service.
 
@@ -88,12 +90,14 @@ class EmployeeService:
             group_repo: Used to check that a group filter belongs to the organisation.
             qualification_repo: Used to check that a qualification filter belongs to the
                 organisation.
+            client_repo: Used to refuse reactivating a portal user whose client is gone.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._link_repo = link_repo
         self._group_repo = group_repo
         self._qualification_repo = qualification_repo
+        self._client_repo = client_repo
 
     # ── Self-service ─────────────────────────────────────────────────────────
 
@@ -368,7 +372,8 @@ class EmployeeService:
 
         Only an account that was active once can be reactivated. A *pending* account (invited,
         never activated) is refused: only accepting its invitation activates it, and the database
-        would reject an active account without an activation time anyway.
+        would reject an active account without an activation time anyway. A portal user is refused
+        while their client is inactive or deleted (FR-225).
 
         Args:
             actor: The caller. Only an Admin may reactivate an Admin.
@@ -381,7 +386,8 @@ class EmployeeService:
             ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
             NotFoundError: The user is not in the organisation (HTTP 404).
             ConflictError: ``users.pending_cannot_reactivate`` when the account never accepted
-                its invitation (HTTP 409). Nothing is changed.
+                its invitation, or ``users.client_inactive`` for a portal user whose client is
+                inactive or deleted (HTTP 409). Nothing is changed.
         """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
@@ -392,6 +398,17 @@ class EmployeeService:
                 detail="This account has not accepted its invitation yet; only accepting the "
                 "invitation activates it.",
             )
+        if target.role == UserRole.client:
+            client = (
+                await self._client_repo.get_by_id(target.client_id, actor.organization_id)
+                if target.client_id is not None
+                else None
+            )
+            if client is None or not client.is_active:
+                raise ConflictError(
+                    code="users.client_inactive",
+                    detail="This user's client is inactive or deleted; reactivate it first.",
+                )
         return await self._user_repo.update(target_id, actor.organization_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:

@@ -36,7 +36,9 @@ def _svc() -> tuple[ClientService, AsyncMock, AsyncMock]:
     repo = AsyncMock()
     user_repo = AsyncMock()
     repo.list_users = AsyncMock(return_value=[])  # portal users of the client; none by default
-    svc = ClientService(client_repo=repo, user_repo=user_repo, link_repo=AsyncMock())
+    svc = ClientService(
+        client_repo=repo, user_repo=user_repo, link_repo=AsyncMock(), token_repo=AsyncMock()
+    )
     return svc, repo, user_repo
 
 
@@ -276,3 +278,41 @@ async def test_a_refused_client_deletion_cancels_nothing() -> None:
         await svc.soft_delete(actor, uuid.uuid4())
 
     cast(Any, svc._link_repo).cancel_for_users.assert_not_awaited()
+
+
+def _portal(user_id: uuid.UUID) -> MagicMock:
+    user = MagicMock()
+    user.id = user_id
+    return user
+
+
+@pytest.mark.asyncio
+async def test_deactivating_a_client_ends_its_portal_sessions_in_id_order() -> None:
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    first, second = sorted([uuid.uuid4(), uuid.uuid4()])
+    repo.get_by_id = AsyncMock(return_value=_client(is_active=True))
+    repo.update = AsyncMock(return_value=_client(is_active=False))
+    repo.list_users = AsyncMock(return_value=[_portal(first), _portal(second)])
+
+    await svc.edit_client(actor, uuid.uuid4(), {"is_active": False})
+
+    calls = cast(Any, svc._token_repo).revoke_all_for_user.await_args_list
+    assert [c.args for c in calls] == [(first, "account"), (second, "account")]
+
+
+@pytest.mark.asyncio
+async def test_removing_a_portal_user_ends_their_sessions_and_links() -> None:
+    svc, _, user_repo = _svc()
+    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    client_id = uuid.uuid4()
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.role = UserRole.client
+    user.client_id = client_id
+    user_repo.get_by_id = AsyncMock(return_value=user)
+
+    await svc.remove_client_user(actor, client_id, user.id)
+
+    cast(Any, svc._token_repo).revoke_all_for_user.assert_awaited_once_with(user.id, "account")
+    cast(Any, svc._link_repo).cancel_for_user.assert_awaited_once_with(user.id)

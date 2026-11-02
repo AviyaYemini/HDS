@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.invitation_token import InvitationToken
@@ -96,7 +96,10 @@ class InvitationTokenRepository:
         """
         if not user_ids:
             return
-        conditions = [InvitationToken.user_id.in_(user_ids), InvitationToken.used_at.is_(None)]
+        conditions: list[ColumnElement[bool]] = [
+            InvitationToken.user_id.in_(user_ids),
+            InvitationToken.used_at.is_(None),
+        ]
         if purpose is not None:
             conditions.append(InvitationToken.purpose == purpose)
         await self.session.execute(

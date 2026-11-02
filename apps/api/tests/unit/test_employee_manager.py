@@ -41,6 +41,7 @@ def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock
         link_repo=AsyncMock(),
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
+        client_repo=AsyncMock(),
     )
     return svc, user_repo, token_repo
 
@@ -455,3 +456,22 @@ async def test_reactivating_a_deactivated_account_still_works_and_keeps_its_acti
     await svc.reactivate(actor, deactivated.id)
 
     user_repo.update.assert_awaited_once_with(deactivated.id, actor.organization_id, is_active=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("client", [None, MagicMock(is_active=False)])
+async def test_reactivating_a_portal_user_of_a_gone_client_is_refused(
+    client: MagicMock | None,
+) -> None:
+    svc, user_repo, _ = _svc()
+    target = _make_user(role=UserRole.client, is_active=False)
+    target.client_id = uuid.uuid4()
+    target.activated_at = datetime.now(UTC)
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    cast(Any, svc._client_repo).get_by_id = AsyncMock(return_value=client)
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.reactivate(_make_user(role=UserRole.admin), target.id)
+
+    assert refused.value.code == "users.client_inactive"
+    user_repo.update.assert_not_awaited()

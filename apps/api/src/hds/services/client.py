@@ -3,8 +3,8 @@
 Layer: services. May import ``hds.repositories``, ``hds.models`` and ``hds.core``; MUST NOT
 import routers or build HTTP responses (Constitution II).
 
-Deactivating or deleting a client also deactivates its portal users, so a client that is no
-longer under contract cannot keep signing in.
+Deactivating or deleting a client also deactivates its portal users and ends their sessions, so a
+client that is no longer under contract cannot keep signing in.
 """
 
 import uuid
@@ -14,9 +14,11 @@ from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
 from hds.core.security import hash_password
 from hds.models.client import Client
+from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.employee import validate_initial_password
 
@@ -29,6 +31,7 @@ class ClientService:
         client_repo: ClientRepository,
         user_repo: UserRepository,
         link_repo: InvitationTokenRepository,
+        token_repo: RefreshTokenRepository,
     ) -> None:
         """Wire the service.
 
@@ -36,14 +39,19 @@ class ClientService:
             client_repo: Client storage.
             user_repo: User storage for client portal accounts.
             link_repo: Used to cancel the outstanding links of portal users when their client is
-                deactivated or deleted.
+                deactivated or deleted, or when they are removed.
+            token_repo: Used to end the sessions of those same portal users.
         """
         self._client_repo = client_repo
         self._user_repo = user_repo
         self._link_repo = link_repo
+        self._token_repo = token_repo
 
     async def _deactivate_portal_users(self, client_id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Deactivate every portal user of a client and cancel their outstanding links.
+        """Deactivate every portal user of a client, ending their sessions and links (FR-225).
+
+        The users arrive in ascending id order and are handled in that order, so two simultaneous
+        changes to one client cannot take the same rows in opposite orders and deadlock.
 
         Args:
             client_id: A client already verified to belong to ``org_id``.
@@ -51,6 +59,8 @@ class ClientService:
         """
         portal_users = await self._client_repo.list_users(client_id, org_id)
         await self._link_repo.cancel_for_users([u.id for u in portal_users])
+        for user in portal_users:
+            await self._token_repo.revoke_all_for_user(user.id, RevocationReason.account)
         await self._client_repo.deactivate_client_users(client_id)
 
     async def create_client(self, actor: User, data: dict[str, Any]) -> Client:
@@ -86,6 +96,9 @@ class ClientService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: The client is not in the organisation (HTTP 404).
+
+        Side effects:
+            On deactivation, ends the portal users' sessions and cancels their links.
         """
         ensure_role(actor, *MANAGER_ROLES)
         existing = await self._client_repo.get_by_id(id, actor.organization_id)
@@ -148,12 +161,17 @@ class ClientService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: No such Client-role user under that client in the organisation
                 (HTTP 404). Staff accounts cannot be removed through this method.
+
+        Side effects:
+            Ends the user's sessions and cancels their outstanding links (FR-207, FR-225).
         """
         ensure_role(actor, *MANAGER_ROLES)
         user = await self._user_repo.get_by_id(user_id, actor.organization_id)
         if user is None or user.role != UserRole.client or user.client_id != client_id:
             raise NotFoundError(resource="User", id=user_id)
         await self._user_repo.soft_delete(user_id, actor.organization_id)
+        await self._token_repo.revoke_all_for_user(user_id, RevocationReason.account)
+        await self._link_repo.cancel_for_user(user_id)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         """Delete a client that has no live projects (Admin only).
@@ -169,7 +187,7 @@ class ClientService:
                 (HTTP 409).
 
         Side effects:
-            Deactivates the client's portal users.
+            Deactivates the client's portal users, ends their sessions and cancels their links.
         """
         ensure_role(actor, *ADMIN_ROLES)
         existing = await self._client_repo.get_by_id(id, actor.organization_id)
