@@ -1,4 +1,10 @@
-"""005 refresh tokens
+"""005 refresh tokens.
+
+Creates ``refresh_tokens``: a server-side record of every issued refresh token.
+
+Why only a hash is stored (``token_hash``, unique): a database leak must not yield usable
+tokens. Why ``revoked_at`` instead of deleting: rotation, sign-out and sign-out-everywhere
+(FR-002, FR-003) revoke tokens, and a replayed old token is then refused as revoked.
 
 Revision ID: 005_refresh_tokens
 Revises: 004_users
@@ -17,6 +23,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the refresh_tokens table and its user index."""
     op.create_table(
         "refresh_tokens",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -24,7 +31,12 @@ def upgrade() -> None:
         sa.Column("token_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("revoked_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -32,5 +44,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the refresh_tokens index and table."""
     op.drop_index("idx_refresh_tokens_user", table_name="refresh_tokens")
     op.drop_table("refresh_tokens")

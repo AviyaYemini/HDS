@@ -1,4 +1,11 @@
-"""011 invitation_tokens
+"""011 invitation_tokens.
+
+Creates ``invitation_tokens``: single-use tokens for accepting an invitation or resetting a
+password (FR-006, Proposed).
+
+Why only a hash is stored: a database leak must not yield usable tokens. ``purpose`` is
+restricted to ``invite`` or ``reset`` by ``ck_invitation_tokens_purpose``, and ``used_at``
+marks a token as spent; expiry is checked by the service against ``expires_at``.
 
 Revision ID: 011_invitation_tokens
 Revises: 010_projects
@@ -17,6 +24,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the invitation_tokens table and its user index."""
     op.create_table(
         "invitation_tokens",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -30,7 +38,12 @@ def upgrade() -> None:
         ),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("used_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("purpose IN ('invite','reset')", name="ck_invitation_tokens_purpose"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -39,5 +52,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the invitation_tokens index and table."""
     op.drop_index("idx_invitation_tokens_user", table_name="invitation_tokens")
     op.drop_table("invitation_tokens")
