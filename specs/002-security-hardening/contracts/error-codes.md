@@ -69,6 +69,7 @@ changed error answers; each needs English and Hebrew text where it is a new code
 | 204 | Logout with a token owned by someone else: nothing is revoked, the answer is unchanged | `POST /auth/logout` | F19 |
 | 409 `users.duplicate_email` | Simultaneous creation of one address | employee and client-user creation | F25 |
 | 422 `sites.timezone_invalid` | Non-canonical names (`posixrules`, `Factory`, wrong case) | site create and edit | F10 |
+| 422 `validation.request_invalid` | A money field (`default_hourly_rate`, `billing_rate`) that is not a plain decimal string in the schema's shape: JSON numbers, `1e3`, `+5`, surrounding spaces, `75.`, `.5` and non-ASCII digits. Zero and negative strings still reach the services and get their own codes | employee and project create and edit | Money |
 | 200 / 422 | An explicit `null` clears an optional field (phone, hourly rate, project end date, contract end, contact fields); omitted fields are untouched; `null` for a required field is 422, and the request schema no longer lists `null` for those fields | `PATCH` on me, employees, clients, projects, sites | F17 |
 
 ## Behaviour that is not an error code

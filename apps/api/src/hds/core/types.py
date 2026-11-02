@@ -7,6 +7,7 @@ aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a
 (Constitution VII).
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -43,12 +44,25 @@ Timezone = Annotated[str, _text(64)]
 Address = Annotated[str, _text(2000)]
 Password = Annotated[str, _text(128)]
 Token = Annotated[str, _text(512)]
-# NUMERIC(12,4). Documented as a positive decimal STRING (exactly what responses return, so no
-# float ever enters the contract). "> 0" is stated in the schema but enforced by the services
-# with their own 422 error codes, so pydantic must not reject it first. JSON numbers are still
-# parsed exactly into Decimal.
+# The schema's shape, plus a leading minus and zero: "> 0" is stated in the schema but enforced by
+# the services with their own 422 error codes, so these must reach them. ASCII digits only, because
+# ``\d`` and ``Decimal`` also accept digits of other scripts.
+_MONEY_TEXT = re.compile(r"-?[0-9]{1,8}(\.[0-9]{1,4})?")
+
+
+def _money_string_only(value: object) -> object:
+    """Reject anything but a plain decimal string, including JSON numbers."""
+    if not isinstance(value, str) or _MONEY_TEXT.fullmatch(value) is None:
+        raise ValueError("Input should be a decimal string such as 75.0000")
+    return value
+
+
+# NUMERIC(12,4). A positive decimal STRING, exactly what responses return, so no float ever enters
+# the contract. JSON numbers are refused: the schema says string, and most clients have already
+# passed a number through a binary float by the time it is sent.
 Money = Annotated[
     Decimal,
+    BeforeValidator(_money_string_only),
     Field(max_digits=12, decimal_places=4),
     WithJsonSchema(
         {

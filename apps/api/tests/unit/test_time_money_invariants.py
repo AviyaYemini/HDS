@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import CheckConstraint, Column, DateTime, Float, Numeric
 from sqlalchemy import types as sqltypes
 
@@ -145,16 +146,29 @@ def test_api_response_money_fields_are_strings_in_openapi() -> None:
     assert checked >= 2
 
 
-@pytest.mark.parametrize("literal", ["0.1", "10.10", "75.0000", "0.0001"])
-def test_json_numbers_parse_into_exact_decimals(literal: str) -> None:
-    from hds.routers.projects import ProjectCreateRequest
-
-    body = (
+def _project_body(billing_rate: str) -> str:
+    return (
         '{"client_id":"00000000-0000-0000-0000-000000000001",'
         '"site_id":"00000000-0000-0000-0000-000000000001","name":"x","type":"security",'
-        f'"billing_rate":{literal},"start_date":"2026-01-01"}}'
+        f'"billing_rate":{billing_rate},"start_date":"2026-01-01"}}'
     )
-    assert ProjectCreateRequest.model_validate_json(body).billing_rate == Decimal(literal)
+
+
+@pytest.mark.parametrize("literal", ["0.1", "10.10", "75.0000", "0.0001"])
+def test_decimal_strings_parse_into_exact_decimals(literal: str) -> None:
+    from hds.routers.projects import ProjectCreateRequest
+
+    parsed = ProjectCreateRequest.model_validate_json(_project_body(f'"{literal}"'))
+    assert parsed.billing_rate == Decimal(literal)
+
+
+@pytest.mark.parametrize("literal", ["0.1", "10.10", "75.0000", "0.0001"])
+def test_json_numbers_are_refused_for_money(literal: str) -> None:
+    """A JSON number passes through a binary float in most clients, so it never reaches money."""
+    from hds.routers.projects import ProjectCreateRequest
+
+    with pytest.raises(ValidationError):
+        ProjectCreateRequest.model_validate_json(_project_body(literal))
 
 
 def test_decimal_round_trip_is_exact() -> None:
