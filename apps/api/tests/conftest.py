@@ -13,7 +13,7 @@ import sys
 import uuid
 from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -176,6 +176,7 @@ async def seed_users(test_db: AsyncSession, seed_org: Organisation) -> dict[str,
             password_hash=hash_password("Dev1234!"),
             full_name=f"Test {role.value.title()}",
             role=role,
+            activated_at=datetime.now(UTC),
         )
         test_db.add(u)
         users[role.value] = u
@@ -234,6 +235,7 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
                         password_hash=hash_password("Dev1234!"),
                         full_name=role.value,
                         role=role,
+                        activated_at=datetime.now(UTC),
                     )
                 )
             await session.commit()

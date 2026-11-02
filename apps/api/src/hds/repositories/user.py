@@ -7,7 +7,7 @@ known.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select, update
@@ -145,6 +145,10 @@ class UserRepository(OrgScopedRepository[User]):
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> User:
         """Insert a user in the organisation.
 
+        An account created active (the default) is stamped with ``activated_at`` = now, because
+        the database refuses an active account without one. An account created inactive, as an
+        invitation does, keeps ``activated_at`` empty: it is pending until it is activated.
+
         Args:
             org_id: Organisation that will own the user.
             data: Column values; the password must already be hashed.
@@ -156,10 +160,13 @@ class UserRepository(OrgScopedRepository[User]):
             sqlalchemy.exc.IntegrityError: On a duplicate email or a violated check
                 constraint. The error handler maps it to HTTP 422.
         """
+        fields = dict(data)
+        if fields.get("is_active", True) and fields.get("activated_at") is None:
+            fields["activated_at"] = datetime.now(UTC)
         user = User(
             id=uuid.uuid4(),
             organization_id=org_id,
-            **data,
+            **fields,
         )
         self.session.add(user)
         await self.session.flush()

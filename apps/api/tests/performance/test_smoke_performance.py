@@ -13,7 +13,7 @@ import math
 import time
 import uuid
 from collections.abc import Callable, Coroutine
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -67,6 +67,7 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
                     full_name=f"Employee {i}",
                     role=UserRole.employee,
                     default_hourly_rate=Decimal("50.0000"),
+                    activated_at=datetime.now(UTC),
                 )
                 for i in range(SEED["employees"])
             )

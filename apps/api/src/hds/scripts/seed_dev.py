@@ -123,6 +123,7 @@ async def seed() -> None:
                     "client_id": client_id,
                     "is_active": True,
                     "is_deleted": False,
+                    "activated_at": datetime.datetime.now(datetime.UTC),
                 },
             )
             user_map[email] = u
@@ -140,6 +141,7 @@ async def seed() -> None:
                 "client_id": client_rec.id,
                 "is_active": True,
                 "is_deleted": False,
+                "activated_at": datetime.datetime.now(datetime.UTC),
             },
         )
         print(f"Client user {'created' if created else 'exists'}: {client_user.id}")

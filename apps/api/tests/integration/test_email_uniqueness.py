@@ -4,6 +4,7 @@ Covers: FR-012.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -24,6 +25,7 @@ def _user(org_id: uuid.UUID, email: str, *, is_deleted: bool = False) -> User:
         full_name="Someone",
         role=UserRole.employee,
         is_deleted=is_deleted,
+        activated_at=datetime.now(UTC),
     )
 
 

@@ -153,6 +153,7 @@ class InvitationService:
             owner.organization_id,
             password_hash=hash_password(new_password),
             is_active=True,
+            activated_at=datetime.now(UTC),
         )
         await self._token_repo.mark_used(token.id)
         return user

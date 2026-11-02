@@ -54,6 +54,7 @@ async def factory():
                     role=UserRole.employee,
                     is_active=active,
                     is_deleted=False,
+                    activated_at=datetime.now(UTC),
                 )
             )
         await session.commit()

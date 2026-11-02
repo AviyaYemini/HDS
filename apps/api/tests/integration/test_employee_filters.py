@@ -35,6 +35,7 @@ def _user(org: Organisation, email: str, name: str, role: UserRole, **kw: object
         full_name=name,
         role=role,
         password_hash=hash_password("Dev1234!"),
+        activated_at=datetime.now(UTC),
         **kw,
     )
 
