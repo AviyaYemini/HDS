@@ -240,6 +240,19 @@ async def test_reset_password_valid_token_succeeds() -> None:
     user_repo.update.assert_awaited_once()
     token_repo.spend.assert_awaited_once_with(token.id)
     cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_awaited_once_with(user.id, "all")
+    token_repo.cancel_for_user.assert_awaited_once_with(user.id)  # every purpose
+    user_repo.reset_failed_attempts.assert_awaited_once_with(user.id)
+
+
+@pytest.mark.asyncio
+async def test_a_reset_request_cancels_earlier_reset_links_only() -> None:
+    svc, user_repo, token_repo, _ = _svc()
+    user = _make_user(is_active=True)
+    user_repo.get_by_email = AsyncMock(return_value=user)
+
+    await svc.request_password_reset(user.email)
+
+    token_repo.cancel_for_user.assert_awaited_once_with(user.id, purpose="reset")
 
 
 @pytest.mark.asyncio

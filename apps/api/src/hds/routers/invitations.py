@@ -130,7 +130,8 @@ async def accept_invitation(
     description=(
         "Public. Email a one-time reset token valid for 60 minutes if the address "
         "belongs to an active account (letter case is ignored; the email is sent after "
-        "the request is saved). Always answers 202, whether or not the address "
+        "the request is saved). Only the latest reset token works: earlier unused ones "
+        "are cancelled. Always answers 202, whether or not the address "
         "is registered, so it cannot be used to find out who has an account."
     ),
 )
@@ -142,9 +143,9 @@ async def request_password_reset(
     """Request a password reset.
 
     Public. Email a one-time reset token valid for 60 minutes if the address belongs to an
-    active account (letter case is ignored; the email is sent after the request is saved).
-    Always answers 202, whether or not the address is registered, so it cannot
-    be used to find out who has an account.
+    active account (letter case is ignored; the email is sent after the request is saved). Only
+    the latest reset token works: earlier unused ones are cancelled. Always answers 202, whether
+    or not the address is registered, so it cannot be used to find out who has an account.
     """
     await _svc(db, mailer).request_password_reset(email=str(body.email))
     return Response(status_code=202)
@@ -156,7 +157,9 @@ async def request_password_reset(
     summary="Confirm a password reset",
     description=(
         "Public. Redeem a reset token to set a new password for an active account. All "
-        "of the user's refresh tokens are revoked, ending every session. An unknown or "
+        "of the user's refresh tokens are revoked, ending every session, every other "
+        "outstanding token of the account is cancelled, and any sign-in lock is cleared. "
+        "An unknown or "
         "expired token returns 401 (`auth.token_expired`); a spent or cancelled token, or "
         "a token for an account that is not active, returns 401 (`auth.token_used`) and "
         "changes nothing."
@@ -170,7 +173,8 @@ async def confirm_password_reset(
     """Confirm a password reset.
 
     Public. Redeem a reset token to set a new password for an active account. All of the user's
-    refresh tokens are revoked, ending every session. An unknown or expired token returns 401
+    refresh tokens are revoked, ending every session, every other outstanding token of the account
+    is cancelled, and any sign-in lock is cleared. An unknown or expired token returns 401
     (`auth.token_expired`); a spent or cancelled token, or a token for an account that is not
     active, returns 401 (`auth.token_used`) and changes nothing.
     """

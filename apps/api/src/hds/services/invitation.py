@@ -216,13 +216,15 @@ class InvitationService:
             email: Address that asked for a reset.
 
         Side effects:
-            For an active account, stores a 60-minute token and queues an email, sent after the
-            commit.
+            For an active account, cancels its earlier unused reset links, stores a 60-minute
+            token and queues an email, sent after the commit. Only the latest reset link works;
+            an invitation link is a different flow and is left alone.
         """
         user = await self._user_repo.get_by_email(email)
         if user is None or not user.is_active:
             return  # Silent — never reveal whether the email exists
 
+        await self._token_repo.cancel_for_user(user.id, purpose="reset")
         raw, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + timedelta(minutes=RESET_TTL_MINUTES)
         await self._token_repo.create(
@@ -241,10 +243,13 @@ class InvitationService:
         )
 
     async def reset_password(self, raw_token: str, new_password: str) -> None:
-        """Redeem a reset token: replace the password and end every session.
+        """Redeem a reset token: replace the password and end every earlier credential.
 
         Sessions are revoked because a reset suggests the old credentials may be compromised
-        (NFR-005). Access tokens already issued stay valid until they expire. A reset is for an
+        (NFR-005), and every other outstanding link of the account is cancelled, so someone
+        holding an earlier link loses it the moment the owner finishes (FR-224). Access tokens
+        already issued stay valid until they expire. The owner has proved control of the mailbox,
+        so the failed sign-in count and any lock are cleared too (FR-232). A reset is for an
         *active* account only: a link left over for a deactivated account is refused and changes
         nothing.
 
@@ -257,7 +262,8 @@ class InvitationService:
                 or the account is not active). HTTP 401.
 
         Side effects:
-            Marks the token used and revokes all of the user's refresh tokens.
+            Marks the token used, cancels the account's other links, revokes all of the user's
+            refresh tokens and clears the failed sign-in count and lock.
         """
         token = await self._valid_token(raw_token, "reset")
         if not await self._token_repo.spend(token.id):  # see accept_invitation
@@ -272,6 +278,8 @@ class InvitationService:
         )
         # A reset means the old credentials may be compromised: sign out every device.
         await self._refresh_token_repo.revoke_all_for_user(token.user_id, RevocationReason.all)
+        await self._token_repo.cancel_for_user(token.user_id)
+        await self._user_repo.reset_failed_attempts(token.user_id)
 
     async def _token_owner(self, user_id: uuid.UUID) -> User:
         """The token, not a caller's organisation, authorises redemption; look its owner up."""

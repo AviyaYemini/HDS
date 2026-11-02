@@ -72,30 +72,35 @@ class InvitationTokenRepository:
         )
         return result.scalar_one_or_none()
 
-    async def cancel_for_user(self, user_id: uuid.UUID) -> None:
-        """Cancel every outstanding link of one account.
+    async def cancel_for_user(self, user_id: uuid.UUID, purpose: str | None = None) -> None:
+        """Cancel the outstanding links of one account.
 
         Cancelling marks the link used, so it can never be redeemed. It is done when an account is
-        deactivated, deleted, activated or re-invited, so a link issued for an earlier state of
-        the account cannot outlive it (spec FR-207).
+        deactivated, deleted, activated, re-invited or has completed a password reset, so a link
+        issued for an earlier state of the account cannot outlive it (spec FR-207, FR-224).
 
         Args:
             user_id: The account whose unused links are cancelled.
+            purpose: Cancel only links of this purpose (``invite`` or ``reset``); all by default.
         """
-        await self.cancel_for_users([user_id])
+        await self.cancel_for_users([user_id], purpose=purpose)
 
-    async def cancel_for_users(self, user_ids: Sequence[uuid.UUID]) -> None:
-        """Cancel every outstanding link of several accounts in one statement.
+    async def cancel_for_users(
+        self, user_ids: Sequence[uuid.UUID], purpose: str | None = None
+    ) -> None:
+        """Cancel the outstanding links of several accounts in one statement.
 
         Args:
             user_ids: The accounts whose unused links are cancelled; an empty sequence is a no-op.
+            purpose: Cancel only links of this purpose (``invite`` or ``reset``); all by default.
         """
         if not user_ids:
             return
+        conditions = [InvitationToken.user_id.in_(user_ids), InvitationToken.used_at.is_(None)]
+        if purpose is not None:
+            conditions.append(InvitationToken.purpose == purpose)
         await self.session.execute(
-            update(InvitationToken)
-            .where(InvitationToken.user_id.in_(user_ids), InvitationToken.used_at.is_(None))
-            .values(used_at=datetime.now(UTC))
+            update(InvitationToken).where(*conditions).values(used_at=datetime.now(UTC))
         )
         await self.session.flush()
 
