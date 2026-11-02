@@ -36,14 +36,14 @@ class QualificationService:
                 code="qualifications.duplicate_name",
                 detail=f"A qualification named '{new_name}' already exists.",
             )
-        return await self._repo.update(qual_id, name=new_name)
+        return await self._repo.update(qual_id, actor.organization_id, name=new_name)
 
     async def delete_qualification(self, actor: User, qual_id: uuid.UUID) -> None:
         ensure_role(actor, *MANAGER_ROLES)
         qual = await self._repo.get_by_id(qual_id, actor.organization_id)
         if qual is None:
             raise NotFoundError(resource="Qualification", id=qual_id)
-        await self._repo.delete(qual_id)
+        await self._repo.delete(qual_id, actor.organization_id)
 
     async def replace_employee_qualifications(
         self, actor: User, user_id: uuid.UUID, qual_ids: list[uuid.UUID]

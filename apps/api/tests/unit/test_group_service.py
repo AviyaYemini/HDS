@@ -52,6 +52,7 @@ async def test_create_group_duplicate_name_raises_conflict() -> None:
 
 @pytest.mark.asyncio
 async def test_rename_group() -> None:
+    actor = _actor()
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=_grp(name="Old"))
     repo.get_by_name_and_org = AsyncMock(return_value=None)
@@ -59,9 +60,9 @@ async def test_rename_group() -> None:
 
     svc = GroupService(group_repo=repo)
     group_id = uuid.uuid4()
-    await svc.rename_group(_actor(), group_id, "New")
+    await svc.rename_group(actor, group_id, "New")
 
-    repo.update.assert_awaited_once_with(group_id, name="New")
+    repo.update.assert_awaited_once_with(group_id, actor.organization_id, name="New")
 
 
 @pytest.mark.asyncio
@@ -77,15 +78,16 @@ async def test_rename_group_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_group() -> None:
+    actor = _actor()
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=_grp())
     repo.delete = AsyncMock()
 
     svc = GroupService(group_repo=repo)
     group_id = uuid.uuid4()
-    await svc.delete_group(_actor(), group_id)
+    await svc.delete_group(actor, group_id)
 
-    repo.delete.assert_awaited_once_with(group_id)
+    repo.delete.assert_awaited_once_with(group_id, actor.organization_id)
 
 
 @pytest.mark.asyncio

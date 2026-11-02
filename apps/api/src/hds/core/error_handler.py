@@ -14,6 +14,7 @@ from hds.core.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
+from hds.core.request_context import get_request_id
 
 
 def _problem(
@@ -31,6 +32,7 @@ def _problem(
         "detail": detail,
         "code": code,
         "instance": str(request.url),
+        "request_id": get_request_id(),
     }
     if extra:
         body.update(extra)

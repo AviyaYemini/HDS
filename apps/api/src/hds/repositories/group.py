@@ -29,20 +29,11 @@ class GroupRepository(OrgScopedRepository[Group]):
         await self.session.refresh(group)
         return group
 
-    async def update(self, id: uuid.UUID, **fields: Any) -> Group:
-        from sqlalchemy import update as sa_update
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Group:
+        return await self._update_scoped(id, org_id, **fields)
 
-        await self.session.execute(sa_update(Group).where(Group.id == id).values(**fields))
-        await self.session.commit()
-        group = await self._get_unscoped(id)
-        assert group is not None
-        return group
-
-    async def delete(self, id: uuid.UUID) -> None:
-        group = await self._get_unscoped(id)
-        if group is not None:
-            await self.session.delete(group)
-            await self.session.commit()
+    async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        await self._delete_scoped(id, org_id)
 
     async def get_groups_for_user(self, user_id: uuid.UUID, org_id: uuid.UUID) -> list[Group]:
         result = await self.session.execute(

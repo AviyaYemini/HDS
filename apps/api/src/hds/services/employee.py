@@ -61,7 +61,9 @@ class EmployeeService:
             )
         # Explicit whitelist: only these keys are ever passed on to the repository.
         changes = {key: data[key] for key in _ALLOWED_SELF_FIELDS if key in data}
-        return await self._user_repo.update(current_user.id, **changes)
+        return await self._user_repo.update(
+            current_user.id, current_user.organization_id, **changes
+        )
 
     # ── Manager operations ───────────────────────────────────────────────────
 
@@ -91,14 +93,18 @@ class EmployeeService:
         self._guard_admin_target(actor, target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, role=UserRole.manager)
+        updated = await self._user_repo.update(
+            target_id, actor.organization_id, role=UserRole.manager
+        )
         await self._token_repo.revoke_all_for_user(target_id)
         return updated
 
     async def promote_to_admin(self, actor: User, target_id: uuid.UUID) -> User:
         ensure_role(actor, *ADMIN_ROLES)
         await self._get_target(actor, target_id)
-        updated = await self._user_repo.update(target_id, role=UserRole.admin)
+        updated = await self._user_repo.update(
+            target_id, actor.organization_id, role=UserRole.admin
+        )
         await self._token_repo.revoke_all_for_user(target_id)
         return updated
 
@@ -118,7 +124,7 @@ class EmployeeService:
                 role_changed = True
                 if target.role == UserRole.admin:
                     await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, **data)
+        updated = await self._user_repo.update(target_id, actor.organization_id, **data)
         if role_changed:
             await self._token_repo.revoke_all_for_user(target_id)
         return updated
@@ -129,7 +135,7 @@ class EmployeeService:
         self._guard_admin_target(actor, target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, is_active=False)
+        updated = await self._user_repo.update(target_id, actor.organization_id, is_active=False)
         await self._token_repo.revoke_all_for_user(target_id)
         return updated
 
@@ -137,14 +143,14 @@ class EmployeeService:
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
-        return await self._user_repo.update(target_id, is_active=True)
+        return await self._user_repo.update(target_id, actor.organization_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
         target = await self._get_target(actor, target_id)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        await self._user_repo.soft_delete(target_id)
+        await self._user_repo.soft_delete(target_id, actor.organization_id)
         await self._token_repo.revoke_all_for_user(target_id)
 
     # ── Guards ───────────────────────────────────────────────────────────────

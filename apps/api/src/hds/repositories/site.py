@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from hds.models.site import Site
 from hds.repositories.base import OrgScopedRepository
@@ -23,9 +23,5 @@ class SiteRepository(OrgScopedRepository[Site]):
         await self.session.refresh(site)
         return site
 
-    async def update(self, id: uuid.UUID, **fields: Any) -> Site:
-        await self.session.execute(update(Site).where(Site.id == id).values(**fields))
-        await self.session.commit()
-        site = await self._get_unscoped(id)
-        assert site is not None
-        return site
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Site:
+        return await self._update_scoped(id, org_id, **fields)

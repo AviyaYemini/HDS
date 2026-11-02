@@ -1,15 +1,16 @@
-import uuid
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from hds.core.config import configure_email_validation, get_settings
 from hds.core.error_handler import register_exception_handlers
 from hds.core.logging import configure_logging
 from hds.core.openapi import install_openapi
+from hds.core.request_context import new_request_id, reset_request_id, set_request_id
 
 
 def create_app() -> FastAPI:
     configure_logging()
+    configure_email_validation(get_settings())
 
     application = FastAPI(
         title="HDS API",
@@ -20,7 +21,7 @@ def create_app() -> FastAPI:
 
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=get_settings().CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -28,8 +29,12 @@ def create_app() -> FastAPI:
 
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-        request_id = str(uuid.uuid4())
-        response = await call_next(request)
+        request_id = new_request_id(request.headers.get("X-Request-Id"))
+        token = set_request_id(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_request_id(token)
         response.headers["X-Request-Id"] = request_id
         return response
 

@@ -37,7 +37,9 @@ async def test_update_own_profile_success() -> None:
     svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock())
     result = await svc.update_own_profile(user, {"full_name": "New Name", "phone": "+972501234567"})
 
-    user_repo.update.assert_awaited_once_with(user.id, full_name="New Name", phone="+972501234567")
+    user_repo.update.assert_awaited_once_with(
+        user.id, user.organization_id, full_name="New Name", phone="+972501234567"
+    )
     assert result.full_name == "New Name"
 
 
@@ -102,4 +104,6 @@ async def test_update_own_profile_passes_only_whitelisted_fields() -> None:
 
     await svc.update_own_profile(user, {"full_name": "New", "phone": "123"})
 
-    user_repo.update.assert_awaited_once_with(user.id, full_name="New", phone="123")
+    user_repo.update.assert_awaited_once_with(
+        user.id, user.organization_id, full_name="New", phone="123"
+    )

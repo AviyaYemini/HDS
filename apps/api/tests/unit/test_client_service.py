@@ -70,15 +70,16 @@ async def test_edit_client_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_soft_delete_client_no_projects_succeeds() -> None:
+    actor = _actor(UserRole.admin)
     svc, repo, _ = _svc()
     client_id = uuid.uuid4()
     repo.get_by_id = AsyncMock(return_value=_client())
     repo.count_non_deleted_projects = AsyncMock(return_value=0)
 
-    await svc.soft_delete(_actor(UserRole.admin), client_id)
+    await svc.soft_delete(actor, client_id)
 
     repo.deactivate_client_users.assert_awaited_once_with(client_id)
-    repo.soft_delete.assert_awaited_once_with(client_id)
+    repo.soft_delete.assert_awaited_once_with(client_id, actor.organization_id)
 
 
 @pytest.mark.asyncio
@@ -172,6 +173,7 @@ async def test_remove_client_user_of_other_client_is_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_client_user_success() -> None:
+    actor = _actor()
     svc, _, user_repo = _svc()
     client_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -180,9 +182,9 @@ async def test_remove_client_user_success() -> None:
     target.client_id = client_id
     user_repo.get_by_id = AsyncMock(return_value=target)
 
-    await svc.remove_client_user(_actor(), client_id, user_id)
+    await svc.remove_client_user(actor, client_id, user_id)
 
-    user_repo.soft_delete.assert_awaited_once_with(user_id)
+    user_repo.soft_delete.assert_awaited_once_with(user_id, actor.organization_id)
 
 
 @pytest.mark.asyncio

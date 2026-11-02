@@ -52,6 +52,7 @@ async def test_create_qualification_duplicate_raises_conflict() -> None:
 
 @pytest.mark.asyncio
 async def test_rename_qualification() -> None:
+    actor = _actor()
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=_qual())
     repo.get_by_name_and_org = AsyncMock(return_value=None)
@@ -59,9 +60,9 @@ async def test_rename_qualification() -> None:
 
     svc = QualificationService(qual_repo=repo)
     qual_id = uuid.uuid4()
-    await svc.rename_qualification(_actor(), qual_id, "Advanced First Aid")
+    await svc.rename_qualification(actor, qual_id, "Advanced First Aid")
 
-    repo.update.assert_awaited_once_with(qual_id, name="Advanced First Aid")
+    repo.update.assert_awaited_once_with(qual_id, actor.organization_id, name="Advanced First Aid")
 
 
 @pytest.mark.asyncio
@@ -76,15 +77,16 @@ async def test_rename_qualification_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_qualification() -> None:
+    actor = _actor()
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=_qual())
     repo.delete = AsyncMock()
 
     svc = QualificationService(qual_repo=repo)
     qual_id = uuid.uuid4()
-    await svc.delete_qualification(_actor(), qual_id)
+    await svc.delete_qualification(actor, qual_id)
 
-    repo.delete.assert_awaited_once_with(qual_id)
+    repo.delete.assert_awaited_once_with(qual_id, actor.organization_id)
 
 
 @pytest.mark.asyncio

@@ -157,14 +157,15 @@ async def test_promote_to_admin_by_manager_forbidden() -> None:
 
 @pytest.mark.asyncio
 async def test_promote_to_admin_by_admin_succeeds() -> None:
+    actor = _make_user(role=UserRole.admin)
     target = _make_user()
     svc, user_repo, token_repo = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(role=UserRole.admin))
 
-    await svc.promote_to_admin(_make_user(role=UserRole.admin), target.id)
+    await svc.promote_to_admin(actor, target.id)
 
-    user_repo.update.assert_awaited_once_with(target.id, role=UserRole.admin)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, role=UserRole.admin)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
 
 
@@ -222,25 +223,27 @@ async def test_manager_cannot_set_role_admin_via_edit() -> None:
 
 @pytest.mark.asyncio
 async def test_deactivate_revokes_all_sessions() -> None:
+    actor = _make_user(role=UserRole.manager)
     target = _make_user(role=UserRole.employee)
     svc, user_repo, token_repo = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(is_active=False))
 
-    await svc.deactivate(_make_user(role=UserRole.manager), target.id)
+    await svc.deactivate(actor, target.id)
 
-    user_repo.update.assert_awaited_once_with(target.id, is_active=False)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=False)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
 
 
 @pytest.mark.asyncio
 async def test_reactivate_employee() -> None:
+    actor = _make_user(role=UserRole.manager)
     target = _make_user(is_active=False)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(is_active=True))
-    await svc.reactivate(_make_user(role=UserRole.manager), target.id)
-    user_repo.update.assert_awaited_once_with(target.id, is_active=True)
+    await svc.reactivate(actor, target.id)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=True)
 
 
 # ── FR-011: last active Admin ──────────────────────────────────────────────
@@ -273,7 +276,7 @@ async def test_soft_delete_non_last_admin_succeeds_and_revokes() -> None:
 
     await svc.soft_delete(actor, target.id)
 
-    user_repo.soft_delete.assert_awaited_once_with(target.id)
+    user_repo.soft_delete.assert_awaited_once_with(target.id, org_id)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
 
 

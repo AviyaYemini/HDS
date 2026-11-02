@@ -85,8 +85,10 @@ class InvitationService:
 
     async def accept_invitation(self, raw_token: str, new_password: str) -> User:
         token = await self._valid_token(raw_token, "invite")
+        owner = await self._token_owner(token.user_id)
         user = await self._user_repo.update(
             token.user_id,
+            owner.organization_id,
             password_hash=hash_password(new_password),
             is_active=True,
         )
@@ -113,13 +115,22 @@ class InvitationService:
 
     async def reset_password(self, raw_token: str, new_password: str) -> None:
         token = await self._valid_token(raw_token, "reset")
+        owner = await self._token_owner(token.user_id)
         await self._user_repo.update(
             token.user_id,
+            owner.organization_id,
             password_hash=hash_password(new_password),
         )
         await self._token_repo.mark_used(token.id)
         # A reset means the old credentials may be compromised: sign out every device.
         await self._refresh_token_repo.revoke_all_for_user(token.user_id)
+
+    async def _token_owner(self, user_id: uuid.UUID) -> User:
+        """The token, not a caller's organisation, authorises redemption; look its owner up."""
+        owner = await self._user_repo.get_by_id_for_token(user_id)
+        if owner is None:
+            raise AuthError(code="auth.token_expired", detail="Invalid or expired token.")
+        return owner
 
     async def _valid_token(self, raw_token: str, purpose: str) -> Any:
         token = await self._token_repo.get_by_hash(_hash_token(raw_token))

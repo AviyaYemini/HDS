@@ -34,22 +34,11 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         await self.session.refresh(qual)
         return qual
 
-    async def update(self, id: uuid.UUID, **fields: Any) -> Qualification:
-        from sqlalchemy import update as sa_update
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Qualification:
+        return await self._update_scoped(id, org_id, **fields)
 
-        await self.session.execute(
-            sa_update(Qualification).where(Qualification.id == id).values(**fields)
-        )
-        await self.session.commit()
-        qual = await self._get_unscoped(id)
-        assert qual is not None
-        return qual
-
-    async def delete(self, id: uuid.UUID) -> None:
-        qual = await self._get_unscoped(id)
-        if qual is not None:
-            await self.session.delete(qual)
-            await self.session.commit()
+    async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        await self._delete_scoped(id, org_id)
 
     async def get_qualifications_for_user(
         self, user_id: uuid.UUID, org_id: uuid.UUID

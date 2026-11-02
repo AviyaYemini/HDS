@@ -1,5 +1,4 @@
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -40,20 +39,11 @@ class ClientRepository(OrgScopedRepository[Client]):
         await self.session.refresh(client)
         return client
 
-    async def update(self, id: uuid.UUID, **fields: Any) -> Client:
-        await self.session.execute(update(Client).where(Client.id == id).values(**fields))
-        await self.session.commit()
-        client = await self._get_unscoped(id)
-        assert client is not None
-        return client
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Client:
+        return await self._update_scoped(id, org_id, **fields)
 
-    async def soft_delete(self, id: uuid.UUID) -> None:
-        await self.session.execute(
-            update(Client)
-            .where(Client.id == id)
-            .values(is_deleted=True, deleted_at=datetime.now(UTC))
-        )
-        await self.session.commit()
+    async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        await self._soft_delete_scoped(id, org_id)
 
     async def deactivate_client_users(self, client_id: uuid.UUID) -> None:
         await self.session.execute(

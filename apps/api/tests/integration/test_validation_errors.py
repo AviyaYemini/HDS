@@ -139,3 +139,18 @@ async def test_positive_rate_is_accepted(
         headers=await _headers(async_client),
     )
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_error_bodies_carry_the_request_id(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """T141: a real problem+json (401 from bad credentials) echoes the X-Request-Id header."""
+    response = await async_client.post(
+        "/auth/login",
+        json={"email": "admin@hds.test", "password": "wrong-password-xx"},
+        headers={"X-Request-Id": "trace-me-1"},
+    )
+    assert response.status_code == 401
+    assert response.headers["X-Request-Id"] == "trace-me-1"
+    assert response.json()["request_id"] == "trace-me-1"

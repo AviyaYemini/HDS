@@ -29,7 +29,7 @@ class ClientService:
             raise NotFoundError(resource="Client", id=id)
         if data.get("is_active") is False and existing.is_active:
             await self._client_repo.deactivate_client_users(id)
-        return await self._client_repo.update(id, **data)
+        return await self._client_repo.update(id, actor.organization_id, **data)
 
     async def create_client_user(
         self, actor: User, client_id: uuid.UUID, data: dict[str, Any]
@@ -59,7 +59,7 @@ class ClientService:
         user = await self._user_repo.get_by_id(user_id, actor.organization_id)
         if user is None or user.role != UserRole.client or user.client_id != client_id:
             raise NotFoundError(resource="User", id=user_id)
-        await self._user_repo.soft_delete(user_id)
+        await self._user_repo.soft_delete(user_id, actor.organization_id)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
@@ -73,4 +73,4 @@ class ClientService:
                 detail="Cannot delete a client that has active projects.",
             )
         await self._client_repo.deactivate_client_users(id)
-        await self._client_repo.soft_delete(id)
+        await self._client_repo.soft_delete(id, actor.organization_id)

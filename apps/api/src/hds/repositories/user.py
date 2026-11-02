@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -15,6 +15,13 @@ class UserRepository(OrgScopedRepository[User]):
         """Email is unique per deployment (FR-012); the organisation comes from the account."""
         result = await self.session.execute(
             select(User).where(User.email == email, User.is_deleted.is_(False)).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_for_token(self, user_id: uuid.UUID) -> User | None:
+        """The only lookup not scoped by organisation: redeeming an invite/reset token."""
+        result = await self.session.execute(
+            select(User).where(User.id == user_id, User.is_deleted.is_(False))
         )
         return result.scalar_one_or_none()
 
@@ -72,20 +79,11 @@ class UserRepository(OrgScopedRepository[User]):
         )
         await self.session.commit()
 
-    async def update(self, user_id: uuid.UUID, **fields: Any) -> User:
-        await self.session.execute(update(User).where(User.id == user_id).values(**fields))
-        await self.session.commit()
-        user = await self._get_unscoped(user_id)
-        assert user is not None
-        return user
+    async def update(self, user_id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> User:
+        return await self._update_scoped(user_id, org_id, **fields)
 
-    async def soft_delete(self, user_id: uuid.UUID) -> None:
-        await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(is_deleted=True, deleted_at=datetime.now(UTC))
-        )
-        await self.session.commit()
+    async def soft_delete(self, user_id: uuid.UUID, org_id: uuid.UUID) -> None:
+        await self._soft_delete_scoped(user_id, org_id)
 
     async def count_active_admins(self, org_id: uuid.UUID) -> int:
         result = await self.session.execute(

@@ -14,5 +14,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src"
 
 COPY apps/api/src ./src
+# Migrations ship with the image so `alembic upgrade head` works inside the container.
+COPY apps/api/alembic.ini ./alembic.ini
+COPY apps/api/alembic ./alembic
 
 CMD ["uvicorn", "hds.main:app", "--host", "0.0.0.0", "--port", "8000"]

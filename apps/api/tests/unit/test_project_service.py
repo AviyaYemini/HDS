@@ -145,6 +145,7 @@ async def test_edit_project_not_found() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("current", "target"), [("active", "ended"), ("ended", "active")])
 async def test_set_status_transitions(current: str, target: str) -> None:
+    actor = _actor()
     proj = _project(status=current)
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=proj)
@@ -152,22 +153,23 @@ async def test_set_status_transitions(current: str, target: str) -> None:
 
     await ProjectService(
         project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
-    ).set_status(_actor(), proj.id, target)
+    ).set_status(actor, proj.id, target)
 
-    repo.update.assert_awaited_once_with(proj.id, status=target)
+    repo.update.assert_awaited_once_with(proj.id, actor.organization_id, status=target)
 
 
 @pytest.mark.asyncio
 async def test_soft_delete_project_by_admin() -> None:
+    actor = _actor(UserRole.admin)
     proj = _project()
     repo = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=proj)
 
     await ProjectService(
         project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
-    ).soft_delete(_actor(UserRole.admin), proj.id)
+    ).soft_delete(actor, proj.id)
 
-    repo.soft_delete.assert_awaited_once_with(proj.id)
+    repo.soft_delete.assert_awaited_once_with(proj.id, actor.organization_id)
 
 
 @pytest.mark.asyncio

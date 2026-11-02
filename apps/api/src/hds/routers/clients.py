@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
@@ -49,7 +49,7 @@ class ClientUpdateRequest(BaseModel):
     contact_email: EmailStr | None = None
     contact_phone: Phone | None = None
     contract_end: StrictDate | None = None
-    is_active: bool | None = None
+    is_active: StrictBool | None = None
 
 
 class ClientListResponse(BaseModel):

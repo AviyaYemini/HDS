@@ -34,14 +34,14 @@ class GroupService:
                 code="groups.duplicate_name",
                 detail=f"A group named '{new_name}' already exists.",
             )
-        return await self._repo.update(group_id, name=new_name)
+        return await self._repo.update(group_id, actor.organization_id, name=new_name)
 
     async def delete_group(self, actor: User, group_id: uuid.UUID) -> None:
         ensure_role(actor, *MANAGER_ROLES)
         group = await self._repo.get_by_id(group_id, actor.organization_id)
         if group is None:
             raise NotFoundError(resource="Group", id=group_id)
-        await self._repo.delete(group_id)
+        await self._repo.delete(group_id, actor.organization_id)
 
     async def replace_employee_groups(
         self, actor: User, user_id: uuid.UUID, group_ids: list[uuid.UUID]

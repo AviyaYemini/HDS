@@ -1,8 +1,7 @@
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from hds.models.project import Project, ProjectStatus
 from hds.repositories.base import OrgScopedRepository
@@ -55,17 +54,8 @@ class ProjectRepository(OrgScopedRepository[Project]):
         await self.session.refresh(project)
         return project
 
-    async def update(self, id: uuid.UUID, **fields: Any) -> Project:
-        await self.session.execute(update(Project).where(Project.id == id).values(**fields))
-        await self.session.commit()
-        project = await self._get_unscoped(id)
-        assert project is not None
-        return project
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Project:
+        return await self._update_scoped(id, org_id, **fields)
 
-    async def soft_delete(self, id: uuid.UUID) -> None:
-        await self.session.execute(
-            update(Project)
-            .where(Project.id == id)
-            .values(is_deleted=True, deleted_at=datetime.now(UTC))
-        )
-        await self.session.commit()
+    async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        await self._soft_delete_scoped(id, org_id)

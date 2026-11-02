@@ -40,15 +40,16 @@ async def test_create_site_success() -> None:
 
 @pytest.mark.asyncio
 async def test_edit_site_success() -> None:
+    actor = _actor()
     repo = AsyncMock()
     existing = _site()
     repo.get_by_id = AsyncMock(return_value=existing)
     repo.update = AsyncMock(return_value=_site(name="Side Gate"))
 
     svc = SiteService(site_repo=repo)
-    await svc.edit_site(_actor(), existing.id, {"name": "Side Gate"})
+    await svc.edit_site(actor, existing.id, {"name": "Side Gate"})
 
-    repo.update.assert_awaited_once_with(existing.id, name="Side Gate")
+    repo.update.assert_awaited_once_with(existing.id, actor.organization_id, name="Side Gate")
 
 
 @pytest.mark.asyncio

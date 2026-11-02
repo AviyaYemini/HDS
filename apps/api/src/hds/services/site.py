@@ -23,4 +23,4 @@ class SiteService:
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Site", id=id)
-        return await self._repo.update(id, **data)
+        return await self._repo.update(id, actor.organization_id, **data)

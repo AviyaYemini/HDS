@@ -5,8 +5,11 @@ ASGI app on the PostgreSQL test database, as an Admin. All built-in checks must 
 no 5xx, documented status codes, response schema and content-type conformance, etc.
 """
 
+import os
+
 import pytest
 import schemathesis
+from hypothesis import settings
 from schemathesis import checks as st_checks
 
 from hds.main import app
@@ -21,6 +24,9 @@ ALL_CHECKS = st_checks.CHECKS.get_all()
 # operations; every other check still runs on them.
 CROSS_FIELD_RULE = {("POST", "/api/v1/projects"), ("PATCH", "/api/v1/projects/{id}")}
 
+# Few examples locally for a fast loop; CI sets HDS_SCHEMATHESIS_EXAMPLES=100 for the full run.
+EXAMPLES = int(os.environ.get("HDS_SCHEMATHESIS_EXAMPLES", "5"))
+
 schema = schemathesis.openapi.from_asgi("/api/v1/openapi.json", app)
 
 
@@ -30,6 +36,7 @@ def _database(role_env: RoleEnv) -> RoleEnv:
 
 
 @schema.parametrize()
+@settings(max_examples=EXAMPLES, deadline=None)
 def test_api_conforms_to_its_openapi_contract(case, role_env: RoleEnv) -> None:  # type: ignore[no-untyped-def]
     skip_acceptance = (case.method.upper(), case.operation.path) in CROSS_FIELD_RULE
     checks = [

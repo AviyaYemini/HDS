@@ -74,7 +74,7 @@ jobs:
         working-directory: apps/api
 
   test-integration:
-    name: Integration tests (PostgreSQL 16)
+    name: Integration and contract tests (PostgreSQL 16)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -92,7 +92,11 @@ jobs:
           - 5432:5432
     env:
       DATABASE_URL: postgresql+asyncpg://hds:hds_test@localhost:5432/hds_test
+      # The test suite reads TEST_DATABASE_URL (it must end in "_test"); without it the tests
+      # fall back to a local-dev password that does not exist on this service.
+      TEST_DATABASE_URL: postgresql+asyncpg://hds:hds_test@localhost:5432/hds_test
       JWT_SECRET_KEY: ci-only-not-a-real-secret
+      HDS_SCHEMATHESIS_EXAMPLES: "100"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -100,7 +104,7 @@ jobs:
         working-directory: apps/api
       - run: uv run alembic upgrade head
         working-directory: apps/api
-      - run: uv run pytest tests/integration/ -v --tb=short
+      - run: uv run pytest tests/integration/ tests/contract/ -v --tb=short
         working-directory: apps/api
 
   migration-check:
@@ -160,6 +164,8 @@ jobs:
         working-directory: apps/api
       - run: uv run alembic upgrade head
         working-directory: apps/api
+      - run: uv run python -m hds.scripts.seed_dev
+        working-directory: apps/api
       - name: Start API
         run: |
           uv run uvicorn hds.main:app --host 0.0.0.0 --port 8000 &
@@ -172,11 +178,8 @@ jobs:
           uv run python -m hds.scripts.export_openapi --check \
             ../../specs/001-foundation-auth-org/contracts/openapi.yaml /tmp/openapi.generated.json
         working-directory: apps/api
-      - run: |
-          uv run schemathesis run \
-            http://localhost:8000/api/v1/openapi.json \
-            --checks all \
-            --validate-schema true
+      - name: Schemathesis against the running, seeded server (T113)
+        run: scripts/contract_cli.sh http://localhost:8000 50
         working-directory: apps/api
 
   # TODO: enable ts-client-check job in the apps/client feature (Constitution Principle V)

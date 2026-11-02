@@ -815,7 +815,7 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3" },
     { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
-    { name = "schemathesis", marker = "extra == 'dev'", specifier = ">=3.28" },
+    { name = "schemathesis", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2" },
     { name = "types-python-jose", marker = "extra == 'dev'", specifier = ">=3.3" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6" },

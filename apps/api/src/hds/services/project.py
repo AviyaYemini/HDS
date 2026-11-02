@@ -66,21 +66,21 @@ class ProjectService:
         if "billing_rate" in data:
             _validate_billing_rate(data["billing_rate"])
         _validate_date_range(existing.start_date, data.get("end_date", existing.end_date))
-        return await self._repo.update(id, **data)
+        return await self._repo.update(id, actor.organization_id, **data)
 
     async def set_status(self, actor: User, id: uuid.UUID, status: str) -> Project:
         ensure_role(actor, *MANAGER_ROLES)
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
-        return await self._repo.update(id, status=status)
+        return await self._repo.update(id, actor.organization_id, status=status)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         ensure_role(actor, *ADMIN_ROLES)
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
-        await self._repo.soft_delete(id)
+        await self._repo.soft_delete(id, actor.organization_id)
 
     async def list_projects(
         self,
