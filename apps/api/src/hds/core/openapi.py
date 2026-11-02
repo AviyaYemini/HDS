@@ -39,6 +39,7 @@ _PROBLEM_SCHEMA: dict[str, Any] = {
     },
 }
 _METHODS = {"get", "put", "post", "delete", "patch"}
+_RETRY_LATER = {"429", "503"}
 # Public operations that can answer 401 (bad credentials / tokens).
 _PUBLIC_401 = {
     "/auth/login",
@@ -59,11 +60,43 @@ _HASHING = {
 }
 
 
+# Operations that can answer 409. Listed, not inferred: only a service knows what can conflict, and
+# a blanket rule promised conflicts on writes where nothing raises one.
+_CONFLICTS = {
+    ("/auth/invite", "post"),
+    ("/api/v1/employees", "post"),
+    ("/api/v1/employees/{id}", "patch"),
+    ("/api/v1/employees/{id}", "delete"),
+    ("/api/v1/employees/{id}/deactivate", "post"),
+    ("/api/v1/employees/{id}/reactivate", "post"),
+    ("/api/v1/groups", "post"),
+    ("/api/v1/groups/{id}", "patch"),
+    ("/api/v1/qualifications", "post"),
+    ("/api/v1/qualifications/{id}", "patch"),
+    ("/api/v1/clients/{id}", "delete"),
+    ("/api/v1/clients/{id}/users", "post"),
+}
+# Signed-in operations open to every role, with no other refusal, so they never answer 403.
+_NEVER_FORBIDDEN = {
+    ("/auth/logout", "post"),
+    ("/auth/logout-all", "post"),
+    ("/me", "get"),
+}
+
+
 def _problem(status: str) -> dict[str, Any]:
-    return {
+    response: dict[str, Any] = {
         "description": _DESCRIPTIONS[status],
         "content": {_PROBLEM: {"schema": {"$ref": "#/components/schemas/ProblemDetail"}}},
     }
+    if status in _RETRY_LATER:
+        response["headers"] = {
+            "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "schema": {"type": "integer"},
+            }
+        }
+    return response
 
 
 def _body_references_ids(operation: dict[str, Any], schemas: dict[str, Any]) -> bool:
@@ -79,14 +112,16 @@ def _body_references_ids(operation: dict[str, Any], schemas: dict[str, Any]) -> 
 def _statuses(
     path: str, method: str, operation: dict[str, Any], schemas: dict[str, Any]
 ) -> set[str]:
-    found: set[str] = {"422"}  # request validation (problem+json, see error_handler)
+    found: set[str] = set()
+    parameters = operation.get("parameters", [])
+    if operation.get("requestBody") or parameters:
+        found.add("422")  # request validation (problem+json, see error_handler)
     if operation.get("security"):
-        found |= {"401", "403"}
-        if method != "get":
-            found.add("409")
+        found.add("401")
+        if (path, method) not in _NEVER_FORBIDDEN:
+            found.add("403")
     if operation.get("requestBody"):
         found.add("400")
-    parameters = operation.get("parameters", [])
     if (
         "{" in path
         or _body_references_ids(operation, schemas)
@@ -97,7 +132,7 @@ def _statuses(
         found.add("401")
     if path == "/auth/login":
         found |= {"423", "429"}
-    if method != "get" and "{" not in path and operation.get("security"):
+    if (path, method) in _CONFLICTS:
         found.add("409")
     if (path, method) in _HASHING:
         found.add("503")
@@ -107,11 +142,11 @@ def _statuses(
 def install_openapi(app: FastAPI) -> None:
     """Replace ``app.openapi`` with a version that documents the problem-details errors.
 
-    The generated document is cached on the app after the first call. The error responses
+    The generated document is cached on the app after the first call. Most error responses
     are inferred from each operation (security, body, path parameters), so a new route is
-    documented without extra code, but a status that cannot be inferred must be added to
-    ``_statuses``. The drift check compares only 2xx codes, so these additions do not
-    affect it.
+    documented without extra code, but a status that cannot be inferred must be added by hand:
+    a route that can answer 409 goes in ``_CONFLICTS``. The drift check compares every code
+    against the contract, so a change here must change the contract too.
 
     Args:
         app: The application whose OpenAPI generation is wrapped.

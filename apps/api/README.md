@@ -126,7 +126,7 @@ uv run alembic check                 # needs DATABASE_URL pointing at a migrated
 - Generated: `/docs` and `/api/v1/openapi.json` on a running server.
 - Contract the implementation is checked against:
   [`openapi.yaml`](../../specs/001-foundation-auth-org/contracts/openapi.yaml). CI fails when the
-  two disagree on operations, success codes or query parameters.
+  two disagree on operations, status codes (errors included) or query parameters.
 - Written overview: [`docs/hds-api.md`](../../docs/hds-api.md).
 
 Errors are `application/problem+json` with a stable `code`; the codes and their Hebrew and

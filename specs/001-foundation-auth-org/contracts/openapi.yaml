@@ -633,6 +633,34 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
+    BadRequest:
+      description: The request body could not be parsed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    TooManyRequests:
+      description: Too many failed sign-ins from this network.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    ServiceBusy:
+      description: The password-hashing queue is full; nothing was changed.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
 
 # ---------------------------------------------------------------------------
 # Global security (overridden on public auth endpoints)
@@ -668,6 +696,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           description: Invalid credentials.
           content:
@@ -679,6 +709,8 @@ paths:
                 title: "Unauthorized"
                 status: 401
                 code: "auth.invalid_credentials"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "423":
           description: Account locked due to too many failed attempts.
           content:
@@ -691,6 +723,10 @@ paths:
                 status: 423
                 detail: "Account locked for 15 minutes. Contact your manager if urgent."
                 code: "auth.account_locked"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   /auth/refresh:
     post:
@@ -711,8 +747,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /auth/logout:
     post:
@@ -722,8 +762,12 @@ paths:
       responses:
         "204":
           description: Session invalidated.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /auth/logout-all:
     post:
@@ -759,10 +803,18 @@ paths:
       responses:
         "202":
           description: Invitation accepted for delivery.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   /auth/invite/accept:
     post:
@@ -787,19 +839,29 @@ paths:
       responses:
         "204":
           description: Account activated; the user can now sign in.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           description: Token invalid, expired or already used.
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   /auth/password-reset/request:
     post:
       operationId: auth_password_reset_request
       summary: Request a password-reset email
       description: >
-        Always answers 202 with an empty body, whether or not the email is known.
+        Always answers 202 with an empty body, whether or not the email is known and whether or
+        not a limit is reached. The request only counts and answers: the account is looked at and
+        the email sent after the response, so a failure there is not reported. Earlier links keep
+        working until one is redeemed, which cancels the rest. Requests are limited per address
+        and per network in a 60-minute window; over a limit nothing is issued or sent.
       tags: [Auth]
       security: []
       requestBody:
@@ -816,6 +878,10 @@ paths:
       responses:
         "202":
           description: Request accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /auth/password-reset/confirm:
     post:
@@ -840,12 +906,18 @@ paths:
       responses:
         "204":
           description: Password changed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           description: Token invalid, expired or already used.
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   # ── Current user (self) ───────────────────────────────────────────────────
 
@@ -889,8 +961,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -934,6 +1010,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     post:
       operationId: employees_create
@@ -954,6 +1034,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -962,6 +1044,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   /employees/{id}:
     parameters:
@@ -988,6 +1072,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     patch:
       operationId: employees_update
@@ -1006,6 +1092,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1030,6 +1118,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /employees/{id}/deactivate:
     post:
@@ -1063,6 +1155,8 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
               example:
                 code: "users.last_admin"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /employees/{id}/reactivate:
     post:
@@ -1088,6 +1182,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /employees/{id}/groups:
     parameters:
@@ -1114,6 +1212,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     put:
       operationId: employees_groups_replace
@@ -1128,12 +1228,16 @@ paths:
       responses:
         "204":
           description: Memberships replaced.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /employees/{id}/qualifications:
     parameters:
@@ -1160,6 +1264,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     put:
       operationId: employees_qualifications_replace
@@ -1174,12 +1280,16 @@ paths:
       responses:
         "204":
           description: Qualifications replaced.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   # ── Groups ────────────────────────────────────────────────────────────────
 
@@ -1217,12 +1327,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GroupRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /groups/{id}:
     parameters:
@@ -1249,6 +1363,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GroupRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1257,6 +1373,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     delete:
       operationId: groups_delete
@@ -1271,6 +1389,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   # ── Qualifications ────────────────────────────────────────────────────────
 
@@ -1308,12 +1428,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QualificationRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /qualifications/{id}:
     parameters:
@@ -1340,6 +1464,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QualificationRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1348,6 +1474,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     delete:
       operationId: qualifications_delete
@@ -1362,6 +1490,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   # ── Clients ───────────────────────────────────────────────────────────────
 
@@ -1386,6 +1516,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     post:
       operationId: clients_create
@@ -1406,6 +1538,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1438,6 +1572,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     patch:
       operationId: clients_update
@@ -1456,6 +1592,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1478,6 +1616,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /clients/{id}/users:
     parameters:
@@ -1506,6 +1648,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     post:
       operationId: client_users_create
@@ -1543,6 +1687,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientUserRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1551,6 +1697,10 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceBusy"
 
   /clients/{id}/users/{user_id}:
     delete:
@@ -1577,6 +1727,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   # ── Sites ─────────────────────────────────────────────────────────────────
 
@@ -1616,6 +1768,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SiteRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1648,6 +1802,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     patch:
       operationId: sites_update
@@ -1666,12 +1822,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SiteRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   # ── Projects ──────────────────────────────────────────────────────────────
 
@@ -1703,6 +1863,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     post:
       operationId: projects_create
@@ -1723,10 +1887,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -1755,6 +1923,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     patch:
       operationId: projects_update
@@ -1773,6 +1943,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1795,3 +1967,5 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"

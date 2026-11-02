@@ -1,4 +1,4 @@
-"""T124, T144: the drift check compares method, path, 2xx codes and query parameters.
+"""T124, T144, T409: the drift check compares method, path, all codes and query parameters.
 
 Covers: no spec requirement; guards Constitution V (API-first).
 """
@@ -86,3 +86,27 @@ def test_status_code_and_path_checks_still_work() -> None:
     problems = diff(contract, generated)
     assert any("not implemented" in p for p in problems)
     assert any("not in contract" in p for p in problems)
+
+
+def _coded(*codes: str) -> dict[str, Any]:
+    return {
+        "paths": {"/employees": {"get": {"responses": {c: {"description": "x"} for c in codes}}}}
+    }
+
+
+def test_an_error_code_only_the_contract_declares_is_reported() -> None:
+    problems = diff(_coded("200", "404"), _coded("200"))
+    assert any("404" in p and "GET /employees" in p for p in problems), problems
+
+
+def test_an_error_code_only_the_generated_document_declares_is_reported() -> None:
+    problems = diff(_coded("200"), _coded("200", "503"))
+    assert any("503" in p and "GET /employees" in p for p in problems), problems
+
+
+def test_a_2xx_difference_is_still_reported() -> None:
+    assert diff(_coded("200"), _coded("201"))
+
+
+def test_the_same_codes_in_any_order_agree() -> None:
+    assert diff(_coded("200", "404", "422"), _coded("422", "200", "404")) == []

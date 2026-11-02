@@ -408,3 +408,58 @@ Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pa
 A process note: the first commit of this group went in with one unit test failing, because `tail` hid
 pytest's exit status from the `&&` chain. It was amended before any further work. Later commits read
 pytest's own status.
+
+## Group E: the contract records error responses, and the drift check compares them (T409 to T412)
+
+`surface` now compares every status code. `openapi.yaml` matches the generated document on all 46
+operations: 73 codes were added and 2 of them taken back out (below). Nothing the contract already
+declared was removed. The in-process contract suite passes 47 of 47 with the narrower sets.
+
+Corrections to the application's declarations instead of copying them into the contract (T411):
+
+| Code | Removed from | Why |
+| --- | --- | --- |
+| 409 | `POST /auth/logout`, `POST /auth/logout-all`, `PATCH /me`, `PUT /employees/{id}/groups`, `PUT /employees/{id}/qualifications`, `DELETE /groups/{id}`, `DELETE /qualifications/{id}`, `POST /clients`, `PATCH /clients/{id}`, `DELETE /clients/{id}/users/{user_id}`, `POST /sites`, `PATCH /sites/{id}`, `POST /projects`, `PATCH /projects/{id}`, `DELETE /projects/{id}` | Nothing behind them raises a conflict. Fifteen operations in all, and 409 is now a list, `_CONFLICTS`, of the 12 that can |
+| 403 | `POST /auth/logout`, `POST /auth/logout-all`, `GET /me` | `get_current_user` only raises 401, and these are open to every role |
+| 422 | `POST /auth/logout-all`, `GET /me`, `GET /groups`, `GET /qualifications`, `GET /sites` | They take no input to validate |
+
+Also added: `Retry-After` on the generated 429 and 503 (the handlers send it, and the document did
+not say so), and four shared response components in the contract, of which one, `Locked`, was unused
+and was removed again.
+
+Decisions taken here:
+- `_CONFLICTS` is a list in `core/openapi.py`, where T349 keeps error declarations. The code review
+  suggested declaring 409 per route, which is a larger change with the same result for now.
+
+Reviews:
+
+`/hds-review`: no violations.
+
+`/code-review high` (read-only; its test runs used `hds_p3_test`, as it was told; nine findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1, 2 | `DELETE /projects/{id}` and `DELETE /clients/{id}/users/{user_id}` were listed as conflicts, and nothing raises one | **Fixed, and my audit was the cause.** It matched called methods by name across classes, so `soft_delete` on projects inherited the conflict from employees. Redone per class, which confirmed the other 12 |
+| 3 | A client deactivated during the hash can still get a portal user | Not fixed: `spec.md:576` accepts this window. Second review to raise it, so it goes in the report |
+| 4 | The test's list copied `_CONFLICTS`, so it could not catch a wrong entry | Fixed: the test now reads each service's own code and pairs every route with the method behind it |
+| 5 | Nothing ties `_CONFLICTS` to the services for a new route | Partly met by finding 4's test. A new route must still be added by hand |
+| 6 | No index on `expires_at` | Same as Group D finding 5: not fixed, needs an unplanned migration, in the report |
+| 7 | `Locked` component unused | Fixed: removed |
+| 8 | Generated 429 and 503 had no `Retry-After` | Fixed, test first |
+| 9 | Duplicate `users.duplicate_email` blocks | Skipped as cosmetic |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| E1 | Drift check compares 2xx only again | `test_an_error_code_only_the_contract_declares_is_reported` |
+| E2 | Blanket 409 on every write | `test_nothing_behind_this_operation_raises_a_conflict` |
+| E3 | A real conflict route dropped | `test_this_operation_can_answer_a_conflict` |
+| E4 | 403 on every signed-in route | `test_any_signed_in_user_may_call_this_so_it_never_answers_403` |
+| E5 | 422 on every operation | `test_an_operation_with_no_input_cannot_fail_validation` |
+| E6 | No 422 from us | `test_every_operation_with_input_can_fail_validation` (not caught at first: FastAPI adds its own 422 in another format, so the test now checks the format) |
+| E7 | 503 dropped | `test_the_response_is_declared_and_the_description_explains_it` |
+| E8 | False conflict route listed | `test_nothing_behind_this_operation_raises_a_conflict` |
+| E9 | No `Retry-After` declared | `test_a_retry_answer_declares_its_header` |
+
+Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass.
