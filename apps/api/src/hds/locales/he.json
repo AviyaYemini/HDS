@@ -28,6 +28,7 @@
   "portal.project_detail": "פרטי הפרויקט",
   "users.last_admin": "לא ניתן להסיר, להשבית או להוריד בדרגה את המנהל הפעיל האחרון.",
   "users.duplicate_email": "כתובת הדוא״ל כבר בשימוש.",
+  "users.pending_cannot_reactivate": "החשבון עדיין לא אישר את ההזמנה. הוא יופעל רק כאשר ההזמנה תאושר.",
   "users.admin_required": "רק מנהל מערכת יכול לבצע פעולה זו.",
   "auth.account_inactive": "החשבון אינו פעיל.",
   "auth.invalid_token": "האסימון אינו תקין.",

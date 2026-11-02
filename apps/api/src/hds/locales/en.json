@@ -28,6 +28,7 @@
   "portal.project_detail": "Project Details",
   "users.last_admin": "Cannot remove, deactivate or demote the last active administrator.",
   "users.duplicate_email": "This email address is already in use.",
+  "users.pending_cannot_reactivate": "This account has not accepted its invitation yet. It becomes active when the invitation is accepted.",
   "users.admin_required": "Only an administrator can perform this action.",
   "auth.account_inactive": "This account is inactive.",
   "auth.invalid_token": "The token is invalid.",

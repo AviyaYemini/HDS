@@ -293,7 +293,9 @@ async def deactivate_employee(
     summary="Reactivate an employee",
     description=(
         "Manager or Admin. Allow a deactivated user to sign in again. Only an Admin may "
-        "reactivate an Admin."
+        "reactivate an Admin. An account that was invited but never accepted cannot be "
+        "reactivated: it returns 409 (`users.pending_cannot_reactivate`) and stays pending, "
+        "because only accepting the invitation activates it."
     ),
 )
 async def reactivate_employee(
@@ -304,7 +306,9 @@ async def reactivate_employee(
     """Reactivate an employee.
 
     Manager or Admin. Allow a deactivated user to sign in again. Only an Admin may reactivate an
-    Admin.
+    Admin. An account that was invited but never accepted cannot be reactivated: it returns 409
+    (`users.pending_cannot_reactivate`) and stays pending, because only accepting the invitation
+    activates it.
     """
     svc = _employee_svc(db)
     return await svc.reactivate(actor=current_user, target_id=id)

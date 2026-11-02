@@ -346,6 +346,10 @@ class EmployeeService:
     async def reactivate(self, actor: User, target_id: uuid.UUID) -> User:
         """Allow a deactivated user to sign in again (Manager or Admin).
 
+        Only an account that was active once can be reactivated. A *pending* account (invited,
+        never activated) is refused: only accepting its invitation activates it, and the database
+        would reject an active account without an activation time anyway.
+
         Args:
             actor: The caller. Only an Admin may reactivate an Admin.
             target_id: User to reactivate.
@@ -356,10 +360,18 @@ class EmployeeService:
         Raises:
             ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
             NotFoundError: The user is not in the organisation (HTTP 404).
+            ConflictError: ``users.pending_cannot_reactivate`` when the account never accepted
+                its invitation (HTTP 409). Nothing is changed.
         """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
+        if target.activated_at is None:
+            raise ConflictError(
+                code="users.pending_cannot_reactivate",
+                detail="This account has not accepted its invitation yet; only accepting the "
+                "invitation activates it.",
+            )
         return await self._user_repo.update(target_id, actor.organization_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:

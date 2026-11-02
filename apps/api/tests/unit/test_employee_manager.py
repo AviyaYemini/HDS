@@ -416,3 +416,35 @@ async def test_a_refused_deactivation_cancels_nothing() -> None:
 
     svc._link_repo.cancel_for_user.assert_not_awaited()
     user_repo.update.assert_not_awaited()
+
+
+# ── Reactivating a pending account (T238, FR-220) ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_reactivating_a_pending_account_is_refused_and_changes_nothing() -> None:
+    actor = _make_user(role=UserRole.manager)
+    pending = _make_user(is_active=False, activated_at=None)
+    svc, user_repo, token_repo = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=pending)
+
+    with pytest.raises(ConflictError) as exc_info:
+        await svc.reactivate(actor, pending.id)
+
+    assert exc_info.value.code == "users.pending_cannot_reactivate"
+    user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reactivating_a_deactivated_account_still_works_and_keeps_its_activation_time() -> (
+    None
+):
+    actor = _make_user(role=UserRole.manager)
+    deactivated = _make_user(is_active=False)  # activated_at defaults to a time in the helper
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=deactivated)
+    user_repo.update = AsyncMock(return_value=_make_user(is_active=True))
+
+    await svc.reactivate(actor, deactivated.id)
+
+    user_repo.update.assert_awaited_once_with(deactivated.id, actor.organization_id, is_active=True)
