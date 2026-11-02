@@ -10,6 +10,7 @@ from hds.models.base import Base, TimestampedBase
 from hds.models.client import Client
 from hds.models.group import Group, user_groups
 from hds.models.invitation_token import InvitationToken
+from hds.models.login_throttle import LoginThrottle
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification, user_qualifications
@@ -26,6 +27,7 @@ __all__ = [
     "User",
     "UserRole",
     "RefreshToken",
+    "LoginThrottle",
     "Group",
     "user_groups",
     "Qualification",
