@@ -34,7 +34,9 @@ def _client(**kw: object) -> MagicMock:
 def _svc() -> tuple[ClientService, AsyncMock, AsyncMock]:
     repo = AsyncMock()
     user_repo = AsyncMock()
-    return ClientService(client_repo=repo, user_repo=user_repo), repo, user_repo
+    repo.list_users = AsyncMock(return_value=[])  # portal users of the client; none by default
+    svc = ClientService(client_repo=repo, user_repo=user_repo, link_repo=AsyncMock())
+    return svc, repo, user_repo
 
 
 @pytest.mark.asyncio
@@ -208,3 +210,68 @@ async def test_non_manager_is_forbidden(role: UserRole) -> None:
     repo.create.assert_not_awaited()
     repo.update.assert_not_awaited()
     user_repo.create.assert_not_awaited()
+
+
+# ── Cancelling outstanding links of portal users (T234, spec FR-207) ───────────────────────────
+
+
+def _portal_user() -> MagicMock:
+    user = MagicMock(spec=User)
+    user.id = uuid.uuid4()
+    return user
+
+
+@pytest.mark.asyncio
+async def test_deactivating_a_client_cancels_the_links_of_its_portal_users() -> None:
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    client = MagicMock(is_active=True)
+    portal = [_portal_user(), _portal_user()]
+    repo.get_by_id = AsyncMock(return_value=client)
+    repo.list_users = AsyncMock(return_value=portal)
+    repo.update = AsyncMock(return_value=client)
+
+    await svc.edit_client(actor, uuid.uuid4(), {"is_active": False})
+
+    repo.deactivate_client_users.assert_awaited_once()
+    svc._link_repo.cancel_for_users.assert_awaited_once_with([u.id for u in portal])
+
+
+@pytest.mark.asyncio
+async def test_editing_a_client_without_deactivating_it_cancels_nothing() -> None:
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    repo.get_by_id = AsyncMock(return_value=MagicMock(is_active=True))
+    repo.update = AsyncMock()
+
+    await svc.edit_client(actor, uuid.uuid4(), {"contact_name": "New Name"})
+
+    svc._link_repo.cancel_for_users.assert_not_awaited()
+    repo.deactivate_client_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_client_cancels_the_links_of_its_portal_users() -> None:
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.admin, organization_id=uuid.uuid4())
+    portal = [_portal_user()]
+    repo.get_by_id = AsyncMock(return_value=MagicMock())
+    repo.count_non_deleted_projects = AsyncMock(return_value=0)
+    repo.list_users = AsyncMock(return_value=portal)
+
+    await svc.soft_delete(actor, uuid.uuid4())
+
+    svc._link_repo.cancel_for_users.assert_awaited_once_with([portal[0].id])
+
+
+@pytest.mark.asyncio
+async def test_a_refused_client_deletion_cancels_nothing() -> None:
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.admin, organization_id=uuid.uuid4())
+    repo.get_by_id = AsyncMock(return_value=MagicMock())
+    repo.count_non_deleted_projects = AsyncMock(return_value=2)
+
+    with pytest.raises(ConflictError):
+        await svc.soft_delete(actor, uuid.uuid4())
+
+    svc._link_repo.cancel_for_users.assert_not_awaited()

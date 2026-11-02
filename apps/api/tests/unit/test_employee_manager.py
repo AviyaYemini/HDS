@@ -6,6 +6,7 @@ Covers: FR-011, FR-011a, FR-012, FR-014, FR-015, FR-016, FR-028, NFR-005.
 """
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,13 +26,16 @@ def _make_user(**kwargs: object) -> User:
     user.role = kwargs.get("role", UserRole.employee)
     user.is_active = kwargs.get("is_active", True)
     user.is_deleted = kwargs.get("is_deleted", False)
+    # Most test accounts have been active at some point; a pending one passes activated_at=None.
+    user.activated_at = kwargs.get("activated_at", datetime.now(UTC))
     return user
 
 
 def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock, AsyncMock]:
     user_repo = user_repo or AsyncMock()
     token_repo = AsyncMock()
-    return EmployeeService(user_repo=user_repo, token_repo=token_repo), user_repo, token_repo
+    svc = EmployeeService(user_repo=user_repo, token_repo=token_repo, link_repo=AsyncMock())
+    return svc, user_repo, token_repo
 
 
 _VALID = {
@@ -236,7 +240,9 @@ async def test_deactivate_revokes_all_sessions() -> None:
 
     await svc.deactivate(actor, target.id)
 
-    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=False)
+    user_repo.update.assert_awaited_once_with(
+        target.id, actor.organization_id, is_active=False, activated_at=target.activated_at
+    )
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
 
 
@@ -352,3 +358,61 @@ async def test_list_employees_scopes_to_the_actors_organisation() -> None:
         group_id=gid,
         qualification_id=None,
     )
+
+
+# ── Cancelling outstanding links (T234, spec FR-207) ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_deactivate_cancels_the_users_outstanding_links() -> None:
+    actor = _make_user(role=UserRole.manager)
+    target = _make_user(role=UserRole.employee)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(is_active=False))
+
+    await svc.deactivate(actor, target.id)
+
+    svc._link_repo.cancel_for_user.assert_awaited_once_with(target.id)
+
+
+@pytest.mark.asyncio
+async def test_deactivate_stamps_activated_at_when_it_is_missing() -> None:
+    """Defence in depth: a deactivated account must never look like a pending one."""
+    actor = _make_user(role=UserRole.manager)
+    target = _make_user(role=UserRole.employee, activated_at=None)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    user_repo.update = AsyncMock(return_value=_make_user(is_active=False))
+
+    await svc.deactivate(actor, target.id)
+
+    assert isinstance(user_repo.update.await_args.kwargs["activated_at"], datetime)
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_cancels_the_users_outstanding_links() -> None:
+    org_id = uuid.uuid4()
+    actor = _make_user(role=UserRole.admin, org_id=org_id)
+    target = _make_user(role=UserRole.employee, org_id=org_id)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+
+    await svc.soft_delete(actor, target.id)
+
+    svc._link_repo.cancel_for_user.assert_awaited_once_with(target.id)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_deactivation_cancels_nothing() -> None:
+    org_id = uuid.uuid4()
+    actor = _make_user(role=UserRole.manager, org_id=org_id)
+    target = _make_user(role=UserRole.admin, org_id=org_id)  # only an Admin may change an Admin
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=target)
+
+    with pytest.raises(ForbiddenError):
+        await svc.deactivate(actor, target.id)
+
+    svc._link_repo.cancel_for_user.assert_not_awaited()
+    user_repo.update.assert_not_awaited()

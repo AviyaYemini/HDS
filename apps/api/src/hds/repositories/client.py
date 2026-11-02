@@ -94,6 +94,9 @@ class ClientRepository(OrgScopedRepository[Client]):
     async def deactivate_client_users(self, client_id: uuid.UUID) -> None:
         """Deactivate every non-deleted user of a client so they can no longer sign in.
 
+        ``activated_at`` is kept, or set to now where it was empty, so a deactivated portal user
+        can never be mistaken for a pending (never activated) account.
+
         Not scoped by organisation: pass a ``client_id`` the service already verified belongs
         to the caller's organisation.
 
@@ -103,7 +106,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         await self.session.execute(
             update(User)
             .where(User.client_id == client_id, User.is_deleted.is_(False))
-            .values(is_active=False)
+            .values(is_active=False, activated_at=func.coalesce(User.activated_at, func.now()))
         )
         await self.session.flush()
 

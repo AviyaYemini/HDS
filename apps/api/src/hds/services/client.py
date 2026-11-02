@@ -16,6 +16,7 @@ from hds.core.security import hash_password
 from hds.models.client import Client
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.employee import validate_initial_password
 
@@ -23,15 +24,34 @@ from hds.services.employee import validate_initial_password
 class ClientService:
     """Client records and the portal accounts attached to them."""
 
-    def __init__(self, client_repo: ClientRepository, user_repo: UserRepository) -> None:
+    def __init__(
+        self,
+        client_repo: ClientRepository,
+        user_repo: UserRepository,
+        link_repo: InvitationTokenRepository,
+    ) -> None:
         """Wire the service.
 
         Args:
             client_repo: Client storage.
             user_repo: User storage for client portal accounts.
+            link_repo: Used to cancel the outstanding links of portal users when their client is
+                deactivated or deleted.
         """
         self._client_repo = client_repo
         self._user_repo = user_repo
+        self._link_repo = link_repo
+
+    async def _deactivate_portal_users(self, client_id: uuid.UUID, org_id: uuid.UUID) -> None:
+        """Deactivate every portal user of a client and cancel their outstanding links.
+
+        Args:
+            client_id: A client already verified to belong to ``org_id``.
+            org_id: The caller's organisation.
+        """
+        portal_users = await self._client_repo.list_users(client_id, org_id)
+        await self._link_repo.cancel_for_users([u.id for u in portal_users])
+        await self._client_repo.deactivate_client_users(client_id)
 
     async def create_client(self, actor: User, data: dict[str, Any]) -> Client:
         """Create a client in the actor's organisation (Manager or Admin).
@@ -72,7 +92,7 @@ class ClientService:
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         if data.get("is_active") is False and existing.is_active:
-            await self._client_repo.deactivate_client_users(id)
+            await self._deactivate_portal_users(id, actor.organization_id)
         return await self._client_repo.update(id, actor.organization_id, **data)
 
     async def create_client_user(
@@ -161,5 +181,5 @@ class ClientService:
                 code="clients.has_projects",
                 detail="Cannot delete a client that has active projects.",
             )
-        await self._client_repo.deactivate_client_users(id)
+        await self._deactivate_portal_users(id, actor.organization_id)
         await self._client_repo.soft_delete(id, actor.organization_id)

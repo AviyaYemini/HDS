@@ -9,6 +9,7 @@ sessions so it takes effect at once.
 """
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -21,6 +22,7 @@ from hds.core.exceptions import (
 )
 from hds.core.security import hash_password
 from hds.models.user import User, UserRole
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
@@ -65,15 +67,23 @@ def validate_hourly_rate(rate: Any) -> None:
 class EmployeeService:
     """Profile access for everyone and employee administration for Managers and Admins."""
 
-    def __init__(self, user_repo: UserRepository, token_repo: RefreshTokenRepository) -> None:
+    def __init__(
+        self,
+        user_repo: UserRepository,
+        token_repo: RefreshTokenRepository,
+        link_repo: InvitationTokenRepository,
+    ) -> None:
         """Wire the service.
 
         Args:
             user_repo: User storage.
             token_repo: Used to end sessions when access changes.
+            link_repo: Used to cancel outstanding invitation and reset links when an account is
+                deactivated or deleted.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
+        self._link_repo = link_repo
 
     # ── Self-service ─────────────────────────────────────────────────────────
 
@@ -313,15 +323,24 @@ class EmployeeService:
             ConflictError: ``users.last_admin`` (HTTP 409).
 
         Side effects:
-            Revokes the user's refresh tokens, ending their sessions.
+            Revokes the user's refresh tokens, ending their sessions, and cancels their
+            outstanding invitation and reset links so none can bring the account back.
+            ``activated_at`` is kept, or set to now if it was missing, so the account can never
+            be mistaken for a pending one.
         """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, actor.organization_id, is_active=False)
+        updated = await self._user_repo.update(
+            target_id,
+            actor.organization_id,
+            is_active=False,
+            activated_at=target.activated_at or datetime.now(UTC),
+        )
         await self._token_repo.revoke_all_for_user(target_id)
+        await self._link_repo.cancel_for_user(target_id)
         return updated
 
     async def reactivate(self, actor: User, target_id: uuid.UUID) -> User:
@@ -356,7 +375,7 @@ class EmployeeService:
             ConflictError: ``users.last_admin`` (HTTP 409).
 
         Side effects:
-            Revokes the user's refresh tokens.
+            Revokes the user's refresh tokens and cancels their outstanding links.
         """
         ensure_role(actor, *ADMIN_ROLES)
         target = await self._get_target(actor, target_id)
@@ -364,6 +383,7 @@ class EmployeeService:
             await self._guard_last_admin(target)
         await self._user_repo.soft_delete(target_id, actor.organization_id)
         await self._token_repo.revoke_all_for_user(target_id)
+        await self._link_repo.cancel_for_user(target_id)
 
     # ── Guards ───────────────────────────────────────────────────────────────
 

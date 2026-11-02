@@ -20,6 +20,7 @@ from hds.models.group import Group
 from hds.models.qualification import Qualification
 from hds.models.user import User, UserRole
 from hds.repositories.group import GroupRepository
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -106,7 +107,11 @@ class QualificationRead(BaseModel):
 
 
 def _employee_svc(db: AsyncSession) -> EmployeeService:
-    return EmployeeService(user_repo=UserRepository(db), token_repo=RefreshTokenRepository(db))
+    return EmployeeService(
+        user_repo=UserRepository(db),
+        token_repo=RefreshTokenRepository(db),
+        link_repo=InvitationTokenRepository(db),
+    )
 
 
 async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: User) -> None:

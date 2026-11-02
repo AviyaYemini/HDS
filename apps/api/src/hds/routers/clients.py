@@ -16,6 +16,7 @@ from hds.core.deps import require_admin, require_manager
 from hds.core.types import Name, Password, Phone, StrictDate
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.client import ClientService
 
@@ -94,7 +95,11 @@ class ClientUserCreateRequest(BaseModel):
 
 
 def _svc(db: AsyncSession) -> ClientService:
-    return ClientService(client_repo=ClientRepository(db), user_repo=UserRepository(db))
+    return ClientService(
+        client_repo=ClientRepository(db),
+        user_repo=UserRepository(db),
+        link_repo=InvitationTokenRepository(db),
+    )
 
 
 @router.get(
