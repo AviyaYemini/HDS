@@ -62,12 +62,12 @@ async def test_create_employee_success_hashes_password() -> None:
     svc, user_repo, _ = _svc()
     user_repo.get_by_email = AsyncMock(return_value=None)
     created = _make_user()
-    user_repo.create = AsyncMock(return_value=created)
+    user_repo.create_if_absent = AsyncMock(return_value=(created, True))
 
     result = await svc.create_employee(actor, dict(_VALID))
 
     assert result is created
-    org_id, data = user_repo.create.await_args.args
+    org_id, data = user_repo.create_if_absent.await_args.args
     assert org_id == actor.organization_id
     assert "initial_password" not in data
     assert data["password_hash"].startswith("$argon2id$")
@@ -108,11 +108,11 @@ async def test_create_employee_short_initial_password_rejected() -> None:
 async def test_create_employee_password_of_exactly_12_chars_accepted() -> None:
     svc, user_repo, _ = _svc()
     user_repo.get_by_email = AsyncMock(return_value=None)
-    user_repo.create = AsyncMock(return_value=_make_user())
+    user_repo.create_if_absent = AsyncMock(return_value=(_make_user(), True))
     await svc.create_employee(
         _make_user(role=UserRole.manager), {**_VALID, "initial_password": "x" * 12}
     )
-    user_repo.create.assert_awaited_once()
+    user_repo.create_if_absent.assert_awaited_once()
 
 
 @pytest.mark.parametrize("rate", [Decimal("0"), Decimal("-1")])

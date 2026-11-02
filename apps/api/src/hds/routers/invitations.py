@@ -99,7 +99,9 @@ def _queue_reset_job(
         "Admin; Client users are created from the client record (`users.role_invalid`). "
         "An email that belongs to an active account, or to another organisation, returns "
         "409 (`users.duplicate_email`); a deactivated account returns 409 "
-        "(`invitations.account_deactivated`) and must be reactivated by staff instead."
+        "(`invitations.account_deactivated`) and must be reactivated by staff instead. "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def create_invitation(
@@ -117,6 +119,8 @@ async def create_invitation(
     (`users.role_invalid`). An email that belongs to an active account, or to another
     organisation, returns 409 (`users.duplicate_email`); a deactivated account returns 409
     (`invitations.account_deactivated`) and must be reactivated by staff instead.
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     await _svc(db, mailer).create_invitation(
         actor=current_user, email=str(body.email), role=body.role
@@ -133,7 +137,9 @@ async def create_invitation(
         "account. A token for an account that is not pending (already active, or "
         "deactivated) returns 401 (`auth.token_used`) and changes nothing, as does a "
         "spent or cancelled token; an unknown or expired token returns 401 "
-        "(`auth.token_expired`). The password needs at least 12 characters."
+        "(`auth.token_expired`). The password needs at least 12 characters. "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def accept_invitation(
@@ -147,6 +153,8 @@ async def accept_invitation(
     token for an account that is not pending (already active, or deactivated) returns 401
     (`auth.token_used`) and changes nothing, as does a spent or cancelled token; an unknown or
     expired token returns 401 (`auth.token_expired`). The password needs at least 12 characters.
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     await _svc(db, mailer).accept_invitation(raw_token=body.token, new_password=body.password)
 
@@ -203,7 +211,9 @@ async def request_password_reset(
         "An unknown or "
         "expired token returns 401 (`auth.token_expired`); a spent or cancelled token, or "
         "a token for an account that is not active, returns 401 (`auth.token_used`) and "
-        "changes nothing."
+        "changes nothing. "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def confirm_password_reset(
@@ -218,5 +228,7 @@ async def confirm_password_reset(
     is cancelled, and any sign-in lock is cleared. An unknown or expired token returns 401
     (`auth.token_expired`); a spent or cancelled token, or a token for an account that is not
     active, returns 401 (`auth.token_used`) and changes nothing.
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     await _svc(db, mailer).reset_password(raw_token=body.token, new_password=body.new_password)

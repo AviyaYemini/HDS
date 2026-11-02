@@ -111,7 +111,7 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
         failures, locked_until = (await self.session.execute(upsert)).one()
         return int(failures), locked_until
 
-    async def purge_stale(self, older_than: datetime, now: datetime, limit: int = 50) -> None:
+    async def purge_stale(self, older_than: datetime, now: datetime, limit: int = 50) -> int:
         """Delete up to ``limit`` unlocked rows not touched since ``older_than``.
 
         A row is unlocked when ``locked_until`` is empty or in the past: ``network`` and ``reset``
@@ -122,6 +122,9 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
             older_than: Timezone-aware UTC cut-off on ``updated_at``.
             now: Timezone-aware UTC current time.
             limit: The most rows to delete in one call.
+
+        Returns:
+            How many rows were deleted.
         """
         stale = (
             select(LoginThrottle.kind, LoginThrottle.key_hash)
@@ -132,8 +135,9 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
-        await self.session.execute(
+        result = await self.session.execute(
             delete(LoginThrottle).where(
                 tuple_(LoginThrottle.kind, LoginThrottle.key_hash).in_(stale)
             )
         )
+        return int(result.rowcount)  # type: ignore[attr-defined]

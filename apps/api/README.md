@@ -14,7 +14,7 @@ src/hds/
   models/          SQLAlchemy tables and constraints
   core/            settings, security, errors, i18n, logging, dependencies
   locales/         translation files keyed by error code
-  scripts/         seed_dev, export_openapi, dev_issue_link
+  scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records
   tools/           check_imports (the layering checker)
 alembic/           database migrations
 tests/             unit, integration, contract and performance tests
@@ -63,6 +63,7 @@ uv run alembic check                             # models and migrations must ag
 uv run python -m hds.scripts.seed_dev            # development data
 uv run python -m hds.scripts.export_openapi      # print the OpenAPI document
 uv run python -m hds.scripts.dev_issue_link EMAIL invite   # development only: show a token once
+uv run python -m hds.scripts.purge_expired_records         # bulk clean; nothing depends on scheduling it
 ```
 
 `ENVIRONMENT` and `JWT_SECRET_KEY` must be set for every command that starts the application or

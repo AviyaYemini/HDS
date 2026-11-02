@@ -331,3 +331,80 @@ What the first runs showed:
   rule to keep, so it is an `int`.
 
 Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass.
+
+## Group D: bulk purge, settings and documents (T365 to T368, and T349's outstanding text)
+
+Done: `purge_expired_records`, the 503 text in all six operations' descriptions, ADR 007, the
+deployment note in `infra/README.md`, and `docs/hds-api.md`. T366 needed no new work: its settings and
+the proxy note were already added.
+
+Decisions taken here:
+- The script works in batches of 1000 with `SKIP LOCKED`, each in its own transaction. T365 did not ask
+  for this. A single bulk delete could deadlock with revoke-all, because both lock many token rows in
+  no fixed order.
+- The real behaviour is tested on PostgreSQL in `tests/integration/test_purge_expired_records.py`, not
+  only in the unit file T365 named: what matters is what the SQL deletes.
+
+Test changes, and why:
+- `test_employee_manager.py` (2 tests) and `test_client_service.py` (1 test) mock `create_if_absent`
+  instead of `create`, because the services call it now. No assertion changed.
+
+Failing first: 6 cases for the 503 text, the purge tests at import, then 3 parallel creates and the
+partial report.
+
+Reviews:
+
+`/hds-review`: interrogate failed on three nested functions (fixed), and ADR 007 cited the wrong
+requirement for the network limit (fixed).
+
+`/code-review high` (read-only, ten findings, none reproduced at runtime by the reviewer):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | An unknown address's count is removed after the retention while a registered one never decays, so "the same rule" and my new text "cannot tell them apart" are false | **Not fixed, owner to decide.** See below. The false sentence is corrected in `docs/hds-api.md`, and ADR 007 states the gap |
+| 2 | ADR 007 said every hashing path locks and re-reads. The create paths do not | ADR corrected. The review's two examples: two creates of one address answered 422, not the documented 409: **fixed, test first**. A client deactivated during the hash: not fixed, because the spec accepts this window; the ADR says the queue widens it |
+| 3 | A test fixed its clock at import, so it would fail after five minutes | Fixed: times are computed in each test |
+| 4 | Cleanup changes a token's answer from `auth.token_expired` to `auth.invalid_token` | Already stated in D19; added to `docs/hds-api.md` |
+| 5 | No index on `expires_at`, so each batch can scan the table | Not fixed. It would need a migration T339 did not plan, and the script is optional. Raised in the report |
+| 6 | Counts printed only at the end, and failure not documented | Fixed, test first: each count prints when known |
+| 7 | The 503 sentence is repeated in 12 places | Skipped as cosmetic. T349 asked for the description text |
+| 8 | `RETURNING` only to count rows, on hot paths too | Fixed: `rowcount`, as `repositories/base.py` does |
+| 9 | `delete_expired` is copied between two repositories | Skipped as cosmetic |
+| 10 | The 503 behaviour was not marked Proposed | Fixed |
+
+Finding 1, why this was not a stop:
+- The stop rule covers a security property that regresses. This one did not regress here: the gap has
+  existed since Group B, when sign-in began removing stale rows, and it was missed then. The script
+  does the same thing in bulk. **So Group B's "equal answers" was not fully true, and I reported it as
+  if it were.**
+- Each way of closing it is the owner's: a time limit on the account's count needs a rule change and
+  probably a migration, and keeping every row for ever gives up the bound on the table.
+- It is slow: each probe waits over 24 hours and costs failures on a real account.
+
+A rule was broken in this group: the code review ran `uv run pytest tests/integration` with no
+`TEST_DATABASE_URL`, so it used the shared `hds_test`, against the sprint rule. It was the review
+agent's own run, and my brief did not tell it the rule. Afterwards `hds_test` had no connections and
+0 users, organisations and throttle rows. The Group C review may have done the same; it reported not
+running tests.
+
+Mutation results, all caught on `hds_p3_test`, files restored. D5 and D7 first "passed" only because a
+bug in the new test failed on the unmutated code, so the whole set was rerun after the fix:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| D1 | Live refresh tokens deleted | `test_refresh_tokens_past_their_expiry_go_and_the_rest_stay` |
+| D2 | Live links deleted | `test_links_go_only_by_their_expiry` |
+| D3 | Spent links deleted inside their lifetime | same test |
+| D4 | Spent links kept past their expiry | same test |
+| D5 | One batch only | `test_it_works_through_more_rows_than_one_batch_and_prints_only_counts` |
+| D6 | Cut-off ignores the retention | `test_the_throttle_cut_off_is_the_retention_before_now` |
+| D7 | Live lock removed in bulk | `test_stale_unlocked_throttle_rows_go_and_a_live_lock_stays` |
+| D8 | Lost address ignored, employee | `test_two_creates_of_one_address_answer_201_and_409` |
+| D9 | Lost address ignored, client user | `test_a_client_user_that_loses_the_address_during_the_hash_is_a_duplicate` |
+| D10 | Counts printed only at the end | `test_a_failure_part_way_still_reports_what_was_already_removed` |
+
+Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass.
+
+A process note: the first commit of this group went in with one unit test failing, because `tail` hid
+pytest's exit status from the `&&` chain. It was amended before any further work. Later commits read
+pytest's own status.

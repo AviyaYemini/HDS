@@ -73,7 +73,9 @@ def _make_service(db: AsyncSession) -> AuthService:
         "right password; the count restarts at zero when it does, and a successful "
         "sign-in also clears it. Too many failures from one network address inside the "
         "window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; "
-        "a successful sign-in does not clear that count."
+        "a successful sign-in does not clear that count. "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def login(
@@ -92,6 +94,8 @@ async def login(
     it. Too many failures from one network address inside the window return 429
     (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not
     clear that count.
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     settings = get_settings()
     svc = _make_service(db)

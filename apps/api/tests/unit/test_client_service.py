@@ -134,7 +134,7 @@ async def test_create_client_user_hashes_password_and_sets_client_role() -> None
     actor = _actor()
     client_id = uuid.uuid4()
     user_repo.get_by_email = AsyncMock(return_value=None)
-    user_repo.create = AsyncMock(return_value=MagicMock())
+    user_repo.create_if_absent = AsyncMock(return_value=(MagicMock(), True))
 
     await svc.create_client_user(
         actor,
@@ -142,12 +142,27 @@ async def test_create_client_user_hashes_password_and_sets_client_role() -> None
         {"email": "c@hds.test", "full_name": "C", "initial_password": "Correct-Horse-12"},
     )
 
-    org_id, payload = user_repo.create.await_args.args
+    org_id, payload = user_repo.create_if_absent.await_args.args
     assert org_id == actor.organization_id
     assert payload["role"] == UserRole.client
     assert payload["client_id"] == client_id
     assert "initial_password" not in payload
     assert payload["password_hash"].startswith("$argon2id$")
+
+
+@pytest.mark.asyncio
+async def test_a_client_user_that_loses_the_address_during_the_hash_is_a_duplicate() -> None:
+    svc, _, user_repo = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.create_if_absent = AsyncMock(return_value=(MagicMock(), False))
+
+    with pytest.raises(ConflictError) as exc_info:
+        await svc.create_client_user(
+            _actor(),
+            uuid.uuid4(),
+            {"email": "c@hds.test", "full_name": "C", "initial_password": "Correct-Horse-12"},
+        )
+    assert exc_info.value.code == "users.duplicate_email"
 
 
 @pytest.mark.asyncio

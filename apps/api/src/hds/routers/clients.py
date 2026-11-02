@@ -262,7 +262,9 @@ async def list_client_users(
         "Manager or Admin. Create a portal account with the Client role for this "
         "client, with an initial password of at least 12 characters. A duplicate email "
         "returns 409 (`users.duplicate_email`); an inactive client returns 409 "
-        "(`users.client_inactive`)."
+        "(`users.client_inactive`). "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def create_client_user(
@@ -276,6 +278,8 @@ async def create_client_user(
     Manager or Admin. Create a portal account with the Client role for this client, with an
     initial password of at least 12 characters. A duplicate email returns 409
     (`users.duplicate_email`); an inactive client returns 409 (`users.client_inactive`).
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     svc = _svc(db)
     return await svc.create_client_user(

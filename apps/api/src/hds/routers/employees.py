@@ -172,7 +172,9 @@ async def list_employees(
         "Manager or Admin. Create an account with an initial password of at least 12 "
         "characters. The role defaults to employee; only an Admin may create an Admin, "
         "and Client users have their own endpoints (`users.role_invalid`). A duplicate "
-        "email returns 409 (`users.duplicate_email`)."
+        "email returns 409 (`users.duplicate_email`). "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def create_employee(
@@ -185,7 +187,8 @@ async def create_employee(
     Manager or Admin. Create an account with an initial password of at least 12 characters. The
     role defaults to employee; only an Admin may create an Admin, and Client users have their
     own endpoints (`users.role_invalid`). A duplicate email returns 409
-    (`users.duplicate_email`).
+    (`users.duplicate_email`). Answers 503 (`service.busy`) with `Retry-After` when the
+    password-hashing queue is full; nothing is changed.
     """
     svc = _employee_svc(db)
     return await svc.create_employee(actor=current_user, data=body.model_dump())

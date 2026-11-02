@@ -230,7 +230,15 @@ class EmployeeService:
         await self._user_repo.release_connection()  # none held while hashing (FR-222)
         data["password_hash"] = await passwords.hash_password(initial_password)
         data["role"] = role
-        return await self._user_repo.create(actor.organization_id, data)
+        # Hashing can take a while, so another request may have taken the address since the check.
+        user, created = await self._user_repo.create_if_absent(actor.organization_id, data)
+        if not created:
+            raise ConflictError(
+                code="users.duplicate_email",
+                detail=f"Email '{email}' is already in use.",
+                field="email",
+            )
+        return user
 
     async def promote_to_manager(self, actor: User, target_id: uuid.UUID) -> User:
         """Set a user's role to Manager (Manager or Admin).

@@ -123,6 +123,30 @@ class InvitationTokenRepository:
         await self.session.flush()
         return result.scalar_one_or_none() is not None
 
+    async def delete_expired(self, now: datetime, limit: int) -> int:
+        """Delete up to ``limit`` links past their expiry, of any user.
+
+        Only the expiry decides, as in ``delete_expired_for_user``. Rows another request is using
+        are skipped, so a bulk clean never waits for one.
+
+        Args:
+            now: Timezone-aware UTC current time.
+            limit: The most rows to delete in one call.
+
+        Returns:
+            How many rows were deleted.
+        """
+        expired = (
+            select(InvitationToken.id)
+            .where(InvitationToken.expires_at <= now)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.session.execute(
+            delete(InvitationToken).where(InvitationToken.id.in_(expired))
+        )
+        return int(result.rowcount)  # type: ignore[attr-defined]
+
     async def delete_expired_for_user(self, user_id: uuid.UUID, now: datetime) -> None:
         """Delete this user's links past their expiry.
 

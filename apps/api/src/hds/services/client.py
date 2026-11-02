@@ -155,7 +155,15 @@ class ClientService:
         data["password_hash"] = await passwords.hash_password(initial_password)
         data["role"] = UserRole.client
         data["client_id"] = client_id
-        return await self._user_repo.create(actor.organization_id, data)
+        # Hashing can take a while, so another request may have taken the address since the check.
+        user, created = await self._user_repo.create_if_absent(actor.organization_id, data)
+        if not created:
+            raise ConflictError(
+                code="users.duplicate_email",
+                detail=f"Email '{email}' is already in use.",
+                field="email",
+            )
+        return user
 
     async def remove_client_user(
         self, actor: User, client_id: uuid.UUID, user_id: uuid.UUID
