@@ -63,11 +63,14 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
     response_class=Response,
     summary="Invite a user",
     description=(
-        "Manager or Admin. Create an inactive account for the email, or reuse an "
-        "inactive one, and email a one-time invitation token valid for 7 days. Only an "
-        "Admin may invite an Admin; Client users are created from the client record "
-        "(`users.role_invalid`). An email that belongs to an active account returns 409 "
-        "(`users.duplicate_email`)."
+        "Manager or Admin. Invite an email address and email a one-time invitation token "
+        "valid for 7 days. A new address gets a pending account (never activated). "
+        "Re-inviting a pending account of the same organisation sets the new role and "
+        "replaces the earlier link. Only an Admin may invite an Admin or change a pending "
+        "Admin; Client users are created from the client record (`users.role_invalid`). "
+        "An email that belongs to an active account, or to another organisation, returns "
+        "409 (`users.duplicate_email`); a deactivated account returns 409 "
+        "(`invitations.account_deactivated`) and must be reactivated by staff instead."
     ),
 )
 async def create_invitation(
@@ -78,10 +81,13 @@ async def create_invitation(
 ) -> Response:
     """Invite a user.
 
-    Manager or Admin. Create an inactive account for the email, or reuse an inactive one, and
-    email a one-time invitation token valid for 7 days. Only an Admin may invite an Admin;
-    Client users are created from the client record (`users.role_invalid`). An email that
-    belongs to an active account returns 409 (`users.duplicate_email`).
+    Manager or Admin. Invite an email address and email a one-time invitation token valid for 7
+    days. A new address gets a pending account (never activated). Re-inviting a pending account
+    of the same organisation sets the new role and replaces the earlier link. Only an Admin may
+    invite an Admin or change a pending Admin; Client users are created from the client record
+    (`users.role_invalid`). An email that belongs to an active account, or to another
+    organisation, returns 409 (`users.duplicate_email`); a deactivated account returns 409
+    (`invitations.account_deactivated`) and must be reactivated by staff instead.
     """
     await _svc(db, mailer).create_invitation(
         actor=current_user, email=str(body.email), role=body.role
@@ -94,10 +100,11 @@ async def create_invitation(
     status_code=204,
     summary="Accept an invitation",
     description=(
-        "Public. Redeem an invitation token to set the password and activate the "
-        "account. An unknown or expired token returns 401 (`auth.token_expired`); a "
-        "spent token returns `auth.token_used`. The password needs at least 12 "
-        "characters."
+        "Public. Redeem an invitation token to set the password and activate a pending "
+        "account. A token for an account that is not pending (already active, or "
+        "deactivated) returns 401 (`auth.token_used`) and changes nothing, as does a "
+        "spent or cancelled token; an unknown or expired token returns 401 "
+        "(`auth.token_expired`). The password needs at least 12 characters."
     ),
 )
 async def accept_invitation(
@@ -107,9 +114,10 @@ async def accept_invitation(
 ) -> None:
     """Accept an invitation.
 
-    Public. Redeem an invitation token to set the password and activate the account. An unknown
-    or expired token returns 401 (`auth.token_expired`); a spent token returns
-    `auth.token_used`. The password needs at least 12 characters.
+    Public. Redeem an invitation token to set the password and activate a pending account. A
+    token for an account that is not pending (already active, or deactivated) returns 401
+    (`auth.token_used`) and changes nothing, as does a spent or cancelled token; an unknown or
+    expired token returns 401 (`auth.token_expired`). The password needs at least 12 characters.
     """
     await _svc(db, mailer).accept_invitation(raw_token=body.token, new_password=body.password)
 
@@ -145,9 +153,11 @@ async def request_password_reset(
     status_code=204,
     summary="Confirm a password reset",
     description=(
-        "Public. Redeem a reset token to set a new password. All of the user's refresh "
-        "tokens are revoked, ending every session. An unknown or expired token returns "
-        "401 (`auth.token_expired`); a spent token returns `auth.token_used`."
+        "Public. Redeem a reset token to set a new password for an active account. All "
+        "of the user's refresh tokens are revoked, ending every session. An unknown or "
+        "expired token returns 401 (`auth.token_expired`); a spent or cancelled token, or "
+        "a token for an account that is not active, returns 401 (`auth.token_used`) and "
+        "changes nothing."
     ),
 )
 async def confirm_password_reset(
@@ -157,8 +167,9 @@ async def confirm_password_reset(
 ) -> None:
     """Confirm a password reset.
 
-    Public. Redeem a reset token to set a new password. All of the user's refresh tokens are
-    revoked, ending every session. An unknown or expired token returns 401
-    (`auth.token_expired`); a spent token returns `auth.token_used`.
+    Public. Redeem a reset token to set a new password for an active account. All of the user's
+    refresh tokens are revoked, ending every session. An unknown or expired token returns 401
+    (`auth.token_expired`); a spent or cancelled token, or a token for an account that is not
+    active, returns 401 (`auth.token_used`) and changes nothing.
     """
     await _svc(db, mailer).reset_password(raw_token=body.token, new_password=body.new_password)

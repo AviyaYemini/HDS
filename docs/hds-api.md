@@ -6,6 +6,7 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Resource group | Example endpoints | Notes |
 | --- | --- | --- |
 | Auth | `POST /auth/login`, `/auth/refresh`, `/auth/logout` | Access token 15 minutes; refresh token rotates on every use |
+| Invitations and password reset *(Proposed)* | `POST /auth/invite`, `/auth/invite/accept`, `/auth/password-reset/request`, `/auth/password-reset/confirm` | One-time links. An invitation completes only a pending account (never activated); a deactivated account cannot be invited back; links are cancelled when an account is deactivated, deleted or activated |
 | People | `GET/POST /employees`, `PATCH /employees/{id}`, `GET/POST /groups` | Managers create and edit; only admins delete |
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
 | Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here |
@@ -25,6 +26,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 **Conventions**
 
 - Errors use RFC 9457 problem-details JSON with a stable machine-readable `code`.
+- An account is *pending* (invited, never activated), *active*, *deactivated* or *deleted*. Only accepting an invitation leaves pending; staff reactivation applies to deactivated accounts, and reactivating a pending one returns 409 `users.pending_cannot_reactivate` *(Proposed)*.
 - Timestamps travel as ISO 8601 in UTC; clients render in the site's timezone.
 - Writes that can be retried (job creation, assignment) accept an `Idempotency-Key` header.
 - Breaking changes ship under a new `/api/v2` prefix; additive changes do not.

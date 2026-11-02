@@ -168,9 +168,41 @@ changes.
 - [X] T246 [US2] In `apps/api/src/hds/services/employee.py` make `reactivate` refuse an account whose `activated_at` is null: raise `ConflictError(code="users.pending_cannot_reactivate", ...)` before any write (FR-220); update its docstring and the `description` of `POST /api/v1/employees/{id}/reactivate` in `apps/api/src/hds/routers/employees.py`
 - [X] T247 [P] [US2] Update the existing constructor calls of `EmployeeService` and `ClientService` to pass a fake `InvitationTokenRepository`: `apps/api/tests/unit/test_employee_manager.py`, `apps/api/tests/unit/test_employee_self_service.py` (6 calls) and `apps/api/tests/unit/test_client_service.py`
 - [X] T248 [P] [US2] Add `invitations.account_deactivated` and `users.pending_cannot_reactivate` to `apps/api/src/hds/locales/en.json` and `he.json` (English and Hebrew text for each)
-- [ ] T249 [US2] Update the `description` text of `POST /auth/invite`, `/auth/invite/accept` and `/auth/password-reset/confirm` in `apps/api/src/hds/routers/invitations.py` and the matching section of `docs/hds-api.md`
+- [X] T249 [US2] Update the `description` text of `POST /auth/invite`, `/auth/invite/accept` and `/auth/password-reset/confirm` in `apps/api/src/hds/routers/invitations.py` and the matching section of `docs/hds-api.md`
 
 **Checkpoint**: Stories 1 and 2 pass independently.
+
+### Scope additions recorded during implementation (Phase 4)
+
+Work done in Phase 4 that differs from, or goes beyond, the task text above.
+
+- **T240, migration pre-check**: the migration has a public function `ensure_no_rejected_rows`
+  that runs between the backfill and the constraint. It lists the count and the first 20 account
+  ids (identifiers only, no addresses) and stops, and because PostgreSQL DDL is transactional
+  nothing is left half-applied. `tests/integration/test_migration_014.py` runs the migration on
+  its own scratch database (`hds_migration_014_test`, created and dropped by the fixture) seeded at
+  revision 013 with active, deactivated, re-invited and pending accounts.
+- **T242, one more fixture**: `tests/unit/test_dev_issue_link.py` also builds `User` rows and
+  needed `activated_at` (the SQLite database enforces the check constraint too).
+- **T243, `mark_activated` dropped**: it is not needed, because accepting an invitation passes
+  `activated_at` through the existing `update`. Instead the repository gained `create_if_absent`
+  (the savepoint insert that T244 requires) and a shared `_with_activation` helper used by `create`
+  and `create_if_absent`. `create_if_absent` replaces `create` on the invitation path, so the
+  existing invitation unit tests were updated to mock it.
+- **T244, two guards the task text did not name**: an address that belongs to *another
+  organisation* is a duplicate (409) and is left untouched, because email is unique across the
+  deployment but one organisation must not edit another's accounts (NFR-001); and a Manager cannot
+  change the role of a *pending Admin* (only an Admin may change an Admin, FR-011a). Both are
+  covered by tests.
+- **T245, client portal users**: `ClientService` gained a private helper that lists a client's
+  portal users, cancels their links and deactivates them, used by both client deactivation and
+  deletion; `ClientRepository.deactivate_client_users` keeps `activated_at` or fills it with
+  `COALESCE`. A mutation check showed the integration test fails without it.
+- **T249, `docs/hds-api.md`**: that file is a product-level overview with no per-endpoint section,
+  so a row for the invitation endpoints and one convention line about the account states were
+  added, both marked *Proposed*.
+
+---
 
 ---
 
