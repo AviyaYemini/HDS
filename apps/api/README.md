@@ -43,6 +43,9 @@ Settings are read from the environment (and a `.env` file in development) by
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
 | `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout: the account locks on the failure that reaches the limit, and the count restarts when the lock ends | `5`, `15` |
 | `REFRESH_REUSE_GRACE_SECONDS` | A refresh token used a second time within this many seconds is refused and nothing else happens; later, every session of the user ends. Must be greater than 0 | `10` |
+| `LOGIN_RATE_LIMIT_PER_NETWORK` | Failed sign-ins allowed from one network address in one window of `LOGIN_LOCKOUT_MINUTES`; a success does not clear the count; `0` turns the limit off | `30` |
+| `LOGIN_THROTTLE_RETENTION_HOURS` | Age at which an unlocked throttle row may be removed. Normal requests remove them, so no scheduled job is needed | `24` |
+| `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limit set to `0`: otherwise every user shares the proxy's address and one bad window locks everyone out. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |
 
@@ -81,7 +84,9 @@ and passes when the medians differ by less than 15%; it prints both medians and 
 it by hand before a release and record the result in the pull request. The gating check for the
 same requirement counts the password checks and runs in every test run.
 
-`scripts/contract_cli.sh` runs Schemathesis against a running, seeded server. The operations on which a valid request is correctly refused (a date order, a time zone, the sign-in lockout) skip only "valid data must be accepted", and are listed once, in `tests/contract/unprovable_operations.json`, which the script and the pytest contract suite both read. `scripts/contract_hooks.py` keeps the run's seeded accounts alive (the fuzzer otherwise deactivates its own admin, after which later operations only ever see 401/403) and gives the operations that need related records something real to act on. It writes data, so
+`scripts/contract_cli.sh` runs Schemathesis against a running, seeded server. Start that server
+with `LOGIN_RATE_LIMIT_PER_NETWORK=0`: the run fails sign-ins from one address on purpose, and
+otherwise a second run inside the window could not sign in. The script does not start the server. The operations on which a valid request is correctly refused (a date order, a time zone, the sign-in lockout) skip only "valid data must be accepted", and are listed once, in `tests/contract/unprovable_operations.json`, which the script and the pytest contract suite both read. `scripts/contract_hooks.py` keeps the run's seeded accounts alive (the fuzzer otherwise deactivates its own admin, after which later operations only ever see 401/403) and gives the operations that need related records something real to act on. It writes data, so
 it refuses any database whose name does not end in `_test` or `_scratch`.
 
 ## Quality gates

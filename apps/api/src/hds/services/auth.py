@@ -11,19 +11,29 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import ceil
 from typing import Any, NoReturn
 
 from hds.core import passwords
-from hds.core.exceptions import AuthError
+from hds.core.exceptions import AuthError, RateLimitedError
 from hds.core.security import create_access_token, generate_refresh_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.services.throttle import SignInThrottle, live_lock
 
 
 async def _verify_password(plain: str, hashed: str) -> bool:
     return await passwords.verify_password(plain, hashed)
+
+
+def _locked(locked_until: datetime) -> AuthError:
+    """Build the answer for a locked address, registered or not."""
+    return AuthError(
+        code="auth.account_locked", detail=f"Account locked until {locked_until.isoformat()}"
+    )
 
 
 @dataclass
@@ -50,6 +60,7 @@ class AuthService:
         token_repo: RefreshTokenRepository,
         config: Any,
         link_repo: InvitationTokenRepository,
+        throttle_repo: LoginThrottleRepository,
     ) -> None:
         """Wire the service.
 
@@ -58,13 +69,15 @@ class AuthService:
             token_repo: Refresh-token storage.
             config: Settings supplying token lifetimes, the signing key and lockout limits.
             link_repo: Used to remove the user's expired links after a successful sign-in.
+            throttle_repo: Holds the failure counts that have no account row.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._config = config
         self._link_repo = link_repo
+        self._throttle = SignInThrottle(user_repo, throttle_repo, config)
 
-    async def login(self, email: str, password: str) -> TokenResponse:
+    async def login(self, email: str, password: str, network: str | None = None) -> TokenResponse:
         """Authenticate by email and password and issue a token pair.
 
         Unknown email, wrong password and an inactive account all return the same
@@ -79,8 +92,9 @@ class AuthService:
         between refuses this sign-in instead of leaving a session behind (FR-230).
 
         Args:
-            email: Account email, matched exactly.
+            email: Account email, matched without regard to letter case.
             password: Clear-text password.
+            network: The client's network address, for the per-network limit.
 
         Returns:
             A new access and refresh token.
@@ -88,6 +102,7 @@ class AuthService:
         Raises:
             AuthError: ``auth.invalid_credentials`` (HTTP 401) or ``auth.account_locked``
                 (HTTP 423).
+            RateLimitedError: ``auth.rate_limited`` (HTTP 429) when the network is over its limit.
             ServiceBusyError: ``service.busy`` (HTTP 503) when the hashing queue is full.
 
         Side effects:
@@ -95,36 +110,28 @@ class AuthService:
             refusal does not undo it; on success stores the new refresh-token hash and removes
             the user's expired tokens and links.
         """
+        now = datetime.now(UTC)
+        network_lock = await self._throttle.network_locked_until(network, now)
+        if network_lock is not None:
+            raise RateLimitedError(max(1, ceil((network_lock - now).total_seconds())))
+
         user = await self._user_repo.get_by_email(email)
+        # Judged from what was just read: a lock that has run out simply no longer counts, and the
+        # answer is the same whether or not the address has an account (FR-221).
+        locked_until = await self._throttle.address_locked_until(user, email, now)
+        if locked_until is not None:
+            raise _locked(locked_until)
+
+        await self._user_repo.release_connection()
         if user is None:
             # Do the same expensive check as for a real account, so the answer takes as long and
             # an attacker cannot tell unknown addresses from known ones (FR-214).
-            await self._user_repo.release_connection()
             await passwords.verify_against_dummy(password)
+            await self._throttle.register_failure(None, email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
-        # Judged from the row just read: a lock that has run out simply no longer counts.
-        now = datetime.now(UTC)
-        locked_until = user.locked_until
-        if locked_until is not None:
-            if locked_until.tzinfo is None:
-                locked_until = locked_until.replace(tzinfo=UTC)
-            if now < locked_until:
-                raise AuthError(
-                    code="auth.account_locked",
-                    detail=f"Account locked until {locked_until.isoformat()}",
-                )
-
-        await self._user_repo.release_connection()
         if not await _verify_password(password, user.password_hash):
-            # The repository counts and locks in one statement. The count on ``user`` is the
-            # value from before this failure, so nothing here adds to it.
-            await self._user_repo.register_failed_login(
-                user.id,
-                self._config.LOGIN_MAX_FAILURES,
-                now + timedelta(minutes=self._config.LOGIN_LOCKOUT_MINUTES),
-                now,
-            )
+            await self._throttle.register_failure(user, email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
         if not user.is_active:
@@ -137,6 +144,11 @@ class AuthService:
         current = await self._user_repo.get_for_auth(user.id)
         if current is None or not current.is_active or current.password_hash != verified_hash:
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
+        # Guesses overlap while they wait for a hash, so the lock may have been set since the
+        # first check. The current time matters: ``now`` is from before that wait (FR-221).
+        locked_until = live_lock(current.locked_until, datetime.now(UTC))
+        if locked_until is not None:
+            raise _locked(locked_until)
 
         await self._user_repo.reset_failed_attempts(user.id)
 

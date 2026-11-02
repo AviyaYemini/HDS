@@ -27,6 +27,7 @@ import time
 import pytest
 from httpx import AsyncClient
 
+from hds.core.config import get_settings
 from hds.models.user import User
 
 pytestmark = pytest.mark.timing
@@ -56,8 +57,11 @@ def mann_whitney_p(a: list[float], b: list[float]) -> float:
 
 
 async def test_unknown_and_known_addresses_cannot_be_told_apart_by_timing(
-    async_client: AsyncClient, seed_users: dict[str, User]
+    async_client: AsyncClient, seed_users: dict[str, User], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # 500 wrong sign-ins for one unregistered address would lock it after 5, and no success can
+    # clear that count. What is measured here is the password check, not the lock.
+    monkeypatch.setattr(get_settings(), "LOGIN_MAX_FAILURES", SAMPLES * 10)
     unknown: list[float] = []
     known: list[float] = []
     for _ in range(SAMPLES):

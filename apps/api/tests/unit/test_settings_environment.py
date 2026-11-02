@@ -158,3 +158,14 @@ def test_the_reuse_grace_window_must_be_positive(
         monkeypatch, ENVIRONMENT="test", JWT_SECRET_KEY=SHORT, REFRESH_REUSE_GRACE_SECONDS=value
     )
     assert "REFRESH_REUSE_GRACE_SECONDS" in text
+
+
+def test_the_network_limit_is_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The test suite turns it off, so this is what guards the real default."""
+    monkeypatch.delenv("LOGIN_RATE_LIMIT_PER_NETWORK", raising=False)
+    assert (
+        build(
+            monkeypatch, ENVIRONMENT="development", JWT_SECRET_KEY="x"
+        ).LOGIN_RATE_LIMIT_PER_NETWORK
+        == 30
+    )

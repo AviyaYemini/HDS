@@ -20,6 +20,7 @@ from hds.core.exceptions import (
     DomainValidationError,
     ForbiddenError,
     NotFoundError,
+    RateLimitedError,
     ServiceBusyError,
 )
 from hds.core.request_context import get_request_id
@@ -71,6 +72,18 @@ def register_exception_handlers(app: FastAPI) -> None:
         """Answer 401, or 423 for a locked account so clients can show a lockout message."""
         status = 423 if exc.code == "auth.account_locked" else 401
         return _problem(status, "Unauthorised", exc.detail, exc.code, request)
+
+    @app.exception_handler(RateLimitedError)
+    async def handle_rate_limited(request: Request, exc: RateLimitedError) -> JSONResponse:
+        """Answer 429 with ``Retry-After`` when a network address is over its limit."""
+        return _problem(
+            429,
+            "Too Many Requests",
+            exc.detail,
+            exc.code,
+            request,
+            headers={"Retry-After": str(exc.retry_after)},
+        )
 
     @app.exception_handler(ServiceBusyError)
     async def handle_busy(request: Request, exc: ServiceBusyError) -> JSONResponse:

@@ -19,6 +19,7 @@ _DESCRIPTIONS = {
     "409": "The request conflicts with the current state (duplicate, last admin, in use).",
     "422": "The request is invalid.",
     "423": "The account is temporarily locked after repeated failed sign-ins.",
+    "429": "Too many failed sign-ins from this network; retry after the Retry-After interval.",
     "503": "The password-hashing queue is full; try again after the Retry-After interval.",
 }
 _PROBLEM_SCHEMA: dict[str, Any] = {
@@ -95,7 +96,7 @@ def _statuses(
     if path in _PUBLIC_401:
         found.add("401")
     if path == "/auth/login":
-        found.add("423")
+        found |= {"423", "429"}
     if method != "get" and "{" not in path and operation.get("security"):
         found.add("409")
     if (path, method) in _HASHING:

@@ -59,6 +59,14 @@ def account(*, is_active: bool = True) -> User:
     return user
 
 
+def _no_counts() -> AsyncMock:
+    """A throttle store holding nothing."""
+    store = AsyncMock()
+    store.get.return_value = None
+    store.register_failure.return_value = (1, None)
+    return store
+
+
 def service(user: User | None) -> AuthService:
     users = AsyncMock()
     users.get_by_email.return_value = user
@@ -66,7 +74,9 @@ def service(user: User | None) -> AuthService:
     config = MagicMock()
     config.LOGIN_MAX_FAILURES = 5
     config.LOGIN_LOCKOUT_MINUTES = 15
-    return AuthService(users, AsyncMock(), config, AsyncMock())
+    config.LOGIN_RATE_LIMIT_PER_NETWORK = 0
+    config.LOGIN_THROTTLE_RETENTION_HOURS = 24
+    return AuthService(users, AsyncMock(), config, AsyncMock(), _no_counts())
 
 
 CASES = {

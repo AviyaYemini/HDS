@@ -31,6 +31,7 @@ Point it at a scratch database, start the server with the same URL, then rerun:
   docker run -d --name hds-scratch -e POSTGRES_USER=hds -e POSTGRES_PASSWORD=hds \
     -e POSTGRES_DB=hds_scratch -p 5433:5432 postgres:16-alpine
   export DATABASE_URL=postgresql+asyncpg://hds:hds@localhost:5433/hds_scratch
+  export LOGIN_RATE_LIMIT_PER_NETWORK=0   # the run fails sign-ins from one address on purpose
   uv run alembic upgrade head && uv run python -m hds.scripts.seed_dev
   uv run uvicorn hds.main:app --port 8000 &
   scripts/contract_cli.sh http://localhost:8000

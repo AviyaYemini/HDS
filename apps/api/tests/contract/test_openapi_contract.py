@@ -10,6 +10,7 @@ Covers: FR-028 (invalid input is a validation error, never a server error); Cons
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ import schemathesis
 from hypothesis import settings
 from schemathesis import checks as st_checks
 
+from hds.core.config import get_settings
 from hds.main import app
 from tests.conftest import RoleEnv
 
@@ -39,8 +41,14 @@ schema = schemathesis.openapi.from_asgi("/api/v1/openapi.json", app)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _database(role_env: RoleEnv) -> RoleEnv:
-    return role_env
+def _database(role_env: RoleEnv) -> Iterator[RoleEnv]:
+    # Generated requests can repeat an address, and 423 is not an answer the "valid data" check
+    # accepts; login is exempt from that check only in the command-line suite.
+    settings = get_settings()
+    limit = settings.LOGIN_MAX_FAILURES
+    settings.LOGIN_MAX_FAILURES = 1_000_000
+    yield role_env
+    settings.LOGIN_MAX_FAILURES = limit
 
 
 @schema.parametrize()

@@ -4,16 +4,18 @@ Layer: routers. Delegates to ``AuthService``; the only public endpoints are logi
 Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the other routers.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.client_address import client_address
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Email, Password, Token
 from hds.models.user import User
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
@@ -53,6 +55,7 @@ def _make_service(db: AsyncSession) -> AuthService:
         token_repo=RefreshTokenRepository(db),
         config=settings,
         link_repo=InvitationTokenRepository(db),
+        throttle_repo=LoginThrottleRepository(db),
     )
 
 
@@ -64,13 +67,17 @@ def _make_service(db: AsyncSession) -> AuthService:
         "Exchange an email and password for an access token and a refresh token. The "
         "email is matched without regard to letter case. Unknown email, wrong password "
         "and inactive account all return the same 401 (`auth.invalid_credentials`), "
-        "after the same amount of work. The account locks after exactly the configured number "
-        "of consecutive wrong passwords (default 5) and the call then returns 423 "
-        "(`auth.account_locked`) until the cooldown ends; the count restarts at zero "
-        "when it does, and a successful sign-in also clears it."
+        "after the same amount of work. Any address, registered or not, locks after "
+        "exactly the configured number of consecutive failures (default 5) and the call "
+        "then returns 423 (`auth.account_locked`) until the cooldown ends, even with the "
+        "right password; the count restarts at zero when it does, and a successful "
+        "sign-in also clears it. Too many failures from one network address inside the "
+        "window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; "
+        "a successful sign-in does not clear that count."
     ),
 )
 async def login(
+    request: Request,
     body: LoginRequest,
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> TokenResponse:
@@ -78,14 +85,18 @@ async def login(
 
     Exchange an email and password for an access token and a refresh token. The email is matched
     without regard to letter case. Unknown email, wrong password and inactive account all return
-    the same 401 (`auth.invalid_credentials`), after the same amount of work. The account locks
-    after exactly the configured number of consecutive wrong passwords (default 5) and the call
-    then returns 423 (`auth.account_locked`) until the cooldown ends; the count restarts at zero
-    when it does, and a successful sign-in also clears it.
+    the same 401 (`auth.invalid_credentials`), after the same amount of work. Any address,
+    registered or not, locks after exactly the configured number of consecutive failures (default
+    5) and the call then returns 423 (`auth.account_locked`) until the cooldown ends, even with the
+    right password; the count restarts at zero when it does, and a successful sign-in also clears
+    it. Too many failures from one network address inside the window return 429
+    (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not
+    clear that count.
     """
     settings = get_settings()
     svc = _make_service(db)
-    result = await svc.login(str(body.email), body.password)
+    network = client_address(request, settings.TRUSTED_PROXY_COUNT)
+    result = await svc.login(str(body.email), body.password, network)
     return TokenResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,

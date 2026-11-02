@@ -190,6 +190,9 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://hds:hds_scratch@localhost:5432/hds_scratch
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
       ENVIRONMENT: test
+      # The fuzzer fails sign-ins from one address on purpose; without this the second run in a
+      # window could not even sign in.
+      LOGIN_RATE_LIMIT_PER_NETWORK: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4

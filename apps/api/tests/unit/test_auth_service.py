@@ -28,6 +28,14 @@ def _make_user(**kwargs: object) -> User:
     return user
 
 
+def _no_counts() -> AsyncMock:
+    """A throttle store holding nothing."""
+    store = AsyncMock()
+    store.get.return_value = None
+    store.register_failure.return_value = (1, None)
+    return store
+
+
 def _make_config() -> MagicMock:
     cfg = MagicMock()
     cfg.JWT_SECRET_KEY.get_secret_value.return_value = "test-only-jwt-secret-0123456789-abcdef"
@@ -36,6 +44,8 @@ def _make_config() -> MagicMock:
     cfg.REFRESH_TOKEN_TTL_DAYS = 7
     cfg.LOGIN_MAX_FAILURES = 5
     cfg.LOGIN_LOCKOUT_MINUTES = 15
+    cfg.LOGIN_RATE_LIMIT_PER_NETWORK = 0
+    cfg.LOGIN_THROTTLE_RETENTION_HOURS = 24
     cfg.REFRESH_REUSE_GRACE_SECONDS = 10
     return cfg
 
@@ -50,7 +60,7 @@ async def test_login_correct_credentials_returns_token_response() -> None:
     token_repo = AsyncMock()
     token_repo.create = AsyncMock()
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
     # patch verify at module level
     import hds.services.auth as auth_module
 
@@ -81,7 +91,7 @@ async def test_wrong_password_is_counted_by_the_repository_with_the_configured_l
     user_repo.get_by_email.return_value = user
     user_repo.register_failed_login.return_value = (4, None)
     _wrong_password(monkeypatch)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "wrong")
@@ -103,7 +113,7 @@ async def test_the_service_does_not_add_one_to_the_count_itself(
     user_repo.get_by_email.return_value = user
     user_repo.register_failed_login.return_value = (stored_count + 1, None)
     _wrong_password(monkeypatch)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError):
         await service.login("test@hds.test", "wrong")
@@ -143,7 +153,7 @@ async def test_an_expired_lock_no_longer_counts_and_nothing_is_written_before_ve
     import hds.services.auth as auth_module
 
     monkeypatch.setattr(auth_module, "_verify_password", verify)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "wrong")
@@ -163,7 +173,7 @@ async def test_a_live_lock_is_not_cleared_by_waiting_and_refuses_before_any_pass
 
     verify = AsyncMock()
     monkeypatch.setattr(auth_module, "_verify_password", verify)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "anything")
@@ -181,7 +191,7 @@ async def test_login_while_locked_raises_account_locked() -> None:
     user_repo.get_by_email.return_value = user
     token_repo = AsyncMock()
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as exc_info:
         await service.login("test@hds.test", "any")
@@ -199,7 +209,7 @@ async def test_successful_login_resets_counter() -> None:
     token_repo = AsyncMock()
     token_repo.create = AsyncMock()
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
     import hds.services.auth as auth_module
 
     orig = auth_module._verify_password
@@ -218,7 +228,7 @@ async def test_logout_revokes_token() -> None:
     token_repo.get_by_hash = AsyncMock(return_value=stored)
     token_repo.revoke_if_live = AsyncMock(return_value=True)
 
-    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock())
+    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
     await service.logout("raw-token-value")
 
     token_repo.revoke_if_live.assert_awaited_once_with(stored.id, "logout")
@@ -230,7 +240,7 @@ async def test_logout_all_revokes_all_user_tokens() -> None:
     token_repo.revoke_all_for_user = AsyncMock()
     user_id = uuid.uuid4()
 
-    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock())
+    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
     await service.logout_all(user_id)
 
     token_repo.revoke_all_for_user.assert_awaited_with(user_id, "all")
@@ -254,7 +264,7 @@ async def test_refresh_rotates_token() -> None:
     token_repo.revoke_if_live = AsyncMock(return_value=True)
     token_repo.create = AsyncMock()
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
     result = await service.refresh("raw-token")
 
     token_repo.revoke_if_live.assert_awaited_once_with(old_token.id, "rotated")
@@ -273,7 +283,7 @@ def _refresh_fixture(user: User | None) -> tuple[AuthService, AsyncMock]:
     user_repo.get_for_auth = AsyncMock(return_value=user)
     token_repo = AsyncMock()
     token_repo.get_by_hash = AsyncMock(return_value=old_token)
-    return AuthService(user_repo, token_repo, _make_config(), AsyncMock()), token_repo
+    return AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts()), token_repo
 
 
 @pytest.mark.asyncio
@@ -329,7 +339,11 @@ def _reuse_service(*stored: MagicMock) -> tuple[AuthService, AsyncMock, list[str
         side_effect=lambda *a, **k: calls.append("revoke_all")
     )
     token_repo.commit = AsyncMock(side_effect=lambda: calls.append("commit"))
-    return AuthService(user_repo, token_repo, _make_config(), AsyncMock()), token_repo, calls
+    return (
+        AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts()),
+        token_repo,
+        calls,
+    )
 
 
 @pytest.mark.asyncio
@@ -431,7 +445,7 @@ async def test_logout_of_an_already_revoked_token_does_nothing() -> None:
     token_repo.get_by_hash = AsyncMock(
         return_value=_stored_token(reason="rotated", revoked_ago=1, user_id=uuid.uuid4())
     )
-    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock())
+    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
 
     await service.logout("raw-token")
 
@@ -448,7 +462,7 @@ async def test_expiry_is_checked_before_the_revoked_state() -> None:
     stored.expires_at = datetime.now(UTC) - timedelta(days=23)
     token_repo = AsyncMock()
     token_repo.get_by_hash.return_value = stored
-    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock())
+    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
         await service.refresh("old-token")
