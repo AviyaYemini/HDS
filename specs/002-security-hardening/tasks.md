@@ -69,7 +69,7 @@ and 5 depend on it; Story 4 is largely proven by it.
 - [ ] T212 [P] Same switch in `apps/api/src/hds/routers/clients.py`, `groups.py`, `qualifications.py`
 - [ ] T213 [P] Same switch in `apps/api/src/hds/routers/employees.py`, `sites.py`, `projects.py`. After T211 to T213 no router imports `get_db` directly
 - [ ] T214 Audit `apps/api/src/hds/services/*.py` for code that relied on an intermediate commit (for example reading back a row written earlier in the same call) and fix with `flush()`; list findings in the commit message
-- [ ] T215 **Checkpoint A**: run the unchanged existing suite (unit, integration, contract, performance) on PostgreSQL plus the OpenAPI drift check. All 422 tests must pass with no test edits. Fix regressions before continuing
+- [ ] T215 **Checkpoint A**: run the unchanged existing suite in `apps/api/tests/` (unit, integration, contract, performance) on PostgreSQL plus the OpenAPI drift check. All 422 tests must pass with no test edits. Fix regressions before continuing
 
 **Checkpoint**: foundation ready. No behaviour has changed yet.
 
@@ -272,10 +272,10 @@ each time.
 
 - [ ] T288 [P] Update `docs/hds-api.md` (error table, sign-in, refresh, invitation and site sections) to match [contracts/error-codes.md](contracts/error-codes.md)
 - [ ] T289 [P] Update `docs/README.md` ADR table (005 and 006 present) and the ADR text if any decision changed during implementation
-- [ ] T290 Final docstring pass: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
-- [ ] T291 Run every gate and the full suite on PostgreSQL, including `tests/concurrency`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
-- [ ] T292 Run `tests/concurrency` three times in a row to catch flaky timing; fix or tighten any test that fails once
-- [ ] T293 Run the validation steps of [quickstart.md](quickstart.md) end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request
+- [ ] T290 Final docstring pass over `apps/api/src/hds/`: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
+- [ ] T291 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
+- [ ] T292 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
+- [ ] T293 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request
 
 ---
 
