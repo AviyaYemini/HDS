@@ -422,7 +422,7 @@ async def test_losing_the_race_to_create_the_account_continues_as_a_re_invitatio
     winner_created = _make_user(
         is_active=False, role=UserRole.employee, org_id=manager.organization_id
     )
-    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.get_by_email = AsyncMock(side_effect=[None, winner_created])
     user_repo.create_if_absent = AsyncMock(return_value=(winner_created, False))
 
     await svc.create_invitation(manager, "race@hds.test", UserRole.employee)
@@ -528,3 +528,19 @@ async def test_a_re_invitation_judges_the_account_as_it_is_after_the_lock() -> N
 
     assert refused.value.code == "users.duplicate_email"
     token_repo.cancel_for_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_re_invitation_is_refused_if_the_account_was_deleted_during_the_wait() -> None:
+    """Otherwise the invitee would be mailed a link that can never be accepted."""
+    svc, user_repo, token_repo, mailer = _svc()
+    actor = _inviter()
+    pending = _make_user(org_id=actor.organization_id, is_active=False)
+    user_repo.get_by_email = AsyncMock(side_effect=[pending, None])
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.create_invitation(actor, pending.email, pending.role)
+
+    assert refused.value.code == "users.duplicate_email"
+    token_repo.create.assert_not_awaited()
+    mailer.send.assert_not_awaited()

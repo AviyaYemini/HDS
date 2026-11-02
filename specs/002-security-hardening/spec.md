@@ -548,6 +548,8 @@ change no behaviour, so they need no requirement.
   the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
+- Creating or reactivating a portal user while its client is being deactivated is check-then-write,
+  so a very small window remains. Accepted.
 - A pending portal user under a deleted client is left as it is: no API path creates one, and F23
   keeps it that way.
 - **Proxy deployment (open until the ingress exists):** `TRUSTED_PROXY_COUNT` stays 0 because

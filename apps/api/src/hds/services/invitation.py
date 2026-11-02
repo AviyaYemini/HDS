@@ -123,7 +123,14 @@ class InvitationService:
             # The user's row comes first, before any of its links (see `lock_user_row`), and the
             # account is read again so the checks below judge its state after the lock.
             await self._user_repo.lock_user(account.id)
-            account = await self._user_repo.get_by_email(email) or account
+            current = await self._user_repo.get_by_email(email)
+            if current is None:  # deleted during the wait: a link could never be accepted
+                raise ConflictError(
+                    code="users.duplicate_email",
+                    detail=f"Email '{email}' changed during this request; try again.",
+                    field="email",
+                )
+            account = current
             # The address was already taken (possibly a moment ago by a concurrent request).
             if account.organization_id != actor.organization_id or account.is_active:
                 raise ConflictError(

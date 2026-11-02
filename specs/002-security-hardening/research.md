@@ -415,8 +415,9 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
   start-up). Tests cover 0, 1, 2, a short header, a forged header, a malformed entry and IPv6 /64
   keying.
 - **Staleness without a scheduler.** Each recorded failure also deletes up to 50 rows whose
-  `updated_at` is older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24) and that are not locked,
-  using the index on `updated_at`, so the table cannot grow faster than it is cleaned. Rows are one
+  `updated_at` is older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24) and that are unlocked
+  (`locked_until` empty or in the past, because `network` and `reset` rows keep the value after
+  hitting a limit), using the index on `updated_at`, so the table cannot grow faster than it is cleaned. Rows are one
   per distinct key (not per attempt), and random addresses are the only way to add many. The script
   `purge_expired_records` stays for a bulk clean and for expired credentials, but nothing depends
   on it being scheduled.
@@ -425,6 +426,9 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
 **Reset requests (F28)**: a third key kind, `reset`, counts requests per lowercased address in a
 fixed window of `RESET_TTL_MINUTES`, limit `RESET_REQUEST_LIMIT_PER_ADDRESS` (default 5; 0 turns it
 off). It is checked before any lookup, so a registered and an unregistered address behave alike.
+The decision uses the returned count: over the limit means a count above it, so the 5th of 5 still
+works. This path also deletes stale rows on every request, because it has no hashing cost and no
+network limit and could otherwise add rows far faster than sign-in.
 Over the limit the answer is still 202 and nothing is cancelled or sent, which keeps the promise
 that this endpoint reveals nothing and leaves the last link working.
 
