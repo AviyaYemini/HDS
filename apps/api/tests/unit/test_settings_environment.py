@@ -123,3 +123,12 @@ def test_error_text_never_contains_the_secret(
 ) -> None:
     text = refusal(monkeypatch, **env)
     assert env["JWT_SECRET_KEY"] not in text
+
+
+@pytest.mark.parametrize("secret", ["", "   "])
+@pytest.mark.parametrize("environment", ["development", "test"])
+def test_an_empty_secret_is_refused_even_in_development(
+    monkeypatch: pytest.MonkeyPatch, environment: str, secret: str
+) -> None:
+    """A copied example file leaves the secret blank; a zero-length signing key is never valid."""
+    assert "JWT_SECRET_KEY" in refusal(monkeypatch, ENVIRONMENT=environment, JWT_SECRET_KEY=secret)

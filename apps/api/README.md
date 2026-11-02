@@ -14,7 +14,7 @@ src/hds/
   models/          SQLAlchemy tables and constraints
   core/            settings, security, errors, i18n, logging, dependencies
   locales/         translation files keyed by error code
-  scripts/         seed_dev, export_openapi
+  scripts/         seed_dev, export_openapi, dev_issue_link
   tools/           check_imports (the layering checker)
 alembic/           database migrations
 tests/             unit, integration, contract and performance tests
@@ -32,9 +32,11 @@ Settings are read from the environment (and a `.env` file in development) by
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
+| `ENVIRONMENT` | **Required, no default.** `development` and `test` are development environments; any other value (`production`, `staging`, ...) turns on the strict secret, email and mail-backend checks | none |
+| `JWT_SECRET_KEY` | **Required, no default.** Signs access tokens. Outside development it must be at least 32 bytes and not the published placeholder; it is never empty | none |
+| `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; outside development a real backend is required and none exists yet | `outbox` in development |
+| `MAIL_OUTBOX_PATH` | File the `outbox` backend appends to; each line holds the masked recipient, subject, purpose, expiry and the body with the token replaced by `[REDACTED]` | `apps/api/.dev-mail/outbox.jsonl` |
 | `DATABASE_URL` | Async SQLAlchemy URL | local development database |
-| `JWT_SECRET_KEY` | Signs access tokens | a placeholder, refused in production |
-| `ENVIRONMENT` | `production` turns on the strict secret and email checks | `development` |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
@@ -49,7 +51,14 @@ uv run alembic upgrade head                      # apply migrations
 uv run alembic check                             # models and migrations must agree
 uv run python -m hds.scripts.seed_dev            # development data
 uv run python -m hds.scripts.export_openapi      # print the OpenAPI document
+uv run python -m hds.scripts.dev_issue_link EMAIL invite   # development only: show a token once
 ```
+
+`ENVIRONMENT` and `JWT_SECRET_KEY` must be set for every command that starts the application or
+reads its settings (`uvicorn`, `seed_dev`, `export_openapi`, `dev_issue_link`, the tests); a
+missing one stops the command with a validation error that names it. `alembic` does not need them.
+`dev_issue_link` issues a fresh invitation or reset token for an existing account, prints it once
+and stores it nowhere; the mail outbox never holds a usable token.
 
 ## Tests
 

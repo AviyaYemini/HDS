@@ -21,10 +21,13 @@ This repository is a monorepo:
 You need Docker, Docker Compose and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Copy the example settings and replace the placeholders. Never commit real secrets.
-cp .env.example .env
+# 1. Choose your settings. ENVIRONMENT and JWT_SECRET_KEY are required and have no defaults:
+#    the API and docker compose both refuse to start without them. Never commit a real secret.
+export ENVIRONMENT=development
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
 
-# 2. Start PostgreSQL (the compose file lives in infra/).
+# 2. Start PostgreSQL (the compose file lives in infra/). Compose reads the whole file, so it
+#    needs JWT_SECRET_KEY from step 1 even when you start only the database.
 docker compose -f infra/docker-compose.yml up -d postgres
 
 # 3. Install the API's dependencies, create the schema and load development data.
@@ -40,6 +43,15 @@ uv run uvicorn hds.main:app --reload
 The API is then at <http://localhost:8000>; the interactive docs are at `/docs` and the
 OpenAPI document at `/api/v1/openapi.json`. `seed_dev` lists the accounts it creates in its
 module docstring. They are for local development only.
+
+The settings are listed in [`.env.example`](.env.example). The API also reads a `.env` file from
+the folder it is started in (`apps/api`), so you can keep them there instead of exporting them.
+
+Invitation and password-reset emails are not delivered in development: the development mail
+backend appends a redacted record to `apps/api/.dev-mail/outbox.jsonl` and never stores a usable
+token. To get a working token for a manual test, run
+`uv run python -m hds.scripts.dev_issue_link <email> invite` (or `reset`); it prints the token once
+and stores it nowhere.
 
 To run the whole stack in containers instead, use
 `docker compose -f infra/docker-compose.yml up --build`, then apply the migrations with

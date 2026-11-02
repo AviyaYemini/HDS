@@ -25,16 +25,23 @@ restart the container to pick them up.
 
 ## Configuration
 
-Compose reads these from the environment or a `.env` file, with development defaults:
+Compose takes these from the environment of the shell that runs it:
 
 | Variable | Default |
 | --- | --- |
 | `POSTGRES_DB`, `POSTGRES_USER` | `hds` |
 | `POSTGRES_PASSWORD` | a development value |
-| `JWT_SECRET_KEY` | a placeholder that the API refuses when `ENVIRONMENT=production` |
+| `JWT_SECRET_KEY` | **none, required**: compose stops when it is unset or empty |
 
-Copy [`.env.example`](../.env.example) to `.env` and replace the placeholders. Never commit real
-secrets; production secrets come from the environment or a secret store.
+The API container is started with `ENVIRONMENT=development`, set in the compose file. Generate a
+secret with `openssl rand -hex 32` and export it before any `docker compose` command, for example
+`export JWT_SECRET_KEY="$(openssl rand -hex 32)"`. Compose reads the whole file, so the variable
+is needed even when you start only PostgreSQL. The variables are listed in
+[`.env.example`](../.env.example). Never commit real secrets; production secrets come from the
+environment or a secret store.
+
+This stack is for development. Outside development the API also requires a real mail backend,
+and none exists yet, so it refuses to start there.
 
 ## Notes
 

@@ -56,7 +56,8 @@ class Settings(BaseSettings):
 
     Raises:
         ValueError: On construction (reported as a validation error that names the setting but
-            never prints a setting's value): ``ENVIRONMENT`` or ``JWT_SECRET_KEY`` missing;
+            never prints a setting's value): ``ENVIRONMENT`` or ``JWT_SECRET_KEY`` missing, or
+            the secret empty;
             ``CORS_ORIGINS`` containing ``*``; outside development, a placeholder or too-short
             secret, or a missing or development-only mail backend.
     """
@@ -75,11 +76,14 @@ class Settings(BaseSettings):
     MAIL_OUTBOX_PATH: str = _DEFAULT_OUTBOX_PATH
 
     # hide_input_in_errors keeps the raw environment, secret included, out of the error text:
-    # without it a failed start prints the whole input dictionary.
+    # without it a failed start prints the whole input dictionary. extra="ignore" lets the one
+    # settings file be shared with docker compose (POSTGRES_*) and the tests (TEST_DATABASE_URL);
+    # the default, "forbid", made the documented copy-the-example step fail on those keys.
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "hide_input_in_errors": True,
+        "extra": "ignore",
     }
 
     @property
@@ -97,6 +101,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _refuse_unsafe_start(self) -> Self:
+        if not self.JWT_SECRET_KEY.get_secret_value().strip():
+            raise ValueError("JWT_SECRET_KEY must not be empty")
         if self.is_development:
             if self.MAIL_BACKEND is None:
                 self.MAIL_BACKEND = OUTBOX_BACKEND
