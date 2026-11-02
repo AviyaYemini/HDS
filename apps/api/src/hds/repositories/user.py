@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.models.group import user_groups
@@ -226,23 +226,70 @@ class UserRepository(OrgScopedRepository[User]):
             fields["activated_at"] = datetime.now(UTC)
         return fields
 
-    async def increment_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Add one to the failed-sign-in counter in a single atomic UPDATE, then commit it now.
+    async def register_failed_login(
+        self, user_id: uuid.UUID, max_failures: int, lock_until: datetime
+    ) -> tuple[int, datetime | None]:
+        """Count one wrong password and lock the account at the limit, then commit it now.
+
+        One ``UPDATE`` adds one to the consecutive-failure count and, when the new count reaches
+        ``max_failures``, sets the lock, so the decision is made on the stored value and is
+        correct when several wrong passwords arrive together. The in-memory user is left alone
+        (``synchronize_session`` is off): the caller must use the count returned here, never
+        the object's own, which is the value from before this call.
 
         The early commit is deliberate: the caller raises a refusal right after, and the request's
-        rollback would otherwise undo the count (see ``BaseRepository.commit``).
-
-        Done in SQL rather than read-modify-write so concurrent failures are not lost.
+        rollback would otherwise undo the count (see ``BaseRepository.commit``). It also commits
+        anything written earlier in the same request, such as a cleared expired lock.
 
         Args:
             user_id: The account that failed to sign in.
+            max_failures: Consecutive failures that lock the account.
+            lock_until: Timezone-aware UTC time at which sign-in is allowed again, used if this
+                failure reaches the limit.
+
+        Returns:
+            ``(failures, locked_until)`` as stored after the update; ``locked_until`` is empty
+            while the account is not locked.
         """
-        await self.session.execute(
+        result = await self.session.execute(
             update(User)
             .where(User.id == user_id)
-            .values(failed_login_attempts=User.failed_login_attempts + 1)
+            .values(
+                failed_login_attempts=User.failed_login_attempts + 1,
+                locked_until=case(
+                    (User.failed_login_attempts + 1 >= max_failures, lock_until),
+                    else_=User.locked_until,
+                ),
+            )
+            .returning(User.failed_login_attempts, User.locked_until)
+            .execution_options(synchronize_session=False)
         )
+        failures, locked_until = result.one()
         await self.commit()
+        return int(failures), locked_until
+
+    async def clear_expired_lock(self, user_id: uuid.UUID, now: datetime) -> bool:
+        """Zero the failure count and remove the lock if the lock has run out.
+
+        Called at the start of every sign-in, before the password is checked, so that after the
+        cooldown the user has the full number of attempts again (FR-213). A lock that has not
+        expired, or an account that was never locked, is left untouched.
+
+        Args:
+            user_id: The account signing in.
+            now: Timezone-aware UTC current time.
+
+        Returns:
+            ``True`` if an expired lock was cleared.
+        """
+        result = await self.session.execute(
+            update(User)
+            .where(User.id == user_id, User.locked_until.is_not(None), User.locked_until <= now)
+            .values(failed_login_attempts=0, locked_until=None)
+            .returning(User.id)
+            .execution_options(synchronize_session=False)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def reset_failed_attempts(self, user_id: uuid.UUID) -> None:
         """Zero the failure counter and clear any lock (after a good sign-in).
@@ -256,21 +303,6 @@ class UserRepository(OrgScopedRepository[User]):
             .values(failed_login_attempts=0, locked_until=None)
         )
         await self.session.flush()
-
-    async def set_locked_until(self, user_id: uuid.UUID, until: datetime) -> None:
-        """Lock the account until a UTC instant, then commit it now.
-
-        Committed early for the same reason as ``increment_failed_attempts``: the sign-in refusal
-        raised next must not undo the lock.
-
-        Args:
-            user_id: The account to lock.
-            until: Timezone-aware UTC time at which sign-in is allowed again.
-        """
-        await self.session.execute(
-            update(User).where(User.id == user_id).values(locked_until=until)
-        )
-        await self.commit()
 
     async def update(self, user_id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> User:
         """Update columns of a user of the organisation.

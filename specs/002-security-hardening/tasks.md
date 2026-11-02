@@ -329,10 +329,28 @@ each time.
 
 **Independent Test**: N-1 failures then success; N failures then locked; after expiry N attempts.
 
-- [ ] T274 [P] [US6] Write `apps/api/tests/integration/test_lockout.py` on PostgreSQL for limits 2 to 10: N-1 failures then the correct password signs in; N failures then the next attempt returns `auth.account_locked`; after the lock is expired by setting `locked_until` in the past, N new attempts are allowed and the account locks only after the N-th (SC-206)
-- [ ] T275 [P] [US6] Extend `apps/api/tests/unit/test_auth_service.py`: the service uses the count returned by the repository and does not add one itself; an expired lock is cleared before the password check
-- [ ] T276 [US6] In `apps/api/src/hds/repositories/user.py` add `register_failed_login(user_id, max_failures, lock_until) -> tuple[int, datetime | None]` as one `UPDATE ... SET failed_login_attempts = failed_login_attempts + 1, locked_until = CASE WHEN failed_login_attempts + 1 >= :max THEN :until ELSE locked_until END ... RETURNING` with session synchronisation off, followed by the explicit `commit()`; add `clear_expired_lock(user_id, now)` as `UPDATE ... SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id AND locked_until IS NOT NULL AND locked_until <= :now`. Remove `increment_failed_attempts` and `set_locked_until`
-- [ ] T277 [US6] Rewrite the failure path of `AuthService.login` in `apps/api/src/hds/services/auth.py`: clear an expired lock first, then check the lock, then verify; use `register_failed_login` and its returned count; delete the `user.failed_login_attempts + 1` line. Update the docstring (lock after N, restart on expiry)
+- [X] T274 [P] [US6] Write `apps/api/tests/integration/test_lockout.py` on PostgreSQL for limits 2 to 10: N-1 failures then the correct password signs in; N failures then the next attempt returns `auth.account_locked`; after the lock is expired by setting `locked_until` in the past, N new attempts are allowed and the account locks only after the N-th (SC-206)
+- [X] T275 [P] [US6] Extend `apps/api/tests/unit/test_auth_service.py`: the service uses the count returned by the repository and does not add one itself; an expired lock is cleared before the password check
+- [X] T276 [US6] In `apps/api/src/hds/repositories/user.py` add `register_failed_login(user_id, max_failures, lock_until) -> tuple[int, datetime | None]` as one `UPDATE ... SET failed_login_attempts = failed_login_attempts + 1, locked_until = CASE WHEN failed_login_attempts + 1 >= :max THEN :until ELSE locked_until END ... RETURNING` with session synchronisation off, followed by the explicit `commit()`; add `clear_expired_lock(user_id, now)` as `UPDATE ... SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id AND locked_until IS NOT NULL AND locked_until <= :now`. Remove `increment_failed_attempts` and `set_locked_until`
+- [X] T277 [US6] Rewrite the failure path of `AuthService.login` in `apps/api/src/hds/services/auth.py`: clear an expired lock first, then check the lock, then verify; use `register_failed_login` and its returned count; delete the `user.failed_login_attempts + 1` line. Update the docstring (lock after N, restart on expiry)
+
+### Scope additions recorded during implementation (Phase 8)
+
+- **T274, evidence**: before the change 18 of the 27 lockout cases failed. For every limit from 2
+  to 10, N-1 failures already answered 423 (locked one failure early), and the post-expiry case
+  kept the old count. After the change all 27 pass. Mutations M17 (lock at count+1), M18 (expired
+  lock never cleared), M19 (clear keeps the count) and M20 (count not committed before the
+  refusal) are all caught.
+- **T277**: the service no longer reads the count back: the single statement in
+  `register_failed_login` decides, and the returned `(failures, locked_until)` is available to
+  callers but unused by the service. The address is matched through `get_by_email`, which is
+  case-insensitive since Phase 10, so the lock follows the account whatever case is typed.
+- **Unknown addresses**: they cannot be locked (there is no account row to hold a count), so the
+  locked-account answer (423) remains the one accepted difference (feature 001 FR-005, spec
+  Story 7). Counting failures per unknown address would need a new table and is not in the spec.
+- **Contract**: no status code, parameter or schema changed; the login description now states the
+  exact-N rule, the restart on expiry and case-insensitive matching. The OpenAPI document differs
+  from the pre-feature baseline only in descriptions.
 
 **Checkpoint**: Story 6 passes.
 
