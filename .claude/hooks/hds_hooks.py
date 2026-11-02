@@ -12,6 +12,7 @@ Escape hatches (environment variables, set in your shell on purpose):
   HDS_ALLOW_MAIN=1      allow Claude to commit on main/master
   HDS_SKIP_STOP_GATE=1  skip the lint/type/test gate when Claude finishes
 """
+import ast
 import json
 import os
 import re
@@ -80,6 +81,40 @@ def rel_path(file_path):
         return p, p.resolve().relative_to(ROOT)
     except Exception:
         return p, None
+
+
+def _without_docstrings(source):
+    """Parse ``source`` and return its AST dump with every docstring removed."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                node.body = node.body[1:] or [ast.Pass()]
+    return ast.dump(tree)
+
+
+def documentation_only_edit(path, tool_input):
+    """True when the edit changes only docstrings, comments or layout of an existing file.
+
+    Constitution X allows documenting an applied migration because that cannot change the
+    schema. Anything that alters the parsed code (imports, revision ids, operations) is not
+    documentation and stays blocked.
+    """
+    try:
+        before = path.read_text(encoding="utf-8")
+        if "content" in tool_input:
+            after = tool_input["content"]
+        else:
+            old, new = tool_input["old_string"], tool_input["new_string"]
+            if old not in before:
+                return False
+            replace_all = tool_input.get("replace_all")
+            after = before.replace(old, new) if replace_all else before.replace(old, new, 1)
+        return _without_docstrings(before) == _without_docstrings(after)
+    except Exception:  # unreadable file, bad edit or syntax error: treat as not documentation
+        return False
 
 
 def find_pyproject(start):
@@ -153,9 +188,10 @@ def pre_edit(d):
 
     if "alembic" in parts and "versions" in parts and p.exists():
         rc, _ = run(["git", "ls-files", "--error-unmatch", str(p)])
-        if rc == 0:
-            return block(f"Blocked: {name} is a committed migration. Never edit applied migrations; "
-                         "create a new one with `alembic revision` (principle 10).")
+        if rc == 0 and not documentation_only_edit(p, d.get("tool_input") or {}):
+            return block(f"Blocked: {name} is a committed migration. Never edit the code of applied "
+                         "migrations; create a new one with `alembic revision`. Only docstrings and "
+                         "comments may change (principle 10).")
 
     if rel and "generated" in parts and parts[0] in ("packages", "apps"):
         return block("Blocked: generated API client code is never hand-edited. Change the OpenAPI contract "

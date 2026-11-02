@@ -101,10 +101,14 @@ CI is the authority; local pre-commit hooks mirror CI but do not substitute for 
 Every database schema change MUST be delivered as a versioned, reversible Alembic migration.
 
 - Manual `ALTER TABLE` statements in any environment are forbidden.
-- An applied migration is never edited; a destructive change ships in two releases
-  (stop using the column, then drop it).
+- An applied migration's executable code is never edited; a destructive change ships in two
+  releases (stop using the column, then drop it).
+- Documentation of an applied migration (its docstrings and comments) MAY be edited, because
+  it cannot change the schema. Such an edit MUST leave the parsed code of the file identical
+  once docstrings are removed.
 
-*Testable:* CI runs `alembic check` and fails if models and migrations diverge.
+*Testable:* CI runs `alembic check` and fails if models and migrations diverge; the edit
+hook blocks any change to a committed migration whose code, docstrings aside, differs.
 
 ### XI. Documentation as a Deliverable
 
@@ -156,4 +160,4 @@ This constitution supersedes all other stated practices. An amendment requires:
 **Compliance review**: each PR checklist MUST include a line confirming no principle is
 violated by the change.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-02
+**Version**: 1.2.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-02
