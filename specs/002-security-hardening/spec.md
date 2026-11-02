@@ -16,6 +16,19 @@ unvalidated site time zones."
 001; it adds no new product capability. Requirement ids use the 2xx block (FR-201 and up) so
 they cannot be confused with the ids of feature 001, which tests already cite.
 
+## Clarifications
+
+### Session 2026-11-02
+
+- Q: When a client resends a session-renewal request because the first reply was lost, should the
+  second use of that credential end all of the user's sessions? → A: Grace window: a second use
+  within a few seconds of the first is refused without ending sessions; after the window it ends
+  all of that user's sessions.
+- Q: When staff re-invite an address whose invited account is still pending, but with a different
+  role, should the account take the new role or should the re-invitation be refused? → A: The
+  pending account takes the new role, under the same permission rules as a first invitation (only
+  an Admin may invite an Admin).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Secrets and one-time links never leak (Priority: P1)
@@ -71,9 +84,11 @@ link, and confirm the account stays deactivated and the password is unchanged.
    is redeemed, **Then** the redemption is refused and the password and sessions are unchanged.
 4. **Given** an account is deactivated or deleted, **When** it still has outstanding invitation or
    reset links, **Then** those links stop working.
-5. **Given** a re-invitation names a role different from the pending account's role, **When** it
-   is sent, **Then** the pending account's role follows the new invitation, or the request is
-   refused; the role is never silently ignored.
+5. **Given** a pending account invited as an Employee, **When** a Manager re-invites the same
+   address as a Manager, **Then** the pending account's role becomes Manager and the new link
+   replaces the earlier one.
+6. **Given** a pending account, **When** a Manager re-invites it as an Admin, **Then** the request
+   is refused (only an Admin may invite an Admin) and the pending role is unchanged.
 
 ---
 
@@ -94,8 +109,11 @@ present it a third time and confirm every session of that user is ended.
 
 1. **Given** one valid renewal credential, **When** two renewals using it arrive simultaneously,
    **Then** exactly one succeeds and the other is refused.
-2. **Given** a renewal credential that was already used, **When** it is presented again,
-   **Then** the request is refused and all of that user's sessions are ended.
+2. **Given** a renewal credential that was already used, **When** it is presented again after
+   the grace window, **Then** the request is refused and all of that user's sessions are ended.
+3. **Given** a renewal credential that was used a moment ago, **When** it is presented again
+   within the grace window (an honest retry), **Then** the request is refused but the user's
+   sessions, including the one just issued, stay valid.
 3. **Given** one valid invitation or reset link, **When** two redemptions arrive simultaneously,
    **Then** exactly one succeeds.
 
@@ -235,6 +253,8 @@ valid one is accepted.
 
 - A renewal credential is replayed after its user was deactivated: the request is refused, with no
   extra effect.
+- An honest retry arrives just inside, or just outside, the grace window: inside keeps sessions,
+  outside ends them; there is no third outcome.
 - Two invitations for the same address race: one pending account results, not two.
 - A password reset is requested for an address that differs only by case from a registered one:
   it is treated as that registered address.
@@ -263,8 +283,10 @@ valid one is accepted.
 
 - **FR-205**: Redeeming an invitation MUST only complete an account that is pending
   (never activated); it MUST be refused for deactivated, deleted or already-activated accounts.
-- **FR-206**: Inviting an address that belongs to a deactivated account MUST be refused; an active
-  or pending account MUST NOT have its role silently ignored by a re-invitation.
+- **FR-206**: Inviting an address that belongs to a deactivated account MUST be refused. Inviting
+  an address that belongs to a pending account MUST set the pending account's role to the role in
+  the new invitation, under the same permission rules as a first invitation, and MUST replace the
+  earlier link. Inviting an address that belongs to an active account is refused as a duplicate.
 - **FR-207**: Deactivating or deleting an account MUST cancel its outstanding invitation and reset
   links, and accepting an invitation MUST cancel the account's other outstanding links.
 
@@ -272,8 +294,9 @@ valid one is accepted.
 
 - **FR-208**: A renewal credential, invitation link or reset link MUST succeed at most once, even
   under simultaneous use.
-- **FR-209**: Presenting an already-used renewal credential MUST refuse the request and end all
-  of that user's sessions.
+- **FR-209**: Presenting an already-used renewal credential MUST always be refused. If it is
+  presented after the grace window (default 10 seconds, configurable) it MUST also end all of that
+  user's sessions; within the window it MUST NOT.
 
 **All-or-nothing (Story 4)**
 
@@ -347,6 +370,8 @@ valid one is accepted.
   new error answers use the existing problem-details format and error-code translation rules.
 - The mechanism for real email delivery (which provider) is a separate decision; this feature only
   guarantees the system does not run production without one.
+- The grace window applies only to renewal credentials, not to invitation or reset links, which
+  are refused on any second use without further effect.
 - Case-insensitivity applies to the whole address, not only the domain.
 - Invalid existing time zones are reported, not auto-corrected, because the right zone cannot be
   guessed.
