@@ -45,6 +45,7 @@ async def test_login_correct_credentials_returns_token_response() -> None:
     user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
+    user_repo.get_for_auth.return_value = user
     user_repo.reset_failed_attempts = AsyncMock()
     token_repo = AsyncMock()
     token_repo.create = AsyncMock()
@@ -198,6 +199,7 @@ async def test_successful_login_resets_counter() -> None:
     user = _make_user(failed_login_attempts=2)
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
+    user_repo.get_for_auth.return_value = user
     user_repo.reset_failed_attempts = AsyncMock()
     token_repo = AsyncMock()
     token_repo.create = AsyncMock()

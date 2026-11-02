@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.group import user_groups
 from hds.models.qualification import user_qualifications
@@ -22,6 +23,21 @@ from hds.repositories.base import OrgScopedRepository
 def _escape_like(text: str) -> str:
     """Make ``%``, ``_`` and the escape character literal inside a LIKE pattern."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def lock_user_row(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """Take ``SELECT ... FOR UPDATE`` on a user's row, held until the unit of work ends.
+
+    Every path that creates a session or ends all of them takes this lock, so they run one after
+    the other. Without it, a new refresh token is invisible to a concurrent "end every session"
+    until it commits, and it would survive (FR-230). The user's row is always the first lock of
+    such a path. Several users are locked one at a time in ascending id order.
+
+    Args:
+        session: The request's session.
+        user_id: The user whose sessions are being created or ended.
+    """
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
 
 
 class UserRepository(OrgScopedRepository[User]):
@@ -129,11 +145,21 @@ class UserRepository(OrgScopedRepository[User]):
         )
         return result.scalar_one_or_none()
 
+    async def lock_user(self, user_id: uuid.UUID) -> None:
+        """Lock the user's row until the unit of work ends (see `lock_user_row`).
+
+        Args:
+            user_id: The user whose sessions are being created or ended.
+        """
+        await lock_user_row(self.session, user_id)
+
     async def get_for_auth(self, id: uuid.UUID) -> User | None:
         """Resolve the owner of a verified credential (access/refresh token).
 
         Unscoped by organisation because the organisation is not known until the credential's
-        owner is loaded. Never call this with an id taken from a request path or body.
+        owner is loaded. Never call this with an id taken from a request path or body. The row is
+        always read fresh (``populate_existing``): the session keeps the values it loaded earlier,
+        so a re-read after taking the lock would otherwise return the state from before the lock.
 
         Args:
             id: The id taken from a verified token's subject.
@@ -142,7 +168,9 @@ class UserRepository(OrgScopedRepository[User]):
             The non-deleted user, or ``None``. Inactive users are returned; the caller decides.
         """
         result = await self.session.execute(
-            select(User).where(User.id == id, User.is_deleted.is_(False))
+            select(User)
+            .where(User.id == id, User.is_deleted.is_(False))
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

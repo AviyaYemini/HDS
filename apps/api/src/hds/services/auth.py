@@ -77,7 +77,9 @@ class AuthService:
         expired is cleared first, with the failure count, so the user has the full number of
         attempts again. A wrong password adds one to the count and the account locks for
         ``LOGIN_LOCKOUT_MINUTES`` on the failure that makes the count reach
-        ``LOGIN_MAX_FAILURES``, not before; a success resets the count.
+        ``LOGIN_MAX_FAILURES``, not before; a success resets the count. After the password check
+        the user's row is locked and read again, so a reset or deactivation that finished in
+        between refuses this sign-in instead of leaving a session behind (FR-230).
 
         Args:
             email: Account email, matched exactly.
@@ -129,6 +131,14 @@ class AuthService:
         if not user.is_active:
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
+        # Take the lock that "end every session" takes, then look again: a reset or deactivation
+        # that finished after the password check must stop this sign-in (FR-230).
+        verified_hash = user.password_hash
+        await self._user_repo.lock_user(user.id)
+        current = await self._user_repo.get_for_auth(user.id)
+        if current is None or not current.is_active or current.password_hash != verified_hash:
+            raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
+
         await self._user_repo.reset_failed_attempts(user.id)
 
         access_token = create_access_token(
@@ -155,7 +165,8 @@ class AuthService:
         happened to it: it cannot be used for anything, so presenting it is not evidence of theft
         and it ends no session (FR-209). A request that loses, or that presents an unexpired token
         revoked earlier, is refused (see `_refuse_reuse` for when that also ends every session).
-        The user is reloaded, so a deactivated account cannot refresh.
+        The user's row is locked first and the user read after that, so a deactivated account
+        cannot refresh and a concurrent "end every session" cannot miss the new token (FR-230).
 
         Args:
             raw_token: The refresh token the client holds.
@@ -186,6 +197,9 @@ class AuthService:
         if stored.revoked_at is not None:
             await self._refuse_reuse(stored)
 
+        # Lock before reading the account, so this never acts on a state from before the lock and
+        # a concurrent "end every session" either sees the new token or refuses this one (FR-230).
+        await self._user_repo.lock_user(stored.user_id)
         user = await self._user_repo.get_for_auth(stored.user_id)
         if user is None or not user.is_active:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")

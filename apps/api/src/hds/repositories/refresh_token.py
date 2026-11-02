@@ -11,6 +11,7 @@ from sqlalchemy import delete, select, update
 
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.base import BaseRepository
+from hds.repositories.user import lock_user_row
 
 
 class RefreshTokenRepository(BaseRepository[RefreshToken]):
@@ -94,6 +95,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             reason: Why: ``all`` for a deliberate or defensive end of every session,
                 ``account`` when the account itself changed.
         """
+        await lock_user_row(self.session, user_id)
         await self.session.execute(
             update(RefreshToken)
             .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
