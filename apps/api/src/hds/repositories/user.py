@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.models.group import user_groups
@@ -287,21 +287,34 @@ class UserRepository(OrgScopedRepository[User]):
         """
         await self._soft_delete_scoped(user_id, org_id)
 
-    async def count_active_admins(self, org_id: uuid.UUID) -> int:
-        """Count active, non-deleted admins; used to refuse removing the last one.
+    async def lock_active_admins(self, org_id: uuid.UUID) -> list[uuid.UUID]:
+        """Lock the organisation's active Admins and return their ids, to guard the last one.
+
+        ``SELECT ... FOR UPDATE`` makes a second request that wants the same rows wait until the
+        first one commits or rolls back, and then look again. Two Admins removing each other at
+        the same moment therefore run one after the other, and the second sees only one Admin
+        left. The rows are ordered by id so two requests always lock them in the same order and
+        cannot wait on each other.
+
+        The lock lasts until the request's unit of work ends (commit or rollback), not until this
+        method returns, so call it just before the change it protects.
 
         Args:
-            org_id: The organisation to count in.
+            org_id: The organisation to look in.
 
         Returns:
-            The number of admins who can still sign in.
+            The ids of the Admins who can still sign in, as they are after any concurrent
+            change has committed.
         """
         result = await self.session.execute(
-            select(func.count()).where(
+            select(User.id)
+            .where(
                 User.organization_id == org_id,
                 User.role == UserRole.admin,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),
             )
+            .order_by(User.id)
+            .with_for_update()
         )
-        return result.scalar_one()
+        return list(result.scalars().all())

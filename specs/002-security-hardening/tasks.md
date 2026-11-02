@@ -306,10 +306,18 @@ took effect.
 **Independent Test**: two Admins deactivate each other at once, 100 rounds, an active Admin remains
 each time.
 
-- [ ] T270 [P] [US5] Write `apps/api/tests/concurrency/test_last_admin.py`: 100 rounds of two simultaneous deactivations between the only two Admins, plus simultaneous demotions; exactly one action succeeds and an active Admin remains (SC-205)
-- [ ] T271 [P] [US5] Extend `apps/api/tests/unit/test_employee_manager.py`: the last-Admin guard counts the ids returned by the locking query and raises `users.last_admin` at one
-- [ ] T272 [US5] In `apps/api/src/hds/repositories/user.py` add `lock_active_admins(org_id) -> list[UUID]`: `SELECT id ... WHERE organization_id = :org AND role = 'admin' AND is_active AND NOT is_deleted ORDER BY id FOR UPDATE`; document that the lock lasts until the unit of work ends
-- [ ] T273 [US5] Make `_guard_last_admin` in `apps/api/src/hds/services/employee.py` use `lock_active_admins` instead of `count_active_admins`; remove the unused count method if nothing else calls it
+- [X] T270 [P] [US5] Write `apps/api/tests/concurrency/test_last_admin.py`: 100 rounds of two simultaneous deactivations between the only two Admins, plus simultaneous demotions; exactly one action succeeds and an active Admin remains (SC-205)
+- [X] T271 [P] [US5] Extend `apps/api/tests/unit/test_employee_manager.py`: the last-Admin guard counts the ids returned by the locking query and raises `users.last_admin` at one
+- [X] T272 [US5] In `apps/api/src/hds/repositories/user.py` add `lock_active_admins(org_id) -> list[UUID]`: `SELECT id ... WHERE organization_id = :org AND role = 'admin' AND is_active AND NOT is_deleted ORDER BY id FOR UPDATE`; document that the lock lasts until the unit of work ends
+- [X] T273 [US5] Make `_guard_last_admin` in `apps/api/src/hds/services/employee.py` use `lock_active_admins` instead of `count_active_admins`; remove the unused count method if nothing else calls it
+
+### Scope additions recorded during implementation (Phase 7)
+
+- **T270, evidence**: before the change both tests failed in round 0 with `[200, 200]` (both
+  Admins removed). After it, 100 rounds of each pass. Mutation M10 (remove `FOR UPDATE`) and M11
+  (guard no longer uses the locked ids) are both caught.
+- **T271**: the five existing guard tests in `test_employee_manager.py` now supply a list of ids
+  from `lock_active_admins` instead of a count; one id raises `users.last_admin`, two pass.
 
 **Checkpoint**: Story 5 passes.
 

@@ -273,7 +273,7 @@ async def test_soft_delete_last_admin_raises_conflict() -> None:
     target = _make_user(role=UserRole.admin, org_id=org_id)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.count_active_admins = AsyncMock(return_value=1)
+    user_repo.lock_active_admins = AsyncMock(return_value=[uuid.uuid4() for _ in range(1)])
 
     with pytest.raises(ConflictError) as exc:
         await svc.soft_delete(actor, target.id)
@@ -289,7 +289,7 @@ async def test_soft_delete_non_last_admin_succeeds_and_revokes() -> None:
     target = _make_user(role=UserRole.admin, org_id=org_id)
     svc, user_repo, token_repo = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.count_active_admins = AsyncMock(return_value=2)
+    user_repo.lock_active_admins = AsyncMock(return_value=[uuid.uuid4() for _ in range(2)])
 
     await svc.soft_delete(actor, target.id)
 
@@ -311,7 +311,7 @@ async def test_deactivate_last_admin_raises_conflict() -> None:
     target = _make_user(role=UserRole.admin)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.count_active_admins = AsyncMock(return_value=1)
+    user_repo.lock_active_admins = AsyncMock(return_value=[uuid.uuid4() for _ in range(1)])
     with pytest.raises(ConflictError) as exc:
         await svc.deactivate(_make_user(role=UserRole.admin), target.id)
     assert exc.value.code == "users.last_admin"
@@ -322,7 +322,7 @@ async def test_demote_last_admin_via_edit_raises_conflict() -> None:
     target = _make_user(role=UserRole.admin)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.count_active_admins = AsyncMock(return_value=1)
+    user_repo.lock_active_admins = AsyncMock(return_value=[uuid.uuid4() for _ in range(1)])
     with pytest.raises(ConflictError) as exc:
         await svc.edit_employee(_make_user(role=UserRole.admin), target.id, {"role": "manager"})
     assert exc.value.code == "users.last_admin"
@@ -333,7 +333,7 @@ async def test_deactivating_already_inactive_admin_skips_last_admin_guard() -> N
     target = _make_user(role=UserRole.admin, is_active=False)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.count_active_admins = AsyncMock(return_value=1)
+    user_repo.lock_active_admins = AsyncMock(return_value=[uuid.uuid4() for _ in range(1)])
     user_repo.update = AsyncMock(return_value=target)
     await svc.deactivate(_make_user(role=UserRole.admin), target.id)
     user_repo.update.assert_awaited_once()

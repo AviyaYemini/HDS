@@ -442,11 +442,17 @@ class EmployeeService:
             ensure_role(actor, *ADMIN_ROLES)
 
     async def _guard_last_admin(self, target: User) -> None:
-        """FR-011: the last active Admin cannot be removed, deactivated or demoted."""
+        """FR-011: the last active Admin cannot be removed, deactivated or demoted.
+
+        Safe against two Admins acting on each other at once: the Admins are locked first (see
+        ``UserRepository.lock_active_admins``), so the second request counts after the first.
+        """
         if not target.is_active:
             return
-        count = await self._user_repo.count_active_admins(target.organization_id)
-        if count <= 1:
+        # Locks the Admins until the request ends, so a simultaneous removal waits and then sees
+        # the result of this one (FR-211).
+        admins = await self._user_repo.lock_active_admins(target.organization_id)
+        if len(admins) <= 1:
             raise ConflictError(
                 code="users.last_admin",
                 detail="Cannot remove, deactivate or demote the last active Admin.",
