@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager
 from hds.core.types import Name, Password, Phone, StrictDate
 from hds.models.user import User
@@ -109,7 +109,7 @@ def _svc(db: AsyncSession) -> ClientService:
 async def list_clients(
     is_active: bool | None = None,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ClientListResponse:
     """List clients.
 
@@ -133,7 +133,7 @@ async def list_clients(
 async def create_client(
     body: ClientCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a client.
 
@@ -155,7 +155,7 @@ async def create_client(
 async def get_client(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Get a client.
 
@@ -183,7 +183,7 @@ async def edit_client(
     id: uuid.UUID,
     body: ClientUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Edit a client.
 
@@ -211,7 +211,7 @@ async def edit_client(
 async def delete_client(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a client.
 
@@ -231,7 +231,7 @@ async def delete_client(
 async def list_client_users(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> list[User]:
     """List a client's users.
 
@@ -260,7 +260,7 @@ async def create_client_user(
     id: uuid.UUID,
     body: ClientUserCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a client user.
 
@@ -289,7 +289,7 @@ async def remove_client_user(
     id: uuid.UUID,
     user_id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Remove a client user.
 

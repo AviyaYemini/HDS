@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.types import Name
 from hds.models.user import User
@@ -52,7 +52,7 @@ class GroupListResponse(BaseModel):
 )
 async def list_groups(
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> GroupListResponse:
     """List groups.
 
@@ -76,7 +76,7 @@ async def list_groups(
 async def create_group(
     body: GroupWriteRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a group.
 
@@ -100,7 +100,7 @@ async def rename_group(
     id: uuid.UUID,
     body: GroupWriteRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Rename a group.
 
@@ -122,7 +122,7 @@ async def rename_group(
 async def delete_group(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a group.
 

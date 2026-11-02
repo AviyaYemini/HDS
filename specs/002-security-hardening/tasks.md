@@ -55,22 +55,22 @@ and 5 depend on it; Story 4 is largely proven by it.
 
 ### Tests first
 
-- [ ] T204 [P] Write `apps/api/tests/unit/test_unit_of_work.py` for `unit_of_work(session)`: commits exactly once after success; rolls back and re-raises on any exception; after-commit actions run only after a successful commit, in order; they are discarded after a rollback; an action that raises is logged (no secrets) and does not fail the request
-- [ ] T205 [P] Write `apps/api/tests/unit/test_deferred_mailer.py` for `DeferredMailer`: `send()` queues only; nothing is delivered before commit; delivered once after commit; discarded on rollback
+- [X] T204 [P] Write `apps/api/tests/unit/test_unit_of_work.py` for `unit_of_work(session)`: commits exactly once after success; rolls back and re-raises on any exception; after-commit actions run only after a successful commit, in order; they are discarded after a rollback; an action that raises is logged (no secrets) and does not fail the request
+- [X] T205 [P] Write `apps/api/tests/unit/test_deferred_mailer.py` for `DeferredMailer`: `send()` queues only; nothing is delivered before commit; delivered once after commit; discarded on rollback
 
 ### Implementation
 
-- [ ] T206 Implement `unit_of_work(session)` (async context manager), `after_commit(session, action)` (queue stored in `session.info`) and the dependency `get_unit_of_work` (depends on `get_db`, yields the session inside `unit_of_work`) in `apps/api/src/hds/core/database.py`. Routers declare it as `Depends(get_unit_of_work, scope="function")` so the commit happens before the response is sent. Make T204 pass
-- [ ] T207 Implement `DeferredMailer` (wraps a `MailSender`, queues each send with `after_commit`) in `apps/api/src/hds/core/mail.py`. Make T205 pass
-- [ ] T208 Remove every `await self.session.commit()` from `apps/api/src/hds/repositories/base.py` (`_update_scoped`, `_soft_delete_scoped`, `_delete_scoped`): use `flush()` and `refresh()` instead. Add a documented `commit()` method on `BaseRepository` whose docstring says it is allowed only for effects that must survive a refusal (failed-sign-in count, refresh-reuse response)
-- [ ] T209 [P] Remove the commits from `apps/api/src/hds/repositories/user.py`, `refresh_token.py` and `invitation_token.py` (use `flush()`), keeping behaviour identical
-- [ ] T210 [P] Remove the commits from `apps/api/src/hds/repositories/client.py`, `group.py`, `qualification.py`, `project.py` and `site.py` (use `flush()`)
-- [ ] T211 Switch `apps/api/src/hds/core/deps.py` (`get_current_user`) and `apps/api/src/hds/routers/auth.py`, `me.py`, `invitations.py` from `Depends(get_db)` to `Depends(get_unit_of_work, scope="function")`
-- [ ] T212 [P] Same switch in `apps/api/src/hds/routers/clients.py`, `groups.py`, `qualifications.py`
-- [ ] T213 [P] Same switch in `apps/api/src/hds/routers/employees.py`, `sites.py`, `projects.py`. After T211 to T213 no router imports `get_db` directly
-- [ ] T214 [P] In `.github/workflows/ci.yml` add `apps/api/tests/concurrency/` to the `uv run pytest` command of the `test-integration` job (the PostgreSQL 16 job) and add `ENVIRONMENT: test` to that job's `env`, so concurrency tests run on every pull request (Constitution IV and IX; FR-219). Add the path next to the existing paths, which collect tests, because pytest exits with code 5 when it is given only an empty folder
-- [ ] T215 Audit `apps/api/src/hds/services/*.py` for code that relied on an intermediate commit (for example reading back a row written earlier in the same call) and fix with `flush()`; write one line per change in the Phase 2 commit message, or the single line "no such code found"
-- [ ] T216 **Checkpoint A**: run the unchanged existing suite in `apps/api/tests/` (unit, integration, contract, performance) on PostgreSQL plus the OpenAPI drift check. All 422 tests must pass with no test edits. Fix regressions before continuing
+- [X] T206 Implement `unit_of_work(session)` (async context manager), `after_commit(session, action)` (queue stored in `session.info`) and the dependency `get_unit_of_work` (depends on `get_db`, yields the session inside `unit_of_work`) in `apps/api/src/hds/core/database.py`. Routers declare it as `Depends(get_unit_of_work, scope="function")` so the commit happens before the response is sent. Make T204 pass
+- [X] T207 Implement `DeferredMailer` (wraps a `MailSender`, queues each send with `after_commit`) in `apps/api/src/hds/core/mail.py`. Make T205 pass
+- [X] T208 Remove every `await self.session.commit()` from `apps/api/src/hds/repositories/base.py` (`_update_scoped`, `_soft_delete_scoped`, `_delete_scoped`): use `flush()` and `refresh()` instead. Add a documented `commit()` method on `BaseRepository` whose docstring says it is allowed only for effects that must survive a refusal (failed-sign-in count, refresh-reuse response)
+- [X] T209 [P] Remove the commits from `apps/api/src/hds/repositories/user.py`, `refresh_token.py` and `invitation_token.py` (use `flush()`), keeping behaviour identical
+- [X] T210 [P] Remove the commits from `apps/api/src/hds/repositories/client.py`, `group.py`, `qualification.py`, `project.py` and `site.py` (use `flush()`)
+- [X] T211 Switch `apps/api/src/hds/core/deps.py` (`get_current_user`) and `apps/api/src/hds/routers/auth.py`, `me.py`, `invitations.py` from `Depends(get_db)` to `Depends(get_unit_of_work, scope="function")`
+- [X] T212 [P] Same switch in `apps/api/src/hds/routers/clients.py`, `groups.py`, `qualifications.py`
+- [X] T213 [P] Same switch in `apps/api/src/hds/routers/employees.py`, `sites.py`, `projects.py`. After T211 to T213 no router imports `get_db` directly
+- [X] T214 [P] In `.github/workflows/ci.yml` add `apps/api/tests/concurrency/` to the `uv run pytest` command of the `test-integration` job (the PostgreSQL 16 job) and add `ENVIRONMENT: test` to that job's `env`, so concurrency tests run on every pull request (Constitution IV and IX; FR-219). Add the path next to the existing paths, which collect tests, because pytest exits with code 5 when it is given only an empty folder
+- [X] T215 Audit `apps/api/src/hds/services/*.py` for code that relied on an intermediate commit (for example reading back a row written earlier in the same call) and fix with `flush()`; write one line per change in the Phase 2 commit message, or the single line "no such code found"
+- [X] T216 **Checkpoint A**: run the unchanged existing suite in `apps/api/tests/` (unit, integration, contract, performance) on PostgreSQL plus the OpenAPI drift check. All 422 tests must pass with no test edits. Fix regressions before continuing
 
 **Checkpoint**: foundation ready. No behaviour has changed yet.
 

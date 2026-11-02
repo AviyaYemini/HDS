@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user_or_self, require_admin, require_manager
 from hds.core.types import AssignableRole, Money, Name, Password, Phone
 from hds.models.group import Group
@@ -133,7 +133,7 @@ async def list_employees(
     group_id: uuid.UUID | None = None,
     qualification_id: uuid.UUID | None = None,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> UserListResponse:
     """List employees.
 
@@ -167,7 +167,7 @@ async def list_employees(
 async def create_employee(
     body: UserCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Create an employee.
 
@@ -192,7 +192,7 @@ async def create_employee(
 async def get_employee(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user_or_self),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Get an employee.
 
@@ -221,7 +221,7 @@ async def edit_employee(
     id: uuid.UUID,
     body: UserUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Edit an employee.
 
@@ -247,7 +247,7 @@ async def edit_employee(
 async def delete_employee(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete an employee.
 
@@ -271,7 +271,7 @@ async def delete_employee(
 async def deactivate_employee(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Deactivate an employee.
 
@@ -294,7 +294,7 @@ async def deactivate_employee(
 async def reactivate_employee(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Reactivate an employee.
 
@@ -316,7 +316,7 @@ async def reactivate_employee(
 async def get_employee_groups(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user_or_self),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> list[Group]:
     """List an employee's groups.
 
@@ -340,7 +340,7 @@ async def replace_employee_groups(
     id: uuid.UUID,
     body: IDListRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Replace an employee's groups.
 
@@ -363,7 +363,7 @@ async def replace_employee_groups(
 async def get_employee_qualifications(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user_or_self),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> list[Qualification]:
     """List an employee's qualifications.
 
@@ -389,7 +389,7 @@ async def replace_employee_qualifications(
     id: uuid.UUID,
     body: IDListRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Replace an employee's qualifications.
 

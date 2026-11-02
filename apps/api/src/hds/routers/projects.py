@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager, require_manager_or_client
 from hds.core.types import Money, Name, StrictDate
 from hds.models.project import ProjectStatus, ProjectType
@@ -97,7 +97,7 @@ async def list_projects(
     status: ProjectStatus | None = None,
     client_id: uuid.UUID | None = None,
     current_user: User = Depends(require_manager_or_client),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ProjectListResponse:
     """List projects.
 
@@ -130,7 +130,7 @@ async def list_projects(
 async def create_project(
     body: ProjectCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a project.
 
@@ -154,7 +154,7 @@ async def create_project(
 async def get_project(
     id: uuid.UUID,
     current_user: User = Depends(require_manager_or_client),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Get a project.
 
@@ -180,7 +180,7 @@ async def edit_project(
     id: uuid.UUID,
     body: ProjectUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Edit a project.
 
@@ -207,7 +207,7 @@ async def edit_project(
 async def delete_project(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a project.
 

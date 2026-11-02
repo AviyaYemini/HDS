@@ -51,7 +51,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Client:
-        """Insert a client in the organisation and commit.
+        """Insert a client in the organisation.
 
         Args:
             org_id: Organisation that will own the client.
@@ -62,12 +62,12 @@ class ClientRepository(OrgScopedRepository[Client]):
         """
         client = Client(id=uuid.uuid4(), organization_id=org_id, **data)
         self.session.add(client)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(client)
         return client
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Client:
-        """Update columns of a client of the organisation and commit.
+        """Update columns of a client of the organisation.
 
         Args:
             id: Client to update.
@@ -83,7 +83,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         return await self._update_scoped(id, org_id, **fields)
 
     async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Mark a client deleted and commit; projects and users keep their reference.
+        """Mark a client deleted; projects and users keep their reference.
 
         Args:
             id: Client to delete.
@@ -92,7 +92,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         await self._soft_delete_scoped(id, org_id)
 
     async def deactivate_client_users(self, client_id: uuid.UUID) -> None:
-        """Deactivate every non-deleted user of a client so they can no longer sign in. Commits.
+        """Deactivate every non-deleted user of a client so they can no longer sign in.
 
         Not scoped by organisation: pass a ``client_id`` the service already verified belongs
         to the caller's organisation.
@@ -105,7 +105,7 @@ class ClientRepository(OrgScopedRepository[Client]):
             .where(User.client_id == client_id, User.is_deleted.is_(False))
             .values(is_active=False)
         )
-        await self.session.commit()
+        await self.session.flush()
 
     async def list_users(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[User]:
         """List the non-deleted user accounts attached to a client.

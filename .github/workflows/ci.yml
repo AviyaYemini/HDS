@@ -119,6 +119,8 @@ jobs:
       # fall back to a local-dev password that does not exist on this service.
       TEST_DATABASE_URL: postgresql+asyncpg://hds:hds_test@localhost:5432/hds_test
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
+      # Required once the settings stop defaulting to development (specs/002-security-hardening).
+      ENVIRONMENT: test
       HDS_SCHEMATHESIS_EXAMPLES: "100"
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +129,9 @@ jobs:
         working-directory: apps/api
       - run: uv run alembic upgrade head
         working-directory: apps/api
-      - run: uv run pytest tests/integration/ tests/contract/ -v --tb=short
+      # tests/concurrency needs real parallelism on PostgreSQL, so it runs in this job; the
+      # single-use and last-Admin guarantees would otherwise have no automated guard.
+      - run: uv run pytest tests/integration/ tests/contract/ tests/concurrency/ -v --tb=short
         working-directory: apps/api
 
   migration-check:

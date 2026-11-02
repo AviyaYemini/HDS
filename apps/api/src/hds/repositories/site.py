@@ -33,7 +33,7 @@ class SiteRepository(OrgScopedRepository[Site]):
         return list(result.scalars().all())
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Site:
-        """Insert a site in the organisation and commit.
+        """Insert a site in the organisation.
 
         Args:
             org_id: Organisation that will own the site.
@@ -44,12 +44,12 @@ class SiteRepository(OrgScopedRepository[Site]):
         """
         site = Site(id=uuid.uuid4(), organization_id=org_id, **data)
         self.session.add(site)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(site)
         return site
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Site:
-        """Update columns of a site of the organisation and commit.
+        """Update columns of a site of the organisation.
 
         Args:
             id: Site to update.

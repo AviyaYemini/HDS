@@ -19,7 +19,7 @@ class InvitationTokenRepository:
         """Bind the repository to a request-scoped session.
 
         Args:
-            session: The session from ``hds.core.database.get_db``.
+            session: The request's session from ``hds.core.database.get_unit_of_work``.
         """
         self.session = session
 
@@ -30,7 +30,7 @@ class InvitationTokenRepository:
         purpose: str,
         expires_at: datetime,
     ) -> InvitationToken:
-        """Store a new token and commit.
+        """Store a new token.
 
         Args:
             user_id: User the token is for.
@@ -53,7 +53,7 @@ class InvitationTokenRepository:
             created_at=datetime.now(UTC),
         )
         self.session.add(token)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(token)
         return token
 
@@ -72,7 +72,7 @@ class InvitationTokenRepository:
         return result.scalar_one_or_none()
 
     async def mark_used(self, id: uuid.UUID) -> None:
-        """Spend a token by stamping ``used_at`` with the current UTC time. Commits.
+        """Spend a token by stamping ``used_at`` with the current UTC time.
 
         Args:
             id: Primary key of the token.
@@ -82,4 +82,4 @@ class InvitationTokenRepository:
             .where(InvitationToken.id == id)
             .values(used_at=datetime.now(UTC))
         )
-        await self.session.commit()
+        await self.session.flush()

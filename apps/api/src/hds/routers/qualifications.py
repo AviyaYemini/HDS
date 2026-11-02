@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.types import Name
 from hds.models.user import User
@@ -52,7 +52,7 @@ class QualificationListResponse(BaseModel):
 )
 async def list_qualifications(
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> QualificationListResponse:
     """List qualifications.
 
@@ -76,7 +76,7 @@ async def list_qualifications(
 async def create_qualification(
     body: QualificationWriteRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a qualification.
 
@@ -100,7 +100,7 @@ async def rename_qualification(
     id: uuid.UUID,
     body: QualificationWriteRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Rename a qualification.
 
@@ -123,7 +123,7 @@ async def rename_qualification(
 async def delete_qualification(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a qualification.
 

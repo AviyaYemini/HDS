@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.config import get_settings
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Password, Token
 from hds.models.user import User
@@ -67,7 +67,7 @@ def _make_service(db: AsyncSession) -> AuthService:
 )
 async def login(
     body: LoginRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> TokenResponse:
     """Sign in.
 
@@ -97,7 +97,7 @@ async def login(
 )
 async def refresh_token(
     body: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> TokenResponse:
     """Refresh tokens.
 
@@ -127,7 +127,7 @@ async def refresh_token(
 async def logout(
     body: RefreshRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Sign out.
 
@@ -149,7 +149,7 @@ async def logout(
 )
 async def logout_all(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Sign out everywhere.
 

@@ -45,7 +45,7 @@ class GroupRepository(OrgScopedRepository[Group]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, name: str) -> Group:
-        """Insert a group and commit.
+        """Insert a group.
 
         Args:
             org_id: Organisation that will own the group.
@@ -59,12 +59,12 @@ class GroupRepository(OrgScopedRepository[Group]):
         """
         group = Group(id=uuid.uuid4(), organization_id=org_id, name=name)
         self.session.add(group)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(group)
         return group
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Group:
-        """Update columns of a group of the organisation and commit.
+        """Update columns of a group of the organisation.
 
         Args:
             id: Group to update.
@@ -80,7 +80,7 @@ class GroupRepository(OrgScopedRepository[Group]):
         return await self._update_scoped(id, org_id, **fields)
 
     async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Hard-delete a group; its membership rows go with it, the users stay. Commits.
+        """Hard-delete a group; its membership rows go with it, the users stay.
 
         Args:
             id: Group to delete.
@@ -103,7 +103,7 @@ class GroupRepository(OrgScopedRepository[Group]):
         return list(result.scalars().all())
 
     async def replace_user_groups(self, user_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
-        """Make the user a member of exactly ``group_ids``, in one transaction. Commits.
+        """Make the user a member of exactly ``group_ids`` within the request's transaction.
 
         No organisation check happens here: the service must already have verified that the
         user and every group belong to the caller's organisation (NFR-001).
@@ -115,4 +115,4 @@ class GroupRepository(OrgScopedRepository[Group]):
         await self.session.execute(delete(user_groups).where(user_groups.c.user_id == user_id))
         for gid in group_ids:
             await self.session.execute(user_groups.insert().values(user_id=user_id, group_id=gid))
-        await self.session.commit()
+        await self.session.flush()

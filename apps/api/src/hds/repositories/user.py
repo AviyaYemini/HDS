@@ -143,7 +143,7 @@ class UserRepository(OrgScopedRepository[User]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> User:
-        """Insert a user in the organisation and commit.
+        """Insert a user in the organisation.
 
         Args:
             org_id: Organisation that will own the user.
@@ -162,12 +162,15 @@ class UserRepository(OrgScopedRepository[User]):
             **data,
         )
         self.session.add(user)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(user)
         return user
 
     async def increment_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Add one to the failed-sign-in counter in a single atomic UPDATE, then commit.
+        """Add one to the failed-sign-in counter in a single atomic UPDATE, then commit it now.
+
+        The early commit is deliberate: the caller raises a refusal right after, and the request's
+        rollback would otherwise undo the count (see ``BaseRepository.commit``).
 
         Done in SQL rather than read-modify-write so concurrent failures are not lost.
 
@@ -179,10 +182,10 @@ class UserRepository(OrgScopedRepository[User]):
             .where(User.id == user_id)
             .values(failed_login_attempts=User.failed_login_attempts + 1)
         )
-        await self.session.commit()
+        await self.commit()
 
     async def reset_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Zero the failure counter and clear any lock, then commit (after a good sign-in).
+        """Zero the failure counter and clear any lock (after a good sign-in).
 
         Args:
             user_id: The account that signed in.
@@ -192,10 +195,13 @@ class UserRepository(OrgScopedRepository[User]):
             .where(User.id == user_id)
             .values(failed_login_attempts=0, locked_until=None)
         )
-        await self.session.commit()
+        await self.session.flush()
 
     async def set_locked_until(self, user_id: uuid.UUID, until: datetime) -> None:
-        """Lock the account until a UTC instant, then commit.
+        """Lock the account until a UTC instant, then commit it now.
+
+        Committed early for the same reason as ``increment_failed_attempts``: the sign-in refusal
+        raised next must not undo the lock.
 
         Args:
             user_id: The account to lock.
@@ -204,10 +210,10 @@ class UserRepository(OrgScopedRepository[User]):
         await self.session.execute(
             update(User).where(User.id == user_id).values(locked_until=until)
         )
-        await self.session.commit()
+        await self.commit()
 
     async def update(self, user_id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> User:
-        """Update columns of a user of the organisation and commit.
+        """Update columns of a user of the organisation.
 
         Args:
             user_id: User to update.
@@ -223,7 +229,7 @@ class UserRepository(OrgScopedRepository[User]):
         return await self._update_scoped(user_id, org_id, **fields)
 
     async def soft_delete(self, user_id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Mark a user deleted so the email can be reused; history is kept. Commits.
+        """Mark a user deleted so the email can be reused; history is kept.
 
         Args:
             user_id: User to delete.

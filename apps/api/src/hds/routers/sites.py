@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.types import Address, Name, Timezone
 from hds.models.user import User
@@ -65,7 +65,7 @@ class SiteListResponse(BaseModel):
 )
 async def list_sites(
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> SiteListResponse:
     """List sites.
 
@@ -88,7 +88,7 @@ async def list_sites(
 async def create_site(
     body: SiteCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a site.
 
@@ -108,7 +108,7 @@ async def create_site(
 async def get_site(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Get a site.
 
@@ -132,7 +132,7 @@ async def edit_site(
     id: uuid.UUID,
     body: SiteUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Edit a site.
 

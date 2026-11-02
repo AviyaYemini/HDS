@@ -21,7 +21,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
     async def create(
         self, user_id: uuid.UUID, token_hash: str, expires_at: datetime
     ) -> RefreshToken:
-        """Store a new token and commit.
+        """Store a new token.
 
         Args:
             user_id: Owner of the token.
@@ -38,7 +38,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             expires_at=expires_at,
         )
         self.session.add(token)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(token)
         return token
 
@@ -59,7 +59,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         return result.scalar_one_or_none()
 
     async def revoke(self, token_id: uuid.UUID) -> None:
-        """Stamp one token as revoked at the current UTC time and commit.
+        """Stamp one token as revoked at the current UTC time.
 
         Re-revoking overwrites the timestamp; callers check ``revoked_at`` first.
 
@@ -71,10 +71,10 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             .where(RefreshToken.id == token_id)
             .values(revoked_at=datetime.now(UTC))
         )
-        await self.session.commit()
+        await self.session.flush()
 
     async def revoke_all_for_user(self, user_id: uuid.UUID) -> None:
-        """Revoke every still-valid token of a user, ending all their sessions. Commits.
+        """Revoke every still-valid token of a user, ending all their sessions.
 
         Used by sign-out-everywhere and by password reset (NFR-005). Already-revoked tokens keep
         their original timestamp.
@@ -87,4 +87,4 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(UTC))
         )
-        await self.session.commit()
+        await self.session.flush()

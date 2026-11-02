@@ -2,7 +2,8 @@
 
 Layer: repositories. Depends on ``hds.models`` and ``hds.core.exceptions`` only; it MUST NOT
 import services or routers. Repositories are the only code that talks to the database
-(Constitution II), and they own the commit: each write method commits before returning.
+(Constitution II). They do not commit: the request's unit of work (``hds.core.database``)
+commits once at the end, so a multi-step action is all-or-nothing. Write methods only flush.
 """
 
 import uuid
@@ -32,9 +33,19 @@ class BaseRepository(Generic[ModelT]):
         """Bind the repository to a request-scoped session.
 
         Args:
-            session: The session from ``hds.core.database.get_db``.
+            session: The request's session from ``hds.core.database.get_unit_of_work``.
         """
         self.session = session
+
+    async def commit(self) -> None:
+        """Commit the current transaction now, ahead of the end of the request.
+
+        Repositories normally only ``flush``; the request's unit of work commits once at the
+        end. Use this only for an effect that must survive a refusal raised afterwards, such as
+        the failed-sign-in count, because everything else is rolled back when the request fails.
+        Anything written earlier in the same request is committed with it.
+        """
+        await self.session.commit()
 
 
 class OrgScopedRepository(BaseRepository[ModelT]):
@@ -86,7 +97,7 @@ class OrgScopedRepository(BaseRepository[ModelT]):
         return list(result.scalars().all())
 
     async def _update_scoped(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> ModelT:
-        """Update columns of one row, matched on both id and organisation, then commit.
+        """Update columns of one row, matched on both id and organisation, then flush.
 
         The organisation is part of the ``WHERE`` clause, so a row of another tenant cannot be
         touched even if its id is guessed.
@@ -112,13 +123,13 @@ class OrgScopedRepository(BaseRepository[ModelT]):
         )
         if result.rowcount == 0:  # type: ignore[attr-defined]
             raise NotFoundError(self.model.__name__, id)
-        await self.session.commit()
+        await self.session.flush()
         row = await self._get_unscoped(id)  # the scoped UPDATE above already proved ownership
         assert row is not None
         return row
 
     async def _soft_delete_scoped(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Flag a row as deleted (``is_deleted``, ``deleted_at`` in UTC) and commit.
+        """Flag a row as deleted (``is_deleted``, ``deleted_at`` in UTC).
 
         Does nothing, silently, when the row is not in the organisation.
         """
@@ -130,14 +141,14 @@ class OrgScopedRepository(BaseRepository[ModelT]):
             )
             .values(is_deleted=True, deleted_at=datetime.now(UTC))
         )
-        await self.session.commit()
+        await self.session.flush()
 
     async def _delete_scoped(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Hard-delete a row of the organisation and commit; no-op when it is not found."""
+        """Hard-delete a row of the organisation and flush; no-op when it is not found."""
         row = await self.get_by_id(id, org_id)
         if row is not None:
             await self.session.delete(row)
-            await self.session.commit()
+            await self.session.flush()
 
     async def _get_unscoped(self, id: uuid.UUID) -> ModelT | None:
         """Re-read a row we just wrote. Callers must already have passed a scoped lookup."""

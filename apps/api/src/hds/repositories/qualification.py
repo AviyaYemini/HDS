@@ -50,7 +50,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, name: str) -> Qualification:
-        """Insert a qualification and commit.
+        """Insert a qualification.
 
         Args:
             org_id: Organisation that will own it.
@@ -64,12 +64,12 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         """
         qual = Qualification(id=uuid.uuid4(), organization_id=org_id, name=name)
         self.session.add(qual)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(qual)
         return qual
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Qualification:
-        """Update columns of a qualification of the organisation and commit.
+        """Update columns of a qualification of the organisation.
 
         Args:
             id: Qualification to update.
@@ -85,7 +85,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         return await self._update_scoped(id, org_id, **fields)
 
     async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Hard-delete a qualification; assignments go with it, the users stay. Commits.
+        """Hard-delete a qualification; assignments go with it, the users stay.
 
         Args:
             id: Qualification to delete.
@@ -118,7 +118,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
     async def replace_user_qualifications(
         self, user_id: uuid.UUID, qual_ids: list[uuid.UUID]
     ) -> None:
-        """Make the user hold exactly ``qual_ids``, in one transaction. Commits.
+        """Make the user hold exactly ``qual_ids`` within the request's transaction.
 
         No organisation check happens here: the service must already have verified that the
         user and every qualification belong to the caller's organisation (NFR-001).
@@ -134,4 +134,4 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
             await self.session.execute(
                 user_qualifications.insert().values(user_id=user_id, qualification_id=qid)
             )
-        await self.session.commit()
+        await self.session.flush()

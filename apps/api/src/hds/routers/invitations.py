@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.mail import MailSender, get_mail_sender
 from hds.core.types import Password, Token
@@ -73,7 +73,7 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
 async def create_invitation(
     body: InviteRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> Response:
     """Invite a user.
@@ -102,7 +102,7 @@ async def create_invitation(
 )
 async def accept_invitation(
     body: AcceptInviteRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> None:
     """Accept an invitation.
@@ -127,7 +127,7 @@ async def accept_invitation(
 )
 async def request_password_reset(
     body: PasswordResetRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> Response:
     """Request a password reset.
@@ -152,7 +152,7 @@ async def request_password_reset(
 )
 async def confirm_password_reset(
     body: PasswordResetConfirm,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> None:
     """Confirm a password reset.

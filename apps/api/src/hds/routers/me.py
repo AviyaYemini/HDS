@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Name, Phone
 from hds.models.user import User, UserRole
@@ -90,7 +90,7 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
 async def patch_me(
     body: ProfileUpdate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Update my profile.
 
