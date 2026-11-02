@@ -375,7 +375,8 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
   same rule as one with an account.
 - **Per address.** The limit is `LOGIN_MAX_FAILURES` and the lock lasts `LOGIN_LOCKOUT_MINUTES`; no
   separate setting. For a registered address the existing account columns remain the state; for an
-  unregistered one the `address` row is. Both go through one small interface, so the sign-in code
+  unregistered one the `address` row is. Both go through one small interface in `services/throttle.py` (it
+  coordinates two repositories, so it is service work), so the sign-in code
   has a single path: read the state and treat an expired lock as cleared **in memory** (no write),
   refuse with **423 `auth.account_locked`** while locked (same body shape, lock-end time computed
   the same way), otherwise verify (a real or the dummy hash), and on failure register the failure
@@ -482,7 +483,9 @@ not, answers `auth.token_expired` and changes nothing. Cleanup deletes **only re
 expiry**: expired refresh tokens, and links whose `expires_at` has passed. A spent or cancelled link
 that is still inside its lifetime is **kept**, because cancelling marks a link used and its answer
 must stay `auth.token_used` (F01's acceptance check and the error contract). Cleanup runs
-opportunistically for the user at sign-in and refresh and in bulk by `purge_expired_records`.
+opportunistically for the user on the success path of sign-in, after verification and never
+before it (D15: nothing is written before verification), at refresh, and in bulk by
+`purge_expired_records`.
 ADR 006 gets a note.
 
 **Consequence, stated**: once a link is past its expiry and has been deleted, it answers

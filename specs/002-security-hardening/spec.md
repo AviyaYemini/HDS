@@ -53,12 +53,12 @@ they cannot be confused with the ids of feature 001, which tests already cite.
 - Q: How does the sign-in rate limit count attempts and where are the counts kept? (F04) → A:
   Failed sign-ins are counted per submitted address (lowercased, registered or not) and per
   network address, in a new database table, so the limit is shared by all workers, survives a
-  restart and covers unknown addresses. Limits and window are settings with defaults. Over the
-  limit the answer is 429 with `Retry-After`, identical for registered and unregistered addresses.
+  restart and covers unknown addresses. Limits are settings with defaults. The answer over each
+  limit is set by the follow-up below and FR-221: 423 for an address, 429 for a network.
 - Q: (Follow-up, 2026-11-03) Which answer does the per-address rate limit give? → A: The lockout
   answer. The per-address limit equals `LOGIN_MAX_FAILURES` and unknown addresses get exactly the
   lockout answer (423), which closes the last enumeration gap and supersedes the accepted FR-005
-  exception. Only the network limit answers 429. This replaces the earlier choice of 429 for both.
+  exception. Only the network limit answers 429.
 - Q: (Follow-up, 2026-11-03) Are the three proposed defaults kept? → A: Yes: a completed reset
   clears the lockout (F11), a Client account's role cannot change (F23), a client's contract end
   may not precede its start (F24).
@@ -420,6 +420,58 @@ valid one is accepted.
 - **FR-223**: A client address taken from a forwarded header MUST be trusted only as configured by
   `TRUSTED_PROXY_COUNT` (default 0: the header is ignored and the connecting address is used).
 
+**PR 4 fixes (`pr4-fix-list.md`; Proposed)**
+
+F04 is FR-221 to FR-223 and F08 is FR-209. F15 and F16 correct this spec and the quickstart and
+change no behaviour, so they need no requirement.
+
+- **FR-224** (F01): When a password reset completes, every other outstanding reset or invitation
+  link of that account MUST stop working (`auth.token_used`), and issuing a new reset link MUST
+  cancel that account's earlier unused reset links.
+- **FR-225** (F02): Deactivating or deleting a client, or removing a portal user, MUST end that
+  user's sessions and cancel their links, and a portal user MUST NOT be reactivated while the
+  client is inactive or deleted (409 `users.client_inactive`).
+- **FR-226** (F03): No sequence of staff actions may activate an account that never accepted its
+  invitation. Only a real activation writes `activated_at`. Deactivating a pending account MUST be
+  refused (409 `users.pending_cannot_deactivate`), and client deactivation MUST skip pending
+  portal users.
+- **FR-227** (F05): No part of a sensitive value may survive log redaction, whatever characters it
+  contains, and redacting twice MUST change nothing further.
+- **FR-228** (F06): `POST /auth/password-reset/request` MUST take the same observable time for
+  registered and unregistered addresses, and delivery MUST run after the response.
+- **FR-229** (F07): An account with evidence of past activity (any refresh token, or any reset
+  link) MUST NOT remain pending after migration; invitation links are not evidence; undecidable
+  accounts MUST be reported by id and left pending.
+- **FR-230** (F09): Once "end every session" completes, no credential issued before or during it
+  may remain usable, including from a refresh in flight or a sign-in that verified the old
+  password.
+- **FR-231** (F10): Only canonical IANA zone names are accepted, matched case-sensitively, with the
+  same result on every platform; `check_site_timezones` reports stored values that fail.
+- **FR-232** (F11): A completed password reset MUST clear that account's lock and failure count.
+- **FR-233** (F12): If a rollback fails, the request's original error MUST propagate, and the
+  rollback failure MUST be logged by exception type only.
+- **FR-234** (F13): The duplicate-address test MUST prove that `uq_users_email_ci` refused the
+  insert, and fail when that index is absent.
+- **FR-235** (F14): `dev_issue_link` MUST issue invitation tokens only for pending accounts, and
+  refuse a deactivated account with exit status 1.
+- **FR-236** (F17): In a `PATCH`, an explicit `null` clears an optional field, an omitted field is
+  left alone, and `null` for a required field is 422; the schema MUST say the same.
+- **FR-237** (F18): A Client-role user with no `client_id` MUST see no projects.
+- **FR-238** (F19): `/auth/logout` MUST NOT revoke a token owned by someone else; the answer stays
+  204.
+- **FR-239** (F20): Routers MUST read through services, with the services' role checks
+  (Constitution II).
+- **FR-240** (F21): `UserRead` MUST have one shared definition, keeping its OpenAPI component name.
+- **FR-241** (F22): The token lookup, the token hash and password verification MUST each have one
+  helper.
+- **FR-242** (F23): Any role change on a Client account MUST be refused (409
+  `users.client_role_locked`).
+- **FR-243** (F24): A client's `contract_end` MUST NOT be earlier than `contract_start` (422
+  `clients.date_range_invalid`).
+- **FR-244** (F25): Simultaneous creation of one address MUST give exactly one success and 409
+  `users.duplicate_email`.
+- **FR-245** (F26): Two test runs at once MUST NOT interfere with each other.
+
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
@@ -443,6 +495,13 @@ valid one is accepted.
 - **SC-208**: Every registered address can sign in with any letter case, and 0 pairs of accounts
   differ only by case after rollout.
 - **SC-209**: 0 sites with an invalid time zone can be saved, and all existing ones are reported.
+- **SC-210**: At every step of a run of failed sign-ins up to and past the lock, a registered and an
+  unregistered address give the same status, body shape, headers and number of password checks.
+- **SC-211**: With 50 concurrent requests that hash a password and a pool of 5 database connections,
+  an unrelated request is answered within 2 seconds, and requests past the hashing queue are
+  refused at once with 503.
+- **SC-212**: `POST /auth/password-reset/request` has a median time ratio below 1.15 between
+  registered and unregistered addresses, and delivery starts after the response is complete.
 
 ## Assumptions
 

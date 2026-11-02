@@ -43,8 +43,9 @@ text in `apps/api/src/hds/locales` (Constitution VIII; `test_i18n` enforces pari
 
 # Part 2: PR 4 fixes
 
-No operation, parameter or success code changes, so the drift check against
-`specs/001-foundation-auth-org/contracts/openapi.yaml` stays green. The items below are new or
+No operation, parameter or success code changes. The drift check against
+`specs/001-foundation-auth-org/contracts/openapi.yaml` now compares error responses too, and that
+file is updated to match (P3 Group E, and P6 for the PATCH fields). The items below are new or
 changed error answers; each needs English and Hebrew text where it is a new code.
 
 ## New codes and responses

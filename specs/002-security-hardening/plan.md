@@ -164,7 +164,7 @@ product spec. No tasks and no code are written at this stage.
 
 ## Summary
 
-Every item is in scope for PR 4, including the older gaps F17 to F26 (clarification Q1). Four
+Every item is in scope for PR 4, including the older gaps F17 to F26 (clarification Q1). Five
 decisions shape the work:
 
 1. **Pending accounts are never "deactivated"** (Q2): staff deactivation of a pending account is a
@@ -196,8 +196,10 @@ constraints or migrations. New: a concurrency test per revoke-all path (F09), an
 responsiveness test (F04), a delivery-ordering test (F06), per-run test databases (F26). Mutation
 checks accompany every security fix, as in Part 1.
 
-**Constraints**: the OpenAPI drift check stays green (operations, success codes and query
-parameters unchanged); `423`, `429` and `503` are declared on login as response codes and described; the generated
+**Constraints**: the OpenAPI drift check stays green and now compares every response code, not only
+2xx (P3 Group E). `specs/001-foundation-auth-org/contracts/openapi.yaml` is updated to match: all 46
+operations differ from the generated document on error codes today, and the PATCH fields lose
+`null` in P6; `423`, `429` and `503` are declared on login as response codes and described; the generated
 document may differ from the pre-feature baseline in descriptions and in the added error
 responses only. Constitution X: no edit to an applied migration. Constitution VIII: every new
 error code has English and Hebrew text.
@@ -288,7 +290,8 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
 ### P3 Sign-in under load and abuse
 
 - **F04 hashing** (D15). Test first: during a burst of unknown-address sign-ins another request is
-  answered promptly (the loop is not blocked); the number of concurrent hashes is bounded; 50
+  answered within a multiple of a baseline measured in the same test (median of 9 probes: at most
+  10 times the idle median, with a 50 ms floor; a fixed limit would be flaky in CI); the number of concurrent hashes is bounded; 50
   concurrent sign-ins **and 50 concurrent employee creations** against a pool of 5 connections
   still let a plain request through (no connection is held while hashing, on all six paths:
   sign-in, accept invitation, confirm reset, create employee, create client user, create
@@ -361,7 +364,7 @@ apps/api/
     018_login_throttle.py                # address and network lockout state
   src/hds/
     core/passwords.py        # async hashing behind a bound (F04); security.py keeps the sync core
-    core/throttle.py         # lockout rule shared by registered and unregistered addresses (FR-221)
+    services/throttle.py     # lockout rule shared by registered and unregistered addresses (FR-221)
     models/login_throttle.py
     repositories/login_throttle.py
     scripts/purge_expired_records.py     # bulk clean of expired credentials and stale throttle rows (F08)
