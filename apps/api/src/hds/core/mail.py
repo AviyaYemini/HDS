@@ -1,50 +1,130 @@
 """Outbound mail abstraction. Invitation and reset tokens are delivered only through this.
 
-Layer: core. Imports only ``hds.core.database`` (for the after-commit queue); services depend on
-the ``MailSender`` protocol so a real provider can replace the development sender without
-touching business code.
+Layer: core. Imports ``hds.core.config``, ``hds.core.database`` (for the after-commit queue) and
+``hds.core.logging`` (for masking); services depend on the ``MailSender`` protocol so a real
+provider can replace the development sender without touching business code.
+
+A message that carries a one-time token is a copy of an account-access link, so nothing in this
+module stores or logs one in clear (specs/002-security-hardening, FR-203). The only sender today
+is the development outbox, which writes a redacted record per message.
 """
 
+import asyncio
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.config import DEVELOPMENT_ENVIRONMENTS, OUTBOX_BACKEND, get_settings
 from hds.core.database import after_commit
+from hds.core.logging import mask_email, redact
 
 logger = logging.getLogger("hds.mail")
+
+#: What replaces the token in a stored message body.
+REDACTED = "[REDACTED]"
 
 
 class MailSender(Protocol):
     """Contract for anything that can deliver a message to one recipient."""
 
-    async def send(self, to: str, subject: str, body: str) -> None:
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        secret: str | None = None,
+        purpose: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> None:
         """Deliver one message.
 
         Args:
             to: Recipient email address.
             subject: Subject line.
             body: Plain-text body; may contain a one-time link or token.
+            secret: The one-time token inside ``body``, if any. A sender that stores or logs
+                messages MUST replace it, because it cannot recognise a bare token on its own.
+            purpose: What the message is for, such as ``invite`` or ``reset``.
+            expires_at: When the token in the message stops working.
         """
         ...
 
 
-class LoggingMailSender:
-    """Development sender: writes the message to the application log instead of sending it."""
+class RedactingOutboxMailSender:
+    """Development sender: appends a redacted record of each message to a local file.
 
-    async def send(self, to: str, subject: str, body: str) -> None:
-        """Log the message instead of sending it.
+    Each line is a JSON object with the masked recipient, subject, purpose, expiry and the body
+    with the token replaced by ``[REDACTED]``. The file therefore proves a message was produced
+    and to whom, but cannot be used to take over an account. To obtain a working link for a manual
+    test, use ``hds.scripts.dev_issue_link`` instead.
 
-        Side effects:
-            Writes the body, including any token, to the application log. Acceptable only
-            because this sender exists for development; production must provide a real one.
+    Attributes:
+        path: The file the records are appended to.
+    """
+
+    def __init__(self, path: Path | str, environment: str) -> None:
+        """Create the sender, refusing to exist outside a development environment.
 
         Args:
-            to: Recipient email address.
-            subject: Subject line.
-            body: Plain-text body.
+            path: File to append to; missing folders are created on the first message.
+            environment: The value of ``ENVIRONMENT``.
+
+        Raises:
+            RuntimeError: If ``environment`` is not ``development`` or ``test``.
         """
-        logger.info("mail to=%s subject=%s body=%s", to, subject, body)
+        if environment.lower() not in DEVELOPMENT_ENVIRONMENTS:
+            raise RuntimeError(
+                "The outbox mail backend (MAIL_BACKEND=outbox) is for development only: "
+                "ENVIRONMENT must be development or test"
+            )
+        self.path = Path(path)
+
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        secret: str | None = None,
+        purpose: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> None:
+        """Record the message with its token redacted and the recipient masked.
+
+        Side effects:
+            Appends one line to the outbox file (creating its folder) and writes one log line
+            holding only the masked recipient and the subject, never the body.
+
+        Args:
+            to: Recipient email address; stored masked.
+            subject: Subject line.
+            body: Plain-text body; every occurrence of ``secret`` is replaced.
+            secret: The one-time token inside ``body``.
+            purpose: What the message is for, such as ``invite`` or ``reset``.
+            expires_at: When the token stops working; stored as an ISO 8601 string.
+        """
+        stored_body = body.replace(secret, REDACTED) if secret else body
+        entry = {
+            "to": mask_email(to),
+            "subject": subject,
+            "purpose": purpose,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "body": redact(stored_body),
+        }
+        line = json.dumps(entry, ensure_ascii=False) + "\n"
+        await asyncio.to_thread(self._append, line)
+        logger.info("mail recorded to=%s subject=%s", mask_email(to), subject)
+
+    def _append(self, line: str) -> None:
+        """Append one line to the outbox file, creating its folder first."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as outbox:
+            outbox.write(line)
 
 
 class DeferredMailer:
@@ -65,7 +145,16 @@ class DeferredMailer:
         self._session = session
         self._inner = inner
 
-    async def send(self, to: str, subject: str, body: str) -> None:
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        secret: str | None = None,
+        purpose: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> None:
         """Queue one message for delivery after the commit.
 
         Side effects:
@@ -76,14 +165,33 @@ class DeferredMailer:
             to: Recipient email address.
             subject: Subject line.
             body: Plain-text body; may contain a one-time link or token.
+            secret: The one-time token inside ``body``, passed on so the real sender can redact it.
+            purpose: What the message is for, passed on to the real sender.
+            expires_at: When the token stops working, passed on to the real sender.
         """
-        after_commit(self._session, lambda: self._inner.send(to, subject, body))
+        after_commit(
+            self._session,
+            lambda: self._inner.send(
+                to, subject, body, secret=secret, purpose=purpose, expires_at=expires_at
+            ),
+        )
 
 
 def get_mail_sender() -> MailSender:
     """Return the sender the application uses (dependency-override point for tests).
 
+    The backend comes from the ``MAIL_BACKEND`` setting. The settings already refuse to start in
+    a non-development environment without a real backend, so reaching the outbox here outside
+    development is a configuration error and the sender itself refuses.
+
     Returns:
-        The development ``LoggingMailSender``.
+        The development `RedactingOutboxMailSender`.
+
+    Raises:
+        RuntimeError: If ``MAIL_BACKEND`` names no available backend, or the outbox is requested
+            outside a development environment.
     """
-    return LoggingMailSender()
+    settings = get_settings()
+    if settings.MAIL_BACKEND == OUTBOX_BACKEND:
+        return RedactingOutboxMailSender(settings.MAIL_OUTBOX_PATH, settings.ENVIRONMENT)
+    raise RuntimeError("MAIL_BACKEND does not name an available mail backend")

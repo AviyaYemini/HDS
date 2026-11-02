@@ -259,3 +259,33 @@ async def test_reset_password_expired_token_raises() -> None:
 
     assert exc_info.value.code == "auth.token_expired"
     user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_invitation_passes_the_token_as_secret_with_purpose_and_expiry() -> None:
+    """The sender can only redact a token it is told about (FR-203)."""
+    svc, user_repo, token_repo, mailer = _svc()
+    manager = _make_user(role=UserRole.manager, is_active=True)
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.create = AsyncMock(return_value=_make_user(is_active=False))
+
+    await svc.create_invitation(manager, "new@hds.test", UserRole.employee)
+
+    sent = mailer.send.await_args.kwargs
+    assert sent["secret"] and sent["secret"] in sent["body"]
+    assert sent["purpose"] == "invite"
+    assert sent["expires_at"] == token_repo.create.await_args.kwargs["expires_at"]
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_passes_the_token_as_secret_with_purpose_and_expiry() -> None:
+    svc, user_repo, token_repo, mailer = _svc()
+    user = _make_user(is_active=True)
+    user_repo.get_by_email = AsyncMock(return_value=user)
+
+    await svc.request_password_reset(user.email)
+
+    sent = mailer.send.await_args.kwargs
+    assert sent["secret"] and sent["secret"] in sent["body"]
+    assert sent["purpose"] == "reset"
+    assert sent["expires_at"] == token_repo.create.await_args.kwargs["expires_at"]

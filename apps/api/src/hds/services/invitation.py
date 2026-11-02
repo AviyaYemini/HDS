@@ -109,16 +109,22 @@ class InvitationService:
             user_id = existing.id
 
         raw, token_hash = generate_refresh_token()
+        expires_at = datetime.now(UTC) + timedelta(days=_INVITE_TTL_DAYS)
         await self._token_repo.create(
             user_id=user_id,
             token_hash=token_hash,
             purpose="invite",
-            expires_at=datetime.now(UTC) + timedelta(days=_INVITE_TTL_DAYS),
+            expires_at=expires_at,
         )
+        # The token is passed as ``secret`` so any sender that stores or logs the message can
+        # redact it; a bare token is not recognisable in text.
         await self._mailer.send(
             to=email,
             subject="You have been invited to HDS",
             body=f"Accept your invitation with this token (valid {_INVITE_TTL_DAYS} days): {raw}",
+            secret=raw,
+            purpose="invite",
+            expires_at=expires_at,
         )
 
     async def accept_invitation(self, raw_token: str, new_password: str) -> User:
@@ -166,16 +172,20 @@ class InvitationService:
             return  # Silent — never reveal whether the email exists
 
         raw, token_hash = generate_refresh_token()
+        expires_at = datetime.now(UTC) + timedelta(minutes=_RESET_TTL_MINUTES)
         await self._token_repo.create(
             user_id=user.id,
             token_hash=token_hash,
             purpose="reset",
-            expires_at=datetime.now(UTC) + timedelta(minutes=_RESET_TTL_MINUTES),
+            expires_at=expires_at,
         )
         await self._mailer.send(
             to=email,
             subject="Reset your HDS password",
             body=f"Reset your password with this token (valid {_RESET_TTL_MINUTES} minutes): {raw}",
+            secret=raw,
+            purpose="reset",
+            expires_at=expires_at,
         )
 
     async def reset_password(self, raw_token: str, new_password: str) -> None:
