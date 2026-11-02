@@ -3,7 +3,9 @@ name = "hds-api"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
+    # 0.121.0 is the first release whose Depends() accepts scope="function", which the
+    # request-scoped transaction relies on (specs/002-security-hardening/research.md D1).
+    "fastapi>=0.121.0",
     "pydantic[email]>=2",
     "pydantic-settings>=2",
     "sqlalchemy[asyncio]>=2",
@@ -13,6 +15,8 @@ dependencies = [
     "asyncpg>=0.29",
     "aiofiles>=23",
     "uvicorn[standard]>=0.29",
+    # IANA time zone data for systems that ship none (site time zone validation, research D11).
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

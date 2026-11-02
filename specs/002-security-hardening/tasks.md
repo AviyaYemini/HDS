@@ -40,9 +40,9 @@ feature 001's T001 to T147 (the same reason requirement ids use the 2xx block).
 
 **Purpose**: dependencies and test scaffolding the later phases need.
 
-- [ ] T201 Add `tzdata` to `dependencies` in `apps/api/pyproject.toml` and refresh `apps/api/uv.lock` with `uv lock` (zone data fallback, research D11), and raise the lower bound of `fastapi` from `>=0.115` to `>=0.121.0`, the first release whose `Depends` accepts `scope` (verified by installing 0.120.4, which lacks it, and 0.121.0, which has it, and inspecting the signature; research D1)
-- [ ] T202 [P] Create `apps/api/tests/concurrency/__init__.py` and `apps/api/tests/concurrency/conftest.py` with a helper that opens two independent sessions on the test database and starts two coroutines at the same moment (use an `asyncio.Barrier`), returning both outcomes
-- [ ] T203 [P] Add the default development outbox folder `apps/api/.dev-mail/` to `.gitignore` (research D6)
+- [X] T201 Add `tzdata` to `dependencies` in `apps/api/pyproject.toml` and refresh `apps/api/uv.lock` with `uv lock` (zone data fallback, research D11), and raise the lower bound of `fastapi` from `>=0.115` to `>=0.121.0`, the first release whose `Depends` accepts `scope` (verified by installing 0.120.4, which lacks it, and 0.121.0, which has it, and inspecting the signature; research D1)
+- [X] T202 [P] Create `apps/api/tests/concurrency/__init__.py` and `apps/api/tests/concurrency/conftest.py` with a helper that opens two independent sessions on the test database and starts two coroutines at the same moment (use an `asyncio.Barrier`), returning both outcomes
+- [X] T203 [P] Add the default development outbox folder `apps/api/.dev-mail/` to `.gitignore` (research D6)
 
 ---
 
