@@ -554,8 +554,8 @@ Input: [pr4-fix-list.md](pr4-fix-list.md), plan Part 2, research D12 to D26, the
 
 ### Group F: documents for P1
 
-- [ ] T332 [F01] [F02] [F03] [F08] [F11] Update `docs/hds-api.md` (error table and conventions: reset ends older links and clears the lockout; client changes end portal sessions; pending accounts cannot be deactivated; expired tokens end no sessions) and add the new rows to the requirement coverage table at the end of this file. Run `uv run pytest tests/unit/test_i18n.py`
-- [ ] T333 [F01] [F02] [F03] [F08] [F11] Commit as `docs: describe the P1 session and link rules`
+- [X] T332 [F01] [F02] [F03] [F08] [F11] Update `docs/hds-api.md` (error table and conventions: reset ends older links and clears the lockout; client changes end portal sessions; pending accounts cannot be deactivated; expired tokens end no sessions) and add the new rows to the requirement coverage table at the end of this file. Run `uv run pytest tests/unit/test_i18n.py`
+- [X] T333 [F01] [F02] [F03] [F08] [F11] Commit as `docs: describe the P1 session and link rules`
 
 **Checkpoint P1: ruff, format, interrogate, `mypy --strict src/ tests/`, import graph, `alembic check`, the OpenAPI comparison (descriptions and error responses only), the full suite on PostgreSQL, `tests/concurrency/` three runs in a row, and every mutation result recorded. Stop and report before P2**
 
