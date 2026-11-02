@@ -17,6 +17,12 @@ hds.scripts.find_email_case_duplicates`` prints the same list), then run the mig
 Because PostgreSQL DDL is transactional, a stopped migration leaves nothing half-applied. Deleted
 accounts are not compared, as the old index did not compare them either.
 
+Other tables: no other column holds an account address. Invitation, reset and refresh records
+reference the account by id, so lowercasing the address cannot orphan them (tested with an
+invitation issued before the migration). ``clients.contact_email`` is a contact detail, not an
+account identifier, and is left as entered. The three steps (lowercase, drop, create) run in one
+transaction: a failure in the last leaves the addresses as they were (tested).
+
 Downgrade recreates ``uq_users_email`` and drops ``uq_users_email_ci``. The lowercasing of the
 stored addresses is NOT reversed: the original spellings are not kept, and the lowercase form
 identifies the same accounts.

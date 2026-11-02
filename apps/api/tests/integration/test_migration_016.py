@@ -134,3 +134,58 @@ async def test_downgrade_restores_the_case_sensitive_index_and_keeps_the_lowerca
     assert NEW not in found and OLD in found
     assert await emails(engine) == {"alice@corp.com"}  # the lowercasing is not reversed
     await add_user(engine, org, "ALICE@corp.com")  # the old index allows it again
+
+
+async def test_a_failure_after_the_lowercasing_leaves_every_address_as_it_was(scratch) -> None:
+    """The lowercasing, the drop of the old index and the new index are one transaction.
+
+    A stray object already named ``uq_users_email_ci`` makes the LAST step fail, after the
+    addresses were lowercased and the old index dropped. Nothing of that may remain.
+    """
+    url, engine = scratch
+    org = await add_org(engine)
+    await add_user(engine, org, "Alice@Corp.com")
+    await add_user(engine, org, "carol@corp.com")
+    async with engine.begin() as conn:
+        await conn.execute(text(f"CREATE TABLE {NEW} (x int)"))  # the name is taken
+
+    result = await asyncio.to_thread(alembic_run, url, "upgrade", "016_case_insensitive_email")
+
+    assert result.returncode != 0 and NEW in result.stderr
+    assert await emails(engine) == {"Alice@Corp.com", "carol@corp.com"}
+    assert OLD in await indexes(engine)
+    async with engine.connect() as conn:
+        revision = (
+            await conn.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one()
+    assert revision == "015_refresh_revoked_reason"
+
+
+async def test_an_invitation_issued_before_the_migration_still_belongs_to_the_same_account(
+    scratch,
+) -> None:
+    """Links hold an account id, not an address, so lowercasing the address cannot orphan them."""
+    url, engine = scratch
+    org = await add_org(engine)
+    pending = await add_user(engine, org, "New.Hire@Corp.com")
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO invitation_tokens (id, user_id, token_hash, purpose, expires_at) "
+                "VALUES (:i, :u, 'abc123', 'invite', :x)"
+            ),
+            {"i": uuid.uuid4(), "u": pending, "x": datetime(2027, 1, 1, tzinfo=UTC)},
+        )
+
+    await asyncio.to_thread(alembic, url, "upgrade", "016_case_insensitive_email")
+
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT u.id, u.email, t.used_at FROM invitation_tokens t "
+                    "JOIN users u ON u.id = t.user_id WHERE t.token_hash = 'abc123'"
+                )
+            )
+        ).one()
+    assert (row.id, row.email, row.used_at) == (pending, "new.hire@corp.com", None)

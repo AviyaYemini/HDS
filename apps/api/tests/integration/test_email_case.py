@@ -7,12 +7,16 @@ portal user. The stored address is always the lowercase form.
 Covers: FR-215, SC-208.
 """
 
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.security import generate_refresh_token
 from hds.models.user import User
 from hds.repositories.user import UserRepository
 from tests.conftest import OutboxMailSender
@@ -171,3 +175,44 @@ async def test_the_repository_matches_and_stores_addresses_case_insensitively(
             seed_users["admin"].organization_id,
             {"email": "NEW.PERSON@hds.test", "password_hash": "x", "full_name": "N"},
         )
+
+
+async def test_an_account_stored_before_the_rule_is_found_and_its_invitation_still_works(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    """A mixed-case row from before migration 016 (inserted raw) and its unused invitation."""
+    org_id = seed_users["admin"].organization_id
+    user_id = uuid.uuid4()
+    raw, token_hash = generate_refresh_token()
+    await test_db.execute(
+        text(
+            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "is_active) VALUES (:i, :o, 'Legacy.Hire@HDS.test', 'x', 'Legacy', "
+            "CAST('employee' AS user_role), false)"
+        ),
+        {"i": user_id, "o": org_id},
+    )
+    await test_db.execute(
+        text(
+            "INSERT INTO invitation_tokens (id, user_id, token_hash, purpose, expires_at) "
+            "VALUES (:i, :u, :h, 'invite', :x)"
+        ),
+        {
+            "i": uuid.uuid4(),
+            "u": user_id,
+            "h": token_hash,
+            "x": datetime.now(UTC) + timedelta(days=1),
+        },
+    )
+    await test_db.commit()
+
+    accepted = await async_client.post(
+        "/auth/invite/accept", json={"token": raw, "password": "A-long-password-1"}
+    )
+    assert accepted.status_code == 204, accepted.text
+
+    for spelling in ("legacy.hire@hds.test", "LEGACY.HIRE@HDS.TEST"):
+        signed_in = await async_client.post(
+            "/auth/login", json={"email": spelling, "password": "A-long-password-1"}
+        )
+        assert signed_in.status_code == 200, spelling
