@@ -406,5 +406,11 @@ valid one is accepted.
   something an invitation does.
 - Smaller review issues (clearing optional fields, contract-date order, portal-user role changes,
   logout ownership, layering of some reads) are out of scope here and are tracked separately.
+- Email uniqueness holds across the whole deployment (feature 001), so a request to use an address
+  that another organisation already holds is answered 409 `users.duplicate_email`. That answer
+  reveals that the address exists somewhere in the deployment; this is unavoidable while one
+  address can belong to only one account, and it reveals nothing about which organisation holds it.
+  Every request that names an id (rather than an address) from another organisation is answered
+  404, the same as for an id that does not exist.
 - Out of scope: real email provider integration, rate limiting by network address, and multi-factor
   sign-in.

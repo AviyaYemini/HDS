@@ -231,9 +231,33 @@ outside the window revokes every token of the user.
 - [X] T259 [P] [US3] In `apps/api/src/hds/repositories/invitation_token.py` replace `mark_used` with `spend(id) -> bool` implemented as `UPDATE ... SET used_at = now WHERE id = :id AND used_at IS NULL` returning whether a row changed
 - [X] T260 [US3] Rewrite `AuthService.refresh` in `apps/api/src/hds/services/auth.py` per research D3: guarded rotation; on a lost race re-read and decide (rotated and outside the window: `revoke_all_for_user(reason="all")`, call the repository's explicit `commit()`, then refuse; otherwise refuse with no effect). `logout` uses reason `logout`, `logout_all` uses `all`. Update the docstrings
 - [X] T261 [US3] Make `apps/api/src/hds/services/invitation.py` redeem links through `spend()` (a false result means refused as used) and make `apps/api/src/hds/services/employee.py` pass reason `account` when revoking tokens on deactivate, delete and role change; reset passes `all`
-- [ ] T262 [US3] Cross-organisation sweep (beyond the ten findings; feature 001 NFR-001 and FR-012): write `apps/api/tests/integration/test_cross_organisation_sweep.py`. It holds an inventory of every operation that takes an id or an email from the request (path, query, body), generated from the application's OpenAPI document and checked against it, so a new endpoint cannot be forgotten: each operation is either a sweep case or an exempt entry with a stated reason (public operations that authenticate by credential or token). For each sweep case the test sends another organisation's id or address as an authorised caller and asserts the refusal (404 for an id, so it is indistinguishable from a missing one; 409 `users.duplicate_email` for an address) and that nothing changed, by comparing a digest of every table before and after. Also record in `spec.md` Assumptions that a 409 for an address held by another organisation reveals that the address exists in the deployment, which email uniqueness across the deployment makes unavoidable
-- [ ] T263 [US3] Fix every gap the sweep finds, test first: for each failing case, show it failing for the right reason, fix the service or repository, and list the cases and fixes in the commit message (write "none found" if there are none). A refused request must change nothing in any organisation
-- [ ] T264 [US3] Write `docs/adr/006-refresh-token-reuse-detection.md` (context, decision, grace window, consequences) and add it to the ADR table in `docs/README.md`
+- [X] T262 [US3] Cross-organisation sweep (beyond the ten findings; feature 001 NFR-001 and FR-012): write `apps/api/tests/integration/test_cross_organisation_sweep.py`. It holds an inventory of every operation that takes an id or an email from the request (path, query, body), generated from the application's OpenAPI document and checked against it, so a new endpoint cannot be forgotten: each operation is either a sweep case or an exempt entry with a stated reason (public operations that authenticate by credential or token). For each sweep case the test sends another organisation's id or address as an authorised caller and asserts the refusal (404 for an id, so it is indistinguishable from a missing one; 409 `users.duplicate_email` for an address) and that nothing changed, by comparing a digest of every table before and after. Also record in `spec.md` Assumptions that a 409 for an address held by another organisation reveals that the address exists in the deployment, which email uniqueness across the deployment makes unavoidable
+- [X] T263 [US3] Fix every gap the sweep finds, test first: for each failing case, show it failing for the right reason, fix the service or repository, and list the cases and fixes in the commit message (write "none found" if there are none). A refused request must change nothing in any organisation
+- [X] T264 [US3] Write `docs/adr/006-refresh-token-reuse-detection.md` (context, decision, grace window, consequences) and add it to the ADR table in `docs/README.md`
+
+### Scope additions recorded during implementation (Phase 5)
+
+Work done in Phase 5 that differs from, or goes beyond, the task text above.
+
+- **Redeeming links, spend first**: accepting an invitation and confirming a reset call `spend()`
+  before any check of the owner's state, so the single-use decision is made by the database alone.
+  A mutation that removed the `used_at IS NULL` condition was masked by the pending-account check
+  for accept-invitation, so a second mutation (M2b) removed both and was caught.
+- **`RevocationReason`**: a `str` enum in `models/refresh_token.py` (`rotated`, `logout`, `all`,
+  `account`) instead of bare strings, so a caller cannot pass a reason the check constraint rejects.
+- **`tests/integration/migration_support.py`**: the scratch-database helper that migration 014's
+  test built is now shared with the migration 015 test (create, upgrade to a revision, drop).
+- **Throwaway checks**: the 100/100 double wins before the fix and the mutation runs are scripts
+  outside the repository; their results are in the commit message of the single-use change.
+- **T262, sweep result**: the sweep found two gaps (`GET /employees?group_id=` and
+  `?qualification_id=` answered 200 with an empty list for another organisation's id and for an
+  id that does not exist). Case variants of an address are not in the sweep; they belong to US8
+  (T283), because case-insensitive addresses do not exist until then.
+- **T263, fix**: `EmployeeService` now takes the group and qualification repositories and refuses
+  an unknown or foreign filter id with 404. The two feature 001 tests that asserted the old empty
+  answer (`test_employee_filters.py`) now assert 404, as NFR-001 requires.
+- **T264, numbering**: ADR 006 is written before ADR 005 (T269, phase 6) because the task order
+  fixes the names; ADR 006 refers to 005 and the README table says it follows.
 
 **Checkpoint**: all three P1 stories pass. Highest-risk security work is done.
 
