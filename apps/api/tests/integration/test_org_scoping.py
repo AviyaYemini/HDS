@@ -1,4 +1,7 @@
-"""T134: every lookup is scoped to the caller's organisation (cross-tenant ids return 404)."""
+"""T134: every lookup is scoped to the caller's organisation (cross-tenant ids return 404).
+
+Covers: NFR-001, SC-004.
+"""
 
 import pytest
 from httpx import AsyncClient

@@ -1,5 +1,6 @@
-"""Unit tests for EmployeeService self-service methods.
-Must ALL FAIL before T047 (EmployeeService) is implemented.
+"""Unit tests for EmployeeService self-service methods (T046, T047).
+
+Covers: FR-017.
 """
 
 import uuid

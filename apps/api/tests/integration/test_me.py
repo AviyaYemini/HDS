@@ -1,4 +1,7 @@
-"""Integration tests for /me profile endpoints (US2)."""
+"""Integration tests for the /me profile endpoints (US2, T049, T067).
+
+Covers: FR-007, FR-017.
+"""
 
 import uuid
 

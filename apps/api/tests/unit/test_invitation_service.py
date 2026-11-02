@@ -1,4 +1,7 @@
-"""Unit tests for InvitationService."""
+"""Unit tests for InvitationService (T099).
+
+Covers: FR-006, NFR-005.
+"""
 
 import uuid
 from datetime import UTC, datetime, timedelta

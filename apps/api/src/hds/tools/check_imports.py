@@ -10,6 +10,9 @@ Exits with code 1 if any violation is found:
 
 Run with:
     uv run python -m hds.tools.check_imports
+
+Layer: tools (development only). Reads source files with ``ast`` and imports nothing from the
+application, so it still works when the application does not import.
 """
 
 import ast
@@ -106,6 +109,11 @@ def check(src_root: Path = _SRC_ROOT) -> list[str]:
 
 
 def main() -> None:
+    """Run the check on the installed source tree and exit non-zero on any violation.
+
+    Side effects:
+        Prints each violation to standard error; exits with status 1 if there are any.
+    """
     violations = check()
     if violations:
         for v in violations:

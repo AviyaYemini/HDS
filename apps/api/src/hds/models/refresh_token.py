@@ -1,3 +1,8 @@
+"""Server-side record of issued refresh tokens.
+
+Layer: models. Depends on ``hds.models.base`` and ``hds.models.user`` only.
+"""
+
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -12,6 +17,14 @@ if TYPE_CHECKING:
 
 
 class RefreshToken(Base):
+    """One issued refresh token, identified only by its SHA-256 hash.
+
+    The raw token is never stored. A token is usable while ``revoked_at`` is ``None`` and
+    ``expires_at`` is in the future; rotation, sign-out and password reset set
+    ``revoked_at`` instead of deleting the row, so a replayed old token is rejected as revoked
+    rather than as unknown.
+    """
+
     __tablename__ = "refresh_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

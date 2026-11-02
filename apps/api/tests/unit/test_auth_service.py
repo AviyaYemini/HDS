@@ -1,4 +1,7 @@
-"""Unit tests for AuthService using fake repositories. Must ALL FAIL before T038."""
+"""Unit tests for AuthService using fake repositories (T033, T120).
+
+Covers: FR-001, FR-002, FR-003, FR-005, FR-006b, FR-015, NFR-005.
+"""
 
 import uuid
 from datetime import UTC, datetime, timedelta

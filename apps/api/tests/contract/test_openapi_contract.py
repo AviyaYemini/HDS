@@ -3,6 +3,9 @@
 Every operation in the app's OpenAPI document is exercised with generated inputs against the
 ASGI app on the PostgreSQL test database, as an Admin. All built-in checks must pass:
 no 5xx, documented status codes, response schema and content-type conformance, etc.
+
+Covers: FR-028 (invalid input is a validation error, never a server error); Constitution IV
+    and V.
 """
 
 import os

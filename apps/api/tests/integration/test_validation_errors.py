@@ -1,4 +1,7 @@
-"""T123 (FR-028): range and rate violations are 422 problem-details with stable codes."""
+"""T123: range and rate violations are 422 problem-details with stable codes.
+
+Covers: FR-028, NFR-004.
+"""
 
 import uuid
 from datetime import date

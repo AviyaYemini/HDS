@@ -1,4 +1,7 @@
-"""Unit tests for ProjectService client-scope filtering (US5)."""
+"""Unit tests for ProjectService client-scope filtering (US5, T093).
+
+Covers: FR-010.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock

@@ -1,3 +1,11 @@
+"""Alembic environment: connects migrations to the application's models and database.
+
+Layer: tooling (outside the request path). The database URL comes from ``DATABASE_URL`` when
+set, so CI and scratch databases need no edit to ``alembic.ini``. ``hds.models`` is imported
+for its side effect of registering every table on ``Base.metadata``; ``alembic check``
+compares that metadata with the live schema (Constitution X).
+"""
+
 import asyncio
 import os
 from logging.config import fileConfig
@@ -23,6 +31,11 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """Emit migration SQL without connecting (``alembic upgrade --sql``).
+
+    Values are rendered as literals because there is no driver to bind parameters; use it to
+    review or hand over the SQL, never to apply a migration.
+    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -35,12 +48,25 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):  # type: ignore[no-untyped-def]
+    """Run all pending migrations on a synchronous connection, in one transaction.
+
+    Alembic's API is synchronous, so the async engine hands it a sync view of the connection
+    through ``run_sync``.
+
+    Args:
+        connection: The synchronous connection provided by ``AsyncConnection.run_sync``.
+    """
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
+    """Connect with the async driver, run the migrations and close the engine.
+
+    Side effects:
+        Changes the schema of the database named by ``DATABASE_URL``.
+    """
     url = config.get_main_option("sqlalchemy.url")
     connectable = create_async_engine(url)
     async with connectable.connect() as connection:
@@ -49,6 +75,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    """Apply migrations to the live database (the normal ``alembic upgrade`` path)."""
     asyncio.run(run_async_migrations())
 
 

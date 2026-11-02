@@ -1,7 +1,9 @@
-"""Integration tests for role-based access boundaries.
+"""Integration tests for role-based access boundaries (T035, T132).
 
-These tests verify that each seeded role can sign in and that role-based
-endpoint restrictions are enforced.
+Each seeded role can sign in, and role-restricted endpoints answer exactly 200 or 403 for
+the roles the spec names.
+
+Covers: FR-001, FR-004, FR-007, FR-008, SC-002.
 """
 
 import pytest

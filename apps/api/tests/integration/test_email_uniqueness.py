@@ -1,4 +1,7 @@
-"""T135: email is unique across ALL organisations (sign-in resolves the account by email)."""
+"""T135: email is unique across ALL organisations (sign-in resolves the account by email).
+
+Covers: FR-012.
+"""
 
 import uuid
 

@@ -1,4 +1,7 @@
-"""Unit tests for core.authz.ensure_role (Constitution VI)."""
+"""Unit tests for core.authz.ensure_role (Constitution VI).
+
+Covers: FR-004, FR-008, FR-009.
+"""
 
 from unittest.mock import MagicMock
 

@@ -1,4 +1,12 @@
-"""Employee service: self-service profile and manager operations."""
+"""Employee service: self-service profile and manager operations.
+
+Layer: services. May import ``hds.repositories``, ``hds.models`` and ``hds.core``; MUST NOT
+import routers or build HTTP responses (Constitution II).
+
+Holds the rules for who may change whom: only an Admin may change or create an Admin (FR-011a),
+the last active Admin can never be removed (FR-011), and any change to a user's access ends their
+sessions so it takes effect at once.
+"""
 
 import uuid
 from decimal import Decimal
@@ -23,6 +31,14 @@ MIN_PASSWORD_LENGTH = 12
 
 
 def validate_initial_password(password: str) -> None:
+    """Reject a password shorter than ``MIN_PASSWORD_LENGTH`` characters.
+
+    Args:
+        password: Clear-text initial password.
+
+    Raises:
+        DomainValidationError: ``users.password_too_short`` (HTTP 422).
+    """
     if len(password) < MIN_PASSWORD_LENGTH:
         raise DomainValidationError(
             code="users.password_too_short",
@@ -31,6 +47,14 @@ def validate_initial_password(password: str) -> None:
 
 
 def validate_hourly_rate(rate: Any) -> None:
+    """Reject a zero or negative hourly rate (Constitution VII: rates are positive).
+
+    Args:
+        rate: Value convertible to ``Decimal``, or ``None`` when no rate is set.
+
+    Raises:
+        DomainValidationError: ``users.hourly_rate_invalid`` (HTTP 422).
+    """
     if rate is not None and Decimal(str(rate)) <= Decimal("0"):
         raise DomainValidationError(
             code="users.hourly_rate_invalid",
@@ -39,13 +63,32 @@ def validate_hourly_rate(rate: Any) -> None:
 
 
 class EmployeeService:
+    """Profile access for everyone and employee administration for Managers and Admins."""
+
     def __init__(self, user_repo: UserRepository, token_repo: RefreshTokenRepository) -> None:
+        """Wire the service.
+
+        Args:
+            user_repo: User storage.
+            token_repo: Used to end sessions when access changes.
+        """
         self._user_repo = user_repo
         self._token_repo = token_repo
 
     # ── Self-service ─────────────────────────────────────────────────────────
 
     async def get_profile(self, user_id: uuid.UUID, org_id: uuid.UUID) -> User:
+        """Load a user of the organisation.
+
+        No role check: the router decides who may read which profile.
+
+        Args:
+            user_id: User to load.
+            org_id: The caller's organisation.
+
+        Raises:
+            NotFoundError: Missing, deleted or in another organisation (HTTP 404).
+        """
         user = await self._user_repo.get_by_id(user_id, org_id)
         if user is None:
             raise NotFoundError(resource="User", id=user_id)
@@ -61,7 +104,22 @@ class EmployeeService:
         group_id: uuid.UUID | None = None,
         qualification_id: uuid.UUID | None = None,
     ) -> list[User]:
-        """FR-013: Managers search and filter their own organisation's employees."""
+        """Search and filter the organisation's employees (FR-013; Manager or Admin).
+
+        Args:
+            actor: The caller.
+            search: Substring of name or email.
+            role: Keep only this role.
+            is_active: Keep only active or inactive users.
+            group_id: Keep only members of this group.
+            qualification_id: Keep only holders of this qualification.
+
+        Returns:
+            Matching users, ordered by name.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         return await self._user_repo.search(
             actor.organization_id,
@@ -73,6 +131,20 @@ class EmployeeService:
         )
 
     async def update_own_profile(self, current_user: User, data: dict[str, Any]) -> User:
+        """Let any user edit only their own name and phone.
+
+        Role, rate, email and activity are excluded so self-service cannot escalate privileges.
+
+        Args:
+            current_user: The caller, whose own profile is edited.
+            data: Requested changes.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``profile.field_not_allowed`` for any other field (HTTP 403).
+        """
         disallowed = set(data.keys()) - _ALLOWED_SELF_FIELDS
         if disallowed:
             field = next(iter(disallowed))
@@ -89,6 +161,24 @@ class EmployeeService:
     # ── Manager operations ───────────────────────────────────────────────────
 
     async def create_employee(self, actor: User, data: dict[str, Any]) -> User:
+        """Create an employee, Manager or Admin account with an initial password.
+
+        Args:
+            actor: The Manager or Admin creating the account. Only an Admin may create an Admin.
+            data: User fields including ``initial_password`` and optionally ``role`` (default
+                employee) and ``default_hourly_rate``.
+
+        Returns:
+            The new user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required``, or ``users.admin_required`` when a
+                Manager asks for the Admin role (HTTP 403).
+            DomainValidationError: ``users.role_invalid`` (Client users have their own
+                endpoints), ``users.hourly_rate_invalid`` or ``users.password_too_short``
+                (HTTP 422).
+            ConflictError: ``users.duplicate_email`` (HTTP 409).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         data = dict(data)
         role = UserRole(data.get("role", UserRole.employee))
@@ -109,6 +199,27 @@ class EmployeeService:
         return await self._user_repo.create(actor.organization_id, data)
 
     async def promote_to_manager(self, actor: User, target_id: uuid.UUID) -> User:
+        """Set a user's role to Manager (Manager or Admin).
+
+        Applied to an Admin it is a demotion, so it needs an Admin actor and is refused for the
+        last active Admin.
+
+        Args:
+            actor: The caller.
+            target_id: User to change.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required``, or ``users.admin_required`` when a
+                Manager targets an Admin (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+            ConflictError: ``users.last_admin`` (HTTP 409).
+
+        Side effects:
+            Revokes the user's refresh tokens so the new role applies at once.
+        """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
@@ -121,6 +232,22 @@ class EmployeeService:
         return updated
 
     async def promote_to_admin(self, actor: User, target_id: uuid.UUID) -> User:
+        """Set a user's role to Admin (Admin only).
+
+        Args:
+            actor: The caller.
+            target_id: User to change.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+
+        Side effects:
+            Revokes the user's refresh tokens.
+        """
         ensure_role(actor, *ADMIN_ROLES)
         await self._get_target(actor, target_id)
         updated = await self._user_repo.update(
@@ -130,6 +257,26 @@ class EmployeeService:
         return updated
 
     async def edit_employee(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> User:
+        """Update an employee's details, and optionally their role (Manager or Admin).
+
+        Args:
+            actor: The caller. Only an Admin may edit an Admin or assign the Admin role.
+            target_id: User to change.
+            data: Fields to change.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+            DomainValidationError: ``users.role_invalid`` or ``users.hourly_rate_invalid``
+                (HTTP 422).
+            ConflictError: ``users.last_admin`` when demoting the last active Admin (HTTP 409).
+
+        Side effects:
+            Revokes the user's refresh tokens when the role changes.
+        """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
@@ -151,6 +298,23 @@ class EmployeeService:
         return updated
 
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:
+        """Block a user from signing in without deleting them (Manager or Admin).
+
+        Args:
+            actor: The caller. Only an Admin may deactivate an Admin.
+            target_id: User to deactivate.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+            ConflictError: ``users.last_admin`` (HTTP 409).
+
+        Side effects:
+            Revokes the user's refresh tokens, ending their sessions.
+        """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
@@ -161,12 +325,39 @@ class EmployeeService:
         return updated
 
     async def reactivate(self, actor: User, target_id: uuid.UUID) -> User:
+        """Allow a deactivated user to sign in again (Manager or Admin).
+
+        Args:
+            actor: The caller. Only an Admin may reactivate an Admin.
+            target_id: User to reactivate.
+
+        Returns:
+            The updated user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         return await self._user_repo.update(target_id, actor.organization_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:
+        """Delete a user, keeping their history and freeing their email (Admin only).
+
+        Args:
+            actor: The caller.
+            target_id: User to delete.
+
+        Raises:
+            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+            ConflictError: ``users.last_admin`` (HTTP 409).
+
+        Side effects:
+            Revokes the user's refresh tokens.
+        """
         ensure_role(actor, *ADMIN_ROLES)
         target = await self._get_target(actor, target_id)
         if target.role == UserRole.admin:

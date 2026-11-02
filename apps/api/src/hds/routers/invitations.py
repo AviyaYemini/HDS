@@ -1,4 +1,8 @@
-"""Invitation and password-reset router (US6 — Proposed)."""
+"""Invitation and password-reset router (US6 — Proposed).
+
+Layer: routers. Delegates to ``InvitationService``. Accepting an invite and both password-reset
+endpoints are public because the caller has no session yet; the one-time token is the credential.
+"""
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -18,20 +22,28 @@ router = APIRouter(prefix="/auth", tags=["invitations"])
 
 
 class InviteRequest(BaseModel):
+    """Email and role to invite; the role defaults to employee."""
+
     email: EmailStr
     role: UserRole = UserRole.employee
 
 
 class AcceptInviteRequest(BaseModel):
+    """Invitation token and the chosen password (at least 12 characters)."""
+
     token: Token
     password: Password = Field(min_length=12)
 
 
 class PasswordResetRequest(BaseModel):
+    """Email address that asked for a password reset."""
+
     email: EmailStr
 
 
 class PasswordResetConfirm(BaseModel):
+    """Reset token and the new password (at least 12 characters)."""
+
     token: Token
     new_password: Password = Field(min_length=12)
 
@@ -45,42 +57,108 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
     )
 
 
-@router.post("/invite", status_code=202, response_class=Response)
+@router.post(
+    "/invite",
+    status_code=202,
+    response_class=Response,
+    summary="Invite a user",
+    description=(
+        "Manager or Admin. Create an inactive account for the email, or reuse an "
+        "inactive one, and email a one-time invitation token valid for 7 days. Only an "
+        "Admin may invite an Admin; Client users are created from the client record "
+        "(`users.role_invalid`). An email that belongs to an active account returns 409 "
+        "(`users.duplicate_email`)."
+    ),
+)
 async def create_invitation(
     body: InviteRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> Response:
+    """Invite a user.
+
+    Manager or Admin. Create an inactive account for the email, or reuse an inactive one, and
+    email a one-time invitation token valid for 7 days. Only an Admin may invite an Admin;
+    Client users are created from the client record (`users.role_invalid`). An email that
+    belongs to an active account returns 409 (`users.duplicate_email`).
+    """
     await _svc(db, mailer).create_invitation(
         actor=current_user, email=str(body.email), role=body.role
     )
     return Response(status_code=202)
 
 
-@router.post("/invite/accept", status_code=204)
+@router.post(
+    "/invite/accept",
+    status_code=204,
+    summary="Accept an invitation",
+    description=(
+        "Public. Redeem an invitation token to set the password and activate the "
+        "account. An unknown or expired token returns 401 (`auth.token_expired`); a "
+        "spent token returns `auth.token_used`. The password needs at least 12 "
+        "characters."
+    ),
+)
 async def accept_invitation(
     body: AcceptInviteRequest,
     db: AsyncSession = Depends(get_db),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> None:
+    """Accept an invitation.
+
+    Public. Redeem an invitation token to set the password and activate the account. An unknown
+    or expired token returns 401 (`auth.token_expired`); a spent token returns
+    `auth.token_used`. The password needs at least 12 characters.
+    """
     await _svc(db, mailer).accept_invitation(raw_token=body.token, new_password=body.password)
 
 
-@router.post("/password-reset/request", status_code=202, response_class=Response)
+@router.post(
+    "/password-reset/request",
+    status_code=202,
+    response_class=Response,
+    summary="Request a password reset",
+    description=(
+        "Public. Email a one-time reset token valid for 60 minutes if the address "
+        "belongs to an active account. Always answers 202, whether or not the address "
+        "is registered, so it cannot be used to find out who has an account."
+    ),
+)
 async def request_password_reset(
     body: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> Response:
+    """Request a password reset.
+
+    Public. Email a one-time reset token valid for 60 minutes if the address belongs to an
+    active account. Always answers 202, whether or not the address is registered, so it cannot
+    be used to find out who has an account.
+    """
     await _svc(db, mailer).request_password_reset(email=str(body.email))
     return Response(status_code=202)
 
 
-@router.post("/password-reset/confirm", status_code=204)
+@router.post(
+    "/password-reset/confirm",
+    status_code=204,
+    summary="Confirm a password reset",
+    description=(
+        "Public. Redeem a reset token to set a new password. All of the user's refresh "
+        "tokens are revoked, ending every session. An unknown or expired token returns "
+        "401 (`auth.token_expired`); a spent token returns `auth.token_used`."
+    ),
+)
 async def confirm_password_reset(
     body: PasswordResetConfirm,
     db: AsyncSession = Depends(get_db),
     mailer: MailSender = Depends(get_mail_sender),
 ) -> None:
+    """Confirm a password reset.
+
+    Public. Redeem a reset token to set a new password. All of the user's refresh tokens are
+    revoked, ending every session. An unknown or expired token returns 401
+    (`auth.token_expired`); a spent token returns `auth.token_used`.
+    """
     await _svc(db, mailer).reset_password(raw_token=body.token, new_password=body.new_password)

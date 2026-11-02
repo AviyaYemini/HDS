@@ -1,3 +1,9 @@
+"""Persistence of projects.
+
+Layer: repositories. Depends on ``hds.models`` and ``hds.repositories.base`` only; it MUST NOT
+import services or routers.
+"""
+
 import uuid
 from typing import Any
 
@@ -8,6 +14,8 @@ from hds.repositories.base import OrgScopedRepository
 
 
 class ProjectRepository(OrgScopedRepository[Project]):
+    """Queries and writes for ``Project``. Soft-deleted projects are invisible to lookups."""
+
     model = Project
 
     async def list_by_org(
@@ -16,6 +24,16 @@ class ProjectRepository(OrgScopedRepository[Project]):
         status: ProjectStatus | None = None,
         client_id: uuid.UUID | None = None,
     ) -> list[Project]:
+        """List the organisation's non-deleted projects.
+
+        Args:
+            org_id: The caller's organisation.
+            status: Keep only projects in this lifecycle state.
+            client_id: Keep only this client's projects.
+
+        Returns:
+            Matching projects in unspecified order.
+        """
         stmt = select(Project).where(
             Project.organization_id == org_id,
             Project.is_deleted.is_(False),
@@ -28,6 +46,12 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return list(result.scalars().all())
 
     async def list_by_client(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[Project]:
+        """List a client's non-deleted projects; the data scope for the Client role.
+
+        Args:
+            client_id: The client whose projects to return.
+            org_id: The caller's organisation.
+        """
         result = await self.session.execute(
             select(Project).where(
                 Project.client_id == client_id,
@@ -38,6 +62,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return list(result.scalars().all())
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
+        """Fetch a non-deleted project of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(
             select(Project).where(
                 Project.id == id,
@@ -48,6 +73,19 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Project:
+        """Insert a project in the organisation and commit.
+
+        Args:
+            org_id: Organisation that will own the project.
+            data: Column values; ``billing_rate`` must be a positive ``Decimal``.
+
+        Returns:
+            The persisted project.
+
+        Raises:
+            sqlalchemy.exc.IntegrityError: If the billing rate is not positive. The error
+                handler maps it to HTTP 422.
+        """
         project = Project(id=uuid.uuid4(), organization_id=org_id, **data)
         self.session.add(project)
         await self.session.commit()
@@ -55,7 +93,26 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return project
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Project:
+        """Update columns of a project of the organisation and commit.
+
+        Args:
+            id: Project to update.
+            org_id: The caller's organisation.
+            **fields: Column values to set.
+
+        Returns:
+            The refreshed project.
+
+        Raises:
+            NotFoundError: When the project is not in the organisation.
+        """
         return await self._update_scoped(id, org_id, **fields)
 
     async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        """Mark a project deleted and commit.
+
+        Args:
+            id: Project to delete.
+            org_id: The caller's organisation.
+        """
         await self._soft_delete_scoped(id, org_id)

@@ -1,4 +1,7 @@
-"""Integration tests for invitation and password reset flows (US6)."""
+"""Integration tests for invitation and password-reset flows (US6, T105).
+
+Covers: FR-006.
+"""
 
 import pytest
 from httpx import AsyncClient

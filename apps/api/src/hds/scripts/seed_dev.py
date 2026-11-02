@@ -62,6 +62,15 @@ async def _get_or_create(
 
 
 async def seed() -> None:
+    """Create the development data set, skipping anything that already exists.
+
+    Safe to run repeatedly: each record is looked up first. Writes to the database named by
+    ``DATABASE_URL`` and commits once at the end, so a failure part-way leaves nothing behind.
+    Never run it against production: the seeded accounts share a published password.
+
+    Side effects:
+        Inserts rows and prints one line per record to standard output.
+    """
     settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)

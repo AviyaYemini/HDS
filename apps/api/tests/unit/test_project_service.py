@@ -1,4 +1,7 @@
-"""Unit tests for ProjectService manager scope."""
+"""Unit tests for ProjectService manager scope (T076).
+
+Covers: FR-025, FR-026, FR-027, FR-028.
+"""
 
 import uuid
 from datetime import date

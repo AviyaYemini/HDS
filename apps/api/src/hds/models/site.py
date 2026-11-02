@@ -1,3 +1,8 @@
+"""Physical locations where projects run.
+
+Layer: models. Depends on ``hds.models.base`` only.
+"""
+
 import uuid
 
 from sqlalchemy import ForeignKey, Index, String, Text
@@ -7,6 +12,8 @@ from hds.models.base import TimestampedBase
 
 
 class Site(TimestampedBase):
+    """A work location. ``timezone`` is the IANA zone in which its shifts are scheduled."""
+
     __tablename__ = "sites"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

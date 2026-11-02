@@ -1,5 +1,9 @@
-"""FR-013: GET /employees search and filters (name/email search, role, is_active, group,
-qualification), org-scoped and combinable."""
+"""GET /employees search and filters, organisation-scoped and combinable (T143).
+
+Covers name or email search and the role, is_active, group and qualification filters.
+
+Covers: FR-013, NFR-001.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -39,8 +43,11 @@ def _user(org: Organisation, email: str, name: str, role: UserRole, **kw: object
 async def people(
     test_db: AsyncSession, seed_org: Organisation, seed_users: dict[str, User]
 ) -> dict[str, object]:
-    """Alice (employee, guards, first-aid), Bob (employee, guards, inactive),
-    Carol (manager, no group), Dave (deleted employee, guards)."""
+    """Seed four users that the filter tests tell apart.
+
+    Alice (employee, guards, first-aid), Bob (employee, guards, inactive), Carol (manager, no
+    group) and Dave (deleted employee, guards).
+    """
     alice = _user(seed_org, "alice@hds.test", "Alice Cohen", UserRole.employee)
     bob = _user(seed_org, "bob@hds.test", "Bob Levi", UserRole.employee, is_active=False)
     carol = _user(seed_org, "carol@hds.test", "Carol Mizrahi", UserRole.manager)

@@ -1,4 +1,7 @@
-"""T122: deleting an assigned group or qualification removes its memberships (FR edge case)."""
+"""T122: deleting an assigned group or qualification removes its memberships.
+
+Covers: FR-018, FR-019, FR-020.
+"""
 
 import uuid
 

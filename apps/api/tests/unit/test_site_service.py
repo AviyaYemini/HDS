@@ -1,4 +1,7 @@
-"""Unit tests for SiteService."""
+"""Unit tests for SiteService (T075).
+
+Covers: FR-023.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock

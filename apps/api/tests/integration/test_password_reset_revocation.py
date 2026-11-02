@@ -1,4 +1,7 @@
-"""T136: a password reset revokes every refresh token of the user."""
+"""T136: a password reset revokes every refresh token of the user.
+
+Covers: FR-006, NFR-005.
+"""
 
 import pytest
 from httpx import AsyncClient

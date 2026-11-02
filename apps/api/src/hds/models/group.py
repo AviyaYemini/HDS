@@ -1,3 +1,8 @@
+"""Employee groups and their membership table.
+
+Layer: models. Depends on ``hds.models.base`` and sibling models only.
+"""
+
 import uuid
 from typing import TYPE_CHECKING
 
@@ -19,6 +24,12 @@ user_groups = Table(
 
 
 class Group(TimestampedBase):
+    """A named set of employees, unique by name within an organisation.
+
+    Deleting a group cascades to its membership rows (``ON DELETE CASCADE`` on
+    ``user_groups.group_id``) but never to the users themselves.
+    """
+
     __tablename__ = "groups"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

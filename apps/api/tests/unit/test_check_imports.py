@@ -1,4 +1,7 @@
-"""Unit tests for the layering checker (T130)."""
+"""Unit tests for the layering checker (T130).
+
+Covers: no spec requirement; guards Constitution II (layering).
+"""
 
 from pathlib import Path
 

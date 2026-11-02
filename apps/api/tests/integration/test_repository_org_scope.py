@@ -1,4 +1,7 @@
-"""T140: repository update/soft_delete/delete take org_id and are safe on their own."""
+"""T140: repository update, soft_delete and delete take org_id and are safe on their own.
+
+Covers: NFR-001.
+"""
 
 import uuid
 from typing import Any

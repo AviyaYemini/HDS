@@ -1,3 +1,8 @@
+"""One-time tokens for accepting an invitation or resetting a password.
+
+Layer: models. Depends on ``hds.models.base`` and ``hds.models.user`` only.
+"""
+
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -12,6 +17,13 @@ if TYPE_CHECKING:
 
 
 class InvitationToken(Base):
+    """A single-use token, stored only as a SHA-256 hash.
+
+    ``purpose`` is ``invite`` (set the first password) or ``reset`` (replace a forgotten one);
+    the database rejects any other value. A token is spent by setting ``used_at`` and is
+    invalid after ``expires_at``.
+    """
+
     __tablename__ = "invitation_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

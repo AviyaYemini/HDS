@@ -26,6 +26,15 @@ def _normalise(path: str) -> str:
 
 
 def surface(doc: dict[str, Any]) -> dict[tuple[str, str], frozenset[str]]:
+    """Reduce an OpenAPI document to the part the drift check compares.
+
+    Args:
+        doc: A parsed OpenAPI document (the contract or the generated one).
+
+    Returns:
+        A map of ``(METHOD, path)`` to the set of documented 2xx status codes. Error responses
+        are left out because the generated document does not declare them per route.
+    """
     ops: dict[tuple[str, str], frozenset[str]] = {}
     for path, item in doc.get("paths", {}).items():
         for method in _METHODS:
@@ -64,7 +73,15 @@ def _type_of(doc: dict[str, Any], schema: dict[str, Any]) -> str:
 
 
 def query_params(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, tuple[str, bool]]]:
-    """(METHOD, path) -> {parameter name: (type, required)} for query parameters only."""
+    """Collect the query parameters of every operation.
+
+    Args:
+        doc: A parsed OpenAPI document.
+
+    Returns:
+        ``(METHOD, path)`` mapped to ``{parameter name: (type, required)}``. Path, header and
+        cookie parameters are ignored.
+    """
     result: dict[tuple[str, str], dict[str, tuple[str, bool]]] = {}
     for path, item in doc.get("paths", {}).items():
         for method in _METHODS:
@@ -85,6 +102,19 @@ def query_params(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, tuple[s
 
 
 def diff(contract: dict[str, Any], generated: dict[str, Any]) -> list[str]:
+    """Compare the contract with the generated document.
+
+    Checks that both declare the same operations, the same 2xx status codes per operation and
+    the same query parameters (name, type, required). Summaries, descriptions, operation ids
+    and schema bodies are intentionally not compared.
+
+    Args:
+        contract: The committed OpenAPI contract (``specs/*/contracts/openapi.yaml``).
+        generated: The document produced by the running application.
+
+    Returns:
+        One human-readable line per difference; empty when they agree.
+    """
     want, got = surface(contract), surface(generated)
     problems: list[str] = []
     for key in sorted(want.keys() - got.keys()):
@@ -137,6 +167,15 @@ def _check(contract_path: str, generated_path: str) -> int:
 
 
 def main(argv: list[str]) -> int:
+    """Run the command line.
+
+    Args:
+        argv: Arguments without the program name: empty to print the generated document, or
+            ``--check CONTRACT GENERATED`` to run the drift check.
+
+    Returns:
+        Process exit code: 0 on success or agreement, 1 on drift, 2 on a usage error.
+    """
     if argv[:1] == ["--check"]:
         if len(argv) != 3:
             print("usage: export_openapi --check CONTRACT GENERATED", file=sys.stderr)

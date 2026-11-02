@@ -1,4 +1,7 @@
-"""T125: the database itself enforces UTC-aware timestamps and positive rates."""
+"""T125: the database itself enforces UTC-aware timestamps and positive rates.
+
+Covers: FR-028; Constitution VII.
+"""
 
 import uuid
 from datetime import UTC, date, datetime, timedelta

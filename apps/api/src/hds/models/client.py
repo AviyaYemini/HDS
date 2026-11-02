@@ -1,3 +1,8 @@
+"""Customers that projects are delivered for.
+
+Layer: models. Depends on ``hds.models.base`` and sibling models only.
+"""
+
 import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
@@ -13,6 +18,12 @@ if TYPE_CHECKING:
 
 
 class Client(TimestampedBase):
+    """A customer organisation under contract.
+
+    Soft-deleted (``is_deleted``) rather than removed, because projects and client users
+    reference it. ``contract_end`` is open-ended when ``None``.
+    """
+
     __tablename__ = "clients"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

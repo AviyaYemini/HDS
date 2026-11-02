@@ -1,4 +1,8 @@
-"""Auth router: login, refresh, logout, logout-all."""
+"""Auth router: login, refresh, logout, logout-all.
+
+Layer: routers. Delegates to ``AuthService``; the only public endpoints are login and refresh.
+Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the other routers.
+"""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
@@ -17,11 +21,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
+    """Credentials for ``POST /auth/login``."""
+
     email: EmailStr
     password: Password
 
 
 class TokenResponse(BaseModel):
+    """Token pair returned by sign-in and refresh.
+
+    ``expires_in`` is the access-token lifetime in seconds.
+    """
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -29,6 +40,8 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
+    """A refresh token to exchange or revoke."""
+
     refresh_token: Token
 
 
@@ -41,11 +54,27 @@ def _make_service(db: AsyncSession) -> AuthService:
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Sign in",
+    description=(
+        "Exchange an email and password for an access token and a refresh token. "
+        "Unknown email, wrong password and inactive account all return the same 401 "
+        "(`auth.invalid_credentials`). After repeated failures the account is locked "
+        "and the call returns 423 (`auth.account_locked`)."
+    ),
+)
 async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
+    """Sign in.
+
+    Exchange an email and password for an access token and a refresh token. Unknown email, wrong
+    password and inactive account all return the same 401 (`auth.invalid_credentials`). After
+    repeated failures the account is locked and the call returns 423 (`auth.account_locked`).
+    """
     settings = get_settings()
     svc = _make_service(db)
     result = await svc.login(str(body.email), body.password)
@@ -56,11 +85,26 @@ async def login(
     )
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh tokens",
+    description=(
+        "Exchange a refresh token for a new access and refresh token. The presented "
+        "refresh token is spent: using it again returns 401 (`auth.token_revoked`). An "
+        "expired token returns `auth.token_expired`."
+    ),
+)
 async def refresh_token(
     body: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
+    """Refresh tokens.
+
+    Exchange a refresh token for a new access and refresh token. The presented refresh token is
+    spent: using it again returns 401 (`auth.token_revoked`). An expired token returns
+    `auth.token_expired`.
+    """
     settings = get_settings()
     svc = _make_service(db)
     result = await svc.refresh(body.refresh_token)
@@ -71,20 +115,46 @@ async def refresh_token(
     )
 
 
-@router.post("/logout", status_code=204)
+@router.post(
+    "/logout",
+    status_code=204,
+    summary="Sign out",
+    description=(
+        "Revoke one refresh token, ending that session. Requires a valid access token. "
+        "Revoking an unknown or already revoked token still returns 204."
+    ),
+)
 async def logout(
     body: RefreshRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Sign out.
+
+    Revoke one refresh token, ending that session. Requires a valid access token. Revoking an
+    unknown or already revoked token still returns 204.
+    """
     svc = _make_service(db)
     await svc.logout(body.refresh_token)
 
 
-@router.post("/logout-all", status_code=204)
+@router.post(
+    "/logout-all",
+    status_code=204,
+    summary="Sign out everywhere",
+    description=(
+        "Revoke every refresh token of the signed-in user. Access tokens already issued "
+        "remain valid until they expire."
+    ),
+)
 async def logout_all(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Sign out everywhere.
+
+    Revoke every refresh token of the signed-in user. Access tokens already issued remain valid
+    until they expire.
+    """
     svc = _make_service(db)
     await svc.logout_all(current_user.id)

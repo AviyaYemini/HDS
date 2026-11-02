@@ -1,4 +1,9 @@
-"""FastAPI dependency functions for authentication and authorisation."""
+"""FastAPI dependencies that authenticate the caller and gate routes by role.
+
+Layer: core (consumed by routers). It may read users through ``UserRepository`` but MUST NOT
+import services or routers. The checks here are a first gate only: services re-check roles
+with ``hds.core.authz.ensure_role`` so the matrix holds without the HTTP layer.
+"""
 
 import uuid
 
@@ -20,6 +25,23 @@ async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    """Resolve the bearer token to an active user.
+
+    The user row is reloaded on every request, so deactivation, role changes and deletion
+    apply immediately even though the access token is still unexpired.
+
+    Args:
+        token: Bearer token from the ``Authorization`` header, if any.
+        db: Request-scoped database session.
+
+    Returns:
+        The active ``User`` the token was issued to.
+
+    Raises:
+        AuthError: ``auth.missing_token`` (no token), ``auth.invalid_token`` (bad signature,
+            expired, or malformed subject), ``auth.user_not_found`` or
+            ``auth.account_inactive``. All map to HTTP 401.
+    """
     if token is None:
         raise AuthError(code="auth.missing_token", detail="Authentication required")
 
@@ -55,6 +77,17 @@ async def get_current_user(
 async def require_manager(
     user: User = Depends(get_current_user),
 ) -> User:
+    """Allow Manager and Admin; reject Employee and Client.
+
+    Args:
+        user: The authenticated caller.
+
+    Returns:
+        The same user, so routes can use it as the actor.
+
+    Raises:
+        ForbiddenError: ``users.manager_required`` (HTTP 403).
+    """
     if user.role not in {UserRole.manager, UserRole.admin}:
         raise ForbiddenError(
             code="users.manager_required",
@@ -66,7 +99,20 @@ async def require_manager(
 async def require_manager_or_client(
     user: User = Depends(get_current_user),
 ) -> User:
-    """Project read access: Manager+ (all) or Client (own projects, enforced in the service)."""
+    """Allow Manager, Admin and Client; reject Employee.
+
+    Used for project reads. A Client passes this gate but the service narrows the result to
+    that client's own projects, so this dependency alone is not sufficient for data scope.
+
+    Args:
+        user: The authenticated caller.
+
+    Returns:
+        The same user, so routes can use it as the actor.
+
+    Raises:
+        ForbiddenError: ``users.manager_required`` (HTTP 403) for an Employee.
+    """
     if user.role not in {UserRole.manager, UserRole.admin, UserRole.client}:
         raise ForbiddenError(
             code="users.manager_required",
@@ -78,6 +124,17 @@ async def require_manager_or_client(
 async def require_admin(
     user: User = Depends(get_current_user),
 ) -> User:
+    """Allow Admin only.
+
+    Args:
+        user: The authenticated caller.
+
+    Returns:
+        The same user, so routes can use it as the actor.
+
+    Raises:
+        ForbiddenError: ``users.admin_required`` (HTTP 403).
+    """
     if user.role != UserRole.admin:
         raise ForbiddenError(
             code="users.admin_required",
@@ -90,6 +147,19 @@ async def get_current_user_or_self(
     id: uuid.UUID,
     user: User = Depends(get_current_user),
 ) -> User:
+    """Allow Manager and Admin for any ``{id}``, everyone else only for their own id.
+
+    Args:
+        id: The user id taken from the route path.
+        user: The authenticated caller.
+
+    Returns:
+        The caller (not the user addressed by ``id``).
+
+    Raises:
+        ForbiddenError: ``users.forbidden`` (HTTP 403) when a non-manager addresses another
+            user.
+    """
     if user.role in {UserRole.manager, UserRole.admin}:
         return user
     if user.id != id:
