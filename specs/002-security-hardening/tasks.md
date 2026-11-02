@@ -334,7 +334,7 @@ each time.
 **Goal**: one address, one account, whatever the case (FR-215, FR-216).
 
 - [ ] T282 [P] [US8] Write `apps/api/tests/unit/test_email_type.py`: the `Email` type trims and lowercases; invalid addresses are still rejected; the generated OpenAPI schema for the field is unchanged (`format: email`)
-- [ ] T283 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208)
+- [ ] T283 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208); and re-add the letter-case address cases to the cross-organisation sweep in `apps/api/tests/integration/test_cross_organisation_sweep.py` (an upper-cased address held by another organisation is refused with 409 `users.duplicate_email` on `POST /employees`, `POST /auth/invite` and `POST /clients/{id}/users`, and nothing changes)
 - [ ] T284 [P] [US8] Write `apps/api/tests/integration/test_migration_016.py`: data with two addresses that differ only by case makes the migration stop with a message listing both; clean data is lowercased and the old index is replaced by `uq_users_email_ci`; downgrade restores `uq_users_email`
 - [ ] T285 [P] [US8] Write `apps/api/tests/unit/test_find_email_case_duplicates.py` for the listing script (read-only; prints nothing when clean)
 - [ ] T286 [US8] Add the `Email` type to `apps/api/src/hds/core/types.py`: an `EmailStr` with an after-validator that trims and lowercases, so OpenAPI is unchanged
@@ -371,6 +371,7 @@ each time.
 - [ ] T301 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
 - [ ] T302 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
 - [ ] T303 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request; also run `uv run pytest -m timing` by hand and record that the timing comparison (SC-207) found no difference
+- [ ] T304 Extend the cross-organisation sweep to callers other than Admin: run every case in `apps/api/tests/integration/test_cross_organisation_sweep.py` as a Manager (same refusals as for the Admin, except cases that need the Admin role, which must be refused 403) and, for the Employee and Client roles, assert that every operation is refused by role (403) before any organisation lookup, so another organisation's id never gets a different answer from a missing one; nothing may change in any case. Body ids are already covered by the existing cases (`ids` of the employee group and qualification replacements, `client_id` and `site_id` of a new project, `email` of invitations, employees and client users)
 
 ---
 
@@ -481,7 +482,7 @@ Task: "Write tests/integration/test_migration_015.py (T254)"
 | SC-208 | T283, T284 |
 | SC-209 | T294, T297 |
 
-103 tasks (T201 to T303; T262 and T263 are extra hardening against feature 001 NFR-001 and FR-012 and map to no FR-2xx). Every requirement FR-201 to FR-220 and every success criterion SC-201 to
+104 tasks (T201 to T304; T262 and T263 are extra hardening against feature 001 NFR-001 and FR-012 and map to no FR-2xx). Every requirement FR-201 to FR-220 and every success criterion SC-201 to
 SC-209 has at least one implementing task and one test task.
 
 ## Notes
