@@ -436,11 +436,28 @@ each time.
 
 **Goal**: only loadable IANA zone names are stored (FR-217, FR-218).
 
-- [ ] T293 [P] [US9] Extend `apps/api/tests/unit/test_site_service.py`: `Asia/Jerusalem` and `UTC` and `Asia/Kolkata` (a zone without daylight saving) accepted on create and edit; `Mars/Base`, an empty string and a name with path characters raise `DomainValidationError` with code `sites.timezone_invalid`
-- [ ] T294 [P] [US9] Write `apps/api/tests/integration/test_site_timezone.py`: `POST` and `PATCH /api/v1/sites` return 422 with code `sites.timezone_invalid` for invalid zones and store nothing (SC-209)
-- [ ] T295 [US9] In `apps/api/src/hds/services/site.py` add the zone check (`ZoneInfo(name)`; any failure raises `sites.timezone_invalid`) to `create_site` and `edit_site`; update docstrings
-- [ ] T296 [P] [US9] Add `sites.timezone_invalid` to `apps/api/src/hds/locales/en.json` and `he.json`
-- [ ] T297 [P] [US9] Create `apps/api/src/hds/scripts/check_site_timezones.py` (read-only; lists sites and organisations with an invalid zone; FR-218) with a test in `apps/api/tests/unit/test_check_site_timezones.py`
+- [X] T293 [P] [US9] Extend `apps/api/tests/unit/test_site_service.py`: `Asia/Jerusalem` and `UTC` and `Asia/Kolkata` (a zone without daylight saving) accepted on create and edit; `Mars/Base`, an empty string and a name with path characters raise `DomainValidationError` with code `sites.timezone_invalid`
+- [X] T294 [P] [US9] Write `apps/api/tests/integration/test_site_timezone.py`: `POST` and `PATCH /api/v1/sites` return 422 with code `sites.timezone_invalid` for invalid zones and store nothing (SC-209)
+- [X] T295 [US9] In `apps/api/src/hds/services/site.py` add the zone check (`ZoneInfo(name)`; any failure raises `sites.timezone_invalid`) to `create_site` and `edit_site`; update docstrings
+- [X] T296 [P] [US9] Add `sites.timezone_invalid` to `apps/api/src/hds/locales/en.json` and `he.json`
+- [X] T297 [P] [US9] Create `apps/api/src/hds/scripts/check_site_timezones.py` (read-only; lists sites and organisations with an invalid zone; FR-218) with a test in `apps/api/tests/unit/test_check_site_timezones.py`
+
+### Scope additions recorded during implementation (Phase 11)
+
+- **T295, one function**: the check is `validate_timezone` in `services/site.py`, a real
+  `ZoneInfo` load (not a pattern), also used by the report script so both apply the same rule. An
+  edit that leaves the zone out is not checked, so a site that already holds a bad zone can still
+  be renamed; the report script lists such sites.
+- **Evidence**: 21 new cases failed before the change (the service accepted every bad name); after
+  it all pass. Three mutations (create not validating, edit not validating, a pattern check
+  instead of a load) are all caught.
+- **T297**: the script is split into a pure `find_invalid`, `run(fetch)` and a thin database
+  `fetch`; it prints site and organisation ids only. The sites table has no `is_deleted` column, so
+  it lists every site.
+- **Contract**: the 422 status was already declared on both operations; only the descriptions
+  changed. No migration. The schemathesis contract test treats any short string as a valid time
+  zone, so the two site writes join the two project writes in skipping the single check "valid
+  data must be accepted" (every other check still runs on them), as for the project date order.
 
 **Checkpoint**: all nine stories pass.
 

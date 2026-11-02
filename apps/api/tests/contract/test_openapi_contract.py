@@ -25,7 +25,16 @@ ALL_CHECKS = st_checks.CHECKS.get_all()
 # schema-valid dates in the wrong order are correctly answered with 422
 # `projects.date_range_invalid`. Only "valid data must be accepted" is skipped, only for these two
 # operations; every other check still runs on them.
-CROSS_FIELD_RULE = {("POST", "/api/v1/projects"), ("PATCH", "/api/v1/projects/{id}")}
+#
+# A site's time zone (FR-217) must be a name the system can load, which no schema can state: any
+# short string is schema-valid, and `Mars/Base` is correctly answered with 422
+# `sites.timezone_invalid`. The same single check is skipped for the two site writes.
+CROSS_FIELD_RULE = {
+    ("POST", "/api/v1/projects"),
+    ("PATCH", "/api/v1/projects/{id}"),
+    ("POST", "/api/v1/sites"),
+    ("PATCH", "/api/v1/sites/{id}"),
+}
 
 # Few examples locally for a fast loop; CI sets HDS_SCHEMATHESIS_EXAMPLES=100 for the full run.
 EXAMPLES = int(os.environ.get("HDS_SCHEMATHESIS_EXAMPLES", "5"))

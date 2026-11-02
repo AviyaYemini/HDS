@@ -48,5 +48,6 @@
   "users.role_invalid": "This role cannot be assigned here.",
   "validation.request_invalid": "The request body or parameters are invalid.",
   "http.method_not_allowed": "This method is not allowed for the resource.",
-  "http.bad_request": "The request could not be parsed."
+  "http.bad_request": "The request could not be parsed.",
+  "sites.timezone_invalid": "The time zone must be an IANA name such as Asia/Jerusalem."
 }
