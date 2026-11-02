@@ -498,6 +498,245 @@ each time.
 
 ---
 
+# Part 2: PR 4 fixes (T305 onward)
+
+Input: [pr4-fix-list.md](pr4-fix-list.md), plan Part 2, research D12 to D26, the 2026-11-03 clarifications and FR-221 to FR-223. Labels name the fix-list item (`[F01]` to `[F26]`); sign-in work for FR-221 to FR-223 carries `[F04]`. Every group is: failing tests first, then the change, then mutation checks for security fixes, then one commit. A phase does not start before the previous checkpoint passes.
+
+
+## Phase P1: Credentials and sessions (F01, F02, F03, F08, F09, F11)
+
+**Goal**: Close the account-takeover and session-lifetime bugs that need no schema (plan Part 2, P1).
+
+**Independent Test**: Each group's tests fail first for the right reason, pass after the change, and every security change is caught by its mutation check.
+
+
+### Group A: a completed reset ends older links and clears the lockout (F01, F11; research D12)
+
+- [ ] T305 [P] [F01] [F11] Write `apps/api/tests/integration/test_reset_cancels_links.py` on PostgreSQL: (1) request two reset links, complete the reset with the NEWER one, then use the older with a different password: it is refused 401 `auth.token_used`, the password stays the newer one's and sign-in with the older's password fails; (2) a pending invitation link of the same account also stops working after a completed reset; (3) requesting a new reset link cancels the earlier UNUSED reset links of that account but leaves an unused invitation link of a pending account alone; (4) F11: lock the account with `LOGIN_MAX_FAILURES` wrong passwords, complete a reset, then sign in with the new password at once (200; `failed_login_attempts` is 0 and `locked_until` is empty). Show it failing
+- [ ] T306 [P] [F01] [F11] Extend `apps/api/tests/unit/test_invitation_service.py`: `reset_password` calls `cancel_for_user` for the owner (all purposes) and clears the lock and count; `request_password_reset` calls it with purpose `reset` only
+- [ ] T307 [F01] In `apps/api/src/hds/repositories/invitation_token.py` give `cancel_for_user(user_id, purpose=None)` and `cancel_for_users(user_ids, purpose=None)` an optional `purpose` that limits cancellation to that purpose (default: all); update the docstrings
+- [ ] T308 [F01] [F11] In `apps/api/src/hds/services/invitation.py` make `reset_password` cancel every other outstanding link of the owner (`cancel_for_user`, all purposes) after spending the presented one, and clear the failure count and lock (`UserRepository.reset_failed_attempts`); make `request_password_reset` cancel the account's earlier unused `reset` links before storing the new one. Update the docstrings and the `description` of the confirm and request operations in `apps/api/src/hds/routers/invitations.py`
+- [ ] T309 [F01] [F11] Mutation checks for Group A (scratch script outside the repository, as in Phase 5): drop the cancellation in `reset_password`; drop it in `request_password_reset`; drop the lock clearing. Each must make a test in `test_reset_cancels_links.py` fail; restore the files byte for byte and record the three results in the commit message
+- [ ] T310 [F01] [F11] Commit Group A as `fix(api): a completed password reset ends older links and clears the lockout` (message lists the failing-first evidence and the mutation results)
+
+### Group B: portal users when a client changes (F02; research D13)
+
+- [ ] T311 [P] [F02] Write `apps/api/tests/integration/test_client_sessions.py` on PostgreSQL: as a portal user sign in and keep the refresh token; then (a) deactivate the client, (b) delete the client, (c) remove the portal user with `DELETE /api/v1/clients/{id}/users/{user_id}`: in each case the old refresh token is refused and stays refused after a Manager reactivates the user; the token rows carry reason `account`; unused links of that user are cancelled (`auth.token_used`, FR-207). Also: reactivating a portal user whose client is inactive or deleted returns 409 `users.client_inactive`; reactivating one whose client is active still works. Show it failing
+- [ ] T312 [P] [F02] Extend `apps/api/tests/unit/test_client_service.py` and `apps/api/tests/unit/test_employee_manager.py`: `ClientService` revokes with `RevocationReason.account` and cancels links on deactivate, delete and removal; `EmployeeService.reactivate` raises `users.client_inactive` for a Client-role user whose client is inactive or deleted
+- [ ] T313 [F02] In `apps/api/src/hds/services/client.py` inject `RefreshTokenRepository` into `ClientService`; make `_deactivate_portal_users` (used by `edit_client` and `soft_delete`) revoke each portal user's tokens with `RevocationReason.account` and cancel their links, and make `remove_client_user` do both too. Update the wiring in `apps/api/src/hds/routers/clients.py` and the docstrings
+- [ ] T314 [F02] In `apps/api/src/hds/services/employee.py` inject `ClientRepository` into `EmployeeService` (wiring in `apps/api/src/hds/routers/employees.py` and `me.py`; update the constructor calls in `apps/api/tests/unit/test_employee_self_service.py` and `test_employee_manager.py`) and make `reactivate` refuse a Client-role user whose client is inactive or deleted with `ConflictError(code="users.client_inactive")`. Add `users.client_inactive` to `apps/api/src/hds/locales/en.json` and `he.json` (`test_i18n` enforces parity). Update the reactivate operation `description`
+- [ ] T315 [F02] Mutation checks for Group B: drop the revocation in each of the three client paths; drop the reactivation guard. Each must fail a test; restore files; record results
+- [ ] T316 [F02] Commit Group B as `fix(api): ending a client ends its portal users' sessions and blocks their reactivation`
+
+### Group C: a pending account is never activated by deactivation (F03; research D14, clarification Q2)
+
+- [ ] T317 [P] [F03] Write `apps/api/tests/integration/test_pending_deactivate.py` on PostgreSQL: invite an address (pending), `POST /api/v1/employees/{id}/deactivate` returns 409 `users.pending_cannot_deactivate`, the account stays pending (`is_active` false, `activated_at` NULL) and its invitation link still works (accept succeeds). Same for a pending portal user when its client is deactivated: the pending user is skipped (stays pending, link intact) while active portal users are deactivated. Finally a guard test: after any sequence of deactivate and reactivate calls on a pending account `activated_at` is still NULL. Show it failing
+- [ ] T318 [P] [F03] Extend `apps/api/tests/unit/test_employee_manager.py` and add `apps/api/tests/integration/test_activated_at_writers.py`: a static test that no code under `apps/api/src/hds` other than accept-invitation, create-active (`UserRepository._with_activation`) and the migrations sets `activated_at` (scan the AST for assignments and `values(activated_at=...)`)
+- [ ] T319 [F03] In `apps/api/src/hds/services/employee.py` make `deactivate` refuse a pending account (not active, not deleted, `activated_at` empty) with `ConflictError(code="users.pending_cannot_deactivate")`; remove the `coalesce` that stamps `activated_at` from the user update in `deactivate` (about line 360) and from `apps/api/src/hds/repositories/client.py` `deactivate_client_users`, which must also skip pending users (`activated_at IS NOT NULL`). Add the code to `en.json` and `he.json`. Update the docstrings and the deactivate operation `description` (a pending account can only be removed by an Admin's delete: accepted consequence, spec assumptions)
+- [ ] T320 [F03] Mutation checks for Group C: restore the stamp; remove the refusal; remove the pending skip in `deactivate_client_users`. Each must fail a test; restore files; record results
+- [ ] T321 [F03] Commit Group C as `fix(api): deactivating a pending account is refused and never stamps an activation time`
+
+### Group D: expired credentials end no sessions (F08; research D19, clarification Q3)
+
+- [ ] T322 [P] [F08] Extend `apps/api/tests/integration/test_refresh_reuse.py` on PostgreSQL (window set to 1 second as in that file): (1) a rotated token replayed AFTER ITS EXPIRY returns 401 `auth.token_expired`, leaves the user's other tokens live and rewrites no reason; (2) an expired token that was never rotated returns `auth.token_expired`; (3) an UNEXPIRED rotated token replayed after the window still ends all sessions (existing behaviour). Add `apps/api/tests/integration/test_expired_cleanup.py`: expired refresh tokens and links past `expires_at` are deleted for the user at sign-in and refresh; a spent or cancelled link still inside its lifetime is KEPT and still answers `auth.token_used`. Show them failing
+- [ ] T323 [P] [F08] Extend `apps/api/tests/unit/test_auth_service.py` decision table: expiry is checked before the revoked state
+- [ ] T324 [F08] In `apps/api/src/hds/services/auth.py` `refresh`, check expiry before the revoked state (an expired credential, rotated or not, raises `auth.token_expired` and changes nothing). Add `delete_expired_for_user(user_id, now)` to `apps/api/src/hds/repositories/refresh_token.py` and to `apps/api/src/hds/repositories/invitation_token.py` (links: only rows with `expires_at` in the past) and call them for the user at sign-in and refresh. Update the docstrings and the refresh operation `description`; add a note to `docs/adr/006-refresh-token-reuse-detection.md` (expired credentials)
+- [ ] T325 [F08] Mutation checks for Group D: restore the old check order; delete spent links inside their lifetime. Each must fail a test; restore files; record results
+- [ ] T326 [F08] Commit Group D as `fix(api): an expired refresh token is refused as expired and ends no session`
+
+### Group E: sessions that start while every session is being ended (F09; research D20)
+
+- [ ] T327 [P] [F09] Write `apps/api/tests/concurrency/test_revoke_all_races.py` using the `race` fixture, 50 rounds each: a refresh racing (a) a password-reset confirm, (b) `POST /auth/logout-all`, (c) the theft response (replay of a rotated token after the window), (d) an account change that revokes (role change); and a LOGIN with the OLD password racing a password-reset confirm. After each round no refresh token of the user is live, except: in the login race either the login is refused with 401 `auth.invalid_credentials` or its session was revoked by the reset; the test asserts the refusal outcome is seen and no live token remains (so a stale re-read fails it). Show it failing
+- [ ] T328 [F09] Add `lock_user(user_id)` to `apps/api/src/hds/repositories/user.py` (`SELECT ... FOR UPDATE` on the user row, documented: held until the unit of work ends; lock order is user row first) and make `RefreshTokenRepository.revoke_all_for_user` in `apps/api/src/hds/repositories/refresh_token.py` take it before revoking
+- [ ] T329 [F09] In `apps/api/src/hds/services/auth.py`: `refresh` takes `lock_user` first and THEN reads the user (`get_for_auth` with `populate_existing()`), so it never uses a stale `is_active`; `login`, after verifying the password, takes `lock_user`, re-reads the user with `populate_existing()` and refuses with `auth.invalid_credentials` if the account is no longer active or `password_hash` differs from the verified one, before creating the token. Update the docstrings
+- [ ] T330 [F09] Mutation checks for Group E: remove the lock in refresh; remove it in `revoke_all_for_user`; replace `populate_existing()` with a plain re-read in login. Each must fail the race test; restore files; record results
+- [ ] T331 [F09] Commit Group E as `fix(api): no session can outlive an end-every-session`
+
+### Group F: documents for P1
+
+- [ ] T332 [F01] [F02] [F03] [F08] [F11] Update `docs/hds-api.md` (error table and conventions: reset ends older links and clears the lockout; client changes end portal sessions; pending accounts cannot be deactivated; expired tokens end no sessions) and add the new rows to the requirement coverage table at the end of this file. Run `uv run pytest tests/unit/test_i18n.py`
+- [ ] T333 [F01] [F02] [F03] [F08] [F11] Commit as `docs: describe the P1 session and link rules`
+
+**Checkpoint P1: ruff, format, interrogate, `mypy --strict src/ tests/`, import graph, `alembic check`, the OpenAPI comparison (descriptions and error responses only), the full suite on PostgreSQL, `tests/concurrency/` three runs in a row, and every mutation result recorded. Stop and report before P2**
+
+---
+
+## Phase P2: Data migrations (F07 migration 017; sign-in throttle migration 018)
+
+**Goal**: Schema and stored-data changes, before the code that uses them (plan Part 2, P2).
+
+**Independent Test**: Both migrations upgrade, downgrade and re-upgrade on a scratch database with realistic data; `alembic check` agrees with the models.
+
+
+### Group A: migration 017 corrects the pending backfill (F07; research D18)
+
+- [ ] T334 [P] [F07] Write `apps/api/tests/integration/test_migration_017.py` on a scratch database seeded at revision 016 (use `scratch_database` from `apps/api/tests/integration/migration_support.py`): (1) an inactive account with `activated_at` empty, an unused invitation link and a USED reset link ends with `activated_at = created_at` (deactivated, not pending); (2) one with a refresh-token history ends deactivated; (3) one with a used invitation link ends deactivated; (4) a genuine pending invitee (inactive, unused unexpired invite, no evidence) stays pending; (5) a pending account with no evidence whose only link already expired (older than `INVITE_TTL_DAYS`) stays pending and its id is LISTED in the migration output (ids only, no addresses); (6) active accounts and accounts with `activated_at` already set are untouched; (7) downgrade is a documented no-op and the data is unchanged; (8) running the data step twice changes nothing more. Show it failing (revision does not exist)
+- [ ] T335 [F07] Create `apps/api/alembic/versions/017_pending_backfill_correction.py` (down revision `016_case_insensitive_email`): a public function `reclassify_pending(connection)` that sets `activated_at = created_at` for users with `is_active = false`, `is_deleted = false`, `activated_at IS NULL` and any evidence of past activity (a row in `refresh_tokens`, or an `invitation_tokens` row with `used_at` set for any purpose), and a public function `undecidable_pending(connection)` returning the ids of the remaining pending accounts whose latest link has expired; `upgrade()` runs the first, prints the count reclassified and the undecidable ids (ids only) and changes nothing else; `downgrade()` is a no-op and its docstring says the data change is not reversible. Docstring states what changes, why, existing rows and the downgrade. Do NOT edit migration 014
+- [ ] T336 [F07] Show migration 017 on a database with realistic data (several organisations, pending, deactivated, re-invited and staff-created accounts, links and refresh tokens): upgrade, the printed report, downgrade, upgrade again; keep the output for the commit message
+- [ ] T337 [F07] Mutation check: make `reclassify_pending` ignore used reset links; scenario (1) must fail; restore the file
+- [ ] T338 [F07] Commit as `fix(api): migration 017 corrects accounts that migration 014 left pending`
+
+### Group B: migration 018 creates the sign-in throttle table (FR-221; research D16; data-model)
+
+- [ ] T339 [P] [F04] Write `apps/api/tests/integration/test_migration_018.py` on a scratch database at revision 017: upgrade creates `login_throttle` with columns `kind` (short text, part of the primary key, check constraint `ck_login_throttle_kind`: `kind IN ('address', 'network')`), `key_hash` (text, 64 characters, part of the primary key), `failures` (integer, not null, default 0, check `failures >= 0`), `window_started_at` (timestamptz, null), `locked_until` (timestamptz, null), `updated_at` (timestamptz, not null, default now), and index `ix_login_throttle_updated_at` on `updated_at`; the check rejects another `kind` and a negative `failures`; the primary key rejects a duplicate (`kind`, `key_hash`); downgrade drops the table; existing tables are untouched. Show it failing
+- [ ] T340 [F04] Create `apps/api/src/hds/models/login_throttle.py` (`LoginThrottle`, tenant-free: no `organization_id`, no foreign key, because unregistered addresses have no account; docstring states the layer and the rules) and register it in `apps/api/src/hds/models/__init__.py`; create `apps/api/alembic/versions/018_login_throttle.py` with the schema above and a reversible downgrade (drops the table; counts are disposable); `uv run alembic check` must report no differences
+- [ ] T341 [F04] Commit as `feat(api): add the login_throttle table (migration 018)`
+
+**Checkpoint P2: `alembic check`; migration tests 014 to 018; the round trip 013 to head and back on seeded data (record the output); full suite. Stop and report before P3 (migrations 017 and 018 are new)**
+
+---
+
+## Phase P3: Sign-in under load and abuse (F04, FR-221, FR-222, FR-223, F06)
+
+**Goal**: Bounded hashing without held connections, the same lockout for every address, a windowed network limit, and delivery after the response (plan Part 2, P3).
+
+**Independent Test**: Hashing never blocks the loop or holds a connection on any of the six paths; a registered and an unregistered address answer identically; SC-207 (work count and opt-in timing) still passes.
+
+
+### Group A: bounded hashing that holds no connection (F04; FR-222; research D15)
+
+- [ ] T342 [P] [F04] Write `apps/api/tests/unit/test_passwords.py`: the async `hash_password`, `verify_password` and `verify_against_dummy` return what the synchronous core returns; at most `HASH_CONCURRENCY` run at once (count concurrent entries with a wrapper); more than `HASH_CONCURRENCY + HASH_QUEUE_LIMIT` outstanding raises `ServiceBusyError` immediately; the limiter is created per running event loop (use it from two different loops in one test without an error)
+- [ ] T343 [P] [F04] Write `apps/api/tests/integration/test_event_loop_not_blocked.py`: during a burst of 20 concurrent unknown-address sign-ins a plain `GET /api/v1/openapi.json` is answered within a bound well below the 724 ms measured before (assert a ceiling of 250 ms, take the median of 5 probes) and the burst needs no more than `HASH_CONCURRENCY` hashes at a time
+- [ ] T344 [P] [F04] Write `apps/api/tests/integration/test_hash_pool.py`: with the application's engine limited to a pool of 5 connections (override `get_db` with an engine of `pool_size=5, max_overflow=0, pool_timeout=2`), run 50 concurrent sign-ins and, separately, 50 concurrent `POST /api/v1/employees` creations; while they run a plain authenticated read succeeds within 2 s (no connection is held while hashing); when the hash queue is full the excess requests get 503 `service.busy` with `Retry-After` and change nothing; for each of `POST /auth/invite`, `POST /auth/invite/accept`, `POST /auth/password-reset/confirm` and `POST /api/v1/clients/{id}/users` one call under a full queue also returns 503 and changes nothing. Also test `release_connection()`: it ends a read-only transaction and RAISES if the session has a pending write
+- [ ] T345 [F04] Create `apps/api/src/hds/core/passwords.py`: `async hash_password`, `verify_password`, `verify_against_dummy` that run the synchronous functions of `apps/api/src/hds/core/security.py` with `asyncio.to_thread` behind a limiter (`HASH_CONCURRENCY` running, `HASH_QUEUE_LIMIT` waiting, kept per running event loop in a `WeakKeyDictionary`); when full raise `ServiceBusyError` (add to `apps/api/src/hds/core/exceptions.py` with code `service.busy`). Add settings `HASH_CONCURRENCY: int = Field(default=2, ge=1)` and `HASH_QUEUE_LIMIT: int = Field(default=8, ge=0)` to `apps/api/src/hds/core/config.py` and document them
+- [ ] T346 [F04] Register a handler in `apps/api/src/hds/core/error_handler.py` mapping `ServiceBusyError` to 503 problem+json with a `Retry-After` header (seconds, default 1); add `service.busy` to `en.json` and `he.json`
+- [ ] T347 [F04] Add `release_connection()` to `BaseRepository` in `apps/api/src/hds/repositories/base.py`: ends the current read-only transaction (`session.commit()`), and raises `RuntimeError` if `session.new`, `session.dirty` or `session.deleted` is non-empty or a flush has already written in this transaction (document: use only before the request's first write, because `commit()` also saves earlier writes)
+- [ ] T348 [F04] Use the async functions and release the connection BEFORE hashing, before the first write and before any row lock, on all six paths: `login` in `apps/api/src/hds/services/auth.py` (read the user, `release_connection()`, verify, then `lock_user` as in P1 Group E); `accept_invitation`, `reset_password` and `create_invitation` (placeholder password, hashed before its first statement) in `apps/api/src/hds/services/invitation.py`; `create_employee` in `apps/api/src/hds/services/employee.py` and `create_client_user` in `apps/api/src/hds/services/client.py` (validate, release, hash, then write). Keep the synchronous functions for `apps/api/src/hds/scripts/seed_dev.py`. The work-counting tests in `apps/api/tests/unit/test_login_equal_work.py` and `tests/integration/test_login_responses.py` must still pass; adapt their hasher wrapper to the new call path without weakening the assertions
+- [ ] T349 [F04] Declare 503 (and its `Retry-After`) in the `responses=` of the six operations (`POST /auth/login`, `/auth/invite`, `/auth/invite/accept`, `/auth/password-reset/confirm`, `POST /api/v1/employees`, `POST /api/v1/clients/{id}/users`) in `apps/api/src/hds/routers/auth.py`, `invitations.py`, `employees.py`, `clients.py`; update their `description` text. The OpenAPI drift check and `tests/contract` must stay green
+- [ ] T350 [F04] Mutation checks for Group A: remove the limiter; remove the queue bound; call `release_connection` after hashing instead of before on one path; make `release_connection` allow a pending write. Each must fail a test; restore files; record results
+- [ ] T351 [F04] Commit as `fix(api): hash passwords off the event loop, bounded, without holding a database connection`
+
+### Group B: the same lockout for every address, and a windowed network limit (FR-221, FR-223; research D16)
+
+- [ ] T352 [P] [F04] Write `apps/api/tests/integration/test_login_throttle.py` on PostgreSQL (set `LOGIN_MAX_FAILURES` and the network limit through the settings object, as in `test_lockout.py`): (1) for a REGISTERED and an UNREGISTERED address (also in a different letter case) `LOGIN_MAX_FAILURES` wrong passwords answer 401 `auth.invalid_credentials` and the next attempt answers 423 `auth.account_locked`, and the two responses have the same status, body shape, headers and number of Argon2 verifications at every step; (2) while locked a correct password is refused 423 and is NOT verified (verification count unchanged); (3) after the lock expires (set `locked_until` in the past) the count restarts: `LOGIN_MAX_FAILURES - 1` failures do not lock; (4) a successful sign-in clears the ADDRESS count (nine typos, a success, one typo: not locked); (5) NETWORK: `LOGIN_RATE_LIMIT_PER_NETWORK` failures inside one window from one client address give 429 `auth.rate_limited` with `Retry-After` for ANY submitted address, answered before any lookup; failures spread across two windows (move `window_started_at` back) do not add up; 29 failures, a successful sign-in, then one more failure DOES lock (a success does not clear the network count); a limit of 0 turns the network limit off; (6) rows store only hashes (no address or network address appears in the table); (7) each recorded failure deletes up to 50 unlocked rows older than `LOGIN_THROTTLE_RETENTION_HOURS` and never a locked row. Show it failing
+- [ ] T353 [P] [F04] Write `apps/api/tests/unit/test_client_address.py` for `client_address(request, trusted_proxy_count)`: count 0 ignores `X-Forwarded-For` (a forged header changes nothing); count 1 takes the last entry; count 2 takes the second from the right; a header with fewer entries than the count falls back to the connecting address; a malformed chosen entry falls back to the connecting address; an IPv6 address is reduced to its /64 prefix (two addresses in one /64 give the same key); an IPv4 address keeps its full value
+- [ ] T354 [F04] Add `LoginThrottleRepository` in `apps/api/src/hds/repositories/login_throttle.py`: `register_failure(kind, key_hash, limit, lock_until, window_minutes, now)` as ONE atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` (for `address`: increment `failures`, set `locked_until` when the new count reaches `limit`; for `network`: first restart `failures` and `window_started_at` if `window_started_at + window_minutes <= now`, then increment, and set `locked_until` to the window end when the limit is reached), committed at once through the explicit `commit()` so a refusal does not undo it; `get(kind, key_hash)`; `clear_expired_lock(kind, key_hash, now)`; `clear_failures(kind, key_hash)` (address rows only); `purge_stale(older_than, limit=50)` deleting unlocked rows by the `updated_at` index. Docstrings state the layer and that keys are SHA-256 hex
+- [ ] T355 [F04] Create `apps/api/src/hds/core/client_address.py` (`client_address(request, trusted_proxy_count)` and `network_key`: IPv6 reduced to /64, malformed entries ignored) and `apps/api/src/hds/core/throttle.py` (the rule shared by registered and unregistered addresses: a small interface with `clear_expired`, `locked_until`, `register_failure`, `clear_on_success`, implemented over the users columns for a registered address and over `LoginThrottleRepository` for an unregistered one). Add settings `LOGIN_RATE_LIMIT_PER_NETWORK: int = Field(default=30, ge=0)`, `TRUSTED_PROXY_COUNT: int = Field(default=0, ge=0)` and `LOGIN_THROTTLE_RETENTION_HOURS: int = Field(default=24, gt=0)` to `apps/api/src/hds/core/config.py`
+- [ ] T356 [F04] Rewrite the front of `AuthService.login` in `apps/api/src/hds/services/auth.py` and pass the client address from `apps/api/src/hds/routers/auth.py`: (a) if the network limit is on and the network key is locked, raise `AuthError(code="auth.rate_limited")` mapped to 429 with `Retry-After`, before any lookup; (b) clear an expired lock for the address (registered or not) and refuse with `auth.account_locked` (423, same detail format and lock-end rule) while locked, WITHOUT verifying the password; (c) otherwise verify (the real hash, or `verify_against_dummy` for an unregistered address), on failure register the failure for the address and the network and purge stale rows, on success clear the address count and NOT the network count. Add `auth.rate_limited` to `en.json` and `he.json`, map it in `apps/api/src/hds/core/error_handler.py`, declare 423 and 429 in the login `responses=` and update the login `description`
+- [ ] T357 [F04] Mutation checks for Group B: lock unregistered addresses one failure late; skip the lock for unregistered addresses; let a success clear the network count; remove the window restart; key IPv6 by the full address; trust the forwarded header at count 0; remove the stale-row purge. Each must fail a test; restore files; record results
+- [ ] T358 [F04] Commit as `fix(api): lock unregistered addresses like registered ones and limit failures per network`
+
+### Group C: delivery after the response (F06; research D17)
+
+- [ ] T359 [P] [F06] Write `apps/api/tests/integration/test_delivery_after_response.py`: with a sender whose `send` blocks on an event, `POST /auth/password-reset/request` for a registered address returns 202 BEFORE `send` starts (assert the response arrived while the event is unset); delivery then runs after the response and exactly once; on a failed commit nothing is delivered; a delivery that raises is logged by exception type only (no message, no address, no token) and does not change the response. Show it failing
+- [ ] T360 [P] [F06] Extend `apps/api/tests/integration/test_login_timing.py` (opt-in, marker `timing`) or add `apps/api/tests/integration/test_reset_request_timing.py`: 300 samples each for a registered and an unregistered address on `POST /auth/password-reset/request`, interleaved, with a pass mark of median ratio below 1.15; print both medians
+- [ ] T361 [F06] In `apps/api/src/hds/core/database.py` change `get_unit_of_work` to take FastAPI's `BackgroundTasks`: after a successful commit it adds ONE background task that runs the session's after-commit actions, so they run after the response is sent, still only after the commit and still dropped on rollback; keep failure logging by type. Adapt `apps/api/tests/unit/test_unit_of_work.py`, `test_unit_of_work_dependency.py`, `test_deferred_mailer.py` and `tests/integration/test_mail_after_commit.py` to the new ordering without weakening them
+- [ ] T362 [F06] Write `docs/adr/008-delivery-after-the-response.md` (context, decision, the residual token-write difference, alternatives) and add a pointer to `docs/adr/005-request-scoped-transactions.md`; add both to the ADR table in `docs/README.md`
+- [ ] T363 [F06] Mutation check: run the actions before the response again; the ordering test must fail; restore the file
+- [ ] T364 [F06] Commit as `fix(api): send mail after the response so a reset request takes the same time for every address`
+
+### Group D: bulk purge, settings and documents for P3
+
+- [ ] T365 [F08] [F04] Write `apps/api/tests/unit/test_purge_expired_records.py` and create `apps/api/src/hds/scripts/purge_expired_records.py` (`python -m hds.scripts.purge_expired_records`): deletes expired refresh tokens, links past `expires_at` and unlocked `login_throttle` rows older than the retention; spent or cancelled links inside their lifetime are kept; prints counts only; exit 0. Split into a pure decision, `run(session_factory)` and a thin database entry as in `check_site_timezones.py`
+- [ ] T366 [F04] Add `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT`, `LOGIN_RATE_LIMIT_PER_NETWORK`, `TRUSTED_PROXY_COUNT` and `LOGIN_THROTTLE_RETENTION_HOURS` to `.env.example` (as comments) and to the configuration table of `apps/api/README.md` (the existing `tests/unit/test_deployment_files.py` enforces both); state in the table that behind a reverse proxy `TRUSTED_PROXY_COUNT` must be set (or the network limit set to 0) and that a wrong value cannot be detected at start-up
+- [ ] T367 [F04] Write `docs/adr/007-sign-in-abuse-controls.md` (bounded hashing and why no connection is held, the same lockout for every address, the windowed network limit and the proxy rule, alternatives) and add it to `docs/README.md`; correct `docs/hds-api.md` (rate limiting is now specified; remove the claim that the FR-005 exception stands); record the deployment note that the future ingress feature must set `TRUSTED_PROXY_COUNT` and check it in its steps
+- [ ] T368 [F04] [F06] Commit as `docs: describe the sign-in abuse controls and the new settings`
+
+**Checkpoint P3: all gates; SC-207 unit and responses tests; `uv run pytest -m timing` for login and for the reset request; the Schemathesis script `apps/api/scripts/contract_cli.sh` against a scratch database until it exits 0 (login now answers 423 and 429; the hooks file must not break); the OpenAPI comparison; `tests/concurrency/` three runs. Stop and report before P4**
+
+---
+
+## Phase P4: Input, logging and reliability (F05, F10, F12)
+
+**Goal**: Small independent fixes (plan Part 2, P4).
+
+**Independent Test**: Each fix has a test that fails first; the logging fix also has a mutation check.
+
+
+### Group A: log redaction keeps no fragment (F05; research D22)
+
+- [ ] T369 [P] [F05] Write `apps/api/tests/unit/test_log_redaction_quotes.py`: `redact('{"password": "ab\\"cd"}')` leaves no `cd` fragment and no part of the secret; values containing `"`, `'` and `\` (single and double quoted, JSON and key=value forms) never leave a fragment longer than one character of the secret; redacting twice equals redacting once (property test with Hypothesis). Show it failing
+- [ ] T370 [F05] In `apps/api/src/hds/core/logging.py` change `_SENSITIVE_PAIR` (line 22) so the value group consumes backslash escapes and stops only at an unescaped matching delimiter; unquoted values still stop at whitespace, comma or closing brace. Update the docstring
+- [ ] T371 [F05] Mutation check: restore the old pattern; the test must fail; restore the file
+- [ ] T372 [F05] Commit as `fix(api): log redaction removes values that contain quotes and backslashes`
+
+### Group B: canonical time-zone names (F10; research D21, amends D11)
+
+- [ ] T373 [P] [F10] Write `apps/api/tests/unit/test_site_timezone_canonical.py` and extend `apps/api/tests/integration/test_site_timezone.py`: `posixrules`, `Factory`, `asia/jerusalem`, `ASIA/JERUSALEM` are refused with 422 `sites.timezone_invalid` on create and edit through the application; `Asia/Jerusalem`, `UTC`, `Asia/Kolkata` and `America/Argentina/Buenos_Aires` still pass; the result does not depend on the platform's file system (the check uses the `tzdata` package list, case-sensitive); `check_site_timezones` reports stored values that fail the new rule. Show it failing
+- [ ] T374 [F10] In `apps/api/src/hds/services/site.py` change `validate_timezone` (line 33) to accept a name only if it is in the `tzdata` package's zone list (read once from `importlib.resources.files('tzdata') / 'zones'`), is not `Factory`, and loads with `ZoneInfo`; matching is case-sensitive. Make `apps/api/src/hds/scripts/check_site_timezones.py` use the same function. Update the docstrings and the note in `specs/002-security-hardening/research.md` D11 if wording changed
+- [ ] T375 [F10] Mutation check: use `available_timezones()` instead of the package list on a case-insensitive comparison; the four named names must be accepted again and the test fail; restore the file
+- [ ] T376 [F10] Commit as `fix(api): accept only canonical IANA time-zone names`
+
+### Group C: a failed rollback does not hide the original error (F12; research D23)
+
+- [ ] T377 [P] [F12] Write `apps/api/tests/unit/test_rollback_failure.py` with the `FakeSession` from `apps/api/tests/unit/conftest.py`: when the block raises and `rollback()` also raises, the ORIGINAL exception propagates unchanged and the rollback error is logged by exception type only (no message); when the commit fails and rollback fails too, the commit error propagates. Show it failing
+- [ ] T378 [F12] In `unit_of_work` in `apps/api/src/hds/core/database.py` run the rollback inside its own `try`: log a rollback failure by exception type only and re-raise the original error. Update the docstring
+- [ ] T379 [F12] Commit as `fix(api): a failing rollback no longer replaces the request's real error`
+
+**Checkpoint P4: all gates, full suite, the OpenAPI comparison. Stop and report before P5**
+
+---
+
+## Phase P5: Tests, the development tool and documents (F13, F14, F15, F16)
+
+**Goal**: Corrections with no production behaviour change (plan Part 2, P5).
+
+**Independent Test**: The corrected tests fail when the thing they guard is removed.
+
+
+### Group A: one commit for four corrections
+
+- [ ] T380 [F13] F13: in `apps/api/tests/integration/test_email_case.py` (the repository test near line 176) add `role` to the second insert and assert `uq_users_email_ci` appears in the `IntegrityError`; show by a mutation (drop the index in a scratch database or monkeypatch it away) that the test fails when the index is absent; restore
+- [ ] T381 [F14] F14: in `apps/api/src/hds/scripts/dev_issue_link.py` (line 77) issue an invitation token only for a PENDING account (not active, not deleted, `activated_at` empty) and refuse a deactivated one with exit status 1; in `apps/api/tests/unit/test_dev_issue_link.py` (line 61) make the "pending" fixture account truly pending (`activated_at` None) and add a deactivated one; tests: deactivated refused with status 1 and a message, pending gets a token that `accept_invitation` can redeem. Show the new tests failing first
+- [ ] T382 [P] [F15] F15: in `specs/002-security-hardening/spec.md` renumber the last scenario of User Story 3 (about line 129) from `3.` to `4.` and update any reference to it (search `tasks.md`, `plan.md`, `quickstart.md`)
+- [ ] T383 [P] [F16] F16: in `specs/002-security-hardening/quickstart.md` (about line 47) change the start-up row to say `ENVIRONMENT=production` for the 20-byte-secret case
+- [ ] T384 [F13] [F14] [F15] [F16] Commit as `test(api): fix the duplicate-address and pending-account tests, and two document errors`
+
+**Checkpoint P5: all gates and the full suite. Stop and report before P6**
+
+---
+
+## Phase P6: Older gaps (F17 to F26)
+
+**Goal**: Gaps not introduced by this PR, in scope by clarification Q1 (plan Part 2, P6). Order: F26 first, then the small fixes, then the contract-affecting ones, then the refactors.
+
+**Independent Test**: Behaviour changes are pinned by failing-first tests before any refactor; the refactors change no behaviour and no OpenAPI output.
+
+
+### Group A: each test run uses its own database (F26; research D24)
+
+- [ ] T385 [P] [F26] Write `apps/api/tests/unit/test_run_database.py` (pure functions): the per-run database name is `hds_<process id>_test`, always ends in `_test`, an explicit `TEST_DATABASE_URL` wins, and a database named `hds_<pid>_test` whose process id no longer exists is recognised as stale (and one whose process exists is not). Add a scripted check (not collected by default) in `apps/api/scripts/two_runs_at_once.sh` that starts two `pytest tests/integration/test_me.py` runs at the same time and requires both to pass and no `hds_*_test` database to be left behind. Show the two runs failing at random before the change
+- [ ] T386 [F26] In `apps/api/tests/conftest.py` derive the database name from the run, create and migrate it in `migrated_test_db`, drop it at the end of the session, and drop stale `hds_<pid>_test` databases at start; keep the `_assert_safe_test_db` guard; keep `apps/api/tests/integration/migration_support.py` scratch databases as they are. Update `apps/api/README.md` (Tests) and `README.md`
+- [ ] T387 [F26] Commit as `test(api): give each test run its own database`
+
+### Group B: small service fixes (F18, F19, F25)
+
+- [ ] T388 [P] [F18] [F19] [F25] Write failing tests: F18 `apps/api/tests/integration/test_client_without_client.py` (a Client-role user whose `client_id` is NULL gets an empty project list and 404 on a project id; seed the row with SQL); F19 extend `apps/api/tests/integration/test_token_revocation.py` (`POST /auth/logout` with a refresh token owned by ANOTHER user answers 204 and revokes nothing; with the caller's own token it still revokes); F25 `apps/api/tests/concurrency/test_duplicate_create.py` (two simultaneous creations of one address through `POST /api/v1/employees`, and through `POST /api/v1/clients/{id}/users`, give exactly one 201 and one 409 `users.duplicate_email`, 50 rounds each, never a 422). Show them failing
+- [ ] T389 [F18] [F19] [F25] F18: in `apps/api/src/hds/services/project.py` (`list_projects`, about line 182, and `get_project`) make a Client-role user without `client_id` see no projects. F19: in `apps/api/src/hds/services/auth.py` (`logout`, about line 206) revoke the token only if it belongs to the caller; the answer stays 204 either way; the router passes the caller. F25: in `apps/api/src/hds/services/employee.py` `create_employee` and `apps/api/src/hds/services/client.py` `create_client_user` use `UserRepository.create_if_absent` and raise `users.duplicate_email` (409) on a lost race. Update docstrings and the three operations' `description`
+- [ ] T390 [F18] [F19] Mutation checks for F18 and F19: remove the empty-list rule; remove the ownership check. Each must fail a test; restore files; record results
+- [ ] T391 [F18] [F19] [F25] Commit as `fix(api): logout checks ownership, portal users without a client see nothing, simultaneous creation returns 409`
+
+### Group C: clearing optional fields (F17; research D25)
+
+- [ ] T392 [P] [F17] Write `apps/api/tests/integration/test_patch_null_clears.py` on PostgreSQL: for each of `PATCH /me` (phone), `PATCH /api/v1/employees/{id}` (phone, `default_hourly_rate`), `PATCH /api/v1/clients/{id}` (`contact_name`, `contact_email`, `contact_phone`, `contract_end`), `PATCH /api/v1/projects/{id}` (`end_date`) and `PATCH /api/v1/sites/{id}`: an explicit `null` clears an optional field (stored NULL, response shows null), an omitted field is left alone, and `null` for a required field (for example `name`) returns 422 `validation.request_invalid` and changes nothing. Show it failing (today `null` is dropped and the answer is 200)
+- [ ] T393 [F17] Replace `exclude_none=True` by `exclude_unset=True` in the PATCH handlers of `apps/api/src/hds/routers/me.py`, `employees.py`, `clients.py`, `projects.py` and `sites.py`; reject `null` for required columns in the request models (field validators) or the services; make the services and repositories pass `None` through for the optional columns only. The generated OpenAPI schemas already allow `null` on these fields: confirm with the comparison script that the document is unchanged apart from descriptions. Update the five operations' `description`
+- [ ] T394 [F17] Mutation check: restore `exclude_none=True` in one router; the test must fail; restore the file
+- [ ] T395 [F17] Commit as `fix(api): PATCH with an explicit null clears an optional field`
+
+### Group D: Client accounts and client dates (F23, F24; confirmed defaults D5 and D6)
+
+- [ ] T396 [P] [F23] [F24] Write `apps/api/tests/integration/test_client_rules.py` on PostgreSQL: F23 any role change on a Client-role account (`PATCH /api/v1/employees/{id}` with `role`, and the promote operations) returns 409 `users.client_role_locked` and changes nothing; F24 `POST /api/v1/clients` and `PATCH /api/v1/clients/{id}` with `contract_end` earlier than `contract_start` return 422 `clients.date_range_invalid` (on PATCH the stored value is used for the field not sent) and equal dates are accepted. Show it failing
+- [ ] T397 [F23] [F24] F23: in `apps/api/src/hds/services/employee.py` (`edit_employee`, `promote_to_manager`, `promote_to_admin`) refuse any role change on a user whose role is `client` with `ConflictError(code="users.client_role_locked")`. F24: in `apps/api/src/hds/services/client.py` (`create_client`, `edit_client`) validate the date order with the stored values merged in, raising `DomainValidationError(code="clients.date_range_invalid")`. Add both codes to `en.json` and `he.json`; update the operations' `description`; keep the service rule only (no new constraint, existing rows may violate it)
+- [ ] T398 [F23] [F24] Mutation checks: remove each rule; each must fail a test; restore files; record results
+- [ ] T399 [F23] [F24] Commit as `fix(api): Client accounts keep their role and a client's contract dates are ordered`
+
+### Group E: refactors with behaviour already pinned (F20, F21, F22)
+
+- [ ] T400 [F20] [F21] [F22] Before touching code, save the generated OpenAPI document (`uv run python -m hds.scripts.export_openapi`) and the full-suite result as the baseline for this group
+- [ ] T401 [P] [F20] [F21] [F22] F20 tests first: add `apps/api/tests/unit/test_site_service.py`, `test_client_service.py` and `test_employee_manager.py` cases for the service methods the routers will call (`SiteService.list_sites`, `SiteService.get_site`, the client and employee reads): each requires the right role (403 `users.manager_required` otherwise) and returns 404 for another organisation's id. They fail until the methods exist. F21 and F22 are pinned by the existing suite and the OpenAPI baseline
+- [ ] T402 [F20] F20: move the repository reads in `apps/api/src/hds/routers/sites.py`, `clients.py` and `employees.py` (for example `SiteRepository(db).list_by_org`, `get_by_id`, `_require_user_in_org`) into the matching services (`SiteService.list_sites` and `get_site`, `ClientService`, `EmployeeService`), each with its role check, and make the routers call only services. Constitution II: `uv run python -m hds.tools.check_imports` must pass and the routers must not import repositories for reads. Add or extend unit tests per new service method (role check and not-found)
+- [ ] T403 [F21] F21: replace the two copies of `UserRead` in `apps/api/src/hds/routers/me.py` and `employees.py` with one definition in `apps/api/src/hds/routers/user_schemas.py`; remove the "keep identical" comment; the OpenAPI component keeps the name `UserRead`
+- [ ] T404 [F22] F22: remove the duplicate helpers: one user lookup for `get_by_id_for_token` and `get_for_auth` in `apps/api/src/hds/repositories/user.py`; one token-hash function in `apps/api/src/hds/core/security.py` used by `apps/api/src/hds/services/auth.py` and `invitation.py`; delete `_verify_password` in `auth.py` and make the tests that patch it patch `hds.core.passwords` (or the single verification function) instead
+- [ ] T405 [F20] [F21] [F22] Compare the OpenAPI document and the suite with the baseline: the document must be identical, and every test that passed before must pass. Commit as `refactor(api): routers use services, one UserRead, no duplicate helpers`
+
+**Checkpoint P6 (merge gate): ruff, format (src, tests, alembic, scripts), interrogate 100%, `mypy --strict src/ tests/`, import graph, `alembic check`; the full suite on PostgreSQL; `tests/concurrency/` three runs in a row; the Schemathesis script against a scratch database until it exits 0; `uv run pytest -m timing` for login and reset request; the OpenAPI comparison; the round trip of migrations 013 to head and back; update the coverage table below; push and report the PR 4 head commit**
+
+---
+
+- [ ] T406 Run the merge gate of Checkpoint P6 once more on the final head, push `002-security-hardening`, and report the PR number, the CI result and anything that could not be run
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies
@@ -614,3 +853,58 @@ SC-209 has at least one implementing task and one test task.
 - A failing test must be seen to fail before its implementation task starts (FR-219).
 - Stop at any checkpoint to validate a story on its own.
 - Avoid: two people editing `services/auth.py`, `services/invitation.py` or `repositories/user.py` at the same time.
+
+## Part 2 coverage: fix-list item → tasks
+
+| Item | Tasks |
+| --- | --- |
+| F01 | T305, T306, T307, T308, T309, T310, T332, T333 |
+| F02 | T311, T312, T313, T314, T315, T316, T332, T333 |
+| F03 | T317, T318, T319, T320, T321, T332, T333 |
+| F04 | T339, T340, T341, T342, T343, T344, T345, T346, T347, T348, T349, T350, T351, T352, T353, T354, T355, T356, T357, T358, T365, T366, T367, T368 |
+| F05 | T369, T370, T371, T372 |
+| F06 | T359, T360, T361, T362, T363, T364, T368 |
+| F07 | T334, T335, T336, T337, T338 |
+| F08 | T322, T323, T324, T325, T326, T332, T333, T365 |
+| F09 | T327, T328, T329, T330, T331 |
+| F10 | T373, T374, T375, T376 |
+| F11 | T305, T306, T308, T309, T310, T332, T333 |
+| F12 | T377, T378, T379 |
+| F13 | T380, T384 |
+| F14 | T381, T384 |
+| F15 | T382, T384 |
+| F16 | T383, T384 |
+| F17 | T392, T393, T394, T395 |
+| F18 | T388, T389, T390, T391 |
+| F19 | T388, T389, T390, T391 |
+| F20 | T400, T401, T402, T405 |
+| F21 | T400, T401, T403, T405 |
+| F22 | T400, T401, T404, T405 |
+| F23 | T396, T397, T398, T399 |
+| F24 | T396, T397, T398, T399 |
+| F25 | T388, T389, T391 |
+| F26 | T385, T386, T387 |
+
+Part 2 adds 102 tasks (T305 to T406); the file now holds 206 tasks (T201 to T406). Every item F01 to F26 has at least one test task and one implementation task; every security item has a mutation-check task.
+
+## Part 2 dependencies and execution order
+
+- **P1 to P6 run in order.** P1 touches `services/invitation.py`, `client.py`, `employee.py`, `auth.py` and the token repositories; P3 edits the same files again, so do not start P3 before P1's checkpoint.
+- **Within P1** the five groups are independent of each other except that Group E (`lock_user`, login and refresh edits in `auth.py`) comes after Group D (also `auth.py`). Groups A to C may run in parallel by different people only if they avoid `invitation.py` (A) and `employee.py` (B, C); do B before C.
+- **P2** needs P1 only for the revoke-all behaviour that migration 017's evidence rule reads; the two migrations are independent of each other (017 before 018 for numbering).
+- **P3 Group A** (hashing) precedes **Group B** (throttle), because Group B's `login` builds on the released-connection path; **Group C** (delivery) is independent of A and B and may run in parallel with B except that both edit `core/database.py`'s neighbours (`error_handler.py`); do C after B. Group D closes P3.
+- **P4** groups are independent; Group C edits `core/database.py` again, so it follows P3 Group C.
+- **P5** has no dependencies beyond P4's checkpoint.
+- **P6**: Group A first (it makes repeated runs safe), then B, C and D (D after B because both edit `services/employee.py` and `client.py`), then the refactors in Group E last, with the baseline taken first.
+
+### Parallel opportunities (Part 2)
+
+Inside a group, every test-writing task marked `[P]` can be written together. Across groups: P1 Group A with Group D; P3 Group C with the documentation task of Group D; P4 Groups A and B; P5 tasks F15 and F16.
+
+### Implementation strategy (Part 2)
+
+1. P1 first: it closes the account-takeover and session paths and needs no schema.
+2. P2 next, then stop and report: two new migrations.
+3. P3 is the largest and riskiest (it rewrites the sign-in path). Keep SC-207 green after every task.
+4. P4 and P5 are small; P6 last because its contract-affecting items change existing endpoints and its refactors are safest once behaviour is pinned.
+5. Open follow-up (not a task here): the deployment feature that adds the ingress must set `TRUSTED_PROXY_COUNT` and check it.
