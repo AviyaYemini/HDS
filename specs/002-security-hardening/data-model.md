@@ -47,6 +47,10 @@ An account is in exactly one of these states, derived from existing columns plus
                 └──── delete ──────┴───────────▶ Deleted
 ```
 
+Reactivation is available **only from Deactivated**. From Pending it is refused with
+`users.pending_cannot_reactivate` (409) and the account stays Pending; only accepting an invitation
+leaves Pending.
+
 Rules by state:
 
 - **Invitation link redeemable**: Pending only (FR-205).
@@ -55,6 +59,8 @@ Rules by state:
   duplicate (409); Deactivated → refused (`invitations.account_deactivated`) (FR-206).
 - **Entering Deactivated or Deleted, or leaving Pending** cancels all outstanding links (FR-207).
 - Reactivation stays the staff action of feature 001 (FR-015); it does not happen by invitation.
+- **Reactivate**: Deactivated → Active. Pending → refused (`users.pending_cannot_reactivate`,
+  FR-220). Active → unchanged, as today.
 
 ## Refresh-token states
 

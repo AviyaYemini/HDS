@@ -98,6 +98,9 @@ link, and confirm the account stays deactivated and the password is unchanged.
 7. **Given** two staff members who invite the same new address at the same moment, **When** both
    requests finish, **Then** exactly one pending account exists, both requests succeed (the
    later one acts as a re-invitation) and neither receives an error.
+8. **Given** a pending account (invited, never activated), **When** staff try to reactivate it,
+   **Then** the request is refused with a clear message that only the invitation can activate it,
+   and the account stays pending; it is never reported as a generic data-constraint error.
 
 ---
 
@@ -302,6 +305,9 @@ valid one is accepted.
   earlier link. Inviting an address that belongs to an active account is refused as a duplicate.
 - **FR-207**: Deactivating or deleting an account MUST cancel its outstanding invitation and reset
   links, and accepting an invitation MUST cancel the account's other outstanding links.
+- **FR-220**: Reactivating a pending account MUST be refused with a dedicated, translated error
+  (English and Hebrew), and the account MUST stay pending. Only accepting an invitation activates
+  a pending account.
 
 **Single use (Story 3)**
 

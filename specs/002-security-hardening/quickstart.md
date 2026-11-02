@@ -14,11 +14,14 @@ Data: [data-model.md](data-model.md).
 
 ## Phasing (so the riskiest change is proven first)
 
-1. **Phase A, no behaviour change**: move the commit out of repositories (D1) and run the existing
-   suite unchanged. It must pass before anything else is touched.
-2. **Phase B**: Story 1, Story 2, Story 3 (the High findings).
-3. **Phase C**: Story 4 tests, then Stories 5 to 8.
-4. **Phase D**: Story 9, documentation, ADRs.
+The phases are the phases of [tasks.md](tasks.md):
+
+1. **Phases 1 and 2** (Setup, Foundational): move the commit out of repositories (research D1) and
+   run the existing suite unchanged. Checkpoint A, the last task of Phase 2, must be green before
+   anything else is touched.
+2. **Phases 3 to 5** (Stories 1, 2 and 3, the P1 stories).
+3. **Phases 6 to 10** (Stories 4 to 8, the P2 stories).
+4. **Phases 11 and 12** (Story 9, then Polish with the documentation and ADR checks).
 
 Each phase ends with every gate below green and a commit on the feature branch.
 
@@ -45,6 +48,7 @@ The OpenAPI drift check from feature 001 must stay green:
 | 1 No leaked links (SC-202) | Integration test: invite and reset with log capture on, using the outbox backend | No log record contains the token or an unmasked address; the outbox file holds a record with `[REDACTED]` in place of the token |
 | 1 Manual link | In a development environment, run `uv run python -m hds.scripts.dev_issue_link <email> invite`; then run it with `ENVIRONMENT=production` | First prints a working link once and writes it nowhere; the second refuses to run |
 | 2 Invariant | Insert an active user with no activation time | The database rejects it (`ck_users_active_has_activated_at`) |
+| 2 Reactivate pending | `POST /api/v1/employees/{id}/reactivate` for an invited, never-activated account | 409 `users.pending_cannot_reactivate`, account still pending; not a 422 constraint answer |
 | 2 Concurrent invites | Concurrency test: two staff invite the same new address at once | One pending account, both requests succeed |
 | 2 Pending only (SC-204) | Integration tests: redeem a link for a deactivated, deleted and already-active account; invite a deactivated address | Redemptions refused with no data change; invite returns 409 `invitations.account_deactivated` |
 | 2 Role on re-invite | Re-invite a pending account with a different role as Manager and as Admin | Manager to Manager succeeds; Manager to Admin is 403 |

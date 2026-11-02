@@ -11,6 +11,7 @@ text in `apps/api/src/hds/locales` (Constitution VIII; `test_i18n` enforces pari
 | Code | HTTP | When | Operation |
 | --- | --- | --- | --- |
 | `invitations.account_deactivated` | 409 | Inviting an address that belongs to a deactivated account (FR-206) | `POST /auth/invite` |
+| `users.pending_cannot_reactivate` | 409 | Reactivating an account that was invited but never activated (FR-220). The account stays pending | `POST /api/v1/employees/{id}/reactivate` |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that cannot be loaded (FR-217) | `POST /api/v1/sites`, `PATCH /api/v1/sites/{id}` |
 
 ## Existing codes with changed conditions

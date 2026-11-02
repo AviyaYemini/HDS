@@ -105,6 +105,10 @@ about which token replaced which, but more schema and logic than the requirement
   fixture, a future code path) would create an account that looks *pending* once deactivated,
   which is the original defect. Deactivation also sets `activated_at` when it is still null, as
   a second line of defence.
+- **Reactivating a pending account**: `EmployeeService.reactivate` checks `activated_at` before
+  writing. A pending account (null `activated_at`) is refused with the dedicated 409 code
+  `users.pending_cannot_reactivate`. Without this check the new database constraint would reject
+  the write and the caller would see the generic constraint answer (422), which hides the cause.
 - **Concurrent invitations**: two simultaneous invitations for a new address both try to insert
   it. The insert runs inside a savepoint; the loser catches the unique violation, rolls back the
   savepoint, reloads the account by address and continues with the existing-account rules (a
