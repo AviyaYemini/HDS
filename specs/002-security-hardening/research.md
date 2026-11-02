@@ -598,6 +598,10 @@ on every platform (598 names; `Factory` is the only non-zone; `posixrules` is ab
 package-based list gives one answer everywhere, and the case-sensitive match removes the dependence
 on a case-insensitive file system. The load check stays so "valid" still means "will load".
 
+**Note, 2026-11-03**: the list holds IANA's legacy aliases too (`Israel`, `US/Pacific`), so one zone can be
+stored under two names. FR-231 says "canonical"; this decision and T374 accept the list as it is. The
+accepted set moves with the installed `tzdata`; the lock file fixes it per deployment.
+
 **Alternatives**: a hard-coded list (drifts); `available_timezones()` (environment-dependent, the
 reason D11 rejected it).
 

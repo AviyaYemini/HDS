@@ -1,4 +1,4 @@
-"""List sites whose time zone is not a real IANA name (read-only).
+"""List sites whose time zone is not an exact name on the IANA list (read-only).
 
 Usage:
     uv run python -m hds.scripts.check_site_timezones
@@ -27,7 +27,7 @@ Row = tuple[uuid.UUID, uuid.UUID, str]
 
 
 def is_valid_zone(name: str) -> bool:
-    """Whether ``name`` is a time zone the system can load (the rule the service enforces)."""
+    """Whether ``name`` is an exact listed time zone that loads (the rule of the service)."""
     try:
         validate_timezone(name)
     except Exception:
@@ -36,7 +36,7 @@ def is_valid_zone(name: str) -> bool:
 
 
 def find_invalid(rows: Iterable[Row]) -> list[Row]:
-    """Pick out the sites whose time zone cannot be loaded.
+    """Pick out the sites whose time zone fails the rule the service enforces.
 
     Args:
         rows: Sites as ``(id, organisation id, time zone)``.

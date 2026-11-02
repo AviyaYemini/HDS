@@ -605,3 +605,35 @@ earlier version were rewritten to the final text and run again:
 | Z10 | Wrapper unbounded | `test_hostile_text_is_handled_quickly` |
 | Z11 | Prose `Bearer` | `test_ordinary_diagnostics_are_left_alone` |
 | Z12 | Any closer keeps the value going | same test |
+
+## P4 Group B: canonical time-zone names (T373 to T376, F10)
+
+Differs from T374: the list is read on first use and cached, not at import, so a build missing that data
+fails site writes and not the whole API. The review suggested this.
+
+Failing first: 15 cases.
+
+`/code-review high` (read-only, ten findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | The tzdata list holds legacy aliases (`Israel`, `US/Pacific`, `EST5EDT`), so "canonical" is not strictly met and one zone can be stored under two names | **Not changed, owner to decide.** T374 and D21 specify this list, and `UTC`, which T373 requires, is outside the primary zone files. FR-231 says "canonical". The wording in code and docs now says what is true, and D21 has a note |
+| 2 | The new names were not tested on edit | Fixed |
+| 3 | The new names never asserted the exact error code | Fixed |
+| 4 | Tests cited FR-217, not FR-231 | Fixed |
+| 5 | Old wording in the script, routers, API document and contract list | Fixed |
+| 6 | The report was tested through `is_valid_zone` only | Fixed: `run()` with a stored value |
+| 7 | The set moves with the installed `tzdata` version | Noted in D21; the lock file fixes it per deployment |
+| 8 | A missing package stopped the whole API at import | Fixed, see above |
+| 9 | `UTC\\x00` was a literal backslash, not a NUL | Fixed |
+| 10 | Duplicate accepted-name list | Fixed: removed |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| T1 | `available_timezones()`, case-insensitive (T375) | `test_a_name_that_is_not_canonical_is_refused` |
+| T2 | `Factory` allowed | same test |
+| T3 | List not checked | same test |
+| T4 | Load not checked | `test_a_listed_name_must_still_load` |
+

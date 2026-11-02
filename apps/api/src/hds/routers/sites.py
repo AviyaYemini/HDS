@@ -82,7 +82,7 @@ async def list_sites(
     summary="Create a site",
     description=(
         "Manager or Admin. Create a site with its address and IANA time zone. A time "
-        "zone that is not a real IANA name is refused with 422 (`sites.timezone_invalid`). "
+        "zone that is not an exact IANA name is refused with 422 (`sites.timezone_invalid`). "
         "Sites cannot be deleted."
     ),
 )
@@ -94,7 +94,7 @@ async def create_site(
     """Create a site.
 
     Manager or Admin. Create a site with its address and IANA time zone. A time zone that is not
-    a real IANA name is refused with 422 (`sites.timezone_invalid`). Sites cannot be deleted.
+    an exact IANA name is refused with 422 (`sites.timezone_invalid`). Sites cannot be deleted.
     """
     svc = SiteService(site_repo=SiteRepository(db))
     return await svc.create_site(actor=current_user, data=body.model_dump())
@@ -129,7 +129,7 @@ async def get_site(
     summary="Edit a site",
     description=(
         "Manager or Admin. Update a site's name, address or time zone. A time zone that "
-        "is not a real IANA name is refused with 422 (`sites.timezone_invalid`)."
+        "is not an exact IANA name is refused with 422 (`sites.timezone_invalid`)."
     ),
 )
 async def edit_site(

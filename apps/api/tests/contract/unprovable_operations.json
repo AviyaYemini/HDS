@@ -20,7 +20,7 @@
       "path": "/api/v1/sites",
       "operation_id": "create_site_api_v1_sites_post",
       "suites": ["pytest", "cli"],
-      "reason": "a time zone must be a name the system can load (FR-217), which no schema can state; any short string is schema-valid and a made-up one is answered 422 sites.timezone_invalid"
+      "reason": "a time zone must be an exact name on the IANA list that loads (FR-217, FR-231), which no schema can state; any short string is schema-valid and a made-up one is answered 422 sites.timezone_invalid"
     },
     {
       "method": "PATCH",

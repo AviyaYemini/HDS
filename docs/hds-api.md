@@ -47,7 +47,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `users.pending_cannot_reactivate` | 409 | Reactivating an account that was invited and never activated |
 | `users.pending_cannot_deactivate` | 409 | Deactivating an account that was invited and never activated |
 | `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted, or creating one under an inactive client |
-| `sites.timezone_invalid` | 422 | A site is saved with a time zone that cannot be loaded |
+| `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |
 | `auth.token_expired` | 401 | A refresh token or link is past its expiry; a refresh token ends no session |

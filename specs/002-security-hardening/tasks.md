@@ -685,10 +685,10 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 ### Group B: canonical time-zone names (F10; research D21, amends D11)
 
-- [ ] T373 [P] [F10] Write `apps/api/tests/unit/test_site_timezone_canonical.py` and extend `apps/api/tests/integration/test_site_timezone.py`: `posixrules`, `Factory`, `asia/jerusalem`, `ASIA/JERUSALEM` are refused with 422 `sites.timezone_invalid` on create and edit through the application; `Asia/Jerusalem`, `UTC`, `Asia/Kolkata` and `America/Argentina/Buenos_Aires` still pass; the result does not depend on the platform's file system (the check uses the `tzdata` package list, case-sensitive); `check_site_timezones` reports stored values that fail the new rule. Show it failing
-- [ ] T374 [F10] In `apps/api/src/hds/services/site.py` change `validate_timezone` (line 33) to accept a name only if it is in the `tzdata` package's zone list (read once from `importlib.resources.files('tzdata') / 'zones'`), is not `Factory`, and loads with `ZoneInfo`; matching is case-sensitive. Make `apps/api/src/hds/scripts/check_site_timezones.py` use the same function. Update the docstrings and the note in `specs/002-security-hardening/research.md` D11 if wording changed
-- [ ] T375 [F10] Mutation check: use `available_timezones()` instead of the package list on a case-insensitive comparison; the four named names must be accepted again and the test fail; restore the file
-- [ ] T376 [F10] Commit as `fix(api): accept only canonical IANA time-zone names`
+- [X] T373 [P] [F10] Write `apps/api/tests/unit/test_site_timezone_canonical.py` and extend `apps/api/tests/integration/test_site_timezone.py`: `posixrules`, `Factory`, `asia/jerusalem`, `ASIA/JERUSALEM` are refused with 422 `sites.timezone_invalid` on create and edit through the application; `Asia/Jerusalem`, `UTC`, `Asia/Kolkata` and `America/Argentina/Buenos_Aires` still pass; the result does not depend on the platform's file system (the check uses the `tzdata` package list, case-sensitive); `check_site_timezones` reports stored values that fail the new rule. Show it failing
+- [X] T374 [F10] In `apps/api/src/hds/services/site.py` change `validate_timezone` (line 33) to accept a name only if it is in the `tzdata` package's zone list (read once from `importlib.resources.files('tzdata') / 'zones'`), is not `Factory`, and loads with `ZoneInfo`; matching is case-sensitive. Make `apps/api/src/hds/scripts/check_site_timezones.py` use the same function. Update the docstrings and the note in `specs/002-security-hardening/research.md` D11 if wording changed
+- [X] T375 [F10] Mutation check: use `available_timezones()` instead of the package list on a case-insensitive comparison; the four named names must be accepted again and the test fail; restore the file
+- [X] T376 [F10] Commit as `fix(api): accept only canonical IANA time-zone names`
 
 ### Group C: a failed rollback does not hide the original error (F12; research D23)
 

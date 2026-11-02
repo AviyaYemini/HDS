@@ -5,6 +5,8 @@ import routers or build HTTP responses (Constitution II).
 """
 
 import uuid
+from functools import cache
+from importlib.resources import files
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -15,11 +17,21 @@ from hds.models.user import User
 from hds.repositories.site import SiteRepository
 
 
-def validate_timezone(name: object) -> None:
-    """Refuse anything that is not the name of a time zone the system can load.
+@cache
+def _zones() -> frozenset[str]:
+    """Read the tzdata package's own list, once. Factory loads but is not a zone.
 
-    The check is a real load (``ZoneInfo``), not a pattern, so a well-formed but unknown name such
-    as ``Mars/Base`` fails, and names with path characters (``../etc/passwd``) are refused.
+    Read on first use, so a build missing this data fails site writes and not the whole API.
+    """
+    return frozenset(files("tzdata").joinpath("zones").read_text().splitlines()) - {"Factory"}
+
+
+def validate_timezone(name: object) -> None:
+    """Refuse anything that is not a name on the ``tzdata`` list that the system can load.
+
+    Matched by exact case, so the answer does not depend on the file system: on a case-insensitive
+    one ``asia/jerusalem`` would load too. It must then really load (``ZoneInfo``), so "valid" still
+    means "will load". The list holds IANA's legacy aliases too, such as ``Israel``.
 
     Args:
         name: The value offered for a site's time zone.
@@ -28,8 +40,8 @@ def validate_timezone(name: object) -> None:
         DomainValidationError: ``sites.timezone_invalid`` (HTTP 422).
     """
     try:
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("empty")
+        if not isinstance(name, str) or name not in _zones():
+            raise ValueError("not a zone")
         ZoneInfo(name)
     except (ValueError, OSError, KeyError):  # ZoneInfoNotFoundError is a KeyError
         raise DomainValidationError(
