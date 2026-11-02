@@ -32,7 +32,8 @@ native UUID and ENUM types, partial unique indexes for soft-delete uniqueness co
 Winner of the Password Hashing Competition; resistant to GPU and side-channel attacks.
 Parameters: `time_cost=2`, `memory_cost=65536` (64 MiB), `parallelism=2`.
 
-### Auth: python-jose (JWT HS256) + rotating opaque refresh tokens
+### Auth: PyJWT (JWT HS256) + rotating opaque refresh tokens
+*(Originally python-jose; replaced by PyJWT in [ADR 004](004-pyjwt.md).)*
 Access token TTL ≤ 15 minutes; refresh token stored as SHA-256 hash, rotated on each use.
 Replay detection: any reuse of a revoked refresh token revokes all tokens for that user.
 

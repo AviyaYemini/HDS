@@ -22,14 +22,14 @@ independently testable increment.
 **Purpose**: Monorepo skeleton, tooling, Docker, CI scaffolding. No business logic yet.
 
 - [X] T001 Create monorepo top-level directories: `apps/api/`, `apps/client/` (stub), `packages/api-client/` (stub), `infra/`, `docs/adr/`
-- [X] T002 Initialise `apps/api` Python project with uv: `pyproject.toml` (name=`hds-api`, python=`3.12`); runtime deps: `fastapi`, `pydantic[email]>=2`, `sqlalchemy[asyncio]>=2`, `alembic`, `argon2-cffi`, `python-jose[cryptography]`, `asyncpg`, `aiofiles`; `uv.lock` committed
+- [X] T002 Initialise `apps/api` Python project with uv: `pyproject.toml` (name=`hds-api`, python=`3.12`); runtime deps: `fastapi`, `pydantic[email]>=2`, `sqlalchemy[asyncio]>=2`, `alembic`, `argon2-cffi`, `pyjwt (originally PyJWT (originally python-jose; see `docs/adr/004-pyjwt.md`); see ADR 004)`, `asyncpg`, `aiofiles`; `uv.lock` committed
 - [X] T003 [P] Add dev/test deps to `apps/api/pyproject.toml`: `pytest`, `pytest-asyncio`, `hypothesis`, `schemathesis`, `httpx`, `aiosqlite`; configure `[tool.ruff]` (select `["E","F","I","N","UP"]`, format quote-style double); configure `[tool.mypy]` (strict=true, python_version="3.12")
 - [X] T004 [P] Create `infra/docker-compose.yml`: `postgres` service (image `postgres:16-alpine`, env `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` from `.env`, port 5432); `api` service (build `infra/Dockerfile.api`, `depends_on: postgres`, `DATABASE_URL` env, volume mount `apps/api/src`)
 - [X] T005 [P] Create `infra/Dockerfile.api`: `FROM python:3.12-slim`; copy `apps/api`; `RUN pip install uv && uv sync --frozen`; `CMD ["uvicorn", "hds.main:app", "--host", "0.0.0.0", "--port", "8000"]`
 - [X] T006 [P] Create `pnpm-workspace.yaml` at repo root: `packages: ["apps/*", "packages/*"]`; add stub `package.json` files in `apps/client/` and `packages/api-client/` so pnpm recognises the workspaces
 - [X] T007 [P] Create `.pre-commit-config.yaml`: hooks for `ruff check`, `ruff format --check`, `mypy --strict apps/api/src/`; add commitlint hook enforcing Conventional Commits
 - [X] T008 [P] Update `.gitignore`: add `__pycache__/`, `.venv/`, `*.pyc`, `*.pyo`, `.env`, `infra/volumes/`, `*.db`; ensure `uv.lock` and `pnpm-lock.yaml` are NOT ignored (lock files must be committed)
-- [X] T009 [P] Create `docs/adr/001-tech-stack.md`: record FastAPI + Pydantic v2 + SQLAlchemy 2.0 + Alembic + PostgreSQL 16 + argon2-cffi + python-jose decisions per `research.md`
+- [X] T009 [P] Create `docs/adr/001-tech-stack.md`: record FastAPI + Pydantic v2 + SQLAlchemy 2.0 + Alembic + PostgreSQL 16 + argon2-cffi + PyJWT (originally python-jose; see `docs/adr/004-pyjwt.md`) decisions per `research.md`
 
 ---
 
@@ -243,18 +243,22 @@ every migration.
 - [X] T128 Schemathesis as a pytest module in `apps/api/tests/contract/` driven from the OpenAPI document. Done: `tests/contract/test_openapi_contract.py` (Schemathesis 4, all built-in checks, ASGI app on the PostgreSQL test DB, as Admin; 46 operations). Real defects found and fixed: over-long strings and out-of-range numbers caused 500s (request limits now mirror column sizes in `hds/core/types.py`, NUL rejected, `DataError` mapped to 422); malformed bodies returned a bare 400; integers were coerced to dates; `role: client` offered where not assignable; empty 202 responses documented as JSON; 405 `Allow` header; error responses (400/401/403/404/409/422/423, problem+json) undocumented (`hds/core/openapi.py`); request-validation errors now problem+json. One documented exception: `positive_data_acceptance` is skipped for POST/PATCH projects only, because `end_date >= start_date` is a cross-field rule OpenAPI 3.0 cannot express. `export_openapi --check` against the contract still agrees
 - [X] T129 Performance smoke test: read endpoints p95 < 300 ms and sign-in < 3 s against the seeded PostgreSQL stack (SC-001). Done: `tests/performance/test_smoke_performance.py` on a seeded PostgreSQL database (300 employees, 40 clients, 40 sites, 200 projects, 20 groups, 20 qualifications): 16 read endpoints, p95 < 300 ms (slowest about 30 ms) and sign-in < 3 s
 - [X] T130 Extend `hds/tools/check_imports.py`: forbid `sqlalchemy` query constructs and `.execute(` in `routers/` and `services/`; forbid `models/` importing upward; add tests
-- [ ] T131 CI hardening in `.github/workflows/ci.yml` (workflow edited; confirm on the first CI run): fix lint paths, set `JWT_SECRET_KEY` for DB-backed jobs, replace `sleep` with curl retry, add `pip-audit` and commitlint jobs
+- [ ] T131 CI hardening in `.github/workflows/ci.yml` (workflow edited; confirm on the first CI run): fix lint paths, set `JWT_SECRET_KEY` for DB-backed jobs, replace `sleep` with curl retry, add `pip-audit` and commitlint jobs **Status:** every job's commands pass locally (lint, pip-audit, mypy, import graph, unit, integration + contract, `alembic check`, live-server drift + Schemathesis). Not yet confirmed: `commitlint` (needs Node, not installed here; `commitlint.config.mjs` added) and the first real GitHub Actions run.
 - [X] T132 Strengthen `tests/integration/test_auth_roles.py`: assert strict `200` (not "not 403") for permitted roles
 - [X] T133 Re-verify against Docker/PostgreSQL: T043, T110, T112, T113, T115 — run each, fix failures, and only then mark them `[X]`
-- [X] T134 Organisation scoping (tests first): `OrgScopedRepository.get_by_id(id, org_id)` and `list(org_id)` filter by the caller's organisation for user, client, site, project, group and qualification repositories (child listings `list_users`, `list_by_client`, `get_groups_for_user`, `get_qualifications_for_user` take `org_id` too); `get_client`/`get_site` routes and all id-bearing routes pass `current_user.organization_id`; token-owner lookups use the single unscoped `UserRepository.get_for_auth`. `tests/integration/test_org_scoping.py` asserts a UUID from another organisation returns 404 for every resource and route and leaves the other organisation's rows untouched. Passes on PostgreSQL
-- [X] T135 Global email uniqueness (tests first): migration `012_global_unique_email` replaces `uq_users_org_email` with partial unique index `uq_users_email` on `users(email) WHERE is_deleted = false`; model, `data-model.md` and ADR 002 updated; `tests/integration/test_email_uniqueness.py` (DB rejects a duplicate across organisations, API returns 409, reuse after soft delete allowed). Passes on PostgreSQL
-- [X] T136 Password reset revokes sessions (tests first): `InvitationService.reset_password` calls `RefreshTokenRepository.revoke_all_for_user`; integration test `tests/integration/test_password_reset_revocation.py` (old refresh tokens return 401, other users unaffected) plus unit tests. Passes on PostgreSQL
-- [X] T137 Foreign-key ids belong to the caller's organisation (tests first, `tests/integration/test_foreign_key_ids.py`): every endpoint taking an FK id in a body, path or query returns 404 (not 403) for another organisation's id and writes nothing, on create and update. Audit of all routes found: (1) `POST /api/v1/projects` body `client_id`, `site_id` — fixed in `ProjectService.create_project`; (2) `GET /api/v1/projects?client_id=` query — fixed in `ProjectService.list_projects`; (3) `PUT /api/v1/employees/{id}/groups` and `/qualifications` body `ids` and path user id — covered (T134), foreign and mixed ids tested; (4) `POST /api/v1/clients/{id}/users` path client id — covered, tested; (5) `DELETE /api/v1/clients/{id}/users/{user_id}` path user id — covered, tested; (6) update routes (`PATCH` projects, clients, sites, employees, groups, qualifications) accept no FK id; a test proves `client_id`/`site_id` in a project PATCH body cannot re-point it. No other route takes an FK id. Passes on PostgreSQL
-- [X] T138 CORS (tests first, `tests/unit/test_startup_and_cors.py`): origins come from `CORS_ORIGINS` (default `http://localhost:3000`, `http://localhost:8081`); a `"*"` entry is rejected at startup because credentials are allowed
-- [X] T139 Production secret guard (tests first): `Settings` refuses `ENVIRONMENT=production` while `JWT_SECRET_KEY` is the placeholder; reserved email domains (`hds.test`) are accepted only outside production
-- [X] T140 Repository safety (tests first, `tests/integration/test_repository_org_scope.py`): every `update`, `soft_delete` and `delete` takes `org_id` and filters by it; a wrong organisation raises `NotFoundError` (update) or changes nothing (delete); services pass `actor.organization_id`; the one unscoped lookup is `UserRepository.get_by_id_for_token`, used only to redeem invite/reset tokens
-- [X] T141 Request id (tests first, `tests/unit/test_request_id.py`): the middleware stores a validated `X-Request-Id` (or a new UUID) in a context variable; every log line and every problem+json body carries `request_id`
-- [ ] T142 `pip-audit` fails (PYSEC-2026-4298 `python-jose`, PYSEC-2026-1325 `ecdsa`, no fixed versions): replace `python-jose` with PyJWT in `core/security.py`, then re-run `uv run pip-audit`
+- [X] T134 [NFR-001] Organisation scoping (tests first): `OrgScopedRepository.get_by_id(id, org_id)` and `list(org_id)` filter by the caller's organisation for user, client, site, project, group and qualification repositories (child listings `list_users`, `list_by_client`, `get_groups_for_user`, `get_qualifications_for_user` take `org_id` too); `get_client`/`get_site` routes and all id-bearing routes pass `current_user.organization_id`; token-owner lookups use the single unscoped `UserRepository.get_for_auth`. `tests/integration/test_org_scoping.py` asserts a UUID from another organisation returns 404 for every resource and route and leaves the other organisation's rows untouched. Passes on PostgreSQL
+- [X] T135 [FR-012] Global email uniqueness (tests first): migration `012_global_unique_email` replaces `uq_users_org_email` with partial unique index `uq_users_email` on `users(email) WHERE is_deleted = false`; model, `data-model.md` and ADR 002 updated; `tests/integration/test_email_uniqueness.py` (DB rejects a duplicate across organisations, API returns 409, reuse after soft delete allowed). Passes on PostgreSQL
+- [X] T136 [NFR-005] Password reset revokes sessions (tests first): `InvitationService.reset_password` calls `RefreshTokenRepository.revoke_all_for_user`; integration test `tests/integration/test_password_reset_revocation.py` (old refresh tokens return 401, other users unaffected) plus unit tests. Passes on PostgreSQL
+- [X] T137 [NFR-001] Foreign-key ids belong to the caller's organisation (tests first, `tests/integration/test_foreign_key_ids.py`): every endpoint taking an FK id in a body, path or query returns 404 (not 403) for another organisation's id and writes nothing, on create and update. Audit of all routes found: (1) `POST /api/v1/projects` body `client_id`, `site_id` — fixed in `ProjectService.create_project`; (2) `GET /api/v1/projects?client_id=` query — fixed in `ProjectService.list_projects`; (3) `PUT /api/v1/employees/{id}/groups` and `/qualifications` body `ids` and path user id — covered (T134), foreign and mixed ids tested; (4) `POST /api/v1/clients/{id}/users` path client id — covered, tested; (5) `DELETE /api/v1/clients/{id}/users/{user_id}` path user id — covered, tested; (6) update routes (`PATCH` projects, clients, sites, employees, groups, qualifications) accept no FK id; a test proves `client_id`/`site_id` in a project PATCH body cannot re-point it. No other route takes an FK id. Passes on PostgreSQL
+- [X] T138 [NFR-002] CORS (tests first, `tests/unit/test_startup_and_cors.py`): origins come from `CORS_ORIGINS` (default `http://localhost:3000`, `http://localhost:8081`); a `"*"` entry is rejected at startup because credentials are allowed
+- [X] T139 [NFR-003, NFR-007] Production secret guard (tests first): `Settings` refuses `ENVIRONMENT=production` while `JWT_SECRET_KEY` is the placeholder or shorter than 32 bytes (tests use 32-byte secrets); reserved email domains (`hds.test`) are accepted only outside production
+- [X] T140 [NFR-001] Repository safety (tests first, `tests/integration/test_repository_org_scope.py`): every `update`, `soft_delete` and `delete` takes `org_id` and filters by it; a wrong organisation raises `NotFoundError` (update) or changes nothing (delete); services pass `actor.organization_id`; the one unscoped lookup is `UserRepository.get_by_id_for_token`, used only to redeem invite/reset tokens
+- [X] T141 [NFR-004] Request id (tests first, `tests/unit/test_request_id.py`): the middleware stores a validated `X-Request-Id` (or a new UUID) in a context variable; every log line and every problem+json body carries `request_id`; log lines are valid JSON (`JsonFormatter`)
+- [X] T142 [NFR-006] Replaced `python-jose` with PyJWT in `core/security.py` (explicit algorithm list, `exp` required); tests for wrong key, expired, `alg=none`, tampered payload and garbage in `tests/unit/test_jwt_rejection.py`; `uv run pip-audit` reports no known vulnerabilities
+- [X] T143 [FR-013] Employee list search and filters (tests first, `tests/integration/test_employee_filters.py`, `tests/unit/test_employee_manager.py`): `GET /employees` accepts `search` (name or email, case-insensitive, `%` and `_` literal), `role`, `is_active`, `group_id`, `qualification_id`; filters combine with AND; `EmployeeService.list_employees` (Manager+) calls `UserRepository.search`, which is organisation-scoped and excludes deleted users; also `GET /clients?is_active=` (`tests/integration/test_client_list_filter.py`)
+- [X] T144 Drift check compares query parameters (name, type, required) as well as method, path and 2xx codes (`tests/unit/test_export_openapi.py`); operation IDs are NOT compared yet. It exposed three documented-but-missing items: the contract's `cursor`/`limit` parameters (removed from the contract, see T146) and `GET /clients?is_active=` (implemented, T143)
+- [X] T145 `scripts/contract_cli.sh` refuses to run unless `DATABASE_URL` names a database ending in `_test` or `_scratch`, and prints how to start a scratch database (`tests/unit/test_contract_cli_guard.py`); the CI contract job uses `hds_scratch`
+- [ ] T146 Cursor pagination for list endpoints (`research.md` API convention): implement `cursor` and `limit` on `GET /employees`, `/clients` and `/projects`, then restore the parameters in `contracts/openapi.yaml` (they were removed because nothing implemented them); tests first
 
 ---
 
@@ -379,3 +383,60 @@ US6 (T099–T106) can be dropped from the first delivery. Cut it by removing tho
 - All locale strings must be added in the same PR as the feature that introduces them (Constitution VIII)
 - `deps.py` MUST call `UserRepository(db).get_by_id(sub)` — never `db.get` or `db.execute` directly (Constitution II)
 - Commit after each task or logical group using Conventional Commits (`feat:`, `fix:`, `refactor:`)
+
+---
+
+## Requirement → task coverage
+
+Generated 2026-11-02 by `/speckit-analyze` follow-up from the task text and the tests; existing tasks were not retagged. Tasks T134–T142 cite the proposed NFR-001…NFR-007 in `spec.md` instead.
+
+| Requirement | Tasks |
+|---|---|
+| FR-001 | T038, T040, T117 |
+| FR-002 | T038, T040 |
+| FR-003 | T038, T040 |
+| FR-004 | T039, T116, T127 |
+| FR-005 | T038, T040 |
+| FR-006 | T099–T105, T121 |
+| FR-006b | T038 |
+| FR-007 | T035, T041, T047, T127 |
+| FR-008 | T067, T127 |
+| FR-009 | T067, T127 |
+| FR-009a | T074, T079, T083, T086 |
+| FR-010 | T093–T096 |
+| FR-011 | T064, T119 |
+| FR-011a | T119 |
+| FR-012 | T064, T118, T135 |
+| FR-013 | T143 |
+| FR-014 | T064, T067 |
+| FR-015 | T064, T067, T120 |
+| FR-016 | T064, T067 |
+| FR-017 | T046–T049 |
+| FR-018 | T065, T068 |
+| FR-019 | T066, T069 |
+| FR-020 | T058, T059, T067, T122 |
+| FR-021 | T083, T086 |
+| FR-022 | T083, T086, T118 |
+| FR-023 | T084, T087 |
+| FR-024 | T083 |
+| FR-025 | T085, T088 |
+| FR-026 | T085, T088 |
+| FR-027 | T085, T088 |
+| FR-028 | T076, T085, T123 |
+| FR-029 | T044, T050, T072, T091, T097, T108, T126 |
+| FR-030 | T045, T052, T073, T092, T098, T106 (Playwright scaffolds, `test.skip`) |
+| SC-001 | T129 |
+| SC-002 | T035, T127 |
+| SC-003 | Deferred to `apps/client` |
+| SC-004 | T035, T127, T134 |
+| SC-005 | T043, T112, `quickstart.md` Story 1–6 |
+| SC-006 | Deferred to `apps/client` |
+| SC-007 | Deferred to `apps/client` (scaffolds T045–T106) |
+
+40 requirements (33 FR, 7 SC): 37 have implementing or scaffold tasks (FR-030 is Playwright scaffolds only until the client lands); 3 are deferred to `apps/client` (SC-003, SC-006, SC-007). Open gap: cursor pagination (T146) is a research.md convention, not an FR.
+
+---
+
+## Notes for the client feature (`apps/client`)
+
+- **Operation IDs must match before the TypeScript client is generated.** `contracts/openapi.yaml` uses readable IDs (`auth_login`); FastAPI generates others (`login_auth_login_post`). `export_openapi --check` compares only method, path and 2xx codes, so it does not catch this. Align them (explicit `operation_id=` on each route, or regenerate the contract) and extend the drift check to compare operation IDs. Not done yet.

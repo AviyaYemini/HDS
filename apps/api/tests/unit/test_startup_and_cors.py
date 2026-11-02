@@ -89,3 +89,25 @@ def test_reserved_email_domains_rejected_in_production(
         Settings(ENVIRONMENT="production", JWT_SECRET_KEY=SecretStr("x" * 48))
     )
     assert email_validator.TEST_ENVIRONMENT is False
+
+
+@pytest.mark.parametrize("secret", ["short", "x" * 31])
+def test_production_refuses_a_secret_shorter_than_32_bytes(
+    monkeypatch: pytest.MonkeyPatch, secret: str
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", secret)
+    with pytest.raises(ValidationError, match="32"):
+        Settings()
+
+
+def test_production_accepts_exactly_32_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
+    Settings()
+
+
+def test_multibyte_secret_is_measured_in_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", "ש" * 16)  # 16 characters, 32 UTF-8 bytes
+    Settings()

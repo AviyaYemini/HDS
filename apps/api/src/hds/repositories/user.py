@@ -2,10 +2,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 
+from hds.models.group import user_groups
+from hds.models.qualification import user_qualifications
 from hds.models.user import User, UserRole
 from hds.repositories.base import OrgScopedRepository
+
+
+def _escape_like(text: str) -> str:
+    """Make ``%``, ``_`` and the escape character literal inside a LIKE pattern."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class UserRepository(OrgScopedRepository[User]):
@@ -17,6 +24,45 @@ class UserRepository(OrgScopedRepository[User]):
             select(User).where(User.email == email, User.is_deleted.is_(False)).limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def search(
+        self,
+        org_id: uuid.UUID,
+        *,
+        search: str | None = None,
+        role: UserRole | None = None,
+        is_active: bool | None = None,
+        group_id: uuid.UUID | None = None,
+        qualification_id: uuid.UUID | None = None,
+    ) -> list[User]:
+        """Non-deleted users of one organisation; every given filter must match (AND)."""
+        stmt = select(User).where(User.organization_id == org_id, User.is_deleted.is_(False))
+        if search:
+            needle = "%" + _escape_like(search) + "%"
+            stmt = stmt.where(
+                or_(
+                    User.full_name.ilike(needle, escape="\\"),
+                    User.email.ilike(needle, escape="\\"),
+                )
+            )
+        if role is not None:
+            stmt = stmt.where(User.role == role)
+        if is_active is not None:
+            stmt = stmt.where(User.is_active.is_(is_active))
+        if group_id is not None:
+            stmt = stmt.where(
+                User.id.in_(select(user_groups.c.user_id).where(user_groups.c.group_id == group_id))
+            )
+        if qualification_id is not None:
+            stmt = stmt.where(
+                User.id.in_(
+                    select(user_qualifications.c.user_id).where(
+                        user_qualifications.c.qualification_id == qualification_id
+                    )
+                )
+            )
+        result = await self.session.execute(stmt.order_by(User.full_name, User.id))
+        return list(result.scalars().all())
 
     async def get_by_id_for_token(self, user_id: uuid.UUID) -> User | None:
         """The only lookup not scoped by organisation: redeeming an invite/reset token."""

@@ -601,24 +601,6 @@ components:
         format: uuid
       description: Optional UUID for safe retries on POST endpoints.
 
-    CursorParam:
-      name: cursor
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Opaque pagination cursor returned by a previous list response.
-
-    LimitParam:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 50
-        minimum: 1
-        maximum: 200
-
   # ── Reusable responses ────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -920,8 +902,6 @@ paths:
       summary: List employees (Manager+)
       tags: [Employees]
       parameters:
-        - $ref: "#/components/parameters/CursorParam"
-        - $ref: "#/components/parameters/LimitParam"
         - name: search
           in: query
           schema:
@@ -1391,8 +1371,6 @@ paths:
       summary: List clients (Manager+)
       tags: [Clients]
       parameters:
-        - $ref: "#/components/parameters/CursorParam"
-        - $ref: "#/components/parameters/LimitParam"
         - name: is_active
           in: query
           schema:
@@ -1705,8 +1683,6 @@ paths:
         Client: own client's projects only.
       tags: [Projects]
       parameters:
-        - $ref: "#/components/parameters/CursorParam"
-        - $ref: "#/components/parameters/LimitParam"
         - name: status
           in: query
           schema:

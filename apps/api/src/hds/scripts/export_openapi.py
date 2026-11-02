@@ -5,8 +5,9 @@ Usage:
     uv run python -m hds.scripts.export_openapi --check CONTRACT GENERATED
 
 ``--check`` compares the contract's operation surface with the generated document: the set of
-(method, path) pairs and, for each, the set of documented 2xx status codes. Descriptions
-and schema prose are not compared. Exit code 1 on any difference.
+(method, path) pairs, for each the set of documented 2xx status codes, and its query
+parameters (name, type, required). Descriptions, schema prose and operation IDs are not
+compared. Exit code 1 on any difference.
 """
 
 import json
@@ -38,6 +39,51 @@ def surface(doc: dict[str, Any]) -> dict[tuple[str, str], frozenset[str]]:
     return ops
 
 
+def _resolve(doc: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
+    """Follow ``$ref`` chains (``#/components/...``) until a concrete node is reached."""
+    seen = 0
+    while "$ref" in node and seen < 20:
+        target: Any = doc
+        for part in node["$ref"].removeprefix("#/").split("/"):
+            target = target[part]
+        node = target
+        seen += 1
+    return node
+
+
+def _type_of(doc: dict[str, Any], schema: dict[str, Any]) -> str:
+    """The JSON type of a schema, ignoring ``null`` members of a nullable union."""
+    schema = _resolve(doc, schema)
+    for key in ("anyOf", "oneOf"):
+        if key in schema:
+            types = {_type_of(doc, member) for member in schema[key]} - {"null"}
+            return "|".join(sorted(types)) or "null"
+    if "allOf" in schema:
+        return "|".join(sorted({_type_of(doc, member) for member in schema["allOf"]}))
+    return str(schema.get("type", "any"))
+
+
+def query_params(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, tuple[str, bool]]]:
+    """(METHOD, path) -> {parameter name: (type, required)} for query parameters only."""
+    result: dict[tuple[str, str], dict[str, tuple[str, bool]]] = {}
+    for path, item in doc.get("paths", {}).items():
+        for method in _METHODS:
+            op = item.get(method)
+            if op is None:
+                continue
+            params: dict[str, tuple[str, bool]] = {}
+            for raw in [*item.get("parameters", []), *op.get("parameters", [])]:
+                param = _resolve(doc, raw)
+                if param.get("in") != "query":
+                    continue
+                params[param["name"]] = (
+                    _type_of(doc, param.get("schema", {})),
+                    bool(param.get("required", False)),
+                )
+            result[(method.upper(), _normalise(path))] = params
+    return result
+
+
 def diff(contract: dict[str, Any], generated: dict[str, Any]) -> list[str]:
     want, got = surface(contract), surface(generated)
     problems: list[str] = []
@@ -51,6 +97,29 @@ def diff(contract: dict[str, Any], generated: dict[str, Any]) -> list[str]:
                 f"status codes differ for {key[0]} {key[1]}: "
                 f"contract={sorted(want[key])} generated={sorted(got[key])}"
             )
+    want_q, got_q = query_params(contract), query_params(generated)
+    for key in sorted(want.keys() & got.keys()):
+        wp, gp = want_q.get(key, {}), got_q.get(key, {})
+        for name in sorted(wp.keys() - gp.keys()):
+            problems.append(
+                f"query parameter in contract but not implemented: {key[0]} {key[1]} {name}"
+            )
+        for name in sorted(gp.keys() - wp.keys()):
+            problems.append(
+                f"query parameter implemented but not in contract: {key[0]} {key[1]} {name}"
+            )
+        for name in sorted(wp.keys() & gp.keys()):
+            (wt, wr), (gt, gr) = wp[name], gp[name]
+            if wt != gt:
+                problems.append(
+                    f"query parameter type differs for {key[0]} {key[1]} {name}: "
+                    f"contract={wt} generated={gt}"
+                )
+            if wr != gr:
+                problems.append(
+                    f"query parameter required differs for {key[0]} {key[1]} {name}: "
+                    f"contract={wr} generated={gr}"
+                )
     return problems
 
 

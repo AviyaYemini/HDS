@@ -320,3 +320,30 @@ async def test_deactivating_already_inactive_admin_skips_last_admin_guard() -> N
     user_repo.update = AsyncMock(return_value=target)
     await svc.deactivate(_make_user(role=UserRole.admin), target.id)
     user_repo.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [UserRole.employee, UserRole.client])
+async def test_list_employees_forbidden_for_non_managers(role: UserRole) -> None:
+    svc, user_repo, _ = _svc()
+    with pytest.raises(ForbiddenError):
+        await svc.list_employees(_make_user(role=role))
+    user_repo.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_employees_scopes_to_the_actors_organisation() -> None:
+    org_id = uuid.uuid4()
+    actor = _make_user(role=UserRole.manager, org_id=org_id)
+    svc, user_repo, _ = _svc()
+    user_repo.search = AsyncMock(return_value=[])
+    gid = uuid.uuid4()
+    await svc.list_employees(actor, search="a", role=UserRole.employee, group_id=gid)
+    user_repo.search.assert_awaited_once_with(
+        org_id,
+        search="a",
+        role=UserRole.employee,
+        is_active=None,
+        group_id=gid,
+        qualification_id=None,
+    )

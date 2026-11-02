@@ -51,6 +51,27 @@ class EmployeeService:
             raise NotFoundError(resource="User", id=user_id)
         return user
 
+    async def list_employees(
+        self,
+        actor: User,
+        *,
+        search: str | None = None,
+        role: UserRole | None = None,
+        is_active: bool | None = None,
+        group_id: uuid.UUID | None = None,
+        qualification_id: uuid.UUID | None = None,
+    ) -> list[User]:
+        """FR-013: Managers search and filter their own organisation's employees."""
+        ensure_role(actor, *MANAGER_ROLES)
+        return await self._user_repo.search(
+            actor.organization_id,
+            search=search,
+            role=role,
+            is_active=is_active,
+            group_id=group_id,
+            qualification_id=qualification_id,
+        )
+
     async def update_own_profile(self, current_user: User, data: dict[str, Any]) -> User:
         disallowed = set(data.keys()) - _ALLOWED_SELF_FIELDS
         if disallowed:

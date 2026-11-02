@@ -3,9 +3,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from jose import JWTError, jwt
 
 from hds.models.user import UserRole
 
@@ -45,9 +45,13 @@ def create_access_token(
 
 def decode_access_token(token: str, secret: str, algorithm: str = "HS256") -> dict[str, Any]:
     try:
-        claims: dict[str, Any] = jwt.decode(token, secret, algorithms=[algorithm])
+        # The algorithm list is explicit (never taken from the token header), so alg=none and
+        # algorithm-confusion tokens are refused; exp is mandatory.
+        claims: dict[str, Any] = jwt.decode(
+            token, secret, algorithms=[algorithm], options={"require": ["exp"]}
+        )
         return claims
-    except JWTError as exc:
+    except jwt.PyJWTError as exc:
         raise ValueError(f"Invalid token: {exc}") from exc
 
 

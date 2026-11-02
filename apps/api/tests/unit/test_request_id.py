@@ -55,3 +55,32 @@ def test_filter_attaches_request_id_to_every_record() -> None:
     SensitiveDataFilter().filter(record)
     assert record.request_id == "-"  # type: ignore[attr-defined]
     json.dumps({"request_id": record.request_id})  # type: ignore[attr-defined]
+
+
+def test_log_lines_are_valid_json() -> None:
+    from hds.core.logging import JsonFormatter
+
+    record = logging.LogRecord(
+        "hds.mail", logging.INFO, __file__, 1, 'mail to=a@b subject="Hi" body=x\nnext', None, None
+    )
+    SensitiveDataFilter().filter(record)
+    line = JsonFormatter().format(record)
+    parsed = json.loads(line)
+    assert parsed["logger"] == "hds.mail"
+    assert parsed["level"] == "INFO"
+    assert parsed["request_id"] == "-"
+    assert 'subject="Hi"' in parsed["message"] and "\nnext" in parsed["message"]
+    assert "time" in parsed
+
+
+def test_log_json_includes_exception_text() -> None:
+    from hds.core.logging import JsonFormatter
+
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        import sys
+
+        record = logging.LogRecord("x", logging.ERROR, __file__, 1, "failed", None, sys.exc_info())
+    SensitiveDataFilter().filter(record)
+    assert "ValueError: boom" in json.loads(JsonFormatter().format(record))["exception"]

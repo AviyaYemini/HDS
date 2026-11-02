@@ -246,8 +246,8 @@ admin.
 
 - **FR-012**: A Manager MUST be able to create a new employee record with at minimum: full
   name, email address, contact details, role, active status, and an initial password (minimum
-  12 characters *(Proposed)*). Email addresses MUST be unique within the organisation (each
-  deployment has one organisation, so an email identifies exactly one account); attempting to
+  12 characters *(Proposed)*). Email addresses MUST be unique across the deployment (an email
+  identifies exactly one account, so sign-in needs no organisation); attempting to
   create a duplicate MUST return a clear error naming the conflict.
 - **FR-013**: A Manager MUST be able to search and filter the employee list by name, group,
   qualification, role, and active status.
@@ -304,13 +304,38 @@ admin.
   project end date, when present, MUST NOT precede its start date. The system MUST reject
   invalid values with a validation error (never a server error).
 
+**Non-functional requirements *(Proposed)*** — beyond the original spec; added to give the
+hardening work (T134–T142) a traceable source (Constitution I).
+
+- **NFR-001 Organisation scoping**: Every read and write of organisation data MUST be limited to
+  the caller's organisation. A resource of another organisation MUST be indistinguishable from a
+  missing one (404, never 403). Every identifier received in a body, path or query (client, site,
+  group, qualification, user) MUST belong to the caller's organisation. Repository lookups and
+  mutations MUST take the organisation and filter by it, so they are safe on their own.
+- **NFR-002 CORS allow-list**: Cross-origin requests MUST be accepted only from the origins listed
+  in the `CORS_ORIGINS` setting (default `http://localhost:3000`, `http://localhost:8081`).
+  A wildcard origin MUST NOT be configurable while credentials are allowed.
+- **NFR-003 Production secrets**: With `ENVIRONMENT=production` the application MUST refuse to
+  start if `JWT_SECRET_KEY` is the default placeholder or is shorter than 32 bytes (UTF-8).
+- **NFR-004 Request tracing**: Every response MUST carry an `X-Request-Id` (a well-formed incoming
+  value is honoured, otherwise a new one is generated). The id MUST appear in every log line and
+  in the body of every problem-details error. Log lines MUST be valid JSON.
+- **NFR-005 Session revocation**: Deactivating, deleting or changing the role of a user, and
+  completing a password reset, MUST revoke all of that user's refresh tokens.
+- **NFR-006 Token rejection**: An access token MUST be rejected if it is signed with another key,
+  expired, unsigned (`alg=none`), tampered with, malformed, or lacks an expiry. The accepted
+  algorithm is fixed by configuration, never taken from the token.
+- **NFR-007 Strict input**: Request booleans MUST be JSON booleans (`0`, `1` and `"true"` are
+  rejected with 422). Reserved example domains such as `hds.test` are accepted as email
+  addresses only outside production.
+
 ### Key Entities
 
 - **Organisation**: The top-level container; all other records belong to one organisation.
   Attributes: name, timezone.
 - **User**: A sign-in identity with a role (Employee, Manager, Admin, Client), name, email
-  address, contact details, active status. Email is the unique identifier within the
-  organisation. A Client-role user is linked to one Client record.
+  address, contact details, active status. Email is the unique identifier across the
+  deployment. A Client-role user is linked to one Client record.
 - **Employee**: Not a separate record; an employee is a User with role Employee, Manager or
   Admin. Employee attributes (contact details, default pay rate, active status) live on the
   User. The default pay rate is set by managers and read-only for the employee.
@@ -376,7 +401,7 @@ admin.
 
 - Q: When a role changes for an active user, at what point do new permissions take effect? → A: On the next request — the system re-checks the user's current role on every protected call, so a demotion or promotion is immediate without requiring a sign-out.
 - Q: Should sign-in protect against brute-force attempts? → A: Yes, account-level cooldown — lock the account for 15 minutes after 5 consecutive failures; show a clear message; reset the counter on success (FR-006b).
-- Q: What field is unique per user, and what happens on a duplicate? → A: Email is unique within the organisation; creating a duplicate returns a clear conflict error (FR-012, User entity).
+- Q: What field is unique per user, and what happens on a duplicate? → A: Email is unique across the deployment; creating a duplicate returns a clear conflict error (FR-012, User entity).
 - Q: Can a deactivated employee be reactivated, and can an ended project be set back to active? → A: Yes to both — a Manager can reverse either state; lifecycle is not terminal (FR-015, FR-026).
 - Q: How is the organisation resolved at sign-in? → A: Each deployment has one organisation; users sign in with email and password only and the organisation is resolved from the account (FR-001, FR-012).
 - Q: How does a new user get a first password before the invitation flow exists? → A: The Manager supplies an initial password (minimum 12 characters, *Proposed*) at creation (FR-012, FR-022).

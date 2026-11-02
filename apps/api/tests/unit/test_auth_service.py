@@ -27,7 +27,7 @@ def _make_user(**kwargs: object) -> User:
 
 def _make_config() -> MagicMock:
     cfg = MagicMock()
-    cfg.JWT_SECRET_KEY.get_secret_value.return_value = "test-secret"
+    cfg.JWT_SECRET_KEY.get_secret_value.return_value = "test-only-jwt-secret-0123456789-abcdef"
     cfg.JWT_ALGORITHM = "HS256"
     cfg.ACCESS_TOKEN_TTL_SECONDS = 900
     cfg.REFRESH_TOKEN_TTL_DAYS = 7

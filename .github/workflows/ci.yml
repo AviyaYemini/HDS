@@ -95,7 +95,7 @@ jobs:
       # The test suite reads TEST_DATABASE_URL (it must end in "_test"); without it the tests
       # fall back to a local-dev password that does not exist on this service.
       TEST_DATABASE_URL: postgresql+asyncpg://hds:hds_test@localhost:5432/hds_test
-      JWT_SECRET_KEY: ci-only-not-a-real-secret
+      JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
       HDS_SCHEMATHESIS_EXAMPLES: "100"
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +126,7 @@ jobs:
           - 5432:5432
     env:
       DATABASE_URL: postgresql+asyncpg://hds:hds_check@localhost:5432/hds_check
-      JWT_SECRET_KEY: ci-only-not-a-real-secret
+      JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -144,9 +144,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: hds_contract
+          POSTGRES_DB: hds_scratch
           POSTGRES_USER: hds
-          POSTGRES_PASSWORD: hds_contract
+          POSTGRES_PASSWORD: hds_scratch
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -155,8 +155,8 @@ jobs:
         ports:
           - 5432:5432
     env:
-      DATABASE_URL: postgresql+asyncpg://hds:hds_contract@localhost:5432/hds_contract
-      JWT_SECRET_KEY: ci-only-not-a-real-secret
+      DATABASE_URL: postgresql+asyncpg://hds:hds_scratch@localhost:5432/hds_scratch
+      JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4

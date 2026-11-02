@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,10 +90,22 @@ async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: Use
 
 @router.get("", response_model=UserListResponse)
 async def list_employees(
+    search: str | None = Query(default=None, max_length=255),
+    role: UserRole | None = None,
+    is_active: bool | None = None,
+    group_id: uuid.UUID | None = None,
+    qualification_id: uuid.UUID | None = None,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> UserListResponse:
-    users = await UserRepository(db).list(org_id=current_user.organization_id)
+    users = await _employee_svc(db).list_employees(
+        current_user,
+        search=search,
+        role=role,
+        is_active=is_active,
+        group_id=group_id,
+        qualification_id=qualification_id,
+    )
     return UserListResponse(items=users, total=len(users))  # type: ignore[arg-type]
 
 

@@ -19,6 +19,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789-abcdef")  # >= 32 bytes
+
 from hds.core.database import get_db
 from hds.core.mail import get_mail_sender
 from hds.core.security import hash_password

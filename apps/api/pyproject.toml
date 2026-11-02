@@ -9,7 +9,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2",
     "alembic>=1.13",
     "argon2-cffi>=23",
-    "python-jose[cryptography]>=3.3",
+    "pyjwt>=2.8",
     "asyncpg>=0.29",
     "aiofiles>=23",
     "uvicorn[standard]>=0.29",
@@ -26,7 +26,6 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "pip-audit>=2.7",
-    "types-python-jose>=3.3",
     "pyyaml>=6",
     "types-PyYAML>=6",
 ]

@@ -5,6 +5,7 @@ from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 PLACEHOLDER_JWT_SECRET = "dev-secret-change-in-production"
+MIN_JWT_SECRET_BYTES = 32  # RFC 7518 §3.2: an HS256 key should be at least 256 bits
 
 
 class Settings(BaseSettings):
@@ -31,12 +32,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _production_needs_real_secret(self) -> Self:
-        if (
-            self.ENVIRONMENT.lower() == "production"
-            and self.JWT_SECRET_KEY.get_secret_value() == PLACEHOLDER_JWT_SECRET
-        ):
+        if self.ENVIRONMENT.lower() != "production":
+            return self
+        secret = self.JWT_SECRET_KEY.get_secret_value()
+        if secret == PLACEHOLDER_JWT_SECRET:
             raise ValueError(
                 "JWT_SECRET_KEY must be set to a real secret when ENVIRONMENT=production"
+            )
+        if len(secret.encode()) < MIN_JWT_SECRET_BYTES:
+            raise ValueError(
+                f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_BYTES} bytes "
+                "when ENVIRONMENT=production"
             )
         return self
 

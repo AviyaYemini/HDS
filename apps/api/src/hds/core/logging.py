@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 
@@ -15,14 +16,24 @@ class SensitiveDataFilter(logging.Filter):
         return True
 
 
+class JsonFormatter(logging.Formatter):
+    """One valid JSON object per line, whatever the message contains."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        entry = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "request_id": getattr(record, "request_id", "-"),
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(entry, ensure_ascii=False)
+
+
 def configure_logging() -> None:
     handler = logging.StreamHandler()
     handler.addFilter(SensitiveDataFilter())
-    logging.basicConfig(
-        level=logging.INFO,
-        format=(
-            '{"time": "%(asctime)s", "level": "%(levelname)s", "request_id": "%(request_id)s", '
-            '"logger": "%(name)s", "message": %(message)s}'
-        ),
-        handlers=[handler],
-    )
+    handler.setFormatter(JsonFormatter())
+    logging.basicConfig(level=logging.INFO, handlers=[handler])

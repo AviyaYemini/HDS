@@ -83,10 +83,11 @@ def _svc(db: AsyncSession) -> ClientService:
 
 @router.get("", response_model=ClientListResponse)
 async def list_clients(
+    is_active: bool | None = None,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> ClientListResponse:
-    clients = await ClientRepository(db).list_by_org(current_user.organization_id)
+    clients = await ClientRepository(db).list_by_org(current_user.organization_id, is_active)
     return ClientListResponse(items=clients)  # type: ignore[arg-type]
 
 

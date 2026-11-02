@@ -24,7 +24,7 @@ layouts are RTL-safe.
 - Pydantic v2 (request/response schemas, validation)
 - SQLAlchemy 2.0 ORM + Alembic (models, migrations)
 - argon2-cffi (Argon2id password hashing)
-- python-jose[cryptography] (JWT signing/verification)
+- PyJWT (JWT signing/verification; replaced python-jose, see ADR 004)
 - PostgreSQL 16 (production); SQLite (unit tests only, via SQLAlchemy dialect switch)
 
 **Monorepo tooling**: uv (Python dependency/venv management), pnpm workspaces
@@ -60,7 +60,7 @@ carries `organization_id` on every table for future multi-tenancy (spec §6)
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Spec as Source of Truth | PASS | All 32 FRs trace to spec §2 / §4 AUTH-* / ORG-* rows. FR-006 (invitations) marked *Proposed*. |
+| I. Spec as Source of Truth | PASS | All 33 FRs trace to spec §2 / §4 AUTH-* / ORG-* rows. FR-006 (invitations) marked *Proposed*. |
 | II. Layered Backend | PASS | routers/schemas → services → repositories → models enforced by the AST import-graph check (T107), which also forbids query constructs and `.execute(` in routers/services; no DB access in routers or services. |
 | III. Pure Scheduling Package | N/A | Scheduling package not introduced in this feature. |
 | IV. Test-First | PASS | Unit tests for services (fake repos); Schemathesis contract tests; for this backend-only feature, API-level integration tests serve as user-journey tests. Six Playwright smoke tests are scaffolded as `test.skip`; they are enabled when the `apps/client` feature delivers the frontend and MUST pass before that feature merges. |
@@ -76,7 +76,7 @@ carries `organization_id` on every table for future multi-tenancy (spec §6)
 | Principle | Deviation | Why accepted | Exit criterion |
 |-----------|-----------|--------------|----------------|
 | IV | The six Playwright smoke tests are `test.skip` scaffolds | This feature is API-only; there is no UI to drive | `apps/client` MUST enable all six (LTR and RTL passes) before that feature merges |
-| V | No CI job regenerates the TypeScript client | No client exists yet (`packages/api-client` is a stub) | The job is added in `apps/client`. Until then CI diffs the committed `contracts/openapi.yaml` against the app's generated OpenAPI (T124) |
+| V | No CI job regenerates the TypeScript client | No client exists yet (`packages/api-client` is a stub) | **Prerequisite for the client feature:** before `apps/client` merges, CI MUST regenerate the TypeScript client from the OpenAPI document and fail if the committed copy differs (Constitution V), and the contract's operation IDs MUST first match the generated ones (see the note at the end of `tasks.md`). Until then CI diffs the committed `contracts/openapi.yaml` against the app's generated OpenAPI (T124) |
 
 ## Project Structure
 

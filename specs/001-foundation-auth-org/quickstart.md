@@ -88,15 +88,18 @@ Expected: all role-boundary tests pass, including `test_last_admin_protection` a
 ```bash
 uv run pytest tests/integration/ -v
 ```
-Requires the Docker Compose stack to be running. Tests create isolated schemas per test
-session; they do not pollute the dev seed data.
+Requires PostgreSQL on `localhost:5432` (`docker compose up -d postgres` in `infra/`). The suite
+creates and migrates its own `*_test` database (override with `TEST_DATABASE_URL`, which must
+end in `_test`) and truncates it after each test; the dev data is never touched.
 
-### Contract tests (Schemathesis against live server)
+### Contract tests (Schemathesis)
 ```bash
-# Server must be running on port 8000
-uv run schemathesis run http://localhost:8000/openapi.json \
-    --checks all \
-    --validate-schema true
+# In-process, against the ASGI app (HDS_SCHEMATHESIS_EXAMPLES defaults to 5; CI uses 100)
+uv run pytest tests/contract/ -v
+
+# Against a running, seeded server (logs in as admin@hds.test; fuzzing mutates the data,
+# so use a throwaway database)
+scripts/contract_cli.sh http://localhost:8000 25
 ```
 Expected: 0 failures. Any response that does not match the schema causes a test failure.
 
@@ -257,6 +260,33 @@ curl -s -o /dev/null -w "%{http_code}" \
   http://localhost:8000/api/v1/employees \
   -H "Authorization: Bearer $CLIENT_TOKEN"
 # Expected: 403
+```
+
+### Story 6 — Invitations and Password Reset (Proposed)
+
+Invite and reset requests always answer `202` with an empty body, whether or not the email is
+known. The token is never in the response: it is delivered only through the `MailSender`.
+The default sender writes the message to the application log (`docker compose logs api`);
+the test suite swaps in an in-memory outbox (`OutboxMailSender` in `tests/conftest.py`).
+
+```bash
+# Manager invites a new user -> 202, empty body
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/invite \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $MANAGER_TOKEN" \
+  -d '{"email":"invitee@hds.test","role":"employee"}'
+# Expected: 202.  Read the token from the mail log line, then:
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/invite/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<token-from-mail-log>","password":"Dev1234!Dev1234!"}'
+# Expected: 204 (password minimum 12 characters). The same token again -> 401.
+
+# Password reset: 202 for known and unknown emails alike
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/password-reset/request \
+  -H 'Content-Type: application/json' -d '{"email":"nobody@hds.test"}'
+# Expected: 202
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/password-reset/confirm \
+  -H 'Content-Type: application/json' -d '{"token":"<token-from-mail-log>","new_password":"Another1234!Pass"}'
+# Expected: 204; every refresh token of that user is revoked.
 ```
 
 ---
