@@ -5,6 +5,7 @@ Covers: FR-006, NFR-005.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,9 +53,8 @@ async def test_create_invitation_mails_token_and_returns_nothing() -> None:
     user_repo.get_by_email = AsyncMock(return_value=None)
     user_repo.create_if_absent = AsyncMock(return_value=(_make_user(is_active=False), True))
 
-    result = await svc.create_invitation(manager, "new@hds.test", UserRole.employee)
+    await svc.create_invitation(manager, "new@hds.test", UserRole.employee)
 
-    assert result is None
     token_repo.create.assert_awaited_once()
     assert token_repo.create.await_args.kwargs["purpose"] == "invite"
     mailer.send.assert_awaited_once()
@@ -196,9 +196,8 @@ async def test_request_password_reset_unknown_email_is_silent() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     user_repo.get_by_email = AsyncMock(return_value=None)
 
-    result = await svc.request_password_reset("unknown@hds.test")
+    await svc.request_password_reset("unknown@hds.test")
 
-    assert result is None
     token_repo.create.assert_not_awaited()
     mailer.send.assert_not_awaited()
 
@@ -240,7 +239,7 @@ async def test_reset_password_valid_token_succeeds() -> None:
 
     user_repo.update.assert_awaited_once()
     token_repo.spend.assert_awaited_once_with(token.id)
-    svc._refresh_token_repo.revoke_all_for_user.assert_awaited_once_with(user.id, "all")
+    cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_awaited_once_with(user.id, "all")
 
 
 @pytest.mark.asyncio
@@ -251,7 +250,7 @@ async def test_reset_password_invalid_token_revokes_nothing() -> None:
     with pytest.raises(AuthError):
         await svc.reset_password("bad", "NewPass123456!")
 
-    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
+    cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -434,7 +433,7 @@ async def test_accepting_for_an_account_that_is_not_pending_is_refused_as_used(s
 
     assert exc_info.value.code == "auth.token_used"
     user_repo.update.assert_not_awaited()  # no password change, no reactivation
-    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
+    cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -450,7 +449,7 @@ async def test_a_reset_link_is_refused_for_an_account_that_is_not_active() -> No
 
     assert exc_info.value.code == "auth.token_used"
     user_repo.update.assert_not_awaited()
-    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
+    cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_not_awaited()
 
 
 # ── Single use (T253, T261, FR-208) ─────────────────────────────────────────────────────────────
@@ -476,4 +475,4 @@ async def test_losing_the_race_for_a_link_is_refused_before_anything_is_written(
     assert exc_info.value.code == "auth.token_used"
     user_repo.update.assert_not_awaited()
     token_repo.cancel_for_user.assert_not_awaited()
-    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
+    cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_not_awaited()

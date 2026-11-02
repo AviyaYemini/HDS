@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from tests.integration.migration_support import alembic, scratch_database
+from tests.integration.migration_support import Scratch, alembic, scratch_database
 
 SCRATCH_DB = "hds_migration_015_test"
 CONSTRAINT = "ck_refresh_tokens_revoked_reason"
@@ -73,7 +73,7 @@ async def reasons(engine: AsyncEngine) -> dict[uuid.UUID, str | None]:
 
 
 async def test_upgrade_adds_a_nullable_column_and_leaves_existing_tokens_unexplained(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     url, engine = scratch
     ids = await seed(engine)
@@ -117,7 +117,7 @@ async def insert_revoked(engine: AsyncEngine, reason: str | None) -> None:
 
 
 @pytest.mark.parametrize("reason", [*REASONS, None])
-async def test_the_four_reasons_and_null_are_accepted(scratch, reason: str | None) -> None:
+async def test_the_four_reasons_and_null_are_accepted(scratch: Scratch, reason: str | None) -> None:
     url, engine = scratch
     await seed(engine)
     await asyncio.to_thread(alembic, url, "upgrade", "015_refresh_revoked_reason")
@@ -125,7 +125,7 @@ async def test_the_four_reasons_and_null_are_accepted(scratch, reason: str | Non
 
 
 @pytest.mark.parametrize("reason", ["stolen", "", "ROTATED", "rotated "])
-async def test_any_other_reason_is_rejected_by_the_database(scratch, reason: str) -> None:
+async def test_any_other_reason_is_rejected_by_the_database(scratch: Scratch, reason: str) -> None:
     url, engine = scratch
     await seed(engine)
     await asyncio.to_thread(alembic, url, "upgrade", "015_refresh_revoked_reason")
@@ -134,7 +134,7 @@ async def test_any_other_reason_is_rejected_by_the_database(scratch, reason: str
 
 
 async def test_downgrade_removes_the_constraint_and_the_column_and_keeps_the_tokens(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     url, engine = scratch
     ids = await seed(engine)

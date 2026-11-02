@@ -8,6 +8,7 @@ Covers: FR-011, FR-011a, FR-012, FR-014, FR-015, FR-016, FR-028, NFR-005.
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -379,7 +380,7 @@ async def test_deactivate_cancels_the_users_outstanding_links() -> None:
 
     await svc.deactivate(actor, target.id)
 
-    svc._link_repo.cancel_for_user.assert_awaited_once_with(target.id)
+    cast(Any, svc._link_repo).cancel_for_user.assert_awaited_once_with(target.id)
 
 
 @pytest.mark.asyncio
@@ -406,7 +407,7 @@ async def test_soft_delete_cancels_the_users_outstanding_links() -> None:
 
     await svc.soft_delete(actor, target.id)
 
-    svc._link_repo.cancel_for_user.assert_awaited_once_with(target.id)
+    cast(Any, svc._link_repo).cancel_for_user.assert_awaited_once_with(target.id)
 
 
 @pytest.mark.asyncio
@@ -420,7 +421,7 @@ async def test_a_refused_deactivation_cancels_nothing() -> None:
     with pytest.raises(ForbiddenError):
         await svc.deactivate(actor, target.id)
 
-    svc._link_repo.cancel_for_user.assert_not_awaited()
+    cast(Any, svc._link_repo).cancel_for_user.assert_not_awaited()
     user_repo.update.assert_not_awaited()
 
 

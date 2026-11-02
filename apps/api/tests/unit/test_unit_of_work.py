@@ -9,6 +9,7 @@ Covers: FR-210.
 
 import asyncio
 import logging
+from typing import Any
 
 import pytest
 
@@ -19,27 +20,27 @@ class BoomError(Exception):
     """A domain-style error raised inside the unit of work."""
 
 
-async def test_commits_exactly_once_after_success(fake_session) -> None:
+async def test_commits_exactly_once_after_success(fake_session: Any) -> None:
     async with unit_of_work(fake_session) as session:
-        assert session is fake_session
+        assert id(session) == id(fake_session)
     assert fake_session.events == ["commit"]
 
 
-async def test_rolls_back_and_reraises_on_any_exception(fake_session) -> None:
+async def test_rolls_back_and_reraises_on_any_exception(fake_session: Any) -> None:
     with pytest.raises(BoomError):
         async with unit_of_work(fake_session):
             raise BoomError
     assert fake_session.events == ["rollback"]
 
 
-async def test_rolls_back_when_the_task_is_cancelled(fake_session) -> None:
+async def test_rolls_back_when_the_task_is_cancelled(fake_session: Any) -> None:
     with pytest.raises(asyncio.CancelledError):
         async with unit_of_work(fake_session):
             raise asyncio.CancelledError
     assert fake_session.events == ["rollback"]
 
 
-async def test_after_commit_actions_run_after_the_commit_in_order(fake_session) -> None:
+async def test_after_commit_actions_run_after_the_commit_in_order(fake_session: Any) -> None:
     calls: list[str] = []
 
     async def first() -> None:
@@ -55,7 +56,7 @@ async def test_after_commit_actions_run_after_the_commit_in_order(fake_session) 
     assert calls == ["first after ['commit']", "second"]
 
 
-async def test_after_commit_actions_are_discarded_after_a_rollback(fake_session) -> None:
+async def test_after_commit_actions_are_discarded_after_a_rollback(fake_session: Any) -> None:
     ran: list[str] = []
 
     async def action() -> None:
@@ -69,7 +70,7 @@ async def test_after_commit_actions_are_discarded_after_a_rollback(fake_session)
     assert not fake_session.info  # the queue does not leak into a later unit of work
 
 
-async def test_failed_commit_rolls_back_discards_actions_and_raises(fake_session) -> None:
+async def test_failed_commit_rolls_back_discards_actions_and_raises(fake_session: Any) -> None:
     ran: list[str] = []
 
     async def action() -> None:
@@ -84,7 +85,7 @@ async def test_failed_commit_rolls_back_discards_actions_and_raises(fake_session
 
 
 async def test_failing_after_commit_action_is_logged_without_secrets_and_ignored(
-    fake_session, caplog
+    fake_session: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
     ran: list[str] = []
 
@@ -107,15 +108,15 @@ async def test_failing_after_commit_action_is_logged_without_secrets_and_ignored
     assert all(r.exc_info is None for r in caplog.records)  # a traceback would carry the message
 
 
-async def test_dependency_commits_when_the_handler_returns(fake_session) -> None:
+async def test_dependency_commits_when_the_handler_returns(fake_session: Any) -> None:
     gen = get_unit_of_work(fake_session)
-    assert await anext(gen) is fake_session
+    assert id(await anext(gen)) == id(fake_session)
     with pytest.raises(StopAsyncIteration):
         await anext(gen)
     assert fake_session.events == ["commit"]
 
 
-async def test_dependency_rolls_back_when_the_handler_raises(fake_session) -> None:
+async def test_dependency_rolls_back_when_the_handler_raises(fake_session: Any) -> None:
     gen = get_unit_of_work(fake_session)
     await anext(gen)
     with pytest.raises(BoomError):

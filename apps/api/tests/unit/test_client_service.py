@@ -5,6 +5,7 @@ Covers: FR-009a, FR-021, FR-022, FR-024.
 
 import uuid
 from datetime import date
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -234,7 +235,7 @@ async def test_deactivating_a_client_cancels_the_links_of_its_portal_users() -> 
     await svc.edit_client(actor, uuid.uuid4(), {"is_active": False})
 
     repo.deactivate_client_users.assert_awaited_once()
-    svc._link_repo.cancel_for_users.assert_awaited_once_with([u.id for u in portal])
+    cast(Any, svc._link_repo).cancel_for_users.assert_awaited_once_with([u.id for u in portal])
 
 
 @pytest.mark.asyncio
@@ -246,7 +247,7 @@ async def test_editing_a_client_without_deactivating_it_cancels_nothing() -> Non
 
     await svc.edit_client(actor, uuid.uuid4(), {"contact_name": "New Name"})
 
-    svc._link_repo.cancel_for_users.assert_not_awaited()
+    cast(Any, svc._link_repo).cancel_for_users.assert_not_awaited()
     repo.deactivate_client_users.assert_not_awaited()
 
 
@@ -261,7 +262,7 @@ async def test_deleting_a_client_cancels_the_links_of_its_portal_users() -> None
 
     await svc.soft_delete(actor, uuid.uuid4())
 
-    svc._link_repo.cancel_for_users.assert_awaited_once_with([portal[0].id])
+    cast(Any, svc._link_repo).cancel_for_users.assert_awaited_once_with([portal[0].id])
 
 
 @pytest.mark.asyncio
@@ -274,4 +275,4 @@ async def test_a_refused_client_deletion_cancels_nothing() -> None:
     with pytest.raises(ConflictError):
         await svc.soft_delete(actor, uuid.uuid4())
 
-    svc._link_repo.cancel_for_users.assert_not_awaited()
+    cast(Any, svc._link_repo).cancel_for_users.assert_not_awaited()

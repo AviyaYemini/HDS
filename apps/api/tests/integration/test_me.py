@@ -20,7 +20,7 @@ async def _login(client: AsyncClient, email: str, password: str = "Dev1234!") ->
         json={"email": email, "password": password},
     )
     assert response.status_code == 200, response.text
-    return response.json()["access_token"]
+    return str(response.json()["access_token"])
 
 
 @pytest.mark.asyncio

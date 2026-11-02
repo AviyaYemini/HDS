@@ -6,17 +6,19 @@ Covers: FR-028; Constitution VII.
 """
 
 import ast
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import DateTime, Float, Numeric
+from sqlalchemy import CheckConstraint, Column, DateTime, Float, Numeric
 from sqlalchemy import types as sqltypes
 
 import hds.models  # noqa: F401  (register every table)
-from hds.core.config import Settings
 from hds.main import app
 from hds.models.base import Base
+from tests.settings_support import make_settings
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "hds"
 _MONEY_WORDS = ("rate", "price", "amount", "cost", "fee", "salary")
@@ -26,7 +28,7 @@ def _py_files() -> list[Path]:
     return [p for p in _SRC.rglob("*.py") if "__pycache__" not in p.parts]
 
 
-def _columns():  # type: ignore[no-untyped-def]
+def _columns() -> Iterator[tuple[str, Column[Any]]]:
     for table in Base.metadata.sorted_tables:
         yield from ((table.name, c) for c in table.columns)
 
@@ -79,7 +81,7 @@ def test_server_defaults_for_timestamps_use_database_clock() -> None:
 
 
 def test_settings_durations_are_positive() -> None:
-    s = Settings()
+    s = make_settings()
     for name in (
         "ACCESS_TOKEN_TTL_SECONDS",
         "REFRESH_TOKEN_TTL_DAYS",
@@ -95,7 +97,7 @@ def test_settings_durations_are_positive() -> None:
 )
 def test_rate_columns_have_a_positive_check_constraint(table: str, column: str) -> None:
     tbl = Base.metadata.tables[table]
-    checks = [str(c.sqltext) for c in tbl.constraints if c.__class__.__name__ == "CheckConstraint"]
+    checks = [str(c.sqltext) for c in tbl.constraints if isinstance(c, CheckConstraint)]
     assert any(column in c and "> 0" in c for c in checks), checks
 
 

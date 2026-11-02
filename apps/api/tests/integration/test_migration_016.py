@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from tests.integration.migration_support import alembic, alembic_run, scratch_database
+from tests.integration.migration_support import Scratch, alembic, alembic_run, scratch_database
 
 SCRATCH_DB = "hds_migration_016_test"
 NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
@@ -71,7 +71,9 @@ async def indexes(engine: AsyncEngine) -> dict[str, str]:
         return {name: definition for name, definition in rows}
 
 
-async def test_clashing_addresses_stop_the_migration_and_it_lists_both_accounts(scratch) -> None:
+async def test_clashing_addresses_stop_the_migration_and_it_lists_both_accounts(
+    scratch: Scratch,
+) -> None:
     url, engine = scratch
     org_a, org_b = await add_org(engine), await add_org(engine)
     first = await add_user(engine, org_a, "Bob@corp.com")
@@ -91,7 +93,7 @@ async def test_clashing_addresses_stop_the_migration_and_it_lists_both_accounts(
     assert OLD in found and NEW not in found
 
 
-async def test_a_deleted_account_does_not_clash_with_a_live_one(scratch) -> None:
+async def test_a_deleted_account_does_not_clash_with_a_live_one(scratch: Scratch) -> None:
     url, engine = scratch
     org = await add_org(engine)
     await add_user(engine, org, "Bob@corp.com", deleted=True)
@@ -102,7 +104,7 @@ async def test_a_deleted_account_does_not_clash_with_a_live_one(scratch) -> None
     assert await emails(engine) == {"bob@corp.com"}  # both lowercased, the same text, one deleted
 
 
-async def test_clean_data_is_lowercased_and_the_index_is_replaced(scratch) -> None:
+async def test_clean_data_is_lowercased_and_the_index_is_replaced(scratch: Scratch) -> None:
     url, engine = scratch
     org = await add_org(engine)
     await add_user(engine, org, "Alice@Corp.com")
@@ -121,7 +123,7 @@ async def test_clean_data_is_lowercased_and_the_index_is_replaced(scratch) -> No
 
 
 async def test_downgrade_restores_the_case_sensitive_index_and_keeps_the_lowercase_data(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     url, engine = scratch
     org = await add_org(engine)
@@ -136,7 +138,9 @@ async def test_downgrade_restores_the_case_sensitive_index_and_keeps_the_lowerca
     await add_user(engine, org, "ALICE@corp.com")  # the old index allows it again
 
 
-async def test_a_failure_after_the_lowercasing_leaves_every_address_as_it_was(scratch) -> None:
+async def test_a_failure_after_the_lowercasing_leaves_every_address_as_it_was(
+    scratch: Scratch,
+) -> None:
     """The lowercasing, the drop of the old index and the new index are one transaction.
 
     A stray object already named ``uq_users_email_ci`` makes the LAST step fail, after the
@@ -162,7 +166,7 @@ async def test_a_failure_after_the_lowercasing_leaves_every_address_as_it_was(sc
 
 
 async def test_an_invitation_issued_before_the_migration_still_belongs_to_the_same_account(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     """Links hold an account id, not an address, so lowercasing the address cannot orphan them."""
     url, engine = scratch

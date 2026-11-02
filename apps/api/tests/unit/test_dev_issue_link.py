@@ -11,6 +11,7 @@ import hashlib
 import importlib
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from hds.models.organisation import Organisation
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
 
+Factory = async_sessionmaker[AsyncSession]
+
 
 @pytest.fixture
 def script() -> Any:
@@ -33,7 +36,7 @@ def script() -> Any:
 
 
 @pytest_asyncio.fixture
-async def factory():
+async def factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     engine = create_async_engine(
         "sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
@@ -66,14 +69,16 @@ def printed_token(out: str) -> str:
     return out.strip().split()[-1]
 
 
-async def stored(factory, token: str) -> Any:
+async def stored(factory: Factory, token: str) -> Any:
     async with factory() as session:
         return await InvitationTokenRepository(session).get_by_hash(
             hashlib.sha256(token.encode()).hexdigest()
         )
 
 
-async def test_refuses_to_run_outside_development(script, factory, capsys) -> None:
+async def test_refuses_to_run_outside_development(
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
     def must_not_open() -> AsyncSession:
         raise AssertionError("the database must not be touched")
 
@@ -84,7 +89,9 @@ async def test_refuses_to_run_outside_development(script, factory, capsys) -> No
     assert "development" in captured.err
 
 
-async def test_issues_an_invitation_token_for_a_pending_account(script, factory, capsys) -> None:
+async def test_issues_an_invitation_token_for_a_pending_account(
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
     code = await script.run(["pending@hds.test", "invite"], "development", factory)
     token = printed_token(capsys.readouterr().out)
     assert code == 0
@@ -94,7 +101,9 @@ async def test_issues_an_invitation_token_for_a_pending_account(script, factory,
     assert abs(expires - (datetime.now(UTC) + timedelta(days=7))) < timedelta(minutes=1)
 
 
-async def test_issues_a_reset_token_for_an_active_account(script, factory, capsys) -> None:
+async def test_issues_a_reset_token_for_an_active_account(
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
     code = await script.run(["active@hds.test", "reset"], "test", factory)
     token = printed_token(capsys.readouterr().out)
     assert code == 0
@@ -105,7 +114,12 @@ async def test_issues_a_reset_token_for_an_active_account(script, factory, capsy
 
 
 async def test_the_token_is_printed_once_and_stored_only_as_a_hash(
-    script, factory, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+    script: Any,
+    factory: Factory,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     caplog.set_level(logging.DEBUG)
@@ -131,7 +145,7 @@ async def test_the_token_is_printed_once_and_stored_only_as_a_hash(
     ],
 )
 async def test_nothing_is_issued_for_an_ineligible_account(
-    script, factory, capsys, email: str, purpose: str
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str], email: str, purpose: str
 ) -> None:
     code = await script.run([email, purpose], "development", factory)
     captured = capsys.readouterr()
@@ -140,7 +154,9 @@ async def test_nothing_is_issued_for_an_ineligible_account(
     assert captured.err  # a reason is given
 
 
-async def test_an_unknown_purpose_is_a_usage_error(script, factory, capsys) -> None:
+async def test_an_unknown_purpose_is_a_usage_error(
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
     with pytest.raises(SystemExit) as caught:
         await script.run(["pending@hds.test", "welcome"], "development", factory)
     assert caught.value.code == 2

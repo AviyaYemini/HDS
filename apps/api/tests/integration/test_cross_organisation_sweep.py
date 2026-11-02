@@ -134,7 +134,7 @@ def new_project(client_id: uuid.UUID, site_id: uuid.UUID) -> dict[str, Any]:
     }
 
 
-DUPLICATE = {"status": 409, "code": "users.duplicate_email"}
+DUPLICATE: dict[str, Any] = {"status": 409, "code": "users.duplicate_email"}
 
 # Key: "METHOD /path" exactly as in the OpenAPI document; value: the requests to send.
 CASES: dict[str, list[Case]] = {

@@ -31,7 +31,7 @@ Each phase ends with every gate below green and a commit on the feature branch.
 uv run ruff check src tests alembic
 uv run ruff format --check src tests
 uv run interrogate src
-uv run mypy --strict src/
+uv run mypy --strict src/ tests/
 uv run python -m hds.tools.check_imports
 uv run alembic check
 TEST_DATABASE_URL=postgresql+asyncpg://hds:<password>@localhost:5432/hds_test uv run pytest

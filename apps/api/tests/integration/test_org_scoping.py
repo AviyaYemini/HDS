@@ -3,6 +3,9 @@
 Covers: NFR-001, SC-004.
 """
 
+import uuid
+from typing import Any
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +37,7 @@ async def test_repositories_get_by_id_is_org_scoped(
     test_db: AsyncSession, seed_org: Organisation, other_org: OtherOrg
 ) -> None:
     mine, theirs = seed_org.id, other_org.org.id
-    cases = [
+    cases: list[tuple[Any, uuid.UUID]] = [
         (UserRepository(test_db), other_org.user.id),
         (ClientRepository(test_db), other_org.client.id),
         (SiteRepository(test_db), other_org.site.id),
@@ -60,7 +63,7 @@ async def test_repositories_list_is_org_scoped(
         other_org.group.id,
         other_org.qualification.id,
     }
-    listings = [
+    listings: list[list[Any]] = [
         await UserRepository(test_db).list(mine),
         await ClientRepository(test_db).list_by_org(mine),
         await SiteRepository(test_db).list_by_org(mine),

@@ -13,7 +13,7 @@ from tests.conftest import OutboxMailSender
 async def _login(client: AsyncClient, email: str, password: str = "Dev1234!") -> str:
     r = await client.post("/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+    return str(r.json()["access_token"])
 
 
 @pytest.mark.asyncio

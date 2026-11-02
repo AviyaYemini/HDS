@@ -14,7 +14,8 @@ import yaml
 from dotenv import dotenv_values
 from pydantic import ValidationError
 
-from hds.core.config import PUBLISHED_PLACEHOLDER, Settings
+from hds.core.config import PUBLISHED_PLACEHOLDER
+from tests.settings_support import make_settings
 
 ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = ROOT / "infra" / "docker-compose.yml"
@@ -23,7 +24,9 @@ EXAMPLE = ROOT / ".env.example"
 
 @pytest.fixture
 def api_environment() -> dict[str, str]:
-    return yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["api"]["environment"]
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    environment: dict[str, str] = compose["services"]["api"]["environment"]
+    return environment
 
 
 def test_compose_sets_the_environment_explicitly(api_environment: dict[str, str]) -> None:
@@ -56,12 +59,14 @@ def test_copying_the_example_unchanged_does_not_start(monkeypatch: pytest.Monkey
     for name in ("ENVIRONMENT", "JWT_SECRET_KEY", "MAIL_BACKEND", "MAIL_OUTBOX_PATH"):
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValidationError) as caught:
-        Settings(_env_file=EXAMPLE)
+        make_settings(_env_file=EXAMPLE)
     assert "JWT_SECRET_KEY" in str(caught.value)
 
 
 def test_the_example_starts_once_a_secret_is_generated(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("ENVIRONMENT", "JWT_SECRET_KEY", "MAIL_BACKEND", "MAIL_OUTBOX_PATH"):
         monkeypatch.delenv(name, raising=False)
-    settings = Settings(_env_file=EXAMPLE, JWT_SECRET_KEY="a-generated-secret-0123456789abcdef")
+    settings = make_settings(
+        _env_file=EXAMPLE, JWT_SECRET_KEY="a-generated-secret-0123456789abcdef"
+    )
     assert settings.is_development

@@ -90,7 +90,7 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
                 )
                 for i in range(SEED["sites"])
             ]
-            session.add_all(clients + sites)
+            session.add_all([*clients, *sites])
             session.add_all(
                 Group(id=uuid.uuid4(), organization_id=org_id, name=f"Group {i}")
                 for i in range(SEED["groups"])

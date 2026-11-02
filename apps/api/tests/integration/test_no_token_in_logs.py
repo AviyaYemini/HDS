@@ -10,6 +10,7 @@ Covers: FR-203, SC-202.
 
 import json
 import logging
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,7 +40,7 @@ class TapMailSender:
 
 
 @pytest.fixture
-def tap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def tap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[TapMailSender]:
     """The application's real mail sender, built from settings that point at a temp outbox."""
     path = tmp_path / "outbox.jsonl"
     fake = SimpleNamespace(ENVIRONMENT="test", MAIL_BACKEND="outbox", MAIL_OUTBOX_PATH=str(path))

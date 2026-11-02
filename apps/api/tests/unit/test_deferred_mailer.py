@@ -7,6 +7,7 @@ Covers: FR-210.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -35,7 +36,7 @@ class RecordingMailer:
         self.options.append({"secret": secret, "purpose": purpose, "expires_at": expires_at})
 
 
-async def test_send_only_queues(fake_session) -> None:
+async def test_send_only_queues(fake_session: Any) -> None:
     inner = RecordingMailer()
     mailer = DeferredMailer(fake_session, inner)
     await mailer.send("a@hds.test", "Hello", "body")
@@ -43,7 +44,7 @@ async def test_send_only_queues(fake_session) -> None:
     assert fake_session.events == []
 
 
-async def test_message_is_delivered_once_after_commit(fake_session) -> None:
+async def test_message_is_delivered_once_after_commit(fake_session: Any) -> None:
     inner = RecordingMailer()
     mailer = DeferredMailer(fake_session, inner)
     async with unit_of_work(fake_session):
@@ -52,7 +53,7 @@ async def test_message_is_delivered_once_after_commit(fake_session) -> None:
     assert inner.sent == [("a@hds.test", "Hello", "body")]
 
 
-async def test_message_is_discarded_on_rollback(fake_session) -> None:
+async def test_message_is_discarded_on_rollback(fake_session: Any) -> None:
     inner = RecordingMailer()
     mailer = DeferredMailer(fake_session, inner)
     with pytest.raises(ValueError):
@@ -62,7 +63,7 @@ async def test_message_is_discarded_on_rollback(fake_session) -> None:
     assert inner.sent == []
 
 
-async def test_several_messages_keep_their_order(fake_session) -> None:
+async def test_several_messages_keep_their_order(fake_session: Any) -> None:
     inner = RecordingMailer()
     mailer = DeferredMailer(fake_session, inner)
     async with unit_of_work(fake_session):
@@ -71,7 +72,7 @@ async def test_several_messages_keep_their_order(fake_session) -> None:
     assert [m[1] for m in inner.sent] == ["One", "Two"]
 
 
-async def test_options_are_forwarded_to_the_real_sender(fake_session) -> None:
+async def test_options_are_forwarded_to_the_real_sender(fake_session: Any) -> None:
     """The real sender needs the secret, purpose and expiry to redact and describe the message."""
     inner = RecordingMailer()
     mailer = DeferredMailer(fake_session, inner)

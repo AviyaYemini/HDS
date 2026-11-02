@@ -83,7 +83,7 @@ CI runs these, and so should you before opening a pull request:
 uv run ruff check src tests          # lint, including docstring rules (Google convention)
 uv run ruff format --check src tests
 uv run interrogate src               # docstring coverage must be 100%
-uv run mypy --strict src/
+uv run mypy --strict src/ tests/
 uv run python -m hds.tools.check_imports
 ```
 

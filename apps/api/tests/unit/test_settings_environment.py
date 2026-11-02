@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from hds.core.config import PUBLISHED_PLACEHOLDER, Settings
+from tests.settings_support import make_settings
 
 STRONG = "strong-distinct-secret-value-0123456789abcdef"  # 44 bytes, not the placeholder
 SHORT = "short-distinct-secret"  # 21 bytes
@@ -23,7 +24,7 @@ def build(monkeypatch: pytest.MonkeyPatch, **env: str) -> Settings:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    return Settings(_env_file=None)
+    return make_settings(_env_file=None)
 
 
 def refusal(monkeypatch: pytest.MonkeyPatch, **env: str) -> str:

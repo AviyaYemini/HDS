@@ -27,9 +27,8 @@ async def manager_headers(client: AsyncClient) -> dict[str, str]:
 
 async def site_rows(db: AsyncSession) -> list[tuple[str, str]]:
     await db.rollback()
-    return [
-        tuple(r) for r in (await db.execute(text("SELECT name, timezone FROM sites ORDER BY 1")))
-    ]  # type: ignore[misc]
+    rows = await db.execute(text("SELECT name, timezone FROM sites ORDER BY 1"))
+    return [(str(r[0]), str(r[1])) for r in rows]
 
 
 @pytest.mark.parametrize("zone", BAD)

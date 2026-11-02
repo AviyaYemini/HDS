@@ -59,6 +59,10 @@ async def admin_execute(sql: str) -> None:
         await engine.dispose()
 
 
+Scratch = tuple[str, AsyncEngine]
+"""``(url, engine)`` of a scratch database, as the migration tests receive it."""
+
+
 @asynccontextmanager
 async def scratch_database(name: str, revision: str) -> AsyncIterator[tuple[str, AsyncEngine]]:
     """A fresh database migrated to ``revision``, with an engine on it; dropped afterwards.

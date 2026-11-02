@@ -34,7 +34,8 @@ def one_second_window(monkeypatch: pytest.MonkeyPatch) -> None:
 async def sign_in(client: AsyncClient, email: str = "employee@hds.test") -> dict[str, Any]:
     response = await client.post("/auth/login", json={"email": email, "password": PASSWORD})
     assert response.status_code == 200, response.text
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 async def manager_headers(client: AsyncClient) -> dict[str, str]:

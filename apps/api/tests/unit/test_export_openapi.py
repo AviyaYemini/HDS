@@ -8,7 +8,9 @@ from typing import Any
 from hds.scripts.export_openapi import diff, query_params
 
 
-def _doc(parameters: list[dict[str, Any]], *, path_level: bool = False, **extra: Any) -> dict:
+def _doc(
+    parameters: list[dict[str, Any]], *, path_level: bool = False, **extra: Any
+) -> dict[str, Any]:
     op: dict[str, Any] = {"responses": {"200": {"description": "ok"}}}
     item: dict[str, Any] = {"get": op}
     if path_level:
@@ -55,7 +57,7 @@ def test_required_difference_is_reported() -> None:
 
 
 def test_refs_and_nullable_unions_are_resolved() -> None:
-    components = {
+    components: dict[str, Any] = {
         "components": {
             "schemas": {"UserRole": {"type": "string", "enum": ["admin"]}},
             "parameters": {"Role": _q("role", {"$ref": "#/components/schemas/UserRole"})},
@@ -80,7 +82,7 @@ def test_path_level_parameters_are_included_and_non_query_ignored() -> None:
 
 def test_status_code_and_path_checks_still_work() -> None:
     contract = _doc([])
-    generated = {"paths": {"/other": {"get": {"responses": {"200": {}}}}}}
+    generated: dict[str, Any] = {"paths": {"/other": {"get": {"responses": {"200": {}}}}}}
     problems = diff(contract, generated)
     assert any("not implemented" in p for p in problems)
     assert any("not in contract" in p for p in problems)

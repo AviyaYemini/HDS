@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from tests.integration.migration_support import API_DIR, alembic, scratch_database
+from tests.integration.migration_support import API_DIR, Scratch, alembic, scratch_database
 
 MIGRATION_FILE = API_DIR / "alembic" / "versions" / "014_user_activation.py"
 SCRATCH_DB = "hds_migration_014_test"  # must end in _test: it is dropped after every test
@@ -153,7 +153,9 @@ async def activation_times(engine: AsyncEngine) -> dict[str, datetime | None]:
         return {name: at for name, at in rows}
 
 
-async def test_upgrade_marks_exactly_the_never_activated_accounts_as_pending(scratch) -> None:
+async def test_upgrade_marks_exactly_the_never_activated_accounts_as_pending(
+    scratch: Scratch,
+) -> None:
     url, engine = scratch
     accounts = await seed(engine)
     await asyncio.to_thread(alembic, url, "upgrade", "014_user_activation")
@@ -172,7 +174,7 @@ async def test_upgrade_marks_exactly_the_never_activated_accounts_as_pending(scr
 
 
 async def test_check_constraint_rejects_an_active_account_without_an_activation_time(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     url, engine = scratch
     await seed(engine)
@@ -211,7 +213,7 @@ def load_migration() -> Any:
     return module
 
 
-async def test_pre_check_lists_the_rows_the_constraint_would_reject(scratch) -> None:
+async def test_pre_check_lists_the_rows_the_constraint_would_reject(scratch: Scratch) -> None:
     """If a row would break the constraint, the migration stops and names it, not a bare error."""
     url, engine = scratch
     accounts = await seed(engine)
@@ -240,7 +242,7 @@ def _run_pre_check(sync_conn: Any) -> RuntimeError | None:
     return None
 
 
-async def test_pre_check_is_silent_when_nothing_would_be_rejected(scratch) -> None:
+async def test_pre_check_is_silent_when_nothing_would_be_rejected(scratch: Scratch) -> None:
     url, engine = scratch
     await seed(engine)
     await asyncio.to_thread(alembic, url, "upgrade", "014_user_activation")
@@ -249,7 +251,7 @@ async def test_pre_check_is_silent_when_nothing_would_be_rejected(scratch) -> No
 
 
 async def test_downgrade_removes_the_constraint_and_the_column_and_keeps_the_accounts(
-    scratch,
+    scratch: Scratch,
 ) -> None:
     url, engine = scratch
     accounts = await seed(engine)

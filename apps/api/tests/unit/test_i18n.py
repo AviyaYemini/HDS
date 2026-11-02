@@ -17,7 +17,8 @@ _CODE_DIRS = ("routers", "services", "core")
 
 
 def _load(lang: str) -> dict[str, str]:
-    return json.loads((_LOCALES / f"{lang}.json").read_text(encoding="utf-8"))
+    data: dict[str, str] = json.loads((_LOCALES / f"{lang}.json").read_text(encoding="utf-8"))
+    return data
 
 
 def _used_codes() -> dict[str, str]:

@@ -22,7 +22,8 @@ from hds.models.user import User
 async def _login(client: AsyncClient, email: str = "employee@hds.test") -> dict[str, str]:
     r = await client.post("/auth/login", json={"email": email, "password": "Dev1234!"})
     assert r.status_code == 200, r.text
-    return r.json()
+    body: dict[str, str] = r.json()
+    return body
 
 
 @pytest.mark.asyncio

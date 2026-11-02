@@ -14,7 +14,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,14 +28,17 @@ NEW_PASSWORD = "A-fresh-password-1"
 async def login(client: AsyncClient, email: str, password: str = "Dev1234!") -> dict[str, Any]:
     response = await client.post("/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200, response.text
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 async def auth(client: AsyncClient, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {(await login(client, email))['access_token']}"}
 
 
-async def invite(client: AsyncClient, headers: dict[str, str], email: str, role: str = "employee"):
+async def invite(
+    client: AsyncClient, headers: dict[str, str], email: str, role: str = "employee"
+) -> Response:
     return await client.post("/auth/invite", json={"email": email, "role": role}, headers=headers)
 
 

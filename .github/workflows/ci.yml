@@ -64,14 +64,14 @@ jobs:
       - uses: wagoid/commitlint-github-action@v6
 
   typecheck:
-    name: Type check (mypy --strict)
+    name: Type check (mypy --strict, src and tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
         working-directory: apps/api
-      - run: uv run mypy --strict src/
+      - run: uv run mypy --strict src/ tests/
         working-directory: apps/api
 
   import-graph:
