@@ -214,7 +214,10 @@ DANGEROUS = [
     (r"\brm\s+-\w*r\w*f?\s+(/|~|\$HOME|\*|\.\s*$|\.\./)", "recursive delete of a broad path"),
     (r"\bsudo\b", "sudo is not allowed"),
     (r"(curl|wget)\b[^|;]*\|\s*(sudo\s+)?(ba|z)?sh\b", "piping downloads into a shell"),
-    (r"\b(cat|less|more|head|tail|grep|source|cp|scp)\b[^|;&]*\s\.env(\.local|\.production|\.prod)?\b",
+    # The (?!...) keeps .env.example and .env.sample readable: they hold placeholders and are the
+    # documented way to see the settings. Anything else starting with .env stays blocked.
+    (r"\b(cat|less|more|head|tail|grep|source|cp|scp)\b[^|;&]*\s\.env"
+     r"(?!\.(?:example|sample)(?:\s|$|[\"';|&)]))(\.local|\.production|\.prod)?\b",
      "reading real .env files; use .env.example (principle 6)"),
     (r"\b(psql|sqlite3)\b.*\b(drop|truncate|delete\s+from|alter)\b",
      "manual schema or data changes; use an Alembic migration (principle 10)"),
