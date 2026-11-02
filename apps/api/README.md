@@ -34,13 +34,15 @@ Settings are read from the environment (and a `.env` file in development) by
 | --- | --- | --- |
 | `ENVIRONMENT` | **Required, no default.** `development` and `test` are development environments; any other value (`production`, `staging`, ...) turns on the strict secret, email and mail-backend checks | none |
 | `JWT_SECRET_KEY` | **Required, no default.** Signs access tokens. Outside development it must be at least 32 bytes and not the published placeholder; it is never empty | none |
+| `JWT_ALGORITHM` | Signing algorithm for access tokens; the verifier accepts only this one | `HS256` |
 | `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; outside development a real backend is required and none exists yet | `outbox` in development |
 | `MAIL_OUTBOX_PATH` | File the `outbox` backend appends to; each line holds the masked recipient, subject, purpose, expiry and the body with the token replaced by `[REDACTED]` | `apps/api/.dev-mail/outbox.jsonl` |
 | `DATABASE_URL` | Async SQLAlchemy URL | local development database |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
-| `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout | `5`, `15` |
+| `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout: the account locks on the failure that reaches the limit, and the count restarts when the lock ends | `5`, `15` |
+| `REFRESH_REUSE_GRACE_SECONDS` | A refresh token used a second time within this many seconds is refused and nothing else happens; later, every session of the user ends. Must be greater than 0 | `10` |
 | `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |
 
 ## Common tasks
@@ -67,10 +69,16 @@ and stores it nowhere; the mail outbox never holds a usable token.
 | Unit | `uv run pytest tests/unit` | nothing |
 | Integration and contract | `uv run pytest tests/integration tests/contract` | PostgreSQL |
 | Performance smoke | `uv run pytest tests/performance` | PostgreSQL |
+| Sign-in timing (opt-in, skipped by default) | `uv run pytest -m timing tests/integration/test_login_timing.py -s` | PostgreSQL, about a minute |
 
 Start PostgreSQL with `docker compose -f ../../infra/docker-compose.yml up -d postgres`. The
 tests create the `*_test` database and apply the migrations themselves. Every test module's
 docstring lists the requirement ids it covers.
+
+The timing test (SC-207) sends 500 wrong-password sign-ins each for an unknown and a known address
+and passes when the medians differ by less than 15%; it prints both medians and the p-value. Run
+it by hand before a release and record the result in the pull request. The gating check for the
+same requirement counts the password checks and runs in every test run.
 
 `scripts/contract_cli.sh` runs Schemathesis against a running, seeded server. It writes data, so
 it refuses any database whose name does not end in `_test` or `_scratch`.
@@ -80,12 +88,26 @@ it refuses any database whose name does not end in `_test` or `_scratch`.
 CI runs these, and so should you before opening a pull request:
 
 ```bash
-uv run ruff check src tests          # lint, including docstring rules (Google convention)
-uv run ruff format --check src tests
+uv run ruff check src tests alembic  # lint, including docstring rules (Google convention)
+uv run ruff format --check src tests alembic
 uv run interrogate src               # docstring coverage must be 100%
 uv run mypy --strict src/ tests/
 uv run python -m hds.tools.check_imports
+uv run alembic check                 # needs DATABASE_URL pointing at a migrated database
 ```
+
+## Known limitations
+
+- **Unknown addresses cannot be locked.** The lockout count lives on the account, so an address
+  with no account has nothing to count against. After the limit, a real account answers 423
+  `auth.account_locked` where an unknown address keeps answering 401 `auth.invalid_credentials`.
+  The locked-account notice is the one accepted difference in sign-in answers (feature 001
+  FR-005; feature 002 Story 7). Closing it would need a table of failures per address.
+- **A 409 for an address held elsewhere reveals that the address exists** somewhere in the
+  deployment (not in which organisation), because addresses are unique across all organisations.
+- **The sign-in timing is equal to within about 5%, not exactly equal.** A known account's wrong
+  password also writes and commits its failure count (about 3 ms against about 55 ms for the
+  Argon2 check), which an unknown address cannot do.
 
 ## API reference
 

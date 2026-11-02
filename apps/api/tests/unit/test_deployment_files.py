@@ -14,7 +14,7 @@ import yaml
 from dotenv import dotenv_values
 from pydantic import ValidationError
 
-from hds.core.config import PUBLISHED_PLACEHOLDER
+from hds.core.config import PUBLISHED_PLACEHOLDER, Settings
 from tests.settings_support import make_settings
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -70,3 +70,21 @@ def test_the_example_starts_once_a_secret_is_generated(monkeypatch: pytest.Monke
         _env_file=EXAMPLE, JWT_SECRET_KEY="a-generated-secret-0123456789abcdef"
     )
     assert settings.is_development
+
+
+API_README = ROOT / "apps" / "api" / "README.md"
+
+
+def test_example_settings_set_every_required_setting() -> None:
+    """A setting with no default must be an active line in the example, so copying it is enough."""
+    required = {name for name, field in Settings.model_fields.items() if field.is_required()}
+    assert {"ENVIRONMENT", "JWT_SECRET_KEY"} <= required
+    assert required <= set(dotenv_values(EXAMPLE)), "a required setting is missing from the example"
+
+
+def test_example_settings_and_the_readme_mention_every_setting() -> None:
+    example = EXAMPLE.read_text(encoding="utf-8")
+    readme = API_README.read_text(encoding="utf-8")
+    for name in Settings.model_fields:
+        assert name in example, f"{name} is not in .env.example (not even as a comment)"
+        assert f"`{name}`" in readme, f"{name} is not in the configuration table of apps/api/README"

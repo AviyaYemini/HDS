@@ -412,5 +412,14 @@ valid one is accepted.
   address can belong to only one account, and it reveals nothing about which organisation holds it.
   Every request that names an id (rather than an address) from another organisation is answered
   404, the same as for an id that does not exist.
+- **Known limitation, unknown addresses cannot be locked:** the failure count and the lock belong
+  to an account, so an address with no account has nothing to count against. Once an account is
+  locked it answers 423 `auth.account_locked` while an unknown address keeps answering 401
+  `auth.invalid_credentials`. This is the locked-account notice that feature 001 (FR-005) accepts
+  and that Story 7 excludes from "indistinguishable"; it is not fixed here. Closing it would need
+  a record of failures per address, which is a new table and a new decision.
+- **Known limitation, equal work is not equal time to the last millisecond:** a known account's
+  wrong password also writes and commits its failure count, about 3 ms on top of about 55 ms for
+  the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration, rate limiting by network address, and multi-factor
   sign-in.
