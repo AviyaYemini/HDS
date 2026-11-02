@@ -8,7 +8,9 @@ Covers: FR-028 (invalid input is a validation error, never a server error); Cons
     and V.
 """
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 import schemathesis
@@ -21,20 +23,14 @@ from tests.conftest import RoleEnv
 st_checks.load_all_checks()
 ALL_CHECKS = st_checks.CHECKS.get_all()
 
-# `end_date >= start_date` (FR-028) spans two fields, which an OpenAPI 3.0 schema cannot state, so
-# schema-valid dates in the wrong order are correctly answered with 422
-# `projects.date_range_invalid`. Only "valid data must be accepted" is skipped, only for these two
-# operations; every other check still runs on them.
-#
-# A site's time zone (FR-217) must be a name the system can load, which no schema can state: any
-# short string is schema-valid, and `Mars/Base` is correctly answered with 422
-# `sites.timezone_invalid`. The same single check is skipped for the two site writes.
-CROSS_FIELD_RULE = {
-    ("POST", "/api/v1/projects"),
-    ("PATCH", "/api/v1/projects/{id}"),
-    ("POST", "/api/v1/sites"),
-    ("PATCH", "/api/v1/sites/{id}"),
-}
+# Operations on which a schema-valid request is correctly refused (a date order or a time zone,
+# neither of which an OpenAPI 3.0 schema can state) skip only "valid data must be accepted"; every
+# other check still runs on them. The list lives in one file, unprovable_operations.json, which the
+# command-line script scripts/contract_cli.sh reads too, so the two cannot drift apart.
+UNPROVABLE = json.loads(
+    (Path(__file__).parent / "unprovable_operations.json").read_text(encoding="utf-8")
+)["operations"]
+CROSS_FIELD_RULE = {(op["method"], op["path"]) for op in UNPROVABLE if "pytest" in op["suites"]}
 
 # Few examples locally for a fast loop; CI sets HDS_SCHEMATHESIS_EXAMPLES=100 for the full run.
 EXAMPLES = int(os.environ.get("HDS_SCHEMATHESIS_EXAMPLES", "5"))
@@ -59,3 +55,13 @@ def test_api_conforms_to_its_openapi_contract(case, role_env: RoleEnv) -> None: 
     case.call_and_validate(
         headers={"Authorization": f"Bearer {role_env.tokens['admin']}"}, checks=checks
     )
+
+
+def test_every_listed_operation_matches_the_openapi_document() -> None:
+    """The shared list must name real operations, with the method, path and id the app has."""
+    document = app.openapi()
+    for op in UNPROVABLE:
+        declared = document["paths"][op["path"]][op["method"].lower()]
+        assert declared["operationId"] == op["operation_id"], op
+        assert op["suites"] and set(op["suites"]) <= {"pytest", "cli"}, op
+        assert op["reason"], op

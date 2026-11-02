@@ -18,7 +18,7 @@ src/hds/
   tools/           check_imports (the layering checker)
 alembic/           database migrations
 tests/             unit, integration, contract and performance tests
-scripts/           contract_cli.sh (Schemathesis against a running server)
+scripts/           contract_cli.sh and contract_hooks.py (Schemathesis against a running server)
 ```
 
 Dependencies point one way: routers, then services, then repositories, then models. The rule
@@ -80,7 +80,7 @@ and passes when the medians differ by less than 15%; it prints both medians and 
 it by hand before a release and record the result in the pull request. The gating check for the
 same requirement counts the password checks and runs in every test run.
 
-`scripts/contract_cli.sh` runs Schemathesis against a running, seeded server. It writes data, so
+`scripts/contract_cli.sh` runs Schemathesis against a running, seeded server. The operations on which a valid request is correctly refused (a date order, a time zone, the sign-in lockout) skip only "valid data must be accepted", and are listed once, in `tests/contract/unprovable_operations.json`, which the script and the pytest contract suite both read. `scripts/contract_hooks.py` keeps the run's seeded accounts alive (the fuzzer otherwise deactivates its own admin, after which later operations only ever see 401/403) and gives the operations that need related records something real to act on. It writes data, so
 it refuses any database whose name does not end in `_test` or `_scratch`.
 
 ## Quality gates
