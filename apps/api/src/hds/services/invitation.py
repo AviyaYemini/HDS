@@ -21,8 +21,10 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
-_INVITE_TTL_DAYS = 7
-_RESET_TTL_MINUTES = 60
+#: How long an invitation link stays valid. Public because the development link script uses it.
+INVITE_TTL_DAYS = 7
+#: How long a password-reset link stays valid.
+RESET_TTL_MINUTES = 60
 
 
 def _hash_token(raw: str) -> str:
@@ -109,7 +111,7 @@ class InvitationService:
             user_id = existing.id
 
         raw, token_hash = generate_refresh_token()
-        expires_at = datetime.now(UTC) + timedelta(days=_INVITE_TTL_DAYS)
+        expires_at = datetime.now(UTC) + timedelta(days=INVITE_TTL_DAYS)
         await self._token_repo.create(
             user_id=user_id,
             token_hash=token_hash,
@@ -121,7 +123,7 @@ class InvitationService:
         await self._mailer.send(
             to=email,
             subject="You have been invited to HDS",
-            body=f"Accept your invitation with this token (valid {_INVITE_TTL_DAYS} days): {raw}",
+            body=f"Accept your invitation with this token (valid {INVITE_TTL_DAYS} days): {raw}",
             secret=raw,
             purpose="invite",
             expires_at=expires_at,
@@ -172,7 +174,7 @@ class InvitationService:
             return  # Silent — never reveal whether the email exists
 
         raw, token_hash = generate_refresh_token()
-        expires_at = datetime.now(UTC) + timedelta(minutes=_RESET_TTL_MINUTES)
+        expires_at = datetime.now(UTC) + timedelta(minutes=RESET_TTL_MINUTES)
         await self._token_repo.create(
             user_id=user.id,
             token_hash=token_hash,
@@ -182,7 +184,7 @@ class InvitationService:
         await self._mailer.send(
             to=email,
             subject="Reset your HDS password",
-            body=f"Reset your password with this token (valid {_RESET_TTL_MINUTES} minutes): {raw}",
+            body=f"Reset your password with this token (valid {RESET_TTL_MINUTES} minutes): {raw}",
             secret=raw,
             purpose="reset",
             expires_at=expires_at,
