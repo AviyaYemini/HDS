@@ -14,8 +14,8 @@ changed. Unchanged settings are in `apps/api/README.md`.
 
 | Setting | Meaning | Default |
 | --- | --- | --- |
-| `MAIL_BACKEND` | How messages are delivered. `outbox` writes to a local file and is accepted only in a development environment. No other backend exists yet | `outbox` in development, none otherwise |
-| `MAIL_OUTBOX_PATH` | File that the `outbox` backend appends JSON lines to | a git-ignored path under the API folder |
+| `MAIL_BACKEND` | How messages are delivered. `outbox` writes a redacted record to a local file and is accepted only in a development environment. No other backend exists yet | `outbox` in development, none otherwise |
+| `MAIL_OUTBOX_PATH` | File that the `outbox` backend appends JSON lines to. Each line holds the masked recipient, subject, purpose, expiry and a body with the token replaced by `[REDACTED]`; it never holds a usable link | a git-ignored path under the API folder |
 | `REFRESH_REUSE_GRACE_SECONDS` | Window after a refresh token is used in which a second use is refused without ending sessions (FR-209) | `10` |
 
 ## Start-up rules (the system refuses to start when any fails)

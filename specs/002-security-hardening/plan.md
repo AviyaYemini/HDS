@@ -19,10 +19,11 @@ work falls into five technical moves:
    an invitation can complete only a pending account, and outstanding links are cancelled when an
    account is deactivated, deleted or activated (D4).
 4. **Safer start-up and logging.** An explicit environment allow-list for weak secrets, a
-   development-only mail outbox instead of logging messages, and a production start that is
-   refused without a real mail sender (D5, D6).
-5. **Sign-in and data rules.** Lockout counted in the database, equalised sign-in work for
-   unknown emails, case-insensitive emails (with a stop-on-duplicates migration), a row lock for
+   development-only mail outbox that stores no link in clear (plus a one-time "show me the link"
+   action for manual testing), and a production start that is refused without a real mail sender
+   (D5, D6).
+5. **Sign-in and data rules.** Lockout counted in the database and reset when the lock expires,
+   equalised sign-in work for unknown emails, case-insensitive emails (with a stop-on-duplicates migration), a row lock for
    the last-Admin check, and validated site time zones (D7 to D11).
 
 ## Technical Context
@@ -48,7 +49,8 @@ database. Hypothesis and Schemathesis stay as they are.
 The extra work is one dummy password check for unknown emails and one `SELECT ... FOR UPDATE`
 on a handful of Admin rows.
 
-**Constraints**: the generated OpenAPI document must stay consistent with the contract of feature
+**Constraints**: ADR 004 stays in force (PyJWT, algorithm fixed by configuration, `exp` required;
+no token-library or signature change); the generated OpenAPI document must stay consistent with the contract of feature
 001 (operations, success codes and query parameters unchanged; the drift check stays green);
 Constitution X (new migrations only, reversible, no edits to applied code); Constitution VIII (every
 new error code has English and Hebrew text); Constitution XI (docstrings, ADRs and READMEs ship in
@@ -67,7 +69,7 @@ the same pull request).
 | III. Pure scheduling package | Not touched | Pass |
 | IV. Test-first | Each fix gets a test that fails first (FR-219); concurrency and lockout tests run on PostgreSQL | Pass |
 | V. API-first | No operation, parameter or success code changes. New problem codes are listed in `contracts/error-codes.md`; the drift check must stay green | Pass |
-| VI. Security | Strengthens it: Argon2id unchanged, secrets only from the environment, JWT lifetime unchanged | Pass |
+| VI. Security | Strengthens it: Argon2id unchanged, secrets only from the environment, JWT lifetime and ADR 004 unchanged, links never stored in clear | Pass |
 | VII. Money and time | No money change; time stays UTC. Time-zone names are validated | Pass |
 | VIII. Internationalisation | New error codes get `en` and `he` text; `test_i18n` enforces parity | Pass |
 | IX. Quality gates | All gates stay required. Migration check covers the three new migrations | Pass |
@@ -109,7 +111,7 @@ apps/api/
 │   │   ├── config.py        # environment allow-list, mail backend, reuse grace window
 │   │   ├── database.py      # unit of work (commit once, rollback, after-commit actions)
 │   │   ├── logging.py       # redact format arguments, mask email addresses
-│   │   ├── mail.py          # development outbox sender; production refuses to start without one
+│   │   ├── mail.py          # redacting development outbox; production refuses to start without a real sender
 │   │   └── types.py         # Email (normalised), no change to Timezone type itself
 │   ├── models/              # user.activated_at, refresh_token.revoked_reason
 │   ├── repositories/        # no commits; guarded updates; row lock for Admins; cancel links
@@ -117,7 +119,8 @@ apps/api/
 │   ├── routers/             # switch to the unit-of-work dependency (46 endpoints)
 │   ├── scripts/
 │   │   ├── find_email_case_duplicates.py   # list clashes before migration 016
-│   │   └── check_site_timezones.py         # report invalid stored zones (FR-218)
+│   │   ├── check_site_timezones.py         # report invalid stored zones (FR-218)
+│   │   └── dev_issue_link.py               # development only: show a fresh link once
 │   └── locales/             # en.json, he.json: new error codes
 ├── tests/
 │   ├── unit/                # services with fakes; config and logging rules

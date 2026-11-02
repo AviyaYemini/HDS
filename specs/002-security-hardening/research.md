@@ -124,23 +124,36 @@ defect); detect production from other hints such as hostnames (unreliable).
 
 ## D6. Mail delivery and logging (Finding 2, Story 1)
 
-**Decision**: The development sender writes to an outbox file, not to the log; production refuses
-to start without a real sender.
+**Decision**: Nothing that persists a message may hold a link or token in clear. The development
+sender writes a redacted record to an outbox file; a separate development-only action shows a
+working link once; production refuses to start without a real sender.
 
-- New setting `MAIL_BACKEND`. Value `outbox` writes each message as one JSON line to
-  `MAIL_OUTBOX_PATH` (default under a git-ignored folder). Its constructor refuses to run unless
-  the environment is development or test. The log gets only a masked address and the subject.
+- New setting `MAIL_BACKEND`. Value `outbox` appends one JSON line per message to
+  `MAIL_OUTBOX_PATH` (default under a git-ignored folder) holding the masked recipient, subject,
+  purpose, expiry and the body with the token replaced by `[REDACTED]`. Its constructor refuses to
+  run unless the environment is development or test. The log gets only the masked address and the
+  subject.
+- A developer who needs a real link for a manual test runs a script
+  (`hds.scripts.dev_issue_link`, refuses to run outside development and test) that issues a fresh
+  link for a given account and prints it to the terminal once. It writes it to no file and no log.
+  Automated tests keep using the in-memory test double, which never persists anything.
+- Sending code receives the real body only inside the sender call; redaction happens in the
+  sender, so no caller can forget it.
 - No real provider exists yet, and choosing one is out of scope (spec). So in production the
   settings check fails with a clear message until a provider feature adds a backend. This is a
   deliberate consequence: there is no production deployment yet (feature 05).
 - The log filter also scans format arguments (it only scanned the message text) and masks email
   addresses.
 
-**Rationale**: a developer still needs to read a link to try the flow by hand; a gitignored local
-file does that without putting tokens into logs that get shipped elsewhere.
+**Rationale**: the requirement is that links are never stored in clear. A redacted outbox still
+shows that a message was produced and to whom; the script covers the one legitimate need to see a
+link, without leaving it on disk.
 
-**Alternatives considered**: log the link in development only (still a log, and easy to enable by
-mistake in production); return the link in the API response in development (changes the contract).
+**Alternatives considered**: a clear-text outbox file in development (rejected: it is a copy of
+account-access links on disk, and the habit carries into other environments); logging the link in
+development only (still a log, and easy to enable by mistake in production); returning the link in
+the API response in development (changes the contract); encrypting the outbox (key management for
+a development convenience).
 
 ## D7. Lockout counted in the database (Finding 5, Story 6)
 
@@ -150,9 +163,13 @@ mistake in production); return the link in the API response in development (chan
   CASE WHEN failed_login_attempts + 1 >= :max THEN :until ELSE locked_until END ... RETURNING ...`
   with session synchronisation switched off, so the in-memory user object is not changed behind
   the service's back (the cause of the off-by-one). It commits itself (D1 exception).
-- The counter is cleared only by a successful sign-in (clarified), so after a cooldown one more
-  wrong password locks again.
-- An integration test on PostgreSQL covers N-1 and N failures for several limits (SC-206).
+- **Reset on expiry** (decided at planning, superseding the earlier clarification): at the start of
+  each sign-in, before the password is checked, one guarded statement clears the count and the lock
+  when the lock has expired (`... SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id
+  AND locked_until IS NOT NULL AND locked_until <= :now`). A successful sign-in also clears the
+  count. After a cooldown the user therefore has the full N attempts again (FR-213).
+- An integration test on PostgreSQL covers N-1 and N failures for several limits, and the full N
+  attempts after expiry (SC-206).
 
 **Rationale**: one atomic statement is correct under concurrent failures as well, which the
 current read-modify-write is not.
@@ -201,7 +218,7 @@ operate); compare with `lower()` in queries only (no stored guarantee, slower lo
 
 **Decision**: Lock the organisation's active Admin rows for the rest of the transaction before
 counting (`SELECT id ... FOR UPDATE`, ordered by id so two requests lock in the same order). Count
-the locked rows. This depends on D1, because the lock lasts until commit.
+the locked rows. Row locks were chosen over serializable transactions (below). This depends on D1, because the lock lasts until commit.
 
 **Rationale**: under PostgreSQL's default isolation, the second request waits for the first to
 commit and then re-evaluates the rows, so it sees one Admin and is refused. A concurrency test
@@ -213,8 +230,9 @@ business rule into a trigger and duplicates the service check).
 
 ## D11. Site time zone validation (Finding 10, Story 9)
 
-**Decision**: A site's time zone is valid if the platform's zone database can load it
-(`ZoneInfo(name)`), checked in the site service so the error carries a stable code
+**Decision**: A site's time zone is valid if the IANA time zone database can load it
+(`ZoneInfo(name)`, which reads the system copy of the IANA database and falls back to the
+`tzdata` package), checked in the site service so the error carries a stable code
 (`sites.timezone_invalid`, HTTP 422). The package `tzdata` is added as a dependency so zone data
 exists even on systems that ship none.
 

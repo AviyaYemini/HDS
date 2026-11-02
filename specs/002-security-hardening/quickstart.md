@@ -42,14 +42,15 @@ The OpenAPI drift check from feature 001 must stay green:
 | Story | How to prove it | Expected |
 | --- | --- | --- |
 | 1 Start-up refusal (SC-201) | Build the settings with `ENVIRONMENT` unset; with `ENVIRONMENT=production` and the placeholder secret; with a 20-byte secret; with production and no mail backend | Each fails with a message naming the setting |
-| 1 No leaked links (SC-202) | Integration test: invite and reset with log capture on | No log record contains the token or an unmasked address; the outbox file contains the message |
+| 1 No leaked links (SC-202) | Integration test: invite and reset with log capture on, using the outbox backend | No log record contains the token or an unmasked address; the outbox file holds a record with `[REDACTED]` in place of the token |
+| 1 Manual link | In a development environment, run `uv run python -m hds.scripts.dev_issue_link <email> invite`; then run it with `ENVIRONMENT=production` | First prints a working link once and writes it nowhere; the second refuses to run |
 | 2 Pending only (SC-204) | Integration tests: redeem a link for a deactivated, deleted and already-active account; invite a deactivated address | Redemptions refused with no data change; invite returns 409 `invitations.account_deactivated` |
 | 2 Role on re-invite | Re-invite a pending account with a different role as Manager and as Admin | Manager to Manager succeeds; Manager to Admin is 403 |
 | 3 Single use (SC-203) | Concurrency tests: 100 rounds of two simultaneous refreshes, and of two simultaneous link redemptions | Exactly one success per round |
 | 3 Replay | Use a refresh token, wait past the grace window (configurable down to 1 s in tests), use it again | 401 and every refresh token of the user is revoked; within the window sessions are kept |
 | 4 Atomicity | Failure-injection tests: force the last step of refresh, password reset and client update to fail | The earlier steps are not applied |
 | 5 Last Admin (SC-205) | Concurrency test: two Admins deactivate each other at once, 100 rounds | An active Admin remains each time |
-| 6 Lockout (SC-206) | Integration test on PostgreSQL for limits 2 to 10: N-1 failures then success; N failures then attempt | Success after N-1; locked after N |
+| 6 Lockout (SC-206) | Integration test on PostgreSQL for limits 2 to 10: N-1 failures then success; N failures then attempt; N failures, expire the lock, then N new attempts | Success after N-1; locked after N; a full N attempts after expiry |
 | 7 Equal work (SC-207) | Unit test: the hash check runs once on the unknown-email path; optional timing comparison, 500 samples each | Called exactly once; distributions indistinguishable |
 | 8 Email case (SC-208) | Integration test: sign in, reset and duplicate-create with different case; run migration 016 against data with a clash | Same account every time; the migration stops and lists the clash |
 | 9 Time zone (SC-209) | Create and edit a site with `Asia/Jerusalem`, `UTC`, `Mars/Base`, `` | First two accepted; others 422 `sites.timezone_invalid` |

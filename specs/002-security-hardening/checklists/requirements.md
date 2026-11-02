@@ -31,8 +31,9 @@
 
 ## Notes
 
-- Resolved 2026-11-02: failure count is kept until a successful sign-in (Story 6 / FR-213);
-  existing case-duplicate emails block the rollout until staff resolve them (Story 8 / FR-216).
+- Resolved 2026-11-02: the failure count restarts at zero when the lock expires (Story 6 /
+  FR-213; this superseded an earlier choice to keep it until success); existing case-duplicate
+  emails block the rollout until staff resolve them (Story 8 / FR-216).
 - All ten review findings map to a story: 1 → US2, 2 → US1, 3 → US1, 4 → US3, 5 → US6, 6 → US7,
   7 → US8, 8 → US5, 9 → US4, 10 → US9.
 - Requirement ids use the 2xx block to avoid clashing with feature 001's ids.

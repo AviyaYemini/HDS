@@ -29,6 +29,11 @@ they cannot be confused with the ids of feature 001, which tests already cite.
   pending account takes the new role, under the same permission rules as a first invitation (only
   an Admin may invite an Admin).
 
+- Q: After a locked account's cooldown ends, should its failed-attempt count restart at zero or
+  stay until the next successful sign-in? → A: Restart at zero when the lock expires (this
+  supersedes the earlier choice to keep the count until success, changed at planning on
+  2026-11-02). A successful sign-in still clears the count.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Secrets and one-time links never leak (Priority: P1)
@@ -54,7 +59,8 @@ output.
 2. **Given** a production deployment with no real email delivery configured, **When** the system
    starts, **Then** it refuses to start.
 3. **Given** any configuration, **When** an invitation or reset email is produced, **Then** no log
-   line contains the link or token, and recipient addresses are masked.
+   line and no development mail outbox contains the link or token in clear, and recipient
+   addresses are masked in logs.
 4. **Given** the shipped example configuration, **When** an operator copies it unchanged,
    **Then** it does not start a production-capable deployment with a known secret.
 
@@ -166,9 +172,9 @@ one is refused.
 ### User Story 6 — Sign-in lockout matches the rule (Priority: P2)
 
 An account locks after exactly the configured number of consecutive wrong passwords (default 5),
-not one earlier. The count of failures is cleared only by a successful sign-in, as feature 001
-(FR-006b) states; the end of the cooldown does not clear it, so one more wrong password after
-the cooldown locks the account again.
+not one earlier. The count of failures restarts at zero when the lock expires, and is also cleared
+by a successful sign-in as feature 001 (FR-006b) requires, so after the cooldown the user gets a
+full set of attempts again.
 
 **Why this priority**: Users are locked out after four mistakes, which contradicts the stated rule
 and is not caught by any automated test against a real database.
@@ -183,8 +189,8 @@ attempt is refused as locked, while one fewer wrong attempt leaves sign-in possi
 2. **Given** a limit of N failures, **When** a user fails N times, **Then** the next attempt,
    even with the correct password, is refused as locked for the cooldown period.
 3. **Given** a locked account whose cooldown has ended, **When** the user enters one wrong
-   password, **Then** the account is locked again; **When** they enter the correct password
-   instead, **Then** they sign in and the count is cleared.
+   password, **Then** the count restarts and sign-in is still possible; the account locks again
+   only after the full configured number of new consecutive failures.
 
 ---
 
@@ -261,7 +267,8 @@ valid one is accepted.
 - An action fails after sending an email: the email is not sent, or the action is not undone in a
   way that leaves a usable link behind.
 - A locked account's cooldown ends while a sign-in is in progress: the attempt is judged by the
-  state at the moment it is checked, and the count is unchanged until a success.
+  state at the moment the lock is checked; the count restarts at that moment if the lock has
+  expired.
 - A site time zone is valid but unusual (for example one without daylight saving): accepted.
 
 ## Requirements *(mandatory)*
@@ -274,8 +281,10 @@ valid one is accepted.
   development when the signing secret is the published placeholder or shorter than 32 bytes.
 - **FR-202**: The system MUST refuse to start in production unless a real email delivery
   mechanism is configured.
-- **FR-203**: The system MUST NOT write invitation links, reset links or their tokens to any log,
-  and MUST mask recipient email addresses in logs.
+- **FR-203**: The system MUST NOT write invitation links, reset links or their tokens in clear to
+  any log or to any mail outbox, and MUST mask recipient email addresses in logs. A person
+  working in a development environment can still obtain a working link for manual testing
+  through an explicit, development-only action that shows it once and stores it nowhere.
 - **FR-204**: The shipped example and local-development settings MUST NOT contain a signing secret
   that a production-capable start would accept.
 
@@ -312,8 +321,8 @@ valid one is accepted.
 **Sign-in (Stories 6 and 7)**
 
 - **FR-212**: An account MUST lock after exactly the configured number of consecutive failures.
-- **FR-213**: The count of failures MUST be cleared only by a successful sign-in; the end of a
-  cooldown MUST NOT clear it.
+- **FR-213**: The count of failures MUST restart at zero when a lock expires, and MUST be cleared
+  by a successful sign-in.
 - **FR-214**: A sign-in with an unknown email MUST take the same observable time and give the same
   answer as one with a known email and a wrong password.
 
@@ -357,7 +366,8 @@ valid one is accepted.
   data in 100% of attempts.
 - **SC-205**: In 100 simultaneous attempts between the last two Admins, an active Admin remains
   each time.
-- **SC-206**: A user is locked after exactly N failures and not after N-1, for N from 2 to 10.
+- **SC-206**: A user is locked after exactly N failures and not after N-1, for N from 2 to 10,
+  and after a lock expires the user again has N attempts.
 - **SC-207**: Answer times for unknown and known emails differ by no more than normal variation
   (a statistical test cannot tell the two apart over 500 samples each).
 - **SC-208**: Every registered address can sign in with any letter case, and 0 pairs of accounts
