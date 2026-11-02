@@ -91,7 +91,7 @@ data: [data model, Part 2](data-model.md).
 | FR-221 growth | Fail sign-in for many random addresses, wait past the retention | Stale rows are removed by normal requests with no job scheduled |
 | F05 | Log `{"password": "ab\"cd"}` and values with `'` and `\` | No fragment of the secret in the output; redacting twice changes nothing |
 | F06 | Slow sender on password-reset request; compare registered and unknown addresses (`pytest -m timing`) | Response returns before delivery starts; ratio below 1.15 |
-| F07 | Run migration 017 on a scratch database at 016 with a deactivated account that has an unused invite and a used reset link | It ends deactivated; a genuine pending invitee stays pending; undecidable ids are printed |
+| F07 | Run migration 017 on a scratch database at 016 with a deactivated account that has an unused invite and a reset link | It ends deactivated; a genuine pending invitee, including a re-invited one with a cancelled earlier link, stays pending; undecidable ids are printed |
 | F08 | Replay a rotated token after its expiry; replay one that is unexpired | `auth.token_expired`, other sessions live; the second ends them |
 | F09 | Concurrency tests: refresh racing reset, logout everywhere, theft response and account change; a login that verified the old password racing a reset | No live token afterwards in any round; the late login is refused |
 | F10 | Create a site with `posixrules`, `Factory`, `asia/jerusalem`, `ASIA/JERUSALEM`; run `check_site_timezones` | 422 `sites.timezone_invalid`; the script lists stored values that fail |

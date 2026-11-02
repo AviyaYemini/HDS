@@ -68,7 +68,7 @@ changed error answers; each needs English and Hebrew text where it is a new code
 | 204 | Logout with a token owned by someone else: nothing is revoked, the answer is unchanged | `POST /auth/logout` | F19 |
 | 409 `users.duplicate_email` | Simultaneous creation of one address | employee and client-user creation | F25 |
 | 422 `sites.timezone_invalid` | Non-canonical names (`posixrules`, `Factory`, wrong case) | site create and edit | F10 |
-| 200 | An explicit `null` clears an optional field (phone, hourly rate, project end date, contract end, contact fields); omitted fields are untouched | `PATCH` on me, employees, clients, projects, sites | F17 |
+| 200 / 422 | An explicit `null` clears an optional field (phone, hourly rate, project end date, contract end, contact fields); omitted fields are untouched; `null` for a required field is 422, and the request schema no longer lists `null` for those fields | `PATCH` on me, employees, clients, projects, sites | F17 |
 
 ## Behaviour that is not an error code
 

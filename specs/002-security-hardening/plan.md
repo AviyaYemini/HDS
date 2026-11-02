@@ -275,9 +275,10 @@ Checkpoint P1: full suite, concurrency suite three times, mutation checks for F0
 ### P2 Data migrations
 
 - **017 `pending_backfill_correction`** (F07, D18). New migration, tests first on a scratch database
-  at revision 016 with: an inactive account with an unused invitation and a used reset link (must
+  at revision 016 with: an inactive account with an unused invitation and a reset link (must
   end deactivated), one with a refresh-token history (deactivated), a genuine pending invitee
-  (stays pending), and an undecidable row (reported, not guessed). Also shown on realistic data,
+  (stays pending), a re-invited pending account whose earlier, cancelled link has `used_at` set
+  (stays pending: invitation links are not evidence), and an undecidable row (reported, not guessed). Also shown on realistic data,
   upgrade and downgrade, as for 014 to 016.
 - **018 `login_throttle`** (lockout for every address and network limit, D16). New table; tests for upgrade, downgrade and
   the retention rule. `alembic check` must agree with the models.
@@ -341,7 +342,8 @@ Order inside the phase: **F26**, then **F18**, **F19**, **F25**, then the contra
 - **F26** (D24). Each run creates and drops its own database; a leftover from a killed run is
   recognised by name and removed on the next start. Proves itself by running two runs at once.
 - **F17** (D25). Explicit `null` clears optional fields; omitted fields are left alone; `null` for a
-  required field is 422. Tests per endpoint and field.
+  required field is 422, and the generated OpenAPI schema stops allowing `null` on those request
+  fields (optional but not nullable; corrected in D25). Tests per endpoint and field.
 - **F18, F19, F23, F24, F25**: small service changes, each with its failing test; D5 and D6 are the
   confirmed defaults above; F25 reuses the savepoint insert already used for invitations.
 - **F20 to F22**: pure refactors with the behaviour already pinned; OpenAPI must not change (the

@@ -332,8 +332,11 @@ deactivation turns "never activated" into "was activated".
   path that must read first (validate a link, check the address is free, load the user) ends that
   read-only transaction with `commit()` before hashing, and only then writes. **Rule: release only
   before the request's first write**, because `commit()` also saves any earlier write. A helper
-  `release_connection()` on the base repository does it and refuses (raises) if the session has
-  pending writes. The pool test covers sign-in **and** a non-login path (50 concurrent creations
+  `release_connection()` on the base repository does it and refuses (raises) if anything was written
+  in the transaction. Writes are tracked on the session itself: `unit_of_work` registers a
+  `do_orm_execute` listener that records any non-SELECT statement (this sees direct `UPDATE`,
+  `INSERT` and `DELETE`, which `session.new` and `session.dirty` do not) and an `after_flush`
+  listener for ORM changes, in `session.info`; `commit()` and `rollback()` clear the record. The pool test covers sign-in **and** a non-login path (50 concurrent creations
   against a pool of 5).
 - **Bounded, with a bounded queue.** At most `HASH_CONCURRENCY` (default 2) hashes run at once, and
   at most `HASH_QUEUE_LIMIT` (default 8) more may wait. A request that would join a full queue is
@@ -373,10 +376,14 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
 - **Per address.** The limit is `LOGIN_MAX_FAILURES` and the lock lasts `LOGIN_LOCKOUT_MINUTES`; no
   separate setting. For a registered address the existing account columns remain the state; for an
   unregistered one the `address` row is. Both go through one small interface, so the sign-in code
-  has a single path: clear an expired lock, refuse with **423 `auth.account_locked`** while locked
-  (same body shape, lock-end time computed the same way), otherwise verify (a real or the dummy
-  hash), and on failure register the failure with one atomic upsert that locks at the limit and is
-  committed at once so the refusal does not undo it. A successful sign-in clears the count (nine
+  has a single path: read the state and treat an expired lock as cleared **in memory** (no write),
+  refuse with **423 `auth.account_locked`** while locked (same body shape, lock-end time computed
+  the same way), otherwise verify (a real or the dummy hash), and on failure register the failure
+  with one atomic upsert that locks at the limit and is committed at once so the refusal does not
+  undo it. **Nothing is written before verification finishes**, so the connection can be released
+  first: the upsert restarts the count when the stored lock has expired (`failures = CASE WHEN
+  locked_until <= now THEN 1 ELSE failures + 1`), and a success clears the state with the existing
+  reset. There is no separate "clear expired lock" write on the sign-in path. A successful sign-in clears the count (nine
   typos followed by a good sign-in followed by a typo is one failure, not ten). The count restarts
   when a lock ends (FR-213).
 - **Said openly.** While an address is locked a correct password is refused and is not verified,
@@ -451,13 +458,17 @@ provider exists (the gap grows to a network call).
 
 **Decision**: new migration **017** (014 is applied and protected). For accounts that are inactive
 and have `activated_at` empty (migration 014 called them pending), set `activated_at = created_at`
-when there is evidence of past activity: any refresh token ever issued, a used password-reset link,
-or a used invitation link. Accounts with none of these stay pending. Accounts the rule cannot
+when there is evidence of past activity: any refresh token ever issued, or any password-reset link
+(used or not, because reset links are only ever sent to active accounts). **Invitation links are
+not evidence**: cancelling a link also sets `used_at`, and re-inviting a pending account cancels its
+earlier link, so a used invitation link can belong to a genuine invitee (since migration 014 an
+accepted invitation always sets `activated_at`, so an empty `activated_at` with a used invitation
+link can only mean a cancelled link). Accounts with none of the evidence stay pending. Accounts the rule cannot
 decide (pending, no evidence, but older than the invitation lifetime, so their only link has
 expired) are **listed by id in the migration's output and left pending**, never guessed. The
 downgrade is a no-op and says so.
 
-**Rationale**: a used reset link or a session history proves the account was active, which is what
+**Rationale**: a reset link or a session history proves the account was active, which is what
 the old rule ignored. Listing the undecidable rows follows the project rule of reporting, not
 guessing.
 
@@ -560,8 +571,14 @@ schema per run (migrations assume `public`).
 **Decision**: PATCH handlers use `model_dump(exclude_unset=True)`, so an omitted field is left
 alone and an explicit `null` is passed on. The services accept `null` only for columns that allow
 it (phone, default hourly rate, project end date, client contract end and contact fields); `null`
-for a required field is a 422 with the existing validation code. The OpenAPI schemas already allow
-`null` on these fields, so the document does not change.
+for a required field is a 422 with the existing validation code. **The OpenAPI document does
+change here (corrected 2026-11-03)**: today the PATCH schemas allow `null` on required columns
+(`full_name`, `name`, `billing_rate`, `timezone`, `address`, `status`, `role`, `contract_start`), and
+Schemathesis treats such a request as valid, so a 422 would fail its "valid data must be accepted"
+check. Those request fields are made **optional but not nullable** (omitted is allowed, `null` is
+not) so the schema says what the API does; the fields that may be cleared keep `null`. The
+exceptions list `unprovable_operations.json` is not used to hide this. The change only makes
+requests stricter, so the 001 contract's operations, success codes and parameters are unchanged.
 
 **Alternatives**: a sentinel value for "clear" (new contract); keep dropping nulls and document it
 (the defect).
