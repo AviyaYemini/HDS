@@ -463,3 +463,30 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | E9 | No `Retry-After` declared | `test_a_retry_answer_declares_its_header` |
 
 Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass.
+
+## P3 checkpoint
+
+All on the final P3 code, on PostgreSQL:
+
+| Step | Result |
+| --- | --- |
+| Gates: ruff, format, mypy strict, interrogate, import graph, alembic check | Pass |
+| Full suite | 1200 passed, 2 deselected (the timing tests), in 7 min 26 s |
+| `tests/concurrency/` three runs in a row | 31 of 31 each time, about 2 min 14 s each |
+| Timing, login | Ratio 1.082, pass mark 1.15 |
+| Timing, reset request, pooled | Ratio 1.013, pass mark 1.15 |
+| `scripts/contract_cli.sh`, 50 examples, fresh migrated and seeded database | Exit 0 at the first attempt. Pass A 2994 cases, pass B 637, no issues |
+| The two project-operation 404 warnings | **Gone** on the fresh database: no warnings in either pass |
+| Server during that run | No traceback, no 5xx response |
+| Drift check, now comparing error codes | Agrees on all 46 operations |
+
+OpenAPI comparison, against commit `7bad1f7`, the last before P3: same 46 operations, no schema changed.
+Added 429 on one operation and 503 on six. Removed 409 on 15, 403 on 3 and 422 on 5, as Group E
+records. Seven descriptions changed. Nothing else changed.
+
+The fresh database is a throwaway Postgres container, as `contract_cli.sh` documents. A project hook
+blocked my first attempt, which created and dropped a database on `infra-postgres` by hand. The hook
+was right, and it was not bypassed.
+
+Stopped before P4 as instructed, then the owner asked to carry on until the branch is ready, so P4 to
+P6 continue below under the same rules. Pushing and merging still wait for the owner.
