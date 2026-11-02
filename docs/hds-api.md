@@ -29,7 +29,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 - An account is *pending* (invited, never activated), *active*, *deactivated* or *deleted*. Only accepting an invitation leaves pending; staff reactivation applies to deactivated accounts, and reactivating a pending one returns 409 `users.pending_cannot_reactivate` *(Proposed)*.
 - An email address is one address whatever its letter case: it is trimmed and lowercased on the way in, sign-in, reset and invitation find the same account, and a second account with the same address in another case is refused with 409 `users.duplicate_email`. Because addresses are unique across the whole deployment, that 409 reveals that the address exists somewhere in the deployment (not in which organisation).
 - A refresh token works once. Presenting a used one is refused with 401 `auth.token_revoked`; if it was rotated more than `REFRESH_REUSE_GRACE_SECONDS` (default 10) ago, every session of that user also ends, because it may be a stolen copy. A token past its expiry is refused with `auth.token_expired` and ends no session, even if it was already used. No session can outlive "end every session": refresh, sign-in and every revocation of all sessions run one after the other for a user. Invitation and reset links are single use too (`auth.token_used`). A completed reset cancels every other link of the account and clears its sign-in lock, and a new reset request cancels earlier unused reset links.
-- Deactivating or deleting a client, or removing a portal user, ends that user's sessions and cancels their links. A portal user cannot be reactivated while the client is inactive or deleted.
+- Deactivating or deleting a client, or removing a portal user, ends that user's sessions and cancels their links. A portal user cannot be reactivated while the client is inactive or deleted, or created under an inactive client.
 - A pending account cannot be deactivated (409 `users.pending_cannot_deactivate`); only accepting its invitation changes it, and only an Admin's delete removes it, so a Manager cannot withdraw an invitation.
 - A refused sign-in (unknown address, wrong password, inactive account) returns the same 401 `auth.invalid_credentials` after the same amount of work. The locked-account answer (423 `auth.account_locked`) is the one accepted difference: an address with no account cannot be locked, so it keeps answering 401 (a known limitation).
 - Every request is one transaction: a change either fully happens or does not, and invitation and reset email is sent only after the change is saved.
@@ -44,7 +44,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `invitations.account_deactivated` | 409 | Inviting an address that belongs to a deactivated account |
 | `users.pending_cannot_reactivate` | 409 | Reactivating an account that was invited and never activated |
 | `users.pending_cannot_deactivate` | 409 | Deactivating an account that was invited and never activated |
-| `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted |
+| `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted, or creating one under an inactive client |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that cannot be loaded |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |

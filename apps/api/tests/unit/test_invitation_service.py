@@ -489,3 +489,42 @@ async def test_losing_the_race_for_a_link_is_refused_before_anything_is_written(
     user_repo.update.assert_not_awaited()
     token_repo.cancel_for_user.assert_not_awaited()
     cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_not_awaited()
+
+
+def _inviter() -> MagicMock:
+    actor = MagicMock(spec=User)
+    actor.role = UserRole.admin
+    actor.organization_id = uuid.uuid4()
+    return actor
+
+
+@pytest.mark.asyncio
+async def test_a_re_invitation_locks_the_user_before_touching_its_links() -> None:
+    """The user's row comes first, or accepting the old link can deadlock with this path."""
+    svc, user_repo, token_repo, _ = _svc()
+    actor = _inviter()
+    pending = _make_user(org_id=actor.organization_id, is_active=False)
+    order: list[str] = []
+    user_repo.get_by_email = AsyncMock(return_value=pending)
+    user_repo.lock_user.side_effect = lambda *_: order.append("lock")
+    token_repo.cancel_for_user.side_effect = lambda *_: order.append("cancel")
+
+    await svc.create_invitation(actor, pending.email, pending.role)
+
+    assert order == ["lock", "cancel"]
+
+
+@pytest.mark.asyncio
+async def test_a_re_invitation_judges_the_account_as_it_is_after_the_lock() -> None:
+    """An invitee who accepted while this request waited is active now, so this is a duplicate."""
+    svc, user_repo, token_repo, _ = _svc()
+    actor = _inviter()
+    pending = _make_user(org_id=actor.organization_id, is_active=False)
+    accepted = _make_user(org_id=actor.organization_id, is_active=True, email=pending.email)
+    user_repo.get_by_email = AsyncMock(side_effect=[pending, accepted])
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.create_invitation(actor, pending.email, pending.role)
+
+    assert refused.value.code == "users.duplicate_email"
+    token_repo.cancel_for_user.assert_not_awaited()

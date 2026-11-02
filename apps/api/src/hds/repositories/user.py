@@ -30,8 +30,13 @@ async def lock_user_row(session: AsyncSession, user_id: uuid.UUID) -> None:
 
     Every path that creates a session or ends all of them takes this lock, so they run one after
     the other. Without it, a new refresh token is invisible to a concurrent "end every session"
-    until it commits, and it would survive (FR-230). The user's row is always the first lock of
-    such a path. Several users are locked one at a time in ascending id order.
+    until it commits, and it would survive (FR-230).
+
+    The user's row is always the first lock of a path that also touches that user's links or
+    tokens. Otherwise one path holding a link and waiting for the user meets another holding the
+    user and waiting for the link, and PostgreSQL aborts one with a deadlock (FR-246). Inserting a
+    link or token waits here too, through its foreign key. Several users are locked one at a time
+    in ascending id order.
 
     Args:
         session: The request's session.
@@ -62,6 +67,7 @@ class UserRepository(OrgScopedRepository[User]):
             select(User)
             .where(func.lower(User.email) == email.strip().lower(), User.is_deleted.is_(False))
             .limit(1)
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

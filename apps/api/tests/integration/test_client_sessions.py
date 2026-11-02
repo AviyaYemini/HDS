@@ -162,3 +162,29 @@ async def test_a_portal_user_of_a_gone_client_cannot_be_reactivated(
         text("SELECT is_active FROM users WHERE id = :u"), {"u": uuid.UUID(user_id)}
     )
     assert active is False
+
+
+async def test_a_portal_user_cannot_be_created_under_an_inactive_client(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    admin = await headers_for(async_client, "admin@hds.test")
+    client_id, user_id = await portal_user(async_client, admin)
+    await end_portal_access("deactivate", async_client, client_id, user_id, admin)
+
+    refused = await async_client.post(
+        f"/api/v1/clients/{client_id}/users",
+        json={
+            "email": "second.portal@hds.test",
+            "full_name": "Second",
+            "initial_password": PORTAL_PASSWORD,
+        },
+        headers=admin,
+    )
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "users.client_inactive"
+    await test_db.rollback()
+    count = await test_db.scalar(
+        text("SELECT count(*) FROM users WHERE email = 'second.portal@hds.test'")
+    )
+    assert count == 0

@@ -316,3 +316,20 @@ async def test_removing_a_portal_user_ends_their_sessions_and_links() -> None:
 
     cast(Any, svc._token_repo).revoke_all_for_user.assert_awaited_once_with(user.id, "account")
     cast(Any, svc._link_repo).cancel_for_user.assert_awaited_once_with(user.id)
+
+
+@pytest.mark.asyncio
+async def test_portal_sessions_end_before_their_links_are_touched() -> None:
+    """The user's row lock comes before the links, or a reset can deadlock with this path."""
+    svc, repo, _ = _svc()
+    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    order: list[str] = []
+    repo.get_by_id = AsyncMock(return_value=_client(is_active=True))
+    repo.update = AsyncMock(return_value=_client(is_active=False))
+    repo.list_users = AsyncMock(return_value=[_portal(uuid.uuid4())])
+    cast(Any, svc._token_repo).revoke_all_for_user.side_effect = lambda *_: order.append("user")
+    cast(Any, svc._link_repo).cancel_for_users.side_effect = lambda *_: order.append("links")
+
+    await svc.edit_client(actor, uuid.uuid4(), {"is_active": False})
+
+    assert order == ["user", "links"]

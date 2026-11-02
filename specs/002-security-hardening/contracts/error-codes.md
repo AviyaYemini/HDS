@@ -55,7 +55,7 @@ changed error answers; each needs English and Hebrew text where it is a new code
 | `auth.rate_limited` | 429 + `Retry-After` | Too many failed sign-ins from one network address inside one fixed window of `LOGIN_LOCKOUT_MINUTES` (limit `LOGIN_RATE_LIMIT_PER_NETWORK`, 0 turns it off); a successful sign-in does not clear the count; answered before any lookup, for every submitted address alike | `POST /auth/login` | FR-221 |
 | `service.busy` | 503 + `Retry-After` | The password-hashing queue is full; nothing was checked or changed | `POST /auth/login`, `POST /auth/invite`, `POST /auth/invite/accept`, `POST /auth/password-reset/confirm`, `POST /api/v1/employees`, `POST /api/v1/clients/{id}/users`; 503 is declared on all six | FR-222 |
 | `users.pending_cannot_deactivate` | 409 | Staff deactivate an account that was invited and never accepted | `POST /api/v1/employees/{id}/deactivate` | F03 |
-| `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted | `POST /api/v1/employees/{id}/reactivate` | F02 |
+| `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted, or creating one under an inactive client | `POST /api/v1/employees/{id}/reactivate`, `POST /api/v1/clients/{id}/users` | F02 |
 | `users.client_role_locked` | 409 | Changing the role of a Client account (confirmed default D5) | employee edit, promote operations | F23 |
 | `clients.date_range_invalid` | 422 | `contract_end` earlier than `contract_start` (confirmed default D6) | `POST /api/v1/clients`, `PATCH /api/v1/clients/{id}` | F24 |
 
@@ -77,12 +77,13 @@ changed error answers; each needs English and Hebrew text where it is a new code
 - Deactivating or deleting a client, or removing a portal user, ends that user's sessions (F02).
 - Password-reset request returns before delivery runs (F06); delivery failures are logged by type.
 - A Client-role user without a client sees no projects (F18).
+- Password-reset requests over the per-address limit still answer 202; nothing is cancelled or sent (F28).
 
 ## New settings
 
 `HASH_CONCURRENCY` (default 2), `HASH_QUEUE_LIMIT` (8), `LOGIN_RATE_LIMIT_PER_NETWORK` (30 per
 fixed window of `LOGIN_LOCKOUT_MINUTES`; 0 turns the network limit off), `TRUSTED_PROXY_COUNT` (0:
-ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24). The per-address limit and lock length
+ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24), `RESET_REQUEST_LIMIT_PER_ADDRESS` (5 per `RESET_TTL_MINUTES`; 0 turns it off). The per-address limit and lock length
 reuse `LOGIN_MAX_FAILURES` and `LOGIN_LOCKOUT_MINUTES`. All go into `.env.example` and the
 configuration table; the existing test enforces both. Behind a proxy with `TRUSTED_PROXY_COUNT`
 left at 0 every user shares one address: set the count or set the network limit to 0.

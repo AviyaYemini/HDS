@@ -430,7 +430,8 @@ change no behaviour, so they need no requirement.
   cancel that account's earlier unused reset links.
 - **FR-225** (F02): Deactivating or deleting a client, or removing a portal user, MUST end that
   user's sessions and cancel their links, and a portal user MUST NOT be reactivated while the
-  client is inactive or deleted (409 `users.client_inactive`).
+  client is inactive or deleted (409 `users.client_inactive`). A portal user MUST NOT be created
+  under an inactive client (the same 409).
 - **FR-226** (F03): No sequence of staff actions may activate an account that never accepted its
   invitation. Only a real activation writes `activated_at`. Deactivating a pending account MUST be
   refused (409 `users.pending_cannot_deactivate`), and client deactivation MUST skip pending
@@ -471,6 +472,12 @@ change no behaviour, so they need no requirement.
 - **FR-244** (F25): Simultaneous creation of one address MUST give exactly one success and 409
   `users.duplicate_email`.
 - **FR-245** (F26): Two test runs at once MUST NOT interfere with each other.
+- **FR-246** (F27): A path that touches a user and that user's links or tokens MUST take the user's
+  row first, so redeeming a link and a staff action on the same account never surface as a server
+  error.
+- **FR-247** (F28): Password-reset requests MUST be limited per submitted address, registered or not,
+  in a fixed window. Over the limit the answer MUST stay 202, and no link is cancelled and no mail
+  is sent, so the limit reveals nothing and a third party cannot keep cancelling a victim's links.
 
 ## Success Criteria *(mandatory)*
 
@@ -541,6 +548,8 @@ change no behaviour, so they need no requirement.
   the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
+- A pending portal user under a deleted client is left as it is: no API path creates one, and F23
+  keeps it that way.
 - **Proxy deployment (open until the ingress exists):** `TRUSTED_PROXY_COUNT` stays 0 because
   nothing is deployed behind a proxy yet. When the deployment feature adds the ingress it must set
   the count and add a check to its deployment steps; a wrong value cannot be detected at start-up.

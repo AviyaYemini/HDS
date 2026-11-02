@@ -120,6 +120,10 @@ class InvitationService:
             )
         user_id = account.id
         if not created:
+            # The user's row comes first, before any of its links (see `lock_user_row`), and the
+            # account is read again so the checks below judge its state after the lock.
+            await self._user_repo.lock_user(account.id)
+            account = await self._user_repo.get_by_email(email) or account
             # The address was already taken (possibly a moment ago by a concurrent request).
             if account.organization_id != actor.organization_id or account.is_active:
                 raise ConflictError(
@@ -188,9 +192,11 @@ class InvitationService:
             every other outstanding link of the account.
         """
         token = await self._valid_token(raw_token, "invite")
-        # Spend the link first: this single conditional write is what lets only one of two
-        # simultaneous redemptions through. The loser waits for the winner to commit, finds the
-        # link used and is refused before it writes anything.
+        password_hash = hash_password(new_password)  # before any lock is taken
+        # The user's row comes first, before the link (see `lock_user_row`). Then spend the link:
+        # this single conditional write is what lets only one of two simultaneous redemptions
+        # through. The loser finds the link used and is refused before it writes anything.
+        await self._user_repo.lock_user(token.user_id)
         if not await self._token_repo.spend(token.id):
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
         owner = await self._token_owner(token.user_id)
@@ -199,7 +205,7 @@ class InvitationService:
         user = await self._user_repo.update(
             token.user_id,
             owner.organization_id,
-            password_hash=hash_password(new_password),
+            password_hash=password_hash,
             is_active=True,
             activated_at=datetime.now(UTC),
         )
@@ -224,6 +230,7 @@ class InvitationService:
         if user is None or not user.is_active:
             return  # Silent — never reveal whether the email exists
 
+        await self._user_repo.lock_user(user.id)  # before its links (see `lock_user_row`)
         await self._token_repo.cancel_for_user(user.id, purpose="reset")
         raw, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + timedelta(minutes=RESET_TTL_MINUTES)
@@ -266,6 +273,8 @@ class InvitationService:
             refresh tokens and clears the failed sign-in count and lock.
         """
         token = await self._valid_token(raw_token, "reset")
+        password_hash = hash_password(new_password)  # before any lock is taken
+        await self._user_repo.lock_user(token.user_id)
         if not await self._token_repo.spend(token.id):  # see accept_invitation
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
         owner = await self._token_owner(token.user_id)
@@ -274,7 +283,7 @@ class InvitationService:
         await self._user_repo.update(
             token.user_id,
             owner.organization_id,
-            password_hash=hash_password(new_password),
+            password_hash=password_hash,
         )
         # A reset means the old credentials may be compromised: sign out every device.
         await self._refresh_token_repo.revoke_all_for_user(token.user_id, RevocationReason.all)

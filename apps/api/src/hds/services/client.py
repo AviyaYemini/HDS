@@ -60,9 +60,9 @@ class ClientService:
         """
         users = await self._client_repo.list_users(client_id, org_id)
         portal_users = [user for user in users if user.activated_at is not None]
-        await self._link_repo.cancel_for_users([u.id for u in portal_users])
-        for user in portal_users:
+        for user in portal_users:  # takes each user's row lock, before any of their links
             await self._token_repo.revoke_all_for_user(user.id, RevocationReason.account)
+        await self._link_repo.cancel_for_users([u.id for u in portal_users])
         await self._client_repo.deactivate_client_users(client_id)
 
     async def create_client(self, actor: User, data: dict[str, Any]) -> Client:
@@ -128,12 +128,19 @@ class ClientService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: The client is not in the organisation (HTTP 404).
-            ConflictError: ``users.duplicate_email`` (HTTP 409).
+            ConflictError: ``users.client_inactive`` when the client is inactive, or
+                ``users.duplicate_email`` (HTTP 409).
             DomainValidationError: ``users.password_too_short`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if await self._client_repo.get_by_id(client_id, actor.organization_id) is None:
+        client = await self._client_repo.get_by_id(client_id, actor.organization_id)
+        if client is None:
             raise NotFoundError(resource="Client", id=client_id)
+        if not client.is_active:
+            raise ConflictError(
+                code="users.client_inactive",
+                detail="This client is inactive; reactivate it before adding users.",
+            )
         email = data.get("email", "")
         if await self._user_repo.get_by_email(email) is not None:
             raise ConflictError(

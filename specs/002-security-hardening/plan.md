@@ -242,7 +242,7 @@ phase does not start before the previous checkpoint passes. Item ids are from `p
 | --- | --- | --- | --- |
 | **P1 Credentials and sessions** | F01, F02, F03, F08, F09, F11 | Highest-risk account-takeover and session bugs; none needs schema | none |
 | **P2 Data migrations** | F07 (017), throttle storage (018) | Schema before the code that uses it; 017 corrects stored data | 017, 018 |
-| **P3 Sign-in under load and abuse** | F04 (bounded hashing, FR-221 lockout for every address, FR-222, FR-223), F06 | Needs 018; touches the same path as the equal-work tests | uses 018 |
+| **P3 Sign-in under load and abuse** | F04 (bounded hashing, FR-221 lockout for every address, FR-222, FR-223), F28 (reset-request limit), F06 | Needs 018; touches the same path as the equal-work tests | uses 018 |
 | **P4 Input, logging and reliability** | F05, F10, F12 | Independent and small; F10 also adds a stored-data report | none |
 | **P5 Tests, tool and documents** | F13, F14, F15, F16 | No production behaviour change | none |
 | **P6 Older gaps** | F17, F18, F19, F20, F21, F22, F23, F24, F25, F26 | Contract-affecting changes (F17, F23, F24, F25) last, refactors (F20 to F22) after the behaviour is pinned by tests, F26 first within the phase because it makes every later run safe to repeat | none |

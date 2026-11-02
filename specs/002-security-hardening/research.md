@@ -422,6 +422,12 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
   on it being scheduled.
 - Keys are hashed, so no address or network address is stored.
 
+**Reset requests (F28)**: a third key kind, `reset`, counts requests per lowercased address in a
+fixed window of `RESET_TTL_MINUTES`, limit `RESET_REQUEST_LIMIT_PER_ADDRESS` (default 5; 0 turns it
+off). It is checked before any lookup, so a registered and an unregistered address behave alike.
+Over the limit the answer is still 202 and nothing is cancelled or sent, which keeps the promise
+that this endpoint reveals nothing and leaves the last link working.
+
 **Rationale**: the first draft answered 429 above a limit of 10 while a registered address locked
 with 423 at 5, so anyone could still tell them apart and FR-221's "same answer" did not hold.
 Mirroring the account lock for unregistered addresses removes the difference instead of
@@ -518,6 +524,14 @@ and every path that creates a session or ends all sessions takes it:
 One side waits for the other and the later one sees the earlier one's rows. The lock order is
 always user row first; the last-Admin guard locks Admin rows ordered by id and only ever waits for
 rows another request holds briefly, and sign-in holds just one user row, so no cycle is possible.
+
+**Lock order for links (F27)**: the same rule covers links. Redeeming a link used to spend it and
+then update the user, while staff actions updated the user and then cancelled the link, which
+deadlocked in about half of the rounds. `reset_password` and `accept_invitation` now take the user's
+row before `spend`, `request_password_reset` and a re-invitation take it before cancelling links,
+and a re-invitation reads the account again after the lock. A link insert waits on the user's row
+through its foreign key, so a path that cancels a link and then inserts one is exposed too. The
+order inside a redemption is: read the link, hash, lock the user, spend.
 
 **Rationale**: the new token row is invisible to a concurrent revoke-all until commit; serialising on
 the user row removes the window for refresh and for login alike.

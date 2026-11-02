@@ -261,7 +261,8 @@ async def list_client_users(
     description=(
         "Manager or Admin. Create a portal account with the Client role for this "
         "client, with an initial password of at least 12 characters. A duplicate email "
-        "returns 409 (`users.duplicate_email`)."
+        "returns 409 (`users.duplicate_email`); an inactive client returns 409 "
+        "(`users.client_inactive`)."
     ),
 )
 async def create_client_user(
@@ -274,7 +275,7 @@ async def create_client_user(
 
     Manager or Admin. Create a portal account with the Client role for this client, with an
     initial password of at least 12 characters. A duplicate email returns 409
-    (`users.duplicate_email`).
+    (`users.duplicate_email`); an inactive client returns 409 (`users.client_inactive`).
     """
     svc = _svc(db)
     return await svc.create_client_user(

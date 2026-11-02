@@ -254,6 +254,15 @@ None of these were introduced by this PR.
 | F25 | Low | Simultaneous creation of the same address returns a generic 422, not `users.duplicate_email` | Both paths return 409 `users.duplicate_email` | `services/employee.py`, `services/client.py` |
 | F26 | Low | The integration suite truncates a fixed database, so two runs at once fail each other at random | Each run uses its own database, or a run refuses to start while another is active | `apps/api/tests/conftest.py` |
 
+## Added after the P1 review
+
+| Id | Severity | Problem | Required behaviour | Where |
+| --- | --- | --- | --- | --- |
+| F27 | Medium | Redeeming a link and a staff action on the same account deadlock (52 of 100 rounds for reset against deactivate), and the caller gets a server error | A path that touches a user and that user's links or tokens takes the user's row first | `services/invitation.py`, `services/client.py` |
+| F28 | Medium | Anyone can keep cancelling a victim's reset links and flood their inbox by resubmitting the address, because a new request cancels the previous link and the endpoint has no limit | Reset requests are limited per address; over the limit the answer is unchanged and nothing is cancelled or sent | `services/invitation.py` |
+
+F02 also gained a case: a portal user cannot be created under an inactive client.
+
 ## How the checks were run
 
 At the earlier review of `c378d04`, unit tests and 415 integration and concurrency tests passed
