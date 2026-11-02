@@ -30,8 +30,9 @@ work falls into five technical moves:
 
 **Language/Version**: Python 3.12 (unchanged)
 
-**Primary Dependencies**: FastAPI 0.162 (the `scope="function"` option on `Depends` is required,
-see D1), Pydantic v2, SQLAlchemy 2.1 async, Alembic, argon2-cffi, PyJWT. One new runtime
+**Primary Dependencies**: FastAPI 0.121.0 or newer (the `scope="function"` option on `Depends` is
+required, see D1; the lower bound in `pyproject.toml` is raised to 0.121.0, and 0.162 is what is
+installed today), Pydantic v2, SQLAlchemy 2.1 async, Alembic, argon2-cffi, PyJWT. One new runtime
 dependency: `tzdata`, as a fallback source of time-zone data (D11).
 
 **Storage**: PostgreSQL 16. Three new migrations (014 to 016); no table is dropped.
@@ -103,7 +104,7 @@ specs/002-security-hardening/
 ```text
 apps/api/
 ├── alembic/versions/
-│   ├── 014_user_activation.py            # users.activated_at + backfill
+│   ├── 014_user_activation.py            # users.activated_at + backfill + check constraint
 │   ├── 015_refresh_revoked_reason.py     # refresh_tokens.revoked_reason
 │   └── 016_case_insensitive_email.py     # stop on duplicates, lowercase, new unique index
 ├── src/hds/
@@ -130,6 +131,7 @@ docs/adr/
 ├── 005-request-scoped-transactions.md
 └── 006-refresh-token-reuse-detection.md
 infra/docker-compose.yml     # explicit environment, no default secret
+.github/workflows/ci.yml     # environment on every app job; tests/concurrency in the PostgreSQL job
 .env.example                 # explicit environment, empty secret placeholder
 ```
 
@@ -142,3 +144,8 @@ plus two ADRs, the compose file and the example settings. One new test folder
 No constitution violations. Two choices add moving parts and are justified in `research.md`: the
 after-commit action list (D1, needed so email is never sent for a rolled-back change) and the
 `revoked_reason` column (D2, needed so only a rotated token triggers the theft response).
+
+Accepted limit on Principle X: migration 016 is reversible for the schema (the old index is
+restored on downgrade) but the lowercasing of stored email addresses is not undone. The step is
+idempotent and a lowercase address stays valid under the old rule, so leaving it in place on
+downgrade is harmless; the migration docstring says so (D9).

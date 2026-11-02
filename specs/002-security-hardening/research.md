@@ -10,11 +10,14 @@ Each decision answers one technical question the spec leaves open. "Finding" num
 - Repositories stop calling `commit()`. They `flush()` where they need generated values.
 - A new dependency wraps the session: commit once after the handler returns, roll back on any
   exception. It is declared with `Depends(..., scope="function")`, which ends before the response
-  is sent (verified present in the installed FastAPI 0.162). A failed commit therefore produces an
+  is sent. The option first appears in FastAPI 0.121.0 (checked by installing 0.120.4, which lacks
+it, and 0.121.0, which has it, and inspecting the `Depends` signature; the changelog was not
+used). The lower bound in `pyproject.toml` is raised to 0.121.0; 0.162 is installed today. A failed commit therefore produces an
   error response, never a success that was not saved.
-- The tests replace the session dependency, so the commit/rollback logic lives in one helper
-  (`unit_of_work(session)`) that both the real dependency and the test override call. Without
-  this, the integration suite would no longer commit.
+- The tests already replace the plain session dependency (`get_db`). The new unit-of-work
+  dependency is built on top of `get_db`, so the same override keeps working and the commit and
+  rollback logic is exercised by the integration suite without changing how tests provide a
+  session.
 - **After-commit actions**: services never send email directly. A deferred mailer queues the send
   on the session; the unit of work runs the queue only after a successful commit. This is what
   guarantees "no usable link for a rolled-back change" (spec edge case). A send that fails after
@@ -96,6 +99,16 @@ about which token replaced which, but more schema and logic than the requirement
   invitation is accepted, and when a link is replaced.
 - **Backfill** (migration 014): `activated_at = created_at` for every existing user except those
   that are inactive, have an invitation link, and have never used one. Those remain pending.
+- **Invariant enforced by the database**: after the backfill, migration 014 adds
+  `CHECK (is_active = false OR activated_at IS NOT NULL)`, so an active account can never lack an
+  activation time. Without it, any writer that forgot to set the column (the seed script, a test
+  fixture, a future code path) would create an account that looks *pending* once deactivated,
+  which is the original defect. Deactivation also sets `activated_at` when it is still null, as
+  a second line of defence.
+- **Concurrent invitations**: two simultaneous invitations for a new address both try to insert
+  it. The insert runs inside a savepoint; the loser catches the unique violation, rolls back the
+  savepoint, reloads the account by address and continues with the existing-account rules (a
+  pending account is re-invited). Neither request fails.
 
 **Rationale**: "was this account ever active?" cannot be derived from today's columns, and the
 review's attack paths all come from not knowing it.

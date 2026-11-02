@@ -11,6 +11,7 @@ not edited (Constitution X).
 | Column | Change | Type | Rules |
 | --- | --- | --- | --- |
 | `activated_at` | **added** (migration 014) | timestamp with time zone, null | Set when an invitation is accepted, and when staff create an account that is active from the start. Null means the account has never been active |
+| constraint `ck_users_active_has_activated_at` | **added** (migration 014, after the backfill) | check | `CHECK (is_active = false OR activated_at IS NOT NULL)`: an active account always has an activation time |
 | `email` | **rule changed** (migration 016) | text | Always stored lowercase and trimmed |
 
 | Index | Change |
@@ -71,7 +72,7 @@ Only a reuse of a token revoked as `rotated` can trigger the revoke-everything r
 
 | Revision | What it does | Reversible |
 | --- | --- | --- |
-| `014_user_activation` | Adds `users.activated_at`; backfills it from `created_at` for every user except those that are inactive, hold an invitation link and never used one | Yes: drops the column |
+| `014_user_activation` | Adds `users.activated_at`; backfills it from `created_at` for every user except those that are inactive, hold an invitation link and never used one; then adds `ck_users_active_has_activated_at` | Yes: drops the constraint and the column |
 | `015_refresh_revoked_reason` | Adds `refresh_tokens.revoked_reason` with a check constraint | Yes: drops the column |
 | `016_case_insensitive_email` | Stops with a list if any addresses clash by case; lowercases all addresses; replaces `uq_users_email` with `uq_users_email_ci` | Index: yes. The lowercasing of stored data is not reversed |
 

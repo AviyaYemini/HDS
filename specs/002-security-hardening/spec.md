@@ -53,9 +53,9 @@ output.
 
 **Acceptance Scenarios**:
 
-1. **Given** a deployment where the environment is not explicitly marked as development, **When**
-   the signing secret is the published placeholder or shorter than the minimum, **Then** the
-   system refuses to start and names the problem.
+1. **Given** a deployment where the environment is not explicitly marked as development or test,
+   **When** the signing secret is the published placeholder or shorter than the minimum,
+   **Then** the system refuses to start and names the problem.
 2. **Given** a production deployment with no real email delivery configured, **When** the system
    starts, **Then** it refuses to start.
 3. **Given** any configuration, **When** an invitation or reset email is produced, **Then** no log
@@ -95,6 +95,9 @@ link, and confirm the account stays deactivated and the password is unchanged.
    replaces the earlier one.
 6. **Given** a pending account, **When** a Manager re-invites it as an Admin, **Then** the request
    is refused (only an Admin may invite an Admin) and the pending role is unchanged.
+7. **Given** two staff members who invite the same new address at the same moment, **When** both
+   requests finish, **Then** exactly one pending account exists, both requests succeed (the
+   later one acts as a re-invitation) and neither receives an error.
 
 ---
 
@@ -278,7 +281,8 @@ valid one is accepted.
 **Secrets and links (Story 1)**
 
 - **FR-201**: The system MUST refuse to start unless the environment is explicitly marked as
-  development when the signing secret is the published placeholder or shorter than 32 bytes.
+  development or test when the signing secret is the published placeholder or shorter than 32
+  bytes.
 - **FR-202**: The system MUST refuse to start in production unless a real email delivery
   mechanism is configured.
 - **FR-203**: The system MUST NOT write invitation links, reset links or their tokens in clear to
@@ -368,14 +372,21 @@ valid one is accepted.
   each time.
 - **SC-206**: A user is locked after exactly N failures and not after N-1, for N from 2 to 10,
   and after a lock expires the user again has N attempts.
-- **SC-207**: Answer times for unknown and known emails differ by no more than normal variation
-  (a statistical test cannot tell the two apart over 500 samples each).
+- **SC-207**: A sign-in with a wrong password performs the same password-checking work and returns
+  the identical answer whether the email is unknown, known, or belongs to an inactive account;
+  this is verified by an automated check on every build. An optional timing comparison over 500
+  samples each, which cannot tell the two apart, is run by hand before a release.
 - **SC-208**: Every registered address can sign in with any letter case, and 0 pairs of accounts
   differ only by case after rollout.
 - **SC-209**: 0 sites with an invalid time zone can be saved, and all existing ones are reported.
 
 ## Assumptions
 
+- Terms: a *renewal credential* is the refresh token; a *link* is an invitation or password-reset
+  link; a *token* is the secret value inside a link or renewal credential. Both words are used in
+  the plan and tasks with these meanings.
+- A *development environment* is one marked `development` or `test`; any other marking is treated
+  like production for the start-up checks.
 - This feature corrects feature 001's behaviour and changes none of its endpoints' purpose; any
   new error answers use the existing problem-details format and error-code translation rules.
 - The mechanism for real email delivery (which provider) is a separate decision; this feature only
