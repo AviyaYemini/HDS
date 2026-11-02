@@ -110,6 +110,33 @@ reset with log capture and the outbox backend ([quickstart.md](quickstart.md), S
 
 **Checkpoint**: Story 1 passes on its own. MVP of the security fixes.
 
+### Scope additions recorded during implementation (Phase 3)
+
+Work done in Phase 3 that goes beyond the task text above. Each was needed to make the story's
+requirements true; none changes an endpoint or the OpenAPI document.
+
+- **T227, mail interface**: `MailSender.send` gained `purpose` and `expires_at` as well as the
+  `secret` keyword named in the task, because the outbox record must hold the purpose and expiry
+  ([contracts/configuration.md](contracts/configuration.md)). `DeferredMailer` forwards all three,
+  and T228 passes all three from the invitation service. The test double in `tests/conftest.py`
+  accepts them.
+- **T227, removal**: `LoggingMailSender` is deleted, not kept as a fallback. It logged the whole
+  message body, and nothing else referenced it.
+- **T225, settings**: besides the start-up rules, the settings now hide the raw input in
+  validation errors (a refused start used to print the secret), ignore unknown keys (the shared
+  example file holds `POSTGRES_*` and `TEST_DATABASE_URL`, which made copying it fail), and refuse an
+  empty or blank secret in every environment. The constant `PLACEHOLDER_JWT_SECRET` is renamed
+  `PUBLISHED_PLACEHOLDER`, because the secret-detection hook flagged the old name; it is the public
+  value the settings refuse, not a secret.
+- **T226, logging**: redaction runs on the final text of a record, and the JSON formatter also
+  redacts exception text; `mask_email` and `redact` are public helpers in `hds.core.logging`.
+- **T229, constants**: `INVITE_TTL_DAYS` and `RESET_TTL_MINUTES` in `services/invitation.py` are
+  public so the development link script uses the same lifetimes.
+- **T230 and T231, tests**: `tests/unit/test_deployment_files.py` reads the compose and example
+  files and checks that using them unchanged does not start.
+- **Harness**: the pre-bash hook no longer blocks reading `.env.example` or `.env.sample`
+  (`chore(harness): allow reading env example files`), with `tests/unit/test_harness_env_pattern.py`.
+
 ---
 
 ## Phase 4: User Story 2 — Invitations cannot bring back a deactivated account (Priority: P1)
