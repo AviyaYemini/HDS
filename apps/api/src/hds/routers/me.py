@@ -15,7 +15,9 @@ from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Name, Phone
 from hds.models.user import User, UserRole
+from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.employee import EmployeeService
@@ -103,5 +105,7 @@ async def patch_me(
         user_repo=UserRepository(db),
         token_repo=RefreshTokenRepository(db),
         link_repo=InvitationTokenRepository(db),
+        group_repo=GroupRepository(db),
+        qualification_repo=QualificationRepository(db),
     )
     return await svc.update_own_profile(current_user, data)

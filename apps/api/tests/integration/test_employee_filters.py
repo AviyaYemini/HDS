@@ -130,7 +130,11 @@ async def test_group_and_qualification_filters(
     assert await _ask(async_client, f"?qualification_id={aid.id}") == {  # type: ignore[attr-defined]
         "alice@hds.test"
     }
-    assert await _ask(async_client, f"?group_id={uuid.uuid4()}") == set()
+    # An id that does not exist is refused, as for every other id in a query (NFR-001).
+    missing = await async_client.get(
+        f"/api/v1/employees?group_id={uuid.uuid4()}", headers=await _headers(async_client)
+    )
+    assert missing.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -157,13 +161,17 @@ async def test_other_organisations_rows_never_appear(
         "?search=other",
         "?role=employee",
         "?is_active=true",
-        f"?group_id={other_org.group.id}",
-        f"?qualification_id={other_org.qualification.id}",
     ):
         got = await _ask(async_client, query)
         assert other_org.user.email not in got, query
-    # Another organisation's group id matches nothing here, even though that user is in it.
-    assert await _ask(async_client, f"?group_id={other_org.group.id}") == set()
+    # Another organisation's group or qualification is refused like a missing one (NFR-001).
+    headers = await _headers(async_client)
+    for query in (
+        f"?group_id={other_org.group.id}",
+        f"?qualification_id={other_org.qualification.id}",
+    ):
+        refused = await async_client.get(f"/api/v1/employees{query}", headers=headers)
+        assert refused.status_code == 404, query
 
 
 @pytest.mark.asyncio

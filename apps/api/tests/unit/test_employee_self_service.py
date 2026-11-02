@@ -35,7 +35,13 @@ async def test_update_own_profile_success() -> None:
     updated = _make_user(full_name="New Name", phone="+972501234567")
     user_repo.update = AsyncMock(return_value=updated)
 
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
     result = await svc.update_own_profile(user, {"full_name": "New Name", "phone": "+972501234567"})
 
     user_repo.update.assert_awaited_once_with(
@@ -48,7 +54,13 @@ async def test_update_own_profile_success() -> None:
 async def test_update_own_profile_disallows_role_change() -> None:
     user = _make_user()
     user_repo = AsyncMock()
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
 
     with pytest.raises(ForbiddenError) as exc_info:
         await svc.update_own_profile(user, {"role": "manager"})
@@ -61,7 +73,13 @@ async def test_update_own_profile_disallows_role_change() -> None:
 async def test_update_own_profile_disallows_is_active_change() -> None:
     user = _make_user()
     user_repo = AsyncMock()
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
 
     with pytest.raises(ForbiddenError) as exc_info:
         await svc.update_own_profile(user, {"is_active": False})
@@ -74,7 +92,13 @@ async def test_get_profile_returns_user_with_hourly_rate() -> None:
     user = _make_user(default_hourly_rate=Decimal("75.0000"))
     user_repo = AsyncMock()
     user_repo.get_by_id = AsyncMock(return_value=user)
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
 
     result = await svc.get_profile(user.id, user.organization_id)
 
@@ -89,7 +113,13 @@ async def test_get_profile_returns_user_with_hourly_rate() -> None:
 async def test_update_own_profile_never_passes_forbidden_fields_to_repo(field: str) -> None:
     user = _make_user()
     user_repo = AsyncMock()
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
 
     with pytest.raises(ForbiddenError):
         await svc.update_own_profile(user, {"full_name": "Ok", field: "x"})
@@ -101,7 +131,13 @@ async def test_update_own_profile_never_passes_forbidden_fields_to_repo(field: s
 async def test_update_own_profile_passes_only_whitelisted_fields() -> None:
     user = _make_user()
     user_repo = AsyncMock()
-    svc = EmployeeService(user_repo=user_repo, token_repo=AsyncMock(), link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=AsyncMock(),
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
 
     await svc.update_own_profile(user, {"full_name": "New", "phone": "123"})
 

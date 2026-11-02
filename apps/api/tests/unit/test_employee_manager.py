@@ -34,7 +34,13 @@ def _make_user(**kwargs: object) -> User:
 def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock, AsyncMock]:
     user_repo = user_repo or AsyncMock()
     token_repo = AsyncMock()
-    svc = EmployeeService(user_repo=user_repo, token_repo=token_repo, link_repo=AsyncMock())
+    svc = EmployeeService(
+        user_repo=user_repo,
+        token_repo=token_repo,
+        link_repo=AsyncMock(),
+        group_repo=AsyncMock(),
+        qualification_repo=AsyncMock(),
+    )
     return svc, user_repo, token_repo
 
 

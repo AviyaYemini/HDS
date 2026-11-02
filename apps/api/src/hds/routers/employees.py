@@ -111,6 +111,8 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
         user_repo=UserRepository(db),
         token_repo=RefreshTokenRepository(db),
         link_repo=InvitationTokenRepository(db),
+        group_repo=GroupRepository(db),
+        qualification_repo=QualificationRepository(db),
     )
 
 

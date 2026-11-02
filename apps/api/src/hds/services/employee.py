@@ -23,7 +23,9 @@ from hds.core.exceptions import (
 from hds.core.security import hash_password
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
+from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
@@ -73,6 +75,8 @@ class EmployeeService:
         user_repo: UserRepository,
         token_repo: RefreshTokenRepository,
         link_repo: InvitationTokenRepository,
+        group_repo: GroupRepository,
+        qualification_repo: QualificationRepository,
     ) -> None:
         """Wire the service.
 
@@ -81,10 +85,15 @@ class EmployeeService:
             token_repo: Used to end sessions when access changes.
             link_repo: Used to cancel outstanding invitation and reset links when an account is
                 deactivated or deleted.
+            group_repo: Used to check that a group filter belongs to the organisation.
+            qualification_repo: Used to check that a qualification filter belongs to the
+                organisation.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._link_repo = link_repo
+        self._group_repo = group_repo
+        self._qualification_repo = qualification_repo
 
     # ── Self-service ─────────────────────────────────────────────────────────
 
@@ -130,8 +139,18 @@ class EmployeeService:
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: ``group_id`` or ``qualification_id`` is not in the organisation
+                (HTTP 404), the same answer as for an id that does not exist.
         """
         ensure_role(actor, *MANAGER_ROLES)
+        if group_id is not None and not await self._group_repo.get_by_id(
+            group_id, actor.organization_id
+        ):
+            raise NotFoundError(resource="Group", id=group_id)
+        if qualification_id is not None and not await self._qualification_repo.get_by_id(
+            qualification_id, actor.organization_id
+        ):
+            raise NotFoundError(resource="Qualification", id=qualification_id)
         return await self._user_repo.search(
             actor.organization_id,
             search=search,
