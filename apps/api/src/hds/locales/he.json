@@ -50,5 +50,6 @@
   "http.method_not_allowed": "שיטה זו אינה מותרת עבור המשאב.",
   "http.bad_request": "לא ניתן היה לנתח את הבקשה.",
   "sites.timezone_invalid": "אזור הזמן חייב להיות שם IANA תקין, למשל Asia/Jerusalem.",
-  "users.client_inactive": "הלקוח של משתמש זה אינו פעיל או נמחק; יש להפעיל קודם את הלקוח."
+  "users.client_inactive": "הלקוח של משתמש זה אינו פעיל או נמחק; יש להפעיל קודם את הלקוח.",
+  "users.pending_cannot_deactivate": "חשבון זה עדיין לא קיבל את ההזמנה שלו, ולכן לא ניתן להשבית אותו."
 }

@@ -315,12 +315,12 @@ async def test_a_portal_user_of_a_deactivated_client_cannot_return_by_a_link(
     assert signin.status_code == 401
 
 
-async def test_deactivating_a_client_stamps_a_pending_portal_user_so_it_stays_deactivated(
+async def test_deactivating_a_client_keeps_activation_times_and_leaves_pending_users_alone(
     async_client: AsyncClient,
     test_db: AsyncSession,
     seed_users: dict[str, User],
 ) -> None:
-    """The bulk update keeps an existing activation time and fills a missing one (COALESCE)."""
+    """The bulk update keeps an existing activation time and never writes one (FR-226)."""
     manager = await auth(async_client, "manager@hds.test")
     client = await async_client.post(
         "/api/v1/clients",
@@ -359,4 +359,4 @@ async def test_deactivating_a_client_stamps_a_pending_portal_user_so_it_stays_de
     kept = await row(test_db, "kept@beta.test")
     pending = await row(test_db, "pending@beta.test")
     assert kept.is_active is False and kept.activated_at == before  # an existing time is kept
-    assert pending.is_active is False and pending.activated_at is not None  # a missing one is set
+    assert pending.is_active is False and pending.activated_at is None  # it stays pending

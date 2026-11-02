@@ -276,7 +276,8 @@ async def delete_employee(
     description=(
         "Manager or Admin. Block the user from signing in and end their sessions. Only "
         "an Admin may deactivate an Admin, and never the last active one (409 "
-        "`users.last_admin`)."
+        "`users.last_admin`). An account that was invited but never accepted cannot be "
+        "deactivated: it returns 409 (`users.pending_cannot_deactivate`) and stays pending."
     ),
 )
 async def deactivate_employee(
@@ -287,7 +288,9 @@ async def deactivate_employee(
     """Deactivate an employee.
 
     Manager or Admin. Block the user from signing in and end their sessions. Only an Admin may
-    deactivate an Admin, and never the last active one (409 `users.last_admin`).
+    deactivate an Admin, and never the last active one (409 `users.last_admin`). An account that
+    was invited but never accepted cannot be deactivated: it returns 409
+    (`users.pending_cannot_deactivate`) and stays pending.
     """
     svc = _employee_svc(db)
     return await svc.deactivate(actor=current_user, target_id=id)

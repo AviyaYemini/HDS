@@ -9,7 +9,6 @@ sessions so it takes effect at once.
 """
 
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -334,6 +333,11 @@ class EmployeeService:
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:
         """Block a user from signing in without deleting them (Manager or Admin).
 
+        A *pending* account (invited, never activated) is refused: it cannot sign in, so there is
+        nothing to block, and stamping it would turn "never activated" into "was activated".
+        ``activated_at`` is written only by a real activation (FR-226). Only an Admin's delete
+        removes a pending account.
+
         Args:
             actor: The caller. Only an Admin may deactivate an Admin.
             target_id: User to deactivate.
@@ -344,25 +348,25 @@ class EmployeeService:
         Raises:
             ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
             NotFoundError: The user is not in the organisation (HTTP 404).
-            ConflictError: ``users.last_admin`` (HTTP 409).
+            ConflictError: ``users.pending_cannot_deactivate`` when the account never accepted
+                its invitation, or ``users.last_admin`` (HTTP 409). Nothing is changed.
 
         Side effects:
             Revokes the user's refresh tokens, ending their sessions, and cancels their
             outstanding invitation and reset links so none can bring the account back.
-            ``activated_at`` is kept, or set to now if it was missing, so the account can never
-            be mistaken for a pending one.
         """
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
+        if target.activated_at is None:
+            raise ConflictError(
+                code="users.pending_cannot_deactivate",
+                detail="This account has not accepted its invitation yet, so it cannot be "
+                "deactivated.",
+            )
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        updated = await self._user_repo.update(
-            target_id,
-            actor.organization_id,
-            is_active=False,
-            activated_at=target.activated_at or datetime.now(UTC),
-        )
+        updated = await self._user_repo.update(target_id, actor.organization_id, is_active=False)
         await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(target_id)
         return updated

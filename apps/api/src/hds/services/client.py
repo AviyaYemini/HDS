@@ -51,13 +51,15 @@ class ClientService:
         """Deactivate every portal user of a client, ending their sessions and links (FR-225).
 
         The users arrive in ascending id order and are handled in that order, so two simultaneous
-        changes to one client cannot take the same rows in opposite orders and deadlock.
+        changes to one client cannot take the same rows in opposite orders and deadlock. A pending
+        portal user is left alone, with its link (FR-226).
 
         Args:
             client_id: A client already verified to belong to ``org_id``.
             org_id: The caller's organisation.
         """
-        portal_users = await self._client_repo.list_users(client_id, org_id)
+        users = await self._client_repo.list_users(client_id, org_id)
+        portal_users = [user for user in users if user.activated_at is not None]
         await self._link_repo.cancel_for_users([u.id for u in portal_users])
         for user in portal_users:
             await self._token_repo.revoke_all_for_user(user.id, RevocationReason.account)

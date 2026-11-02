@@ -248,9 +248,7 @@ async def test_deactivate_revokes_all_sessions() -> None:
 
     await svc.deactivate(actor, target.id)
 
-    user_repo.update.assert_awaited_once_with(
-        target.id, actor.organization_id, is_active=False, activated_at=target.activated_at
-    )
+    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=False)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
@@ -385,20 +383,6 @@ async def test_deactivate_cancels_the_users_outstanding_links() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deactivate_stamps_activated_at_when_it_is_missing() -> None:
-    """Defence in depth: a deactivated account must never look like a pending one."""
-    actor = _make_user(role=UserRole.manager)
-    target = _make_user(role=UserRole.employee, activated_at=None)
-    svc, user_repo, _ = _svc()
-    user_repo.get_by_id = AsyncMock(return_value=target)
-    user_repo.update = AsyncMock(return_value=_make_user(is_active=False))
-
-    await svc.deactivate(actor, target.id)
-
-    assert isinstance(user_repo.update.await_args.kwargs["activated_at"], datetime)
-
-
-@pytest.mark.asyncio
 async def test_soft_delete_cancels_the_users_outstanding_links() -> None:
     org_id = uuid.uuid4()
     actor = _make_user(role=UserRole.admin, org_id=org_id)
@@ -475,3 +459,17 @@ async def test_reactivating_a_portal_user_of_a_gone_client_is_refused(
 
     assert refused.value.code == "users.client_inactive"
     user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deactivating_a_pending_account_is_refused() -> None:
+    svc, user_repo, token_repo = _svc()
+    target = _make_user(is_active=False, activated_at=None)
+    user_repo.get_by_id = AsyncMock(return_value=target)
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.deactivate(_make_user(role=UserRole.admin), target.id)
+
+    assert refused.value.code == "users.pending_cannot_deactivate"
+    user_repo.update.assert_not_awaited()
+    token_repo.revoke_all_for_user.assert_not_awaited()
