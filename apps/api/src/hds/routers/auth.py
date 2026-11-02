@@ -61,8 +61,8 @@ def _make_service(db: AsyncSession) -> AuthService:
     description=(
         "Exchange an email and password for an access token and a refresh token. The "
         "email is matched without regard to letter case. Unknown email, wrong password "
-        "and inactive account all return the same 401 (`auth.invalid_credentials`). The "
-        "account locks after exactly the configured number "
+        "and inactive account all return the same 401 (`auth.invalid_credentials`), "
+        "after the same amount of work. The account locks after exactly the configured number "
         "of consecutive wrong passwords (default 5) and the call then returns 423 "
         "(`auth.account_locked`) until the cooldown ends; the count restarts at zero "
         "when it does, and a successful sign-in also clears it."
@@ -76,7 +76,7 @@ async def login(
 
     Exchange an email and password for an access token and a refresh token. The email is matched
     without regard to letter case. Unknown email, wrong password and inactive account all return
-    the same 401 (`auth.invalid_credentials`). The account locks
+    the same 401 (`auth.invalid_credentials`), after the same amount of work. The account locks
     after exactly the configured number of consecutive wrong passwords (default 5) and the call
     then returns 423 (`auth.account_locked`) until the cooldown ends; the count restarts at zero
     when it does, and a successful sign-in also clears it.

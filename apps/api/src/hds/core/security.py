@@ -5,6 +5,7 @@ repositories, services or routers, and it never reads settings itself (callers p
 """
 
 import hashlib
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -45,6 +46,29 @@ def verify_password(plain: str, hashed: str) -> bool:
         return _ph.verify(hashed, plain)
     except VerifyMismatchError:
         return False
+
+
+# A real Argon2id hash of a random password nobody knows, made once at import with the same
+# parameters as every stored hash. It is only ever used by ``verify_against_dummy``.
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
+
+
+def verify_against_dummy(plain: str) -> bool:
+    """Spend the same effort as a real password check when there is no account to check.
+
+    Sign-in for an address that is not registered would otherwise skip the Argon2id check, which
+    is by far its slowest step, and answer much faster than for a registered address. That
+    difference tells an attacker which addresses have accounts even though the error text is
+    identical (FR-214). Calling this instead makes both paths do one check of the same cost.
+
+    Args:
+        plain: The password the caller offered; it is checked against a hash nobody can match.
+
+    Returns:
+        Always ``False``.
+    """
+    verify_password(plain, DUMMY_PASSWORD_HASH)
+    return False
 
 
 def create_access_token(

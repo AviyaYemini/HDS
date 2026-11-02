@@ -17,6 +17,7 @@ from hds.core.exceptions import AuthError
 from hds.core.security import (
     create_access_token,
     generate_refresh_token,
+    verify_against_dummy,
     verify_password,
 )
 from hds.models.refresh_token import RefreshToken, RevocationReason
@@ -91,6 +92,9 @@ class AuthService:
         """
         user = await self._user_repo.get_by_email(email)
         if user is None:
+            # Do the same expensive check as for a real account, so the answer takes as long and
+            # an attacker cannot tell unknown addresses from known ones (FR-214).
+            verify_against_dummy(password)
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
         # A lock that has run out is cleared first, with the count, so the user starts again

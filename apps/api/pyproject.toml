@@ -84,3 +84,8 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Statistical timing checks are noisy on shared machines: opt in with `-m timing`.
+addopts = "-m 'not timing'"
+markers = [
+    "timing: statistical timing check, skipped unless selected with -m timing",
+]

@@ -360,10 +360,30 @@ each time.
 
 **Goal**: equal work for unknown and known emails (FR-214).
 
-- [ ] T278 [P] [US7] Write `apps/api/tests/unit/test_login_equal_work.py`: with a spy on the password check, an unknown email, a known email with a wrong password and an inactive account each cause exactly one check, and all return the same code and message (this is the automated check of SC-207)
-- [ ] T279 [P] [US7] Write `apps/api/tests/integration/test_login_timing.py` (SC-207): 500 samples each for unknown and known emails with a wrong password, compared with a statistical test; mark it `timing`, register the marker in `apps/api/pyproject.toml` and deselect it by default; it is opt-in and is run by hand in the final phase before a release
-- [ ] T280 [US7] In `apps/api/src/hds/core/security.py` create `DUMMY_PASSWORD_HASH` at import with the same Argon2id parameters as real hashes and a `verify_against_dummy(plain)` helper; docstring explains why
-- [ ] T281 [US7] In `AuthService.login` (`apps/api/src/hds/services/auth.py`) call `verify_against_dummy` when no account matches, then return the same `auth.invalid_credentials`
+- [X] T278 [P] [US7] Write `apps/api/tests/unit/test_login_equal_work.py`: with a spy on the password check, an unknown email, a known email with a wrong password and an inactive account each cause exactly one check, and all return the same code and message (this is the automated check of SC-207)
+- [X] T279 [P] [US7] Write `apps/api/tests/integration/test_login_timing.py` (SC-207): 500 samples each for unknown and known emails with a wrong password, compared with a statistical test; mark it `timing`, register the marker in `apps/api/pyproject.toml` and deselect it by default; it is opt-in and is run by hand in the final phase before a release
+- [X] T280 [US7] In `apps/api/src/hds/core/security.py` create `DUMMY_PASSWORD_HASH` at import with the same Argon2id parameters as real hashes and a `verify_against_dummy(plain)` helper; docstring explains why
+- [X] T281 [US7] In `AuthService.login` (`apps/api/src/hds/services/auth.py`) call `verify_against_dummy` when no account matches, then return the same `auth.invalid_credentials`
+
+### Scope additions recorded during implementation (Phase 9)
+
+- **T278, work counted, not timed**: both new tests wrap the Argon2 hasher and count verifications.
+  Before the change an unknown address caused 0 (known and inactive accounts caused 1); after it
+  every refusal causes exactly 1. `tests/integration/test_login_responses.py` (added to T278)
+  drives the real application and compares the whole response of four refusals: status, reason
+  phrase, body (without the request id) and headers (without the request id and date). The
+  locked-account answer (423) is the accepted difference and is not compared.
+- **T279, opt-in timing**: on a development machine without the dummy check the medians are 18 ms
+  (unknown) against 55 ms (known), 3.0x, and the test fails; with it they are 54.6 ms and 57.4 ms,
+  1.05x, and it passes. The test asserts the ratio (below 1.15) and prints the p-value instead of
+  asserting it: with 500 samples each, a real difference of about 3 ms (a known account also
+  writes and commits its failure count) is always statistically significant, so a significance
+  test would fail on a difference nobody can use. The marker `timing` is registered in
+  `pyproject.toml` and deselected by default (`addopts = "-m 'not timing'"`).
+- **Residual difference**: that 3 ms commit for a known account cannot be removed without writing
+  something for unknown addresses; it is small against the Argon2 cost and is stated here and in
+  the test's docstring.
+- **Contract**: only the login description changed ("after the same amount of work").
 
 **Checkpoint**: Story 7 passes.
 
