@@ -1,0 +1,1 @@
+Operators can deploy HDS 2.0 repeatably, see its health, and recover from failure. Use docs/hds-spec.md sections 9 and 10. Requirements: one-command local environment, automated deploys, health and metrics endpoints, backups with a tested restore, zero-downtime updates, no secrets in the repository.
