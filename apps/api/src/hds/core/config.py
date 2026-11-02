@@ -4,41 +4,66 @@ Layer: core. Imports nothing from other ``hds`` packages; every other layer may 
 
 Secrets such as ``JWT_SECRET_KEY`` come only from the environment or a secret store and are
 never committed (Constitution VI). Validators here fail the process at start-up rather than
-letting an unsafe production configuration run.
+letting an unsafe configuration run. ``ENVIRONMENT`` and ``JWT_SECRET_KEY`` have no defaults, so a
+deployment that forgets them stops instead of starting with a published key. Only the
+``development`` and ``test`` environments may use a weak secret or the development mail outbox;
+every other value (``production``, ``staging``, ...) gets the strict checks.
 """
 
+from pathlib import Path
 from typing import Self
 
 import email_validator
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-PLACEHOLDER_JWT_SECRET = "dev-secret-change-in-production"
+# The placeholder value that older configuration files and examples published. It is public,
+# not a secret: the settings use it only to REFUSE a signing key that equals it.
+PUBLISHED_PLACEHOLDER = "dev-secret-change-in-production"
 MIN_JWT_SECRET_BYTES = 32  # RFC 7518 §3.2: an HS256 key should be at least 256 bits
+
+#: The only environments allowed to use a weak secret and the development mail outbox.
+DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
+
+#: Mail backends that really deliver messages. None exists yet, so a non-development
+#: environment cannot start until a provider feature registers one (specs/002 research D6).
+REAL_MAIL_BACKENDS: frozenset[str] = frozenset()
+
+#: The development-only backend that stores a redacted record of each message in a local file.
+OUTBOX_BACKEND = "outbox"
+
+_DEFAULT_OUTBOX_PATH = str(Path(__file__).resolve().parents[3] / ".dev-mail" / "outbox.jsonl")
 
 
 class Settings(BaseSettings):
     """Typed configuration for the API process.
 
     Attributes:
-        ENVIRONMENT: ``production`` switches on the strict secret and e-mail checks.
+        ENVIRONMENT: Required. ``development`` and ``test`` are development environments; any
+            other value switches on the strict secret, e-mail and mail-backend checks.
         DATABASE_URL: Async SQLAlchemy URL of the application database.
-        JWT_SECRET_KEY: HMAC key for access tokens; the placeholder is rejected in production.
+        JWT_SECRET_KEY: Required. HMAC key for access tokens; outside development it must not be
+            the placeholder and must be at least 32 bytes.
         JWT_ALGORITHM: Signature algorithm; the only one accepted when decoding.
         ACCESS_TOKEN_TTL_SECONDS: Access-token lifetime; Constitution VI caps it at 15 minutes.
         REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again.
         LOGIN_MAX_FAILURES: Consecutive failed sign-ins before the account locks.
         LOGIN_LOCKOUT_MINUTES: How long a locked account stays locked.
         CORS_ORIGINS: Explicit allowed origins; credentials are allowed, so ``*`` is rejected.
+        MAIL_BACKEND: How messages are delivered. Defaults to ``outbox`` in a development
+            environment; outside development it must name a real backend.
+        MAIL_OUTBOX_PATH: File the ``outbox`` backend appends its redacted records to.
 
     Raises:
-        ValueError: On construction, if ``CORS_ORIGINS`` contains ``*``, or in production if
-            the JWT secret is the placeholder or shorter than 32 bytes.
+        ValueError: On construction (reported as a validation error that names the setting but
+            never prints a setting's value): ``ENVIRONMENT`` or ``JWT_SECRET_KEY`` missing;
+            ``CORS_ORIGINS`` containing ``*``; outside development, a placeholder or too-short
+            secret, or a missing or development-only mail backend.
     """
 
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str
     DATABASE_URL: str = "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds"
-    JWT_SECRET_KEY: SecretStr = SecretStr(PLACEHOLDER_JWT_SECRET)
+    JWT_SECRET_KEY: SecretStr
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_TTL_SECONDS: int = 900  # 15 minutes
     REFRESH_TOKEN_TTL_DAYS: int = 7
@@ -46,8 +71,21 @@ class Settings(BaseSettings):
     LOGIN_LOCKOUT_MINUTES: int = 15
     # JSON list in the environment, e.g. CORS_ORIGINS='["https://app.example.com"]'.
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
+    MAIL_BACKEND: str | None = None
+    MAIL_OUTBOX_PATH: str = _DEFAULT_OUTBOX_PATH
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # hide_input_in_errors keeps the raw environment, secret included, out of the error text:
+    # without it a failed start prints the whole input dictionary.
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "hide_input_in_errors": True,
+    }
+
+    @property
+    def is_development(self) -> bool:
+        """Whether ``ENVIRONMENT`` is a development environment (``development`` or ``test``)."""
+        return self.ENVIRONMENT.lower() in DEVELOPMENT_ENVIRONMENTS
 
     @field_validator("CORS_ORIGINS")
     @classmethod
@@ -58,30 +96,44 @@ class Settings(BaseSettings):
         return origins
 
     @model_validator(mode="after")
-    def _production_needs_real_secret(self) -> Self:
-        if self.ENVIRONMENT.lower() != "production":
+    def _refuse_unsafe_start(self) -> Self:
+        if self.is_development:
+            if self.MAIL_BACKEND is None:
+                self.MAIL_BACKEND = OUTBOX_BACKEND
+            if self.MAIL_BACKEND != OUTBOX_BACKEND and self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:
+                raise ValueError("MAIL_BACKEND does not name a known mail backend")
             return self
         secret = self.JWT_SECRET_KEY.get_secret_value()
-        if secret == PLACEHOLDER_JWT_SECRET:
+        if secret == PUBLISHED_PLACEHOLDER:
             raise ValueError(
-                "JWT_SECRET_KEY must be set to a real secret when ENVIRONMENT=production"
+                "JWT_SECRET_KEY must be set to a real secret unless ENVIRONMENT is "
+                "development or test"
             )
         if len(secret.encode()) < MIN_JWT_SECRET_BYTES:
             raise ValueError(
                 f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_BYTES} bytes "
-                "when ENVIRONMENT=production"
+                "unless ENVIRONMENT is development or test"
+            )
+        if self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:
+            raise ValueError(
+                "MAIL_BACKEND must name a real mail backend unless ENVIRONMENT is development "
+                "or test; the 'outbox' backend is for development only and no real backend is "
+                "available yet"
             )
         return self
 
 
-settings = Settings()
+# ENVIRONMENT and JWT_SECRET_KEY are required and come from the environment, which the type
+# checker cannot see; a missing one stops the process here with a validation error.
+settings = Settings()  # type: ignore[call-arg]
 
 
 def configure_email_validation(current: Settings) -> None:
-    """Allow reserved test domains in every environment except production.
+    """Allow reserved test domains in development environments only.
 
     The seeded development accounts use ``@hds.test``; email-validator rejects that TLD unless
-    told it is in a test environment. Production keeps the strict check.
+    told it is in a test environment. Every environment outside development keeps the strict
+    check.
 
     Side effects:
         Sets the module-level ``email_validator.TEST_ENVIRONMENT`` flag.
@@ -89,7 +141,7 @@ def configure_email_validation(current: Settings) -> None:
     Args:
         current: The settings whose ``ENVIRONMENT`` decides the mode.
     """
-    email_validator.TEST_ENVIRONMENT = current.ENVIRONMENT.lower() != "production"
+    email_validator.TEST_ENVIRONMENT = current.is_development
 
 
 def get_settings() -> Settings:

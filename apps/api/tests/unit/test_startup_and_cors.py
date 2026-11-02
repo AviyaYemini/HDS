@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
-from hds.core.config import PLACEHOLDER_JWT_SECRET, Settings
+from hds.core.config import PUBLISHED_PLACEHOLDER, Settings
 from hds.main import create_app
 
 
@@ -50,7 +50,7 @@ def test_production_with_placeholder_secret_refuses_to_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("JWT_SECRET_KEY", PLACEHOLDER_JWT_SECRET)
+    monkeypatch.setenv("JWT_SECRET_KEY", PUBLISHED_PLACEHOLDER)
     with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
         Settings()
 
@@ -65,7 +65,7 @@ def test_production_with_real_secret_starts(
 
 def test_development_with_placeholder_secret_starts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("JWT_SECRET_KEY", PLACEHOLDER_JWT_SECRET)
+    monkeypatch.setenv("JWT_SECRET_KEY", PUBLISHED_PLACEHOLDER)
     Settings()
 
 
