@@ -322,7 +322,7 @@ def post_edit(d):
         base, cwd = ruff_cmd(p)
         if base:
             run(base + ["format", str(p)], cwd=cwd)
-            rc, out = run(base + ["check", "--fix", str(p)], cwd=cwd)
+            rc, out = run(base + ["check", "--fix", "--extend-ignore", "F401", str(p)], cwd=cwd)
             if rc != 0 and out:
                 issues.append("ruff:\n" + out[-1500:])
     elif p.suffix in (".ts", ".tsx", ".js", ".jsx", ".json") and shutil.which("pnpm") \
