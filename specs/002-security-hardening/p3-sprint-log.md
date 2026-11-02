@@ -490,3 +490,118 @@ was right, and it was not bypassed.
 
 Stopped before P4 as instructed, then the owner asked to carry on until the branch is ready, so P4 to
 P6 continue below under the same rules. Pushing and merging still wait for the owner.
+
+# P4 to P6
+
+Same rules as the P3 sprint. The sections below are each one group.
+
+## P4 Group A: log redaction keeps no fragment (T369 to T372, F05)
+
+**Differs from T370**, which asked for a change to the `_SENSITIVE_PAIR` pattern. Two versions of that
+change were written and reviewed. The first passed its tests and had two regressions. The second fixed
+those and created new ones: patterns must guess where a value ends, and each guess either leaks the end
+of a secret or erases the rest of the record, and a pattern cannot follow nesting. So regular expressions
+now only find keys, and a small scanner reads each value by its structure. Neither version was committed.
+
+My first log entry here said the regex was linear. That was false: I had tested only quote inputs, and
+`_EMAIL` was quadratic on a long word.
+
+What it does now:
+- Strings go by their escapes and end with their line at most, so a truncated value goes and the lines
+  after it stay. Two backslashes before a quote are one escape, as in a repr of JSON.
+- Lists, dicts, tuples, bytes and wrappers such as `SecretStr('...')` go whole, however they nest,
+  across lines too. An unbalanced bracket at the start of a value takes the rest of the text: that is
+  the safe direction.
+- JSON inside a JSON string is read by its own delimiter.
+- Keys may hold the keyword anywhere, may be any length and may contain dashes. `email` and `phone`
+  compounds count in quoted pairs. `key: value` text and `Bearer` credentials are covered. A side
+  effect: harmless names such as `token_type` are redacted too.
+- A raw unquoted `key=value` still ends at a space, comma or semicolon, as D22 says, so
+  `password=ab,cd` keeps `cd`. A secret with those characters must be quoted to be caught.
+- An ambiguity kept on the safe side: `{"url": "/reset?token=", "next": "kept"}` loses `, "` and
+  `next`, because `token=", "` could be a quoted secret starting with a comma, as a review probe showed.
+  A test that asserted the opposite on the same input was changed for this reason, before any commit.
+- The rules repeat until the text stops changing, at most 5 times, which makes `redact` idempotent.
+
+Evidence: the property tests over quotes, backslashes, brackets, spaces and separators, plus an
+exhaustive run of every string up to length 4 over that alphabet in seven forms: 18,750 strings, no
+fragment in any structured form, and only the raw unquoted case above. That run is not in the suite.
+200,000-character hostile inputs finish well inside the test's bound. That bound is 5 s, about 100 times
+the real cost, so a loaded CI runner cannot fail it.
+
+Test change: `test_nothing_survives_because_one_rule_reshaped_the_text_for_another`, written from a
+review probe, was removed before any commit. In that fuzzed string `a` is not the value of anything.
+The idempotence test for the same string stays.
+
+Failing first: 6 of 8 tests for the first version, 24 of 40 for the first review's probes, and the
+second review's probes were added before the scanner was written.
+
+`/code-review high`, first version, ten findings: JSON inside JSON; the leak surviving a repr of JSON;
+two regressions (the rest of a record erased, `password=ab}cd` leaving `}cd`); lists, bytes and wrappers;
+compound names; quadratic `_EMAIL`; not idempotent; a narrow test alphabet. All fixed. The tenth, no
+index on `expires_at`, needs an unplanned migration and is in the report.
+
+`/code-review high`, second version, ten findings: all of these are fixed by the scanner, test first:
+the repr leak with a comma; `key=value` values not going whole; nesting and tuples; a quoted secret
+starting with a separator; erasing the line after a closing quote; quadratic `_ESCAPED_PAIR`; long key
+names; a long local part left in clear; `phone`, `email`, `x-auth-token` and `Bearer` forms; and the test
+alphabet. Its wall-clock remark is met by the wider bound.
+
+`/code-review high`, third version, ten findings plus three minor, all reproduced by the reviewer.
+Fixed, test first: a secret ending in a backslash exposing the next field; `token=Bearer abc` leaving the
+credential; strings in containers inside a JSON string; a truncated wrapper keeping its tail;
+`password = x` and `"password"="x"`; `<Token a b>` reprs; quadratic time on repeated keywords and on
+unbalanced wrappers. The other way round, also fixed: the `key: value` form was removing words from
+ordinary tracebacks (`InvalidTokenError: Signature has expired`, `def f(token: str)`), so it now applies
+to compound names only; `[token=abc][user=bob]` lost its neighbour; `Bearer` matched prose.
+
+**I stopped here on purpose.** Three rounds show that this can be refined for ever, because free text
+cannot be parsed exactly. What remains, by choice:
+- `password:hunter2` and `token: abc` are not redacted: a plain word before a colon is prose, and the
+  review showed the cost of treating it as a key. `x-auth-token: abc` and `refresh_token: abc` are.
+- A raw unquoted `key=value` ends at a space, comma or semicolon. Only a closer directly followed by a
+  word character or a backslash stays in it.
+- After two backslashes before a quote, the rest of the line goes. Those can be a repr of JSON or a
+  value ending in a backslash, and they cannot be told apart.
+- `'''ab cd'''` keeps its tail.
+- A wrapper longer than 2000 characters is not followed.
+
+Harness corrections: P-series mutations showed two faults. Two mutations of the same size written in the
+same second reused cached bytecode, so the harness now writes none. Earlier batches had different sizes
+and named the right tests, so they stand. A run with no named failing test now counts as a problem,
+which caught mutations of mine that were only syntax errors.
+
+Mutation results on the final code, on `hds_p3_test`, files restored. Mutations written against an
+earlier version were rewritten to the final text and run again:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| Q1 | First quote always closes (T371's old behaviour) | `test_the_reported_case_leaves_no_fragment` |
+| Q3 | String runs past its line | `test_text_after_a_value_survives` |
+| Q4 | No nesting in brackets | `test_a_value_that_is_not_a_plain_string_goes_whole` |
+| Q5 | Quotes ignored in brackets | same test (added after it survived) |
+| Q6 | Deeper delimiter closes | `test_json_inside_json_leaves_no_fragment` |
+| Q7 | Escaped value runs past its line | `test_text_after_a_value_survives` (added after it survived) |
+| Q8 | Empty value not recognised | same test (added after it survived) |
+| Q9 | Pair carries on after its string | same test |
+| Q10 | `key=value` stops after its string | `test_unquoted_key_value_pairs_leave_no_fragment` |
+| Q11 | No bytes prefix | `test_a_value_that_is_not_a_plain_string_goes_whole` |
+| Q12 | No wrapper | same test |
+| Q13 | Unbalanced wrapper erases the text | `test_text_after_a_value_survives` (added after it survived) |
+| Q15 | No `Bearer` | `test_long_and_header_style_names_are_covered` |
+| Q17 | No `email` or `phone` compounds | same test |
+| Q18 | Quadratic email | `test_hostile_text_is_handled_quickly` |
+| Q19 | Quadratic backslash run | `test_hostile_text_is_handled_quickly` |
+| Q20 | One pass | `test_a_second_pass_changes_nothing_on_inputs_that_used_to_reshape` |
+| Z1 | Doubled escape treated as a close | `test_json_logged_through_a_repr_leaves_no_fragment` |
+| Z2 | `Bearer` after the assignments | `test_long_and_header_style_names_are_covered` |
+| Z3 | Escaped strings not read in brackets | `test_containers_inside_a_json_string_are_read_as_strings` |
+| Z4 | Truncated wrapper keeps its tail | `test_a_truncated_wrapper_with_an_open_string_leaves_nothing` |
+| Z5 | No angle form | `test_an_object_repr_in_angle_brackets_goes_whole` |
+| Z6 | Any word before a colon | `test_ordinary_diagnostics_are_left_alone` |
+| Z7 | No colon form | `test_long_and_header_style_names_are_covered` |
+| Z8 | No spaces around `=` | same test |
+| Z9 | No `=` in quoted pairs | same test |
+| Z10 | Wrapper unbounded | `test_hostile_text_is_handled_quickly` |
+| Z11 | Prose `Bearer` | `test_ordinary_diagnostics_are_left_alone` |
+| Z12 | Any closer keeps the value going | same test |

@@ -678,10 +678,10 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 ### Group A: log redaction keeps no fragment (F05; research D22)
 
-- [ ] T369 [P] [F05] Write `apps/api/tests/unit/test_log_redaction_quotes.py`: `redact('{"password": "ab\\"cd"}')` leaves no `cd` fragment and no part of the secret; values containing `"`, `'` and `\` (single and double quoted, JSON and key=value forms) never leave a fragment longer than one character of the secret; redacting twice equals redacting once (property test with Hypothesis). Show it failing
-- [ ] T370 [F05] In `apps/api/src/hds/core/logging.py` change `_SENSITIVE_PAIR` (line 22) so the value group consumes backslash escapes and stops only at an unescaped matching delimiter; unquoted values still stop at whitespace, comma or closing brace. Update the docstring
-- [ ] T371 [F05] Mutation check: restore the old pattern; the test must fail; restore the file
-- [ ] T372 [F05] Commit as `fix(api): log redaction removes values that contain quotes and backslashes`
+- [X] T369 [P] [F05] Write `apps/api/tests/unit/test_log_redaction_quotes.py`: `redact('{"password": "ab\\"cd"}')` leaves no `cd` fragment and no part of the secret; values containing `"`, `'` and `\` (single and double quoted, JSON and key=value forms) never leave a fragment longer than one character of the secret; redacting twice equals redacting once (property test with Hypothesis). Show it failing
+- [X] T370 [F05] In `apps/api/src/hds/core/logging.py` change `_SENSITIVE_PAIR` (line 22) so the value group consumes backslash escapes and stops only at an unescaped matching delimiter; unquoted values still stop at whitespace, comma or closing brace. Update the docstring
+- [X] T371 [F05] Mutation check: restore the old pattern; the test must fail; restore the file
+- [X] T372 [F05] Commit as `fix(api): log redaction removes values that contain quotes and backslashes`
 
 ### Group B: canonical time-zone names (F10; research D21, amends D11)
 
