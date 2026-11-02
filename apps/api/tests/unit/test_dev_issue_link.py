@@ -14,6 +14,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -76,17 +77,60 @@ async def stored(factory: Factory, token: str) -> Any:
         )
 
 
-async def test_refuses_to_run_outside_development(
-    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    "environment",
+    ["production", "Production", "PRODUCTION", "staging", "prod", "", " development "],
+)
+async def test_refuses_to_run_outside_development_whatever_the_settings_say(
+    environment: str, script: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """The script's own guard: only ``development`` and ``test`` pass, matched on the value given.
+
+    ``run`` takes the environment as an argument and never reads the settings, so this holds even
+    if the settings were somehow permissive. The database must not be opened.
+    """
+
     def must_not_open() -> AsyncSession:
         raise AssertionError("the database must not be touched")
 
-    code = await script.run(["pending@hds.test", "invite"], "production", must_not_open)
+    code = await script.run(["pending@hds.test", "invite"], environment, must_not_open)
+
     captured = capsys.readouterr()
     assert code == 2
     assert captured.out == ""
     assert "development" in captured.err
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_the_command_line_entry_point_refuses_outside_development_without_touching_the_database(
+    environment: str,
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``main`` reads the environment from the settings and hands it to the guard."""
+
+    def must_not_open() -> AsyncSession:
+        raise AssertionError("the database must not be touched")
+
+    class Disposable:
+        async def dispose(self) -> None:
+            return None
+
+    monkeypatch.setattr(script, "get_settings", lambda: SimpleNamespace(ENVIRONMENT=environment))
+    monkeypatch.setattr(script, "AsyncSessionLocal", must_not_open)
+    monkeypatch.setattr(script, "engine", Disposable())
+
+    assert script.main(["pending@hds.test", "invite"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "development" in captured.err
+
+
+@pytest.mark.parametrize("environment", ["development", "test", "Development", "TEST"])
+async def test_runs_in_the_development_environments(
+    environment: str, script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert await script.run(["pending@hds.test", "invite"], environment, factory) == 0
 
 
 async def test_issues_an_invitation_token_for_a_pending_account(

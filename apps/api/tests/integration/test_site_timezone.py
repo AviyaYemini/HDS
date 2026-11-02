@@ -98,3 +98,24 @@ async def test_a_real_zone_is_stored_as_given(
 
     assert created.status_code == 201
     assert await site_rows(test_db) == [("Gate", "Asia/Kolkata")]
+
+
+@pytest.mark.parametrize("zone", ["Asia/Jerusalem", "UTC", "Asia/Kolkata"])
+async def test_a_valid_zone_is_accepted_on_create_and_on_edit(
+    zone: str, async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    headers = await manager_headers(async_client)
+    created = await async_client.post(
+        "/api/v1/sites",
+        json={"name": "Gate", "address": "1 Example St", "timezone": "Europe/London"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+
+    edited = await async_client.patch(
+        f"/api/v1/sites/{created.json()['id']}", json={"timezone": zone}, headers=headers
+    )
+
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["timezone"] == zone
+    assert await site_rows(test_db) == [("Gate", zone)]
