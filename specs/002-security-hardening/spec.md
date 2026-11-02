@@ -63,6 +63,24 @@ they cannot be confused with the ids of feature 001, which tests already cite.
   clears the lockout (F11), a Client account's role cannot change (F23), a client's contract end
   may not precede its start (F24).
 
+### Session 2026-11-03 (after the reset timing test failed at Group C)
+
+- Q: The reset request's timing test failed at a ratio of about 1.7 with a connection pool, because a
+  registered address does more database work. How is FR-228 met? → A: The request only counts and
+  answers. The lookup, the lock, the link and the mail run after the response, in a job with its own
+  session, queued only when the request is within its limits. Running and waiting jobs are capped per
+  worker; a job past the cap is dropped and logged, and the answer stays 202. This replaces the
+  residual accepted in research D17.
+- Q: Where is SC-212 measured? → A: With a connection pool, as production runs. The pass mark stays
+  1.15.
+- Q: Should a public reset request still cancel earlier links? → A: No. Anyone can make that request,
+  so it must not be able to take a working link away. A completed reset still cancels every other
+  link. This supersedes the "only the latest link works" rule in FR-224.
+- Q: Does the reset request get a network limit as well as the per-address one? → A: Yes, 30 in the
+  60-minute window by default and 0 turns it off. Over it the answer stays 202, nothing is queued and
+  a warning is logged, because behind a proxy with a wrong proxy count this would silently stop reset
+  mail for everyone.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Secrets and one-time links never leak (Priority: P1)
@@ -426,8 +444,8 @@ F04 is FR-221 to FR-223 and F08 is FR-209. F15 and F16 correct this spec and the
 change no behaviour, so they need no requirement.
 
 - **FR-224** (F01): When a password reset completes, every other outstanding reset or invitation
-  link of that account MUST stop working (`auth.token_used`), and issuing a new reset link MUST
-  cancel that account's earlier unused reset links.
+  link of that account MUST stop working (`auth.token_used`). A new reset request MUST NOT cancel an
+  earlier link, because anyone can make one.
 - **FR-225** (F02): Deactivating or deleting a client, or removing a portal user, MUST end that
   user's sessions and cancel their links, and a portal user MUST NOT be reactivated while the
   client is inactive or deleted (409 `users.client_inactive`). A portal user MUST NOT be created
@@ -439,7 +457,10 @@ change no behaviour, so they need no requirement.
 - **FR-227** (F05): No part of a sensitive value may survive log redaction, whatever characters it
   contains, and redacting twice MUST change nothing further.
 - **FR-228** (F06): `POST /auth/password-reset/request` MUST take the same observable time for
-  registered and unregistered addresses, and delivery MUST run after the response.
+  registered and unregistered addresses. The request MUST only count and answer: looking the address
+  up, issuing a link and delivering the mail MUST run after the response, whatever the address, and
+  only for a request within its limits. That work MUST be capped per worker; past the cap it is
+  dropped and logged without the address, and the answer stays 202.
 - **FR-229** (F07): An account with evidence of past activity (any refresh token, or any reset
   link) MUST NOT remain pending after migration; invitation links are not evidence; undecidable
   accounts MUST be reported by id and left pending.
@@ -476,8 +497,10 @@ change no behaviour, so they need no requirement.
   row first, so redeeming a link and a staff action on the same account never surface as a server
   error.
 - **FR-247** (F28): Password-reset requests MUST be limited per submitted address, registered or not,
-  in a fixed window. Over the limit the answer MUST stay 202, and no link is cancelled and no mail
-  is sent, so the limit reveals nothing and a third party cannot keep cancelling a victim's links.
+  and per network address, each in a fixed window. Over either limit the answer MUST stay 202 and
+  nothing is issued or sent, so the limits reveal nothing and a third party cannot fill a victim's
+  mailbox or the job queue. Reaching the network limit MUST log a warning, because a wrong proxy
+  count would otherwise silently stop reset mail for everyone.
 
 ## Success Criteria *(mandatory)*
 
@@ -508,7 +531,8 @@ change no behaviour, so they need no requirement.
   an unrelated request is answered within 2 seconds, and requests past the hashing queue are
   refused at once with 503.
 - **SC-212**: `POST /auth/password-reset/request` has a median time ratio below 1.15 between
-  registered and unregistered addresses, and delivery starts after the response is complete.
+  registered and unregistered addresses, measured with a connection pool as production runs, and all
+  work on the address starts after the response is complete.
 
 ## Assumptions
 

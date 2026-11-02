@@ -78,13 +78,16 @@ changed error answers; each needs English and Hebrew text where it is a new code
 - Deactivating or deleting a client, or removing a portal user, ends that user's sessions (F02).
 - Password-reset request returns before delivery runs (F06); delivery failures are logged by type.
 - A Client-role user without a client sees no projects (F18).
-- Password-reset requests over the per-address limit still answer 202; nothing is cancelled or sent (F28).
+- Password-reset requests over the per-address or per-network limit still answer 202; nothing is issued or sent (F28).
+- A password-reset request cancels no earlier link; only a completed reset does (FR-224). All work on the address runs after the response, so a failure there is never reported: the answer is always 202 (FR-228).
 
 ## New settings
 
 `HASH_CONCURRENCY` (default 2), `HASH_QUEUE_LIMIT` (8), `LOGIN_RATE_LIMIT_PER_NETWORK` (30 per
 fixed window of `LOGIN_LOCKOUT_MINUTES`; 0 turns the network limit off), `TRUSTED_PROXY_COUNT` (0:
-ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24), `THROTTLE_SECRET_KEY` (optional, at least 32 bytes outside development; derived from `JWT_SECRET_KEY` when unset), `RESET_REQUEST_LIMIT_PER_ADDRESS` (5 per `RESET_TTL_MINUTES`; 0 turns it off). The per-address limit and lock length
+ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24), `THROTTLE_SECRET_KEY` (optional, at least 32 bytes outside development; derived from `JWT_SECRET_KEY` when unset), `RESET_REQUEST_LIMIT_PER_ADDRESS` (5 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_REQUEST_LIMIT_PER_NETWORK` (30 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_JOB_CONCURRENCY` (2), `RESET_JOB_QUEUE_LIMIT` (100). The per-address limit and lock length
 reuse `LOGIN_MAX_FAILURES` and `LOGIN_LOCKOUT_MINUTES`. All go into `.env.example` and the
 configuration table; the existing test enforces both. Behind a proxy with `TRUSTED_PROXY_COUNT`
-left at 0 every user shares one address: set the count or set the network limit to 0.
+left at 0 every user shares one address: set the count or set the network limits to 0. For sign-in
+that locks everyone out; for reset requests it silently stops reset mail for everyone, with only a
+warning in the log.

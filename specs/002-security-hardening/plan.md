@@ -317,6 +317,8 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
 - **F06** (D17). Test first: with a deliberately slow sender, `POST /auth/password-reset/request`
   returns before delivery starts, and a registered and an unregistered address take comparable time
   (opt-in timing test extended). After-commit actions run as a background task after the response.
+  Amended after the timing test failed (D17): the request only counts and answers, and a capped job
+  with its own session does the address work; the test runs on a pooled engine.
 
 Checkpoint P3: SC-207 unit and opt-in timing test, new load test, contract suite and the Schemathesis
 CLI script (which must tolerate 429 on login; the script's login exclusion already covers it).

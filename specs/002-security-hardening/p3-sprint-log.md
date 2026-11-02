@@ -169,3 +169,64 @@ Mutation results on the final code, all caught on `hds_p3_test`, files restored:
 
 Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass; OpenAPI drift check
 passes in its current form.
+
+## Group C: stopped at the reset timing test (T359 to T361, F06, FR-228, SC-212)
+
+**Status: stopped under the rule "the opt-in timing test fails". Not committed. Work is in the tree.**
+
+Done, uncommitted:
+- T359 `tests/integration/test_delivery_after_response.py`. The ordering test failed first, because no
+  response had been sent when delivery started. It passes after the change, through the real
+  middleware, using the direct ASGI harness. The failed-commit and failed-delivery tests passed before
+  and after: they pin behaviour that must not change.
+- T360 `tests/integration/test_reset_request_timing.py`. **It fails.**
+- T361 `get_unit_of_work` queues one background task after a successful commit. `unit_of_work` without
+  a request still runs actions at once. `tests/unit/test_unit_of_work.py`: two calls pass the new
+  argument, no assertion changed, three tests added.
+
+Not done: T362 (ADR 008, which should record the outcome of this decision), T363, T364, reviews, and
+Groups D and E.
+
+The test keeps the count on, with a high limit, as production runs it.
+
+| Measurement | Unknown | Registered | Ratio | Pass mark |
+| --- | --- | --- | --- | --- |
+| Test as written, three runs (a new connection per request) | 28 ms | 33.6 ms | 1.20 | 1.15 |
+| Without the early commit from Group B2, two runs | 20.3 ms | 24.7 ms | 1.22 | 1.15 |
+| Pooled engine, as in production, two runs (temporary test edit, restored) | 3.1 to 3.7 ms | 5.4 to 5.9 ms | 1.58 to 1.74 | 1.15 |
+| Login timing test, for comparison | 63.6 ms | 69.1 ms | 1.086 | 1.15 |
+
+Explained:
+- The cause is not delivery, which now runs after the response, and not the early commit from B2:
+  removing it changes the ratio by 0.02. The registered path does more database work: `lock_user`, the
+  re-read, `cancel_for_user`, the token insert and the commit that saves them.
+- The re-read added from the B2 review is a small part of this; the rest is what D17 calls the
+  residual, plus the lock and the cancel.
+- D17 expected the residual to be hidden as in sign-in. It is not: sign-in has about 55 ms of password
+  check around the same gap, and this path has none. About 15 of the 20 ms baseline in the test as
+  written is opening a connection, so the true ratio is the pooled one.
+- The login test is unaffected. Its property holds at 1.086.
+
+Not attempted, because each option needs the owner's decision: the plan rejected a dummy write and a
+delay, and moving the account work out of the request is a design change from D17.
+
+### Resumed: the owner's four decisions
+
+Recorded in the spec before any code (T420): the request only counts and answers (FR-228), SC-212 is
+measured on a pooled engine, a request no longer cancels links (FR-224), and reset requests get a
+network limit (FR-247).
+
+Decisions taken here, without asking:
+- `RESET_JOB_CONCURRENCY` 2 and `RESET_JOB_QUEUE_LIMIT` 100. The owner asked for a cap on running and
+  waiting jobs and set no values. Two matches the hashing limit and keeps most connections free. The
+  queue is long because a dropped job is a lost mail, and a waiting job costs almost nothing.
+- Both counts always run, even when the first is over. A request over one limit then does exactly the
+  same work as any other. It costs nothing extra: a blocked network has already had its chance at the
+  address limit.
+- The network warning is logged once per window, at the first request over the limit, not on every
+  request, so an attacker cannot fill the log. It still appears in the first over-limit request.
+- The early commit from Group B2 is removed: nothing follows the count in the request any more, and
+  the job is queued as an after-commit action, so it only runs if the count was saved.
+- `pr4-fix-list.md` still says a new link cancels earlier ones. It is the historical input list, so it
+  is left as it was; the spec is the current rule.
+- Tasks: T420 to T427 are added to Group C; T359 and T360 are amended by T421.

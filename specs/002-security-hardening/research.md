@@ -435,8 +435,16 @@ network limit and could otherwise add rows far faster than sign-in. The table is
 the request rate over `LOGIN_THROTTLE_RETENTION_HOURS`, not by a fixed size. The count is committed
 before the account is looked at, so it survives a later failure and its row lock is not held while
 the request waits for the user's row.
-Over the limit the answer is still 202 and nothing is cancelled or sent, which keeps the promise
-that this endpoint reveals nothing and leaves the last link working.
+Over the limit the answer is still 202 and nothing is issued or sent, which keeps the promise that
+this endpoint reveals nothing. A request no longer cancels earlier links (see D17), so the limit is
+about mail volume, not about protecting a link.
+
+**Reset requests per network**: `RESET_REQUEST_LIMIT_PER_NETWORK` (default 30 in the same window; 0
+turns it off) counts under kind `reset` with a `network:` key prefix, which no address can collide
+with, so no migration is needed. Both counts always run, so a request over one limit does the same
+work as any other. The first request over the network limit in a window logs one warning: behind a
+proxy with a wrong `TRUSTED_PROXY_COUNT` every user shares one address, so this would silently stop
+reset mail for everyone. A warning per request would let an attacker fill the log.
 
 **Rationale**: the first draft answered 429 above a limit of 10 while a registered address locked
 with 423 at 5, so anyone could still tell them apart and FR-221's "same answer" did not hold.
@@ -454,6 +462,9 @@ draft); a reverse-proxy limit (not available in every deployment).
 
 ## D17. Delivery after the response (F06)
 
+**Amended on 2026-11-03, after the timing test failed**: see "All address work after the response"
+at the end of this section. The residual below no longer applies to the reset request.
+
 **Decision**: `get_unit_of_work` receives FastAPI's `BackgroundTasks`; after a successful commit it
 queues one task that runs the session's after-commit actions. They therefore run **after the
 response is sent**, still only after the commit and still dropped on rollback. A delivery failure is
@@ -470,6 +481,27 @@ test is extended to this endpoint with the same pass mark (ratio below 1.15).
 **Alternatives**: a real queue (new infrastructure, no provider exists yet); a dummy write for
 unknown addresses (doubles the work for every probe and is easy to get wrong); do nothing until a
 provider exists (the gap grows to a network call).
+
+**All address work after the response**: the residual was larger than estimated: a ratio of 1.2 with
+a new connection per request and about 1.7 with a pool, because this path has no password check to
+hide the gap as sign-in has. So the request now only counts (per address and per network), removes
+stale rows and answers. When it is within its limits, it queues one job as an after-commit action,
+whatever the address. The job has its own session and unit of work, from `get_session_factory`, which
+tests can override. It looks the address up, takes the user's row first, reads the account again,
+stores a link and sends the mail once its transaction has committed.
+
+`RESET_JOB_CONCURRENCY` (2) jobs run at once per worker and `RESET_JOB_QUEUE_LIMIT` (100) more may
+wait, so a burst cannot take every database connection. Past that the job is dropped and logged by
+type, without the address; the answer is already sent. A job costs an unregistered address a lookup,
+so the cap also holds under random addresses. A crash after the response loses that one mail, and
+the requester can ask again. ADR 008 records this.
+
+Rejected: a dummy write or a delay on the unknown path (D17 above, and plan.md); a real queue (new
+infrastructure, and no provider exists yet).
+
+**A request no longer cancels links**: if a public request can cancel a link, anyone can keep
+replacing it. An account can now hold several live reset links, at most the per-address limit per
+window. Each lasts 60 minutes, and a completed reset cancels every other link (FR-224).
 
 ## D18. Correcting migration 014's backfill (F07)
 

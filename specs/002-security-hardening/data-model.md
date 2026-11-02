@@ -103,7 +103,7 @@ columns; a network address always uses this table.
 | Column | Type | Rule |
 | --- | --- | --- |
 | `kind` | short text | `address`, `network` or `reset`; check constraint `ck_login_throttle_kind`; part of the primary key |
-| `key_hash` | text (64) | HMAC-SHA-256 hex, keyed by a server secret, of the lowercased submitted address or of the client network address (an IPv6 address reduced to its /64); never the value itself, and a copy of the table alone cannot confirm one; part of the primary key |
+| `key_hash` | text (64) | HMAC-SHA-256 hex, keyed by a server secret, of the lowercased submitted address or of the client network address (an IPv6 address reduced to its /64; a `reset` row for a network has the prefix `network:`, so it cannot collide with an address); never the value itself, and a copy of the table alone cannot confirm one; part of the primary key |
 | `failures` | integer | consecutive failures, at least 0; restarts at 1 on the first failure after a lock ends or a window ends; for `address` rows cleared by a successful sign-in, for `network` rows never cleared by one |
 | `window_started_at` | timestamptz, null | `network` and `reset` rows only: start of the fixed counting window; a failure after the window restarts it and the count; the window is `LOGIN_LOCKOUT_MINUTES` for `network` and `RESET_TTL_MINUTES` for `reset` |
 | `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit (`address`) or the window limit (`network`, `reset`); a `reset` request is refused only when the count is above the limit, so this column does not decide it |
@@ -122,9 +122,9 @@ bulk. Downgrade drops the table (the counts are disposable).
   (D18). The constraint `ck_users_active_has_activated_at` is unchanged.
 - **`refresh_tokens`** (F08, F09): expired rows are deleted; `revoked_reason` values are unchanged.
   Refresh and every revoke-all take a row lock on the owning user (no schema change).
-- **`invitation_tokens`** (F01, F02, F08): `cancel_for_user` gains an optional purpose; a completed
-  reset cancels every other link of the account; a new reset request cancels earlier unused reset
-  links. Cleanup deletes only links past `expires_at`; spent and cancelled links inside their
+- **`invitation_tokens`** (F01, F02, F08): a completed reset cancels every other link of the
+  account; a new reset request cancels nothing, so an account can hold several live reset links.
+  Cleanup deletes only links past `expires_at`; spent and cancelled links inside their
   lifetime are kept so their answer stays `auth.token_used`.
 - **Client accounts** (F23, F24): a user with role `client` has no role change; a client's
   `contract_end` is on or after `contract_start` (service rule, not a new constraint, because

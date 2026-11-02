@@ -641,6 +641,14 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 - [ ] T361 [F06] In `apps/api/src/hds/core/database.py` change `get_unit_of_work` to take FastAPI's `BackgroundTasks`: after a successful commit it adds ONE background task that runs the session's after-commit actions, so they run after the response is sent, still only after the commit and still dropped on rollback; keep failure logging by type. Adapt `apps/api/tests/unit/test_unit_of_work.py`, `test_unit_of_work_dependency.py`, `test_deferred_mailer.py` and `tests/integration/test_mail_after_commit.py` to the new ordering without weakening them
 - [ ] T362 [F06] Write `docs/adr/008-delivery-after-the-response.md` (context, decision, the residual token-write difference, alternatives) and add a pointer to `docs/adr/005-request-scoped-transactions.md`; add both to the ADR table in `docs/README.md`
 - [ ] T363 [F06] Mutation check: run the actions before the response again; the ordering test must fail; restore the file
+- [X] T420 [F06] Record the owner's four decisions in `spec.md` (FR-224, FR-228, FR-247, SC-212, clarifications), `research.md` (D16, D17), `plan.md`, `data-model.md`, `contracts/error-codes.md` and `quickstart.md`, before any code
+- [ ] T421 [F06] [F28] Amends T360: `tests/integration/test_reset_request_timing.py` uses a pooled engine as its permanent form and times up to the end of the response with the direct ASGI harness, because httpx waits for background work. Amends T359: the ordering test also proves that nothing touches the account before the response, and that a failed job commit sends nothing
+- [ ] T422 [F06] Tests first, then `core/background.py` (`RESET_JOB_CONCURRENCY`, `RESET_JOB_QUEUE_LIMIT`, per event loop; past the cap a job is dropped and logged by type with no address) and `get_session_factory` in `core/database.py`, overridden in the shared test fixtures
+- [ ] T423 [F06] [F28] Tests first, then split `request_password_reset` in `services/invitation.py`: the request counts, purges and returns whether it is within its limits; `issue_reset_link` looks up, locks the user, reads again and stores the link. The router queues the job as an after-commit action. T418's early commit is removed, because nothing follows the count in the request any more
+- [ ] T424 [F01] Tests first, then remove the cancel from the request path and the `purpose` argument nothing else uses; update `test_reset_cancels_links.py`, the operation description and the service docstrings (FR-224)
+- [ ] T425 [F28] Tests first, then `RESET_REQUEST_LIMIT_PER_NETWORK` (default 30, 0 off, kind `reset`, key prefix `network:`): over it 202, nothing queued, one warning per window. Set to 0 in the shared test configuration, on only in its own test; add to the example settings, the configuration table and the proxy note
+- [ ] T426 [F06] Add the job to `tests/concurrency/test_lock_order.py` against deactivation, deletion and confirmation
+- [ ] T427 [F06] [F28] Mutation checks: job run before the response; job queued over either limit; job queued only for a registered address; cap not enforced; address in the drop log; cancel restored; no re-read after the lock; link before the user lock; network key without its prefix; network limit off at the wrong value; warning on every request; job using the request's session. Each must fail a test; restore files; record results
 - [ ] T364 [F06] Commit as `fix(api): send mail after the response so a reset request takes the same time for every address`
 
 ### Group D: bulk purge, settings and documents for P3
@@ -888,7 +896,7 @@ SC-209 has at least one implementing task and one test task.
 | F03 | T317, T318, T319, T320, T321, T332, T333 |
 | F04 | T339, T340, T341, T342, T343, T344, T345, T346, T347, T348, T349, T350, T351, T352, T353, T354, T355, T356, T357, T358, T365, T366, T367, T368, T407, T408, T409, T410, T411, T412 |
 | F05 | T369, T370, T371, T372 |
-| F06 | T359, T360, T361, T362, T363, T364, T368 |
+| F06 | T359, T360, T361, T362, T363, T364, T368, T420, T421, T422, T423, T426, T427 |
 | F07 | T334, T335, T336, T337, T338 |
 | F08 | T322, T323, T324, T325, T326, T332, T333, T365 |
 | F09 | T327, T328, T329, T330, T331 |
@@ -910,7 +918,7 @@ SC-209 has at least one implementing task and one test task.
 | F25 | T388, T389, T391 |
 | F26 | T385, T386, T387 |
 | F27 | T413, T414, T416 |
-| F28 | T417, T418, T419 |
+| F28 | T417, T418, T419, T421, T423, T425, T427 |
 
 ## Part 2 coverage: requirement → tasks
 
@@ -922,11 +930,11 @@ FR-221 to FR-223 share the `[F04]` label; their tasks are T339 to T358 and T407 
 | FR-221 | F04 | T339, T340, T341, T342, T343, T344, T345, T346, T347, T348, T349, T350, T351, T352, T353, T354, T355, T356, T357, T358, T365, T366, T367, T368, T407, T408, T409, T410, T411, T412 |
 | FR-222 | F04 | T339, T340, T341, T342, T343, T344, T345, T346, T347, T348, T349, T350, T351, T352, T353, T354, T355, T356, T357, T358, T365, T366, T367, T368, T407, T408, T409, T410, T411, T412 |
 | FR-223 | F04 | T339, T340, T341, T342, T343, T344, T345, T346, T347, T348, T349, T350, T351, T352, T353, T354, T355, T356, T357, T358, T365, T366, T367, T368, T407, T408, T409, T410, T411, T412 |
-| FR-224 | F01 | T305, T306, T307, T308, T309, T310, T332, T333 |
+| FR-224 | F01 | T305, T306, T307, T308, T309, T310, T332, T333, T420, T424, T427 |
 | FR-225 | F02 | T311, T312, T313, T314, T315, T316, T332, T333, T415, T416 |
 | FR-226 | F03 | T317, T318, T319, T320, T321, T332, T333 |
 | FR-227 | F05 | T369, T370, T371, T372 |
-| FR-228 | F06 | T359, T360, T361, T362, T363, T364, T368 |
+| FR-228 | F06 | T359, T360, T361, T362, T363, T364, T368, T420, T421, T422, T423, T426, T427 |
 | FR-229 | F07 | T334, T335, T336, T337, T338 |
 | FR-230 | F09 | T327, T328, T329, T330, T331 |
 | FR-231 | F10 | T373, T374, T375, T376 |
@@ -945,12 +953,12 @@ FR-221 to FR-223 share the `[F04]` label; their tasks are T339 to T358 and T407 
 | FR-244 | F25 | T388, T389, T391 |
 | FR-245 | F26 | T385, T386, T387 |
 | FR-246 | F27 | T413, T414, T416 |
-| FR-247 | F28 | T417, T418, T419 |
+| FR-247 | F28 | T417, T418, T419, T421, T423, T425, T427 |
 | SC-210 | FR-221 | T352, T356 |
 | SC-211 | FR-222 | T343, T344, T348 |
 | SC-212 | FR-228 | T359, T360, T361 |
 
-Part 2 adds 115 tasks (T305 to T419; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 in P3); the file now holds 219 tasks. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
+Part 2 adds 123 tasks (T305 to T427; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 and T420 to T427 in P3); the file now holds 227 tasks. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
 
 ## Part 2 dependencies and execution order
 
