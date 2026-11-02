@@ -1,0 +1,1 @@
+Money as NUMERIC(12,2) in the database and Decimal in Python, serialised as strings in the API. Reports as read-only service methods over repositories with indexed queries. Add the report and forecast screens to the Expo app. Contract tests for every role/endpoint pair (allowed and forbidden).
