@@ -67,7 +67,7 @@ def service(user: User | None) -> AuthService:
     config = MagicMock()
     config.LOGIN_MAX_FAILURES = 5
     config.LOGIN_LOCKOUT_MINUTES = 15
-    return AuthService(users, AsyncMock(), config)
+    return AuthService(users, AsyncMock(), config, AsyncMock())
 
 
 CASES = {

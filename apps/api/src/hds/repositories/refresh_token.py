@@ -7,7 +7,7 @@ not tenant-scoped rows; they belong to a user, and the user lookup does the scop
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.base import BaseRepository
@@ -98,5 +98,23 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             update(RefreshToken)
             .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(UTC), revoked_reason=RevocationReason(reason).value)
+        )
+        await self.session.flush()
+
+    async def delete_expired_for_user(self, user_id: uuid.UUID, now: datetime) -> None:
+        """Delete this user's refresh tokens past their expiry.
+
+        A token past its expiry can never be used again, whatever its state, so its row has no
+        further purpose. Once deleted it is answered as unknown (``auth.invalid_token``), not as
+        expired.
+
+        Args:
+            user_id: The user whose expired records are removed.
+            now: Timezone-aware UTC current time.
+        """
+        await self.session.execute(
+            delete(RefreshToken).where(
+                RefreshToken.user_id == user_id, RefreshToken.expires_at <= now
+            )
         )
         await self.session.flush()

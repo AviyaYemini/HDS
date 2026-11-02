@@ -22,10 +22,11 @@ ADR 003 rotates a refresh token on every use: the old one is revoked and a new o
 | Stored state | Response |
 |---|---|
 | reason `rotated`, revoked **within** `REFRESH_REUSE_GRACE_SECONDS` | refuse (`auth.token_revoked`), change nothing |
-| reason `rotated`, revoked **longer ago** than the window | revoke every live token of the user (reason `all`), commit that, then refuse |
+| reason `rotated`, revoked **longer ago** than the window, token not expired | revoke every live token of the user (reason `all`), commit that, then refuse |
+| past its expiry, whatever its state | refuse (`auth.token_expired`), change nothing |
 | any other reason, or null | refuse, change nothing |
 
-Using a token after sign-out, or after the account was changed, is not theft, so it ends nothing else.
+Using a token after sign-out, or after the account was changed, is not theft, so it ends nothing else. Expiry is checked first: an expired token cannot be used for anything, so presenting it is not evidence of theft, and without this rule anyone holding one old token could sign the owner out again and again (F08). Expired token rows are deleted after a successful sign-in or refresh; a deleted one is answered as unknown (`auth.invalid_token`).
 
 **The grace window** is `REFRESH_REUSE_GRACE_SECONDS`, default 10, and must be greater than zero. It covers an honest retry and the loser of two simultaneous renewals, so "exactly one wins" does not sign the owner out.
 

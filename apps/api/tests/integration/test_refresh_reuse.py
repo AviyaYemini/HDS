@@ -197,3 +197,46 @@ async def test_after_the_theft_response_the_owner_can_sign_in_again(
     again = await sign_in(async_client)  # the password still works; only sessions ended
 
     assert (await refresh(async_client, again["refresh_token"])).status_code == 200
+
+
+async def expire(db: AsyncSession, raw: str) -> None:
+    await db.execute(
+        text(
+            "UPDATE refresh_tokens SET expires_at = now() - interval '1 minute' "
+            "WHERE token_hash = :h"
+        ),
+        {"h": hashlib.sha256(raw.encode()).hexdigest()},
+    )
+    await db.commit()
+
+
+async def test_replaying_an_expired_rotated_token_ends_no_session(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    """F08: anyone holding an old token must not be able to sign the owner out, again and again."""
+    first, other_device = await sign_in(async_client), await sign_in(async_client)
+    renewed = (await refresh(async_client, first["refresh_token"])).json()
+    await asyncio.sleep(PAST_THE_WINDOW)
+    await expire(test_db, first["refresh_token"])
+
+    for _ in range(2):
+        replay = await refresh(async_client, first["refresh_token"])
+        assert replay.status_code == 401
+        assert replay.json()["code"] == "auth.token_expired"
+
+    assert tuple(await state(test_db, first["refresh_token"])) == (True, "rotated")
+    assert (await state(test_db, renewed["refresh_token"])).revoked is False
+    assert (await state(test_db, other_device["refresh_token"])).revoked is False
+
+
+async def test_an_expired_token_that_was_never_rotated_is_refused_as_expired(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    session = await sign_in(async_client)
+    await expire(test_db, session["refresh_token"])
+
+    answer = await refresh(async_client, session["refresh_token"])
+
+    assert answer.status_code == 401
+    assert answer.json()["code"] == "auth.token_expired"
+    assert (await state(test_db, session["refresh_token"])).revoked is False  # nothing changed

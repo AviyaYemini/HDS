@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.invitation_token import InvitationToken
@@ -130,3 +130,20 @@ class InvitationTokenRepository:
         )
         await self.session.flush()
         return result.scalar_one_or_none() is not None
+
+    async def delete_expired_for_user(self, user_id: uuid.UUID, now: datetime) -> None:
+        """Delete this user's links past their expiry.
+
+        Only the expiry decides. A spent or cancelled link inside its lifetime is kept, because
+        cancelling marks a link used and its answer must stay ``auth.token_used``.
+
+        Args:
+            user_id: The user whose expired records are removed.
+            now: Timezone-aware UTC current time.
+        """
+        await self.session.execute(
+            delete(InvitationToken).where(
+                InvitationToken.user_id == user_id, InvitationToken.expires_at <= now
+            )
+        )
+        await self.session.flush()

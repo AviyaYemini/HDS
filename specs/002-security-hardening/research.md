@@ -489,8 +489,8 @@ before it (D15: nothing is written before verification), at refresh, and in bulk
 ADR 006 gets a note.
 
 **Consequence, stated**: once a link is past its expiry and has been deleted, it answers
-`auth.token_expired` whether or not it had been spent. Both are 401, and nothing about the account
-is revealed either way.
+`auth.token_expired` whether or not it had been spent, and a deleted refresh token answers
+`auth.invalid_token`. All are 401, and nothing about the account is revealed either way.
 
 **Rationale**: a credential past its expiry cannot be used for anything, so presenting it is not
 evidence of theft, and unbounded replay of an old token must not be a way to sign the owner out.

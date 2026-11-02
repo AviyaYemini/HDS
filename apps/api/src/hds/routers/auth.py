@@ -13,6 +13,7 @@ from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Email, Password, Token
 from hds.models.user import User
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
@@ -51,6 +52,7 @@ def _make_service(db: AsyncSession) -> AuthService:
         user_repo=UserRepository(db),
         token_repo=RefreshTokenRepository(db),
         config=settings,
+        link_repo=InvitationTokenRepository(db),
     )
 
 
@@ -101,7 +103,7 @@ async def login(
         "moment: using it again returns 401 (`auth.token_revoked`). If it was replaced "
         "more than the grace window ago (default 10 seconds), every session of the user "
         "also ends, because it may be a stolen copy. An expired token returns "
-        "`auth.token_expired`."
+        "`auth.token_expired` and ends no session, even if it was already used."
     ),
 )
 async def refresh_token(
@@ -114,7 +116,7 @@ async def refresh_token(
     spent and works exactly once, even if sent twice at the same moment: using it again returns
     401 (`auth.token_revoked`). If it was replaced more than the grace window ago (default 10
     seconds), every session of the user also ends, because it may be a stolen copy. An expired
-    token returns `auth.token_expired`.
+    token returns `auth.token_expired` and ends no session, even if it was already used.
     """
     settings = get_settings()
     svc = _make_service(db)

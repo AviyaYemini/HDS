@@ -21,6 +21,7 @@ from hds.core.security import (
     verify_password,
 )
 from hds.models.refresh_token import RefreshToken, RevocationReason
+from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
@@ -52,6 +53,7 @@ class AuthService:
         user_repo: UserRepository,
         token_repo: RefreshTokenRepository,
         config: Any,
+        link_repo: InvitationTokenRepository,
     ) -> None:
         """Wire the service.
 
@@ -59,10 +61,12 @@ class AuthService:
             user_repo: User lookup and lockout counters.
             token_repo: Refresh-token storage.
             config: Settings supplying token lifetimes, the signing key and lockout limits.
+            link_repo: Used to remove the user's expired links after a successful sign-in.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._config = config
+        self._link_repo = link_repo
 
     async def login(self, email: str, password: str) -> TokenResponse:
         """Authenticate by email and password and issue a token pair.
@@ -88,7 +92,8 @@ class AuthService:
 
         Side effects:
             Clears an expired lock; on a wrong password counts it, locks at the limit and commits
-            that at once so the refusal does not undo it; stores the new refresh-token hash.
+            that at once so the refusal does not undo it; on success stores the new refresh-token
+            hash and removes the user's expired tokens and links.
         """
         user = await self._user_repo.get_by_email(email)
         if user is None:
@@ -137,6 +142,7 @@ class AuthService:
         raw_refresh, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
         await self._token_repo.create(user.id, token_hash, expires_at)
+        await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
@@ -145,9 +151,11 @@ class AuthService:
 
         Rotation means each refresh token works exactly once, even when it is presented twice at
         the same moment: the token is revoked by a single conditional statement, so only one
-        request can win it. A request that loses, or that presents a token revoked earlier, is
-        refused (see `_refuse_reuse` for when that also ends every session). The user is
-        reloaded, so a deactivated account cannot refresh.
+        request can win it. A token past its expiry is refused as expired first, whatever else
+        happened to it: it cannot be used for anything, so presenting it is not evidence of theft
+        and it ends no session (FR-209). A request that loses, or that presents an unexpired token
+        revoked earlier, is refused (see `_refuse_reuse` for when that also ends every session).
+        The user is reloaded, so a deactivated account cannot refresh.
 
         Args:
             raw_token: The refresh token the client holds.
@@ -160,22 +168,23 @@ class AuthService:
                 ``auth.token_revoked`` or ``auth.token_expired``. All map to HTTP 401.
 
         Side effects:
-            Revokes the presented token (reason ``rotated``) and stores the new one. A replay of
-            a token that was rotated longer ago than ``REFRESH_REUSE_GRACE_SECONDS`` also revokes
-            every other token of the user and commits that before refusing.
+            Revokes the presented token (reason ``rotated``), stores the new one and removes the
+            user's expired tokens and links. A replay of an unexpired token that was rotated
+            longer ago than ``REFRESH_REUSE_GRACE_SECONDS`` also revokes every other token of the
+            user and commits that before refusing.
         """
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
-        if stored.revoked_at is not None:
-            await self._refuse_reuse(stored)
-
         expires_at = stored.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if datetime.now(UTC) >= expires_at:
             raise AuthError(code="auth.token_expired", detail="Refresh token expired")
+
+        if stored.revoked_at is not None:
+            await self._refuse_reuse(stored)
 
         user = await self._user_repo.get_for_auth(stored.user_id)
         if user is None or not user.is_active:
@@ -200,6 +209,7 @@ class AuthService:
         raw_refresh, new_hash = generate_refresh_token()
         new_expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
         await self._token_repo.create(user.id, new_hash, new_expires_at)
+        await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
@@ -227,6 +237,18 @@ class AuthService:
             user_id: The user signing out everywhere (always the caller's own id).
         """
         await self._token_repo.revoke_all_for_user(user_id, RevocationReason.all)
+
+    async def _remove_expired_records(self, user_id: uuid.UUID) -> None:
+        """Delete the user's expired tokens and links, on the success path only.
+
+        Sign-in must write nothing before the password is verified, so this never runs earlier.
+
+        Args:
+            user_id: The user who has just signed in or refreshed.
+        """
+        now = datetime.now(UTC)
+        await self._token_repo.delete_expired_for_user(user_id, now)
+        await self._link_repo.delete_expired_for_user(user_id, now)
 
     async def _refuse_reuse(self, token: RefreshToken) -> NoReturn:
         """Refuse a token that is already revoked, and decide whether that means theft.
