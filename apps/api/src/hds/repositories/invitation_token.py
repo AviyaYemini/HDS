@@ -4,6 +4,7 @@ Layer: repositories. Depends on ``hds.models`` only; it MUST NOT import services
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
@@ -70,6 +71,33 @@ class InvitationTokenRepository:
             select(InvitationToken).where(InvitationToken.token_hash == token_hash)
         )
         return result.scalar_one_or_none()
+
+    async def cancel_for_user(self, user_id: uuid.UUID) -> None:
+        """Cancel every outstanding link of one account.
+
+        Cancelling marks the link used, so it can never be redeemed. It is done when an account is
+        deactivated, deleted, activated or re-invited, so a link issued for an earlier state of
+        the account cannot outlive it (spec FR-207).
+
+        Args:
+            user_id: The account whose unused links are cancelled.
+        """
+        await self.cancel_for_users([user_id])
+
+    async def cancel_for_users(self, user_ids: Sequence[uuid.UUID]) -> None:
+        """Cancel every outstanding link of several accounts in one statement.
+
+        Args:
+            user_ids: The accounts whose unused links are cancelled; an empty sequence is a no-op.
+        """
+        if not user_ids:
+            return
+        await self.session.execute(
+            update(InvitationToken)
+            .where(InvitationToken.user_id.in_(user_ids), InvitationToken.used_at.is_(None))
+            .values(used_at=datetime.now(UTC))
+        )
+        await self.session.flush()
 
     async def mark_used(self, id: uuid.UUID) -> None:
         """Spend a token by stamping ``used_at`` with the current UTC time.

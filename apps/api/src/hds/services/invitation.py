@@ -57,9 +57,20 @@ class InvitationService:
     async def create_invitation(self, actor: User, email: str, role: UserRole) -> None:
         """Invite an email address to the actor's organisation and mail them a token.
 
-        A new address gets an inactive placeholder account (random password, the email as the
-        name) that the invitee completes on acceptance. Inviting an address whose account is
-        still inactive issues a fresh token for it; an active account is a conflict.
+        What happens depends on who already holds the address:
+
+        * nobody: a *pending* account is created (random password, the email as the name, never
+          activated) that the invitee completes on acceptance;
+        * a pending account of this organisation: it is re-invited. It takes the new role under
+          the same permission rules as a first invitation, and the earlier link is cancelled and
+          replaced, so only the latest link works;
+        * an active account, or any account of another organisation: a duplicate, and nothing is
+          changed (an organisation must not edit another's accounts);
+        * a deactivated account: refused. Bringing a person back is the explicit reactivation by
+          staff, never something an invitation does.
+
+        If another request creates the same new address at the same moment, this request carries
+        on as a re-invitation of that account instead of failing.
 
         Args:
             actor: The Manager or Admin inviting.
@@ -69,12 +80,15 @@ class InvitationService:
         Raises:
             ForbiddenError: ``users.manager_required`` (caller is not Manager+),
                 ``users.role_invalid`` (Client users come from the client record) or
-                ``users.admin_required`` (Admin role requested by a Manager). HTTP 403.
-            ConflictError: ``users.duplicate_email`` when the address belongs to an active
+                ``users.admin_required`` (Admin role requested by a Manager, or a Manager
+                changing a pending Admin). HTTP 403.
+            ConflictError: ``users.duplicate_email`` for an active account or an account of
+                another organisation; ``invitations.account_deactivated`` for a deactivated
                 account. HTTP 409.
 
         Side effects:
-            May create a user, always stores a token and sends an email.
+            May create or re-role a pending account, cancels the earlier links of a pending
+            account, stores a new token and sends an email.
         """
         ensure_role(actor, *MANAGER_ROLES)
         if role == UserRole.client:
@@ -88,9 +102,10 @@ class InvitationService:
                 detail="Only an Admin may assign the Admin role.",
             )
 
-        existing = await self._user_repo.get_by_email(email)
-        if existing is None:
-            user = await self._user_repo.create(
+        account = await self._user_repo.get_by_email(email)
+        created = False
+        if account is None:
+            account, created = await self._user_repo.create_if_absent(
                 actor.organization_id,
                 {
                     "email": email,
@@ -100,15 +115,31 @@ class InvitationService:
                     "is_active": False,
                 },
             )
-            user_id = user.id
-        elif existing.is_active:
-            raise ConflictError(
-                code="users.duplicate_email",
-                detail=f"Email '{email}' is already in use.",
-                field="email",
-            )
-        else:
-            user_id = existing.id
+        user_id = account.id
+        if not created:
+            # The address was already taken (possibly a moment ago by a concurrent request).
+            if account.organization_id != actor.organization_id or account.is_active:
+                raise ConflictError(
+                    code="users.duplicate_email",
+                    detail=f"Email '{email}' is already in use.",
+                    field="email",
+                )
+            if account.activated_at is not None:
+                raise ConflictError(
+                    code="invitations.account_deactivated",
+                    detail="This account was deactivated; an invitation cannot bring it back.",
+                    field="email",
+                )
+            # A pending account of this organisation, invited before: only an Admin may change an
+            # Admin (FR-011a), the new role applies, and the earlier link is replaced.
+            if account.role == UserRole.admin and actor.role != UserRole.admin:
+                raise ForbiddenError(
+                    code="users.admin_required",
+                    detail="Only an Admin may change an Admin.",
+                )
+            if account.role != role:
+                await self._user_repo.update(account.id, account.organization_id, role=role)
+            await self._token_repo.cancel_for_user(account.id)
 
         raw, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + timedelta(days=INVITE_TTL_DAYS)
@@ -132,6 +163,11 @@ class InvitationService:
     async def accept_invitation(self, raw_token: str, new_password: str) -> User:
         """Redeem an invite token: set the password and activate the account.
 
+        Only a *pending* account (never activated, not active) can be completed this way. A link
+        left over for a deactivated or already active account is refused exactly like a spent
+        link, so the caller learns nothing about the account's state, and nothing is changed: no
+        reactivation, no new password, no session ended.
+
         Args:
             raw_token: Token from the invitation email.
             new_password: The invitee's chosen password (hashed with Argon2id).
@@ -141,13 +177,17 @@ class InvitationService:
 
         Raises:
             AuthError: ``auth.token_expired`` (unknown, wrong purpose, expired or owner
-                gone) or ``auth.token_used``. HTTP 401.
+                gone) or ``auth.token_used`` (already used, cancelled, or the account is not
+                pending). HTTP 401.
 
         Side effects:
-            Marks the token used.
+            Activates the account and stamps ``activated_at``, marks the token used and cancels
+            every other outstanding link of the account.
         """
         token = await self._valid_token(raw_token, "invite")
         owner = await self._token_owner(token.user_id)
+        if owner.is_active or owner.activated_at is not None:
+            raise AuthError(code="auth.token_used", detail="This token has already been used.")
         user = await self._user_repo.update(
             token.user_id,
             owner.organization_id,
@@ -156,6 +196,7 @@ class InvitationService:
             activated_at=datetime.now(UTC),
         )
         await self._token_repo.mark_used(token.id)
+        await self._token_repo.cancel_for_user(owner.id)
         return user
 
     async def request_password_reset(self, email: str) -> None:
@@ -195,20 +236,25 @@ class InvitationService:
         """Redeem a reset token: replace the password and end every session.
 
         Sessions are revoked because a reset suggests the old credentials may be compromised
-        (NFR-005). Access tokens already issued stay valid until they expire.
+        (NFR-005). Access tokens already issued stay valid until they expire. A reset is for an
+        *active* account only: a link left over for a deactivated account is refused and changes
+        nothing.
 
         Args:
             raw_token: Token from the reset email.
             new_password: The new password (hashed with Argon2id).
 
         Raises:
-            AuthError: ``auth.token_expired`` or ``auth.token_used``. HTTP 401.
+            AuthError: ``auth.token_expired`` or ``auth.token_used`` (already used, cancelled,
+                or the account is not active). HTTP 401.
 
         Side effects:
             Marks the token used and revokes all of the user's refresh tokens.
         """
         token = await self._valid_token(raw_token, "reset")
         owner = await self._token_owner(token.user_id)
+        if not owner.is_active:
+            raise AuthError(code="auth.token_used", detail="This token has already been used.")
         await self._user_repo.update(
             token.user_id,
             owner.organization_id,

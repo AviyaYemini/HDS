@@ -37,6 +37,7 @@
   "auth.token_used": "This token has already been used.",
   "auth.user_not_found": "User not found.",
   "groups.duplicate_name": "A group with this name already exists.",
+  "invitations.account_deactivated": "This account was deactivated. An invitation cannot bring it back; ask an administrator to reactivate it.",
   "projects.access_denied": "Access to this project is not allowed.",
   "qualifications.duplicate_name": "A qualification with this name already exists.",
   "resource.not_found": "The requested resource was not found.",

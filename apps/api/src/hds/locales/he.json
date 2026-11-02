@@ -37,6 +37,7 @@
   "auth.token_used": "האסימון כבר נוצל.",
   "auth.user_not_found": "המשתמש לא נמצא.",
   "groups.duplicate_name": "קיימת כבר קבוצה בשם זה.",
+  "invitations.account_deactivated": "החשבון הושבת. לא ניתן להחזיר אותו באמצעות הזמנה; יש לבקש ממנהל מערכת להפעיל אותו מחדש.",
   "projects.access_denied": "אין הרשאה לגשת לפרויקט זה.",
   "qualifications.duplicate_name": "קיימת כבר הסמכה בשם זה.",
   "resource.not_found": "המשאב המבוקש לא נמצא.",

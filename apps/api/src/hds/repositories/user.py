@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 
 from hds.models.group import user_groups
 from hds.models.qualification import user_qualifications
@@ -160,18 +161,60 @@ class UserRepository(OrgScopedRepository[User]):
             sqlalchemy.exc.IntegrityError: On a duplicate email or a violated check
                 constraint. The error handler maps it to HTTP 422.
         """
-        fields = dict(data)
-        if fields.get("is_active", True) and fields.get("activated_at") is None:
-            fields["activated_at"] = datetime.now(UTC)
         user = User(
             id=uuid.uuid4(),
             organization_id=org_id,
-            **fields,
+            **self._with_activation(data),
         )
         self.session.add(user)
         await self.session.flush()
         await self.session.refresh(user)
         return user
+
+    async def create_if_absent(self, org_id: uuid.UUID, data: dict[str, Any]) -> tuple[User, bool]:
+        """Insert a user, or return the account that already holds this email address.
+
+        The insert runs inside a savepoint. If another request created the same address first,
+        the unique email index rejects this insert, only the savepoint is rolled back (the rest of
+        the request's transaction is untouched), and the winner's account is returned instead.
+        This is what lets two simultaneous invitations for a new address both succeed.
+
+        Args:
+            org_id: Organisation that will own a new user.
+            data: Column values for the new user, including ``email``.
+
+        Returns:
+            ``(user, True)`` for a newly created account, ``(user, False)`` for the account that
+            already existed. The caller must still check which organisation it belongs to.
+
+        Raises:
+            sqlalchemy.exc.IntegrityError: If the insert failed for a reason other than a
+                duplicate email address (for example a check constraint).
+        """
+        user = User(
+            id=uuid.uuid4(),
+            organization_id=org_id,
+            **self._with_activation(data),
+        )
+        try:
+            async with self.session.begin_nested():
+                self.session.add(user)
+                await self.session.flush()
+        except IntegrityError:
+            existing = await self.get_by_email(data["email"])
+            if existing is None:
+                raise
+            return existing, False
+        await self.session.refresh(user)
+        return user, True
+
+    @staticmethod
+    def _with_activation(data: dict[str, Any]) -> dict[str, Any]:
+        """Stamp ``activated_at`` on an account that is created active, as the database requires."""
+        fields = dict(data)
+        if fields.get("is_active", True) and fields.get("activated_at") is None:
+            fields["activated_at"] = datetime.now(UTC)
+        return fields
 
     async def increment_failed_attempts(self, user_id: uuid.UUID) -> None:
         """Add one to the failed-sign-in counter in a single atomic UPDATE, then commit it now.
