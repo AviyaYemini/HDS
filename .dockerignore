@@ -1,0 +1,19 @@
+# The build context is the repository root (infra/docker-compose.yml). Dockerfile.api copies only
+# named paths under apps/api, so nothing below reaches the image; this keeps secrets, the database
+# files and caches out of the context sent to the builder.
+.git/
+.env
+.env.*
+!.env.example
+infra/volumes/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.hypothesis/
+**/.dev-mail/
+**/node_modules/
+*.log
+.DS_Store
