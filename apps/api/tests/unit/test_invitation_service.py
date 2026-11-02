@@ -151,7 +151,7 @@ async def test_accept_invitation_within_window_activates_user() -> None:
     assert kwargs["is_active"] is True
     assert isinstance(kwargs["activated_at"], datetime)
     assert kwargs["password_hash"].startswith("$argon2id$")
-    token_repo.mark_used.assert_awaited_once_with(token.id)
+    token_repo.spend.assert_awaited_once_with(token.id)
     token_repo.cancel_for_user.assert_awaited_once_with(user.id)  # every other link dies too
 
 
@@ -239,8 +239,8 @@ async def test_reset_password_valid_token_succeeds() -> None:
     await svc.reset_password("valid", "NewPass123456!")
 
     user_repo.update.assert_awaited_once()
-    token_repo.mark_used.assert_awaited_once_with(token.id)
-    svc._refresh_token_repo.revoke_all_for_user.assert_awaited_once_with(user.id)
+    token_repo.spend.assert_awaited_once_with(token.id)
+    svc._refresh_token_repo.revoke_all_for_user.assert_awaited_once_with(user.id, "all")
 
 
 @pytest.mark.asyncio
@@ -450,4 +450,30 @@ async def test_a_reset_link_is_refused_for_an_account_that_is_not_active() -> No
 
     assert exc_info.value.code == "auth.token_used"
     user_repo.update.assert_not_awaited()
+    svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()
+
+
+# ── Single use (T253, T261, FR-208) ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("purpose", ["invite", "reset"])
+async def test_losing_the_race_for_a_link_is_refused_before_anything_is_written(
+    purpose: str,
+) -> None:
+    """``spend`` returns false when another request used the link first; no write may follow."""
+    svc, user_repo, token_repo, _ = _svc()
+    token = _make_token(purpose=purpose)
+    token_repo.get_by_hash = AsyncMock(return_value=token)
+    token_repo.spend = AsyncMock(return_value=False)
+
+    with pytest.raises(AuthError) as exc_info:
+        if purpose == "invite":
+            await svc.accept_invitation("raw", "Pass123456789!")
+        else:
+            await svc.reset_password("raw", "Pass123456789!")
+
+    assert exc_info.value.code == "auth.token_used"
+    user_repo.update.assert_not_awaited()
+    token_repo.cancel_for_user.assert_not_awaited()
     svc._refresh_token_repo.revoke_all_for_user.assert_not_awaited()

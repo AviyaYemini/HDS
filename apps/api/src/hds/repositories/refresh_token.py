@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from hds.models.refresh_token import RefreshToken
+from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.base import BaseRepository
 
 
@@ -58,33 +58,45 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         )
         return result.scalar_one_or_none()
 
-    async def revoke(self, token_id: uuid.UUID) -> None:
-        """Stamp one token as revoked at the current UTC time.
+    async def revoke_if_live(self, token_id: uuid.UUID, reason: RevocationReason) -> bool:
+        """Revoke one token only if nobody has revoked it yet, and say whether this call did.
 
-        Re-revoking overwrites the timestamp; callers check ``revoked_at`` first.
+        This is the single-use guarantee. It is one statement, ``UPDATE ... WHERE id = :id AND
+        revoked_at IS NULL``, so when two requests present the same token at the same moment the
+        database lets exactly one of them change the row; the other waits for the first to
+        commit, then finds the condition false and changes nothing. Checking first and writing
+        afterwards cannot do this, because both requests pass the check.
 
         Args:
             token_id: Primary key of the token.
+            reason: Why it is being revoked (rotation, sign-out, ...).
+
+        Returns:
+            ``True`` if this call revoked the token, ``False`` if it was already revoked.
         """
-        await self.session.execute(
+        result = await self.session.execute(
             update(RefreshToken)
-            .where(RefreshToken.id == token_id)
-            .values(revoked_at=datetime.now(UTC))
+            .where(RefreshToken.id == token_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC), revoked_reason=RevocationReason(reason).value)
+            .returning(RefreshToken.id)
         )
         await self.session.flush()
+        return result.scalar_one_or_none() is not None
 
-    async def revoke_all_for_user(self, user_id: uuid.UUID) -> None:
+    async def revoke_all_for_user(self, user_id: uuid.UUID, reason: RevocationReason) -> None:
         """Revoke every still-valid token of a user, ending all their sessions.
 
-        Used by sign-out-everywhere and by password reset (NFR-005). Already-revoked tokens keep
-        their original timestamp.
+        Used by sign-out-everywhere, by password reset (NFR-005), by account changes and by the
+        response to a replayed token. Already-revoked tokens keep their original time and reason.
 
         Args:
             user_id: The user whose sessions end.
+            reason: Why: ``all`` for a deliberate or defensive end of every session,
+                ``account`` when the account itself changed.
         """
         await self.session.execute(
             update(RefreshToken)
             .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(UTC))
+            .values(revoked_at=datetime.now(UTC), revoked_reason=RevocationReason(reason).value)
         )
         await self.session.flush()

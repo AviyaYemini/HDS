@@ -21,6 +21,7 @@ from hds.core.exceptions import (
     NotFoundError,
 )
 from hds.core.security import hash_password
+from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -238,7 +239,7 @@ class EmployeeService:
         updated = await self._user_repo.update(
             target_id, actor.organization_id, role=UserRole.manager
         )
-        await self._token_repo.revoke_all_for_user(target_id)
+        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         return updated
 
     async def promote_to_admin(self, actor: User, target_id: uuid.UUID) -> User:
@@ -263,7 +264,7 @@ class EmployeeService:
         updated = await self._user_repo.update(
             target_id, actor.organization_id, role=UserRole.admin
         )
-        await self._token_repo.revoke_all_for_user(target_id)
+        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         return updated
 
     async def edit_employee(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> User:
@@ -304,7 +305,7 @@ class EmployeeService:
                     await self._guard_last_admin(target)
         updated = await self._user_repo.update(target_id, actor.organization_id, **data)
         if role_changed:
-            await self._token_repo.revoke_all_for_user(target_id)
+            await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         return updated
 
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:
@@ -339,7 +340,7 @@ class EmployeeService:
             is_active=False,
             activated_at=target.activated_at or datetime.now(UTC),
         )
-        await self._token_repo.revoke_all_for_user(target_id)
+        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(target_id)
         return updated
 
@@ -394,7 +395,7 @@ class EmployeeService:
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
         await self._user_repo.soft_delete(target_id, actor.organization_id)
-        await self._token_repo.revoke_all_for_user(target_id)
+        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(target_id)
 
     # ── Guards ───────────────────────────────────────────────────────────────

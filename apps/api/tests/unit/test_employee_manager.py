@@ -151,7 +151,7 @@ async def test_promote_to_manager_by_manager_revokes_sessions() -> None:
     result = await svc.promote_to_manager(_make_user(role=UserRole.manager), target.id)
 
     assert result.role == UserRole.manager
-    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_promote_to_admin_by_admin_succeeds() -> None:
     await svc.promote_to_admin(actor, target.id)
 
     user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, role=UserRole.admin)
-    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
 # ── FR-011a: only an Admin may change an Admin ─────────────────────────────
@@ -243,7 +243,7 @@ async def test_deactivate_revokes_all_sessions() -> None:
     user_repo.update.assert_awaited_once_with(
         target.id, actor.organization_id, is_active=False, activated_at=target.activated_at
     )
-    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
 @pytest.mark.asyncio
@@ -288,7 +288,7 @@ async def test_soft_delete_non_last_admin_succeeds_and_revokes() -> None:
     await svc.soft_delete(actor, target.id)
 
     user_repo.soft_delete.assert_awaited_once_with(target.id, org_id)
-    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id)
+    token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
 @pytest.mark.asyncio

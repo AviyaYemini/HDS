@@ -16,6 +16,7 @@ from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.exceptions import AuthError, ConflictError, ForbiddenError
 from hds.core.mail import MailSender
 from hds.core.security import generate_refresh_token, hash_password
+from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -185,6 +186,11 @@ class InvitationService:
             every other outstanding link of the account.
         """
         token = await self._valid_token(raw_token, "invite")
+        # Spend the link first: this single conditional write is what lets only one of two
+        # simultaneous redemptions through. The loser waits for the winner to commit, finds the
+        # link used and is refused before it writes anything.
+        if not await self._token_repo.spend(token.id):
+            raise AuthError(code="auth.token_used", detail="This token has already been used.")
         owner = await self._token_owner(token.user_id)
         if owner.is_active or owner.activated_at is not None:
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
@@ -195,7 +201,6 @@ class InvitationService:
             is_active=True,
             activated_at=datetime.now(UTC),
         )
-        await self._token_repo.mark_used(token.id)
         await self._token_repo.cancel_for_user(owner.id)
         return user
 
@@ -252,6 +257,8 @@ class InvitationService:
             Marks the token used and revokes all of the user's refresh tokens.
         """
         token = await self._valid_token(raw_token, "reset")
+        if not await self._token_repo.spend(token.id):  # see accept_invitation
+            raise AuthError(code="auth.token_used", detail="This token has already been used.")
         owner = await self._token_owner(token.user_id)
         if not owner.is_active:
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
@@ -260,9 +267,8 @@ class InvitationService:
             owner.organization_id,
             password_hash=hash_password(new_password),
         )
-        await self._token_repo.mark_used(token.id)
         # A reset means the old credentials may be compromised: sign out every device.
-        await self._refresh_token_repo.revoke_all_for_user(token.user_id)
+        await self._refresh_token_repo.revoke_all_for_user(token.user_id, RevocationReason.all)
 
     async def _token_owner(self, user_id: uuid.UUID) -> User:
         """The token, not a caller's organisation, authorises redemption; look its owner up."""

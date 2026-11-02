@@ -11,7 +11,7 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NoReturn
 
 from hds.core.exceptions import AuthError
 from hds.core.security import (
@@ -19,6 +19,7 @@ from hds.core.security import (
     generate_refresh_token,
     verify_password,
 )
+from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
@@ -131,9 +132,11 @@ class AuthService:
     async def refresh(self, raw_token: str) -> TokenResponse:
         """Exchange a refresh token for a new pair; the presented token is spent.
 
-        Rotation means each refresh token works once: replaying a used token fails as revoked,
-        which limits the damage of a stolen token. The user is reloaded, so a deactivated
-        account cannot refresh.
+        Rotation means each refresh token works exactly once, even when it is presented twice at
+        the same moment: the token is revoked by a single conditional statement, so only one
+        request can win it. A request that loses, or that presents a token revoked earlier, is
+        refused (see `_refuse_reuse` for when that also ends every session). The user is
+        reloaded, so a deactivated account cannot refresh.
 
         Args:
             raw_token: The refresh token the client holds.
@@ -146,14 +149,16 @@ class AuthService:
                 ``auth.token_revoked`` or ``auth.token_expired``. All map to HTTP 401.
 
         Side effects:
-            Revokes the presented token and stores the new one.
+            Revokes the presented token (reason ``rotated``) and stores the new one. A replay of
+            a token that was rotated longer ago than ``REFRESH_REUSE_GRACE_SECONDS`` also revokes
+            every other token of the user and commits that before refusing.
         """
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
         if stored.revoked_at is not None:
-            raise AuthError(code="auth.token_revoked", detail="Refresh token revoked")
+            await self._refuse_reuse(stored)
 
         expires_at = stored.expires_at
         if expires_at.tzinfo is None:
@@ -165,7 +170,13 @@ class AuthService:
         if user is None or not user.is_active:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
 
-        await self._token_repo.revoke(stored.id)
+        if not await self._token_repo.revoke_if_live(stored.id, RevocationReason.rotated):
+            # Lost the race: another request revoked it between our read and our write. Decide
+            # again from what is stored now, exactly as if we had read it revoked.
+            current = await self._token_repo.get_by_hash(token_hash)
+            if current is None:
+                raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
+            await self._refuse_reuse(current)
 
         access_token = create_access_token(
             sub=user.id,
@@ -194,7 +205,7 @@ class AuthService:
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None or stored.revoked_at is not None:
             return
-        await self._token_repo.revoke(stored.id)
+        await self._token_repo.revoke_if_live(stored.id, RevocationReason.logout)
 
     async def logout_all(self, user_id: uuid.UUID) -> None:
         """Revoke every refresh token of a user, ending all their sessions.
@@ -204,4 +215,36 @@ class AuthService:
         Args:
             user_id: The user signing out everywhere (always the caller's own id).
         """
-        await self._token_repo.revoke_all_for_user(user_id)
+        await self._token_repo.revoke_all_for_user(user_id, RevocationReason.all)
+
+    async def _refuse_reuse(self, token: RefreshToken) -> NoReturn:
+        """Refuse a token that is already revoked, and decide whether that means theft.
+
+        Only a token revoked by *rotation* can be evidence of theft, because a rotated token is
+        replaced the moment it is used, so a second use means someone else holds a copy. The
+        decision, from the stored reason and the time of revocation:
+
+        * rotated, within ``REFRESH_REUSE_GRACE_SECONDS``: an honest retry (the response was
+          lost) or the loser of a simultaneous pair. Refused, nothing else happens.
+        * rotated, longer ago: a replay. Every other session of the user is revoked (reason
+          ``all``) and that is committed BEFORE the refusal is raised, because the request's own
+          rollback on an error would otherwise undo the one effect that matters.
+        * any other reason (sign-out, account change, sessions already ended) or no recorded
+          reason (revoked before reasons existed): refused, nothing else happens. Presenting
+          such a token is not evidence of theft.
+
+        Args:
+            token: The stored token, known to be revoked.
+
+        Raises:
+            AuthError: Always ``auth.token_revoked`` (HTTP 401).
+        """
+        if token.revoked_reason == RevocationReason.rotated and token.revoked_at is not None:
+            revoked_at = token.revoked_at
+            if revoked_at.tzinfo is None:
+                revoked_at = revoked_at.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - revoked_at).total_seconds()
+            if age > self._config.REFRESH_REUSE_GRACE_SECONDS:
+                await self._token_repo.revoke_all_for_user(token.user_id, RevocationReason.all)
+                await self._token_repo.commit()
+        raise AuthError(code="auth.token_revoked", detail="Refresh token revoked")

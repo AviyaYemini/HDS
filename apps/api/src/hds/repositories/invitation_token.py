@@ -99,15 +99,26 @@ class InvitationTokenRepository:
         )
         await self.session.flush()
 
-    async def mark_used(self, id: uuid.UUID) -> None:
-        """Spend a token by stamping ``used_at`` with the current UTC time.
+    async def spend(self, id: uuid.UUID) -> bool:
+        """Spend a link only if it is still unused, and say whether this call did.
+
+        This is the single-use guarantee for invitation and reset links. It is one statement,
+        ``UPDATE ... SET used_at = now WHERE id = :id AND used_at IS NULL``, so when two requests
+        redeem the same link at the same moment exactly one changes the row; the other waits,
+        finds the condition false and changes nothing. Cancelling a link (see `cancel_for_users`)
+        uses the same column, so a cancelled link cannot be spent.
 
         Args:
-            id: Primary key of the token.
+            id: Primary key of the link.
+
+        Returns:
+            ``True`` if this call spent the link, ``False`` if it was already used or cancelled.
         """
-        await self.session.execute(
+        result = await self.session.execute(
             update(InvitationToken)
-            .where(InvitationToken.id == id)
+            .where(InvitationToken.id == id, InvitationToken.used_at.is_(None))
             .values(used_at=datetime.now(UTC))
+            .returning(InvitationToken.id)
         )
         await self.session.flush()
+        return result.scalar_one_or_none() is not None
