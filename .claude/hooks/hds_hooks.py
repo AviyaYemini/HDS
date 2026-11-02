@@ -224,10 +224,77 @@ DANGEROUS = [
 ]
 
 
+_MESSAGE_FLAG = re.compile(r"(?<![\w-])(?:-m|--message)(?:\s*=\s*|\s+|(?=[\"']))")
+_HEREDOC_START = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
+# $(cat <<'WORD' ... WORD) with a QUOTED delimiter: the body is literal text, nothing runs.
+_LITERAL_HEREDOC = re.compile(r"\$\(\s*cat\s+<<-?\s*'(\w+)'.*?\n\s*\1[ \t]*\n?\s*\)", re.S)
+
+
+def _quoted_end(cmd, i):
+    """Index just after the quoted string that starts at ``cmd[i]``, or -1 if it never closes.
+
+    Understands single quotes, double quotes with backslash escapes, and a ``$( ... )``
+    substitution inside double quotes, including a heredoc body inside it (where quotes and
+    parentheses are plain text).
+    """
+    if cmd[i] == "'":
+        end = cmd.find("'", i + 1)
+        return -1 if end < 0 else end + 1
+    depth, j = 0, i + 1
+    while j < len(cmd):
+        char = cmd[j]
+        if char == "\\":
+            j += 2
+        elif cmd.startswith("$(", j):
+            depth, j = depth + 1, j + 2
+        elif depth and (heredoc := _HEREDOC_START.match(cmd, j)):
+            closing = re.compile(r"^" + re.escape(heredoc.group(1)) + r"[ \t]*$", re.M)
+            found = closing.search(cmd, heredoc.end())
+            if not found:
+                return -1
+            j = found.end()
+        elif depth:
+            depth, j = depth - (char == ")"), j + 1
+        elif char == '"':
+            return j + 1
+        else:
+            j += 1
+    return -1
+
+
+def strip_message_arguments(cmd):
+    """Blank out the text of quoted ``-m`` / ``--message`` arguments before the patterns run.
+
+    A commit message is prose: words such as "cat .env" in it are not a command. The text is
+    kept (and therefore still scanned) when the argument contains a live command substitution,
+    a backtick or a ``$( ... )`` that is not a literal quoted-delimiter heredoc, because the shell
+    would run that.
+    """
+    out, pos = [], 0
+    for flag in _MESSAGE_FLAG.finditer(cmd):
+        start = flag.end()
+        if flag.start() < pos or start >= len(cmd) or cmd[start] not in "\"'":
+            continue
+        end = _quoted_end(cmd, start)
+        if end < 0:
+            continue
+        body = cmd[start + 1 : end - 1]
+        if cmd[start] == '"':
+            body = _LITERAL_HEREDOC.sub("", body)
+            if "`" in body or "$(" in body:
+                continue
+        out.append(cmd[pos:start])
+        out.append('""')
+        pos = end
+    out.append(cmd[pos:])
+    return "".join(out)
+
+
 def pre_bash(d):
     cmd = (d.get("tool_input") or {}).get("command") or ""
+    scanned = strip_message_arguments(cmd)
     for pattern, why in DANGEROUS:
-        if re.search(pattern, cmd, re.I):
+        if re.search(pattern, scanned, re.I):
             return block(f"Blocked command: {why}.")
 
     if re.search(r"\bgit\s+commit\b", cmd):

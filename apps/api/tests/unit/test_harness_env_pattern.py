@@ -74,3 +74,47 @@ def test_other_dangerous_commands_stay_blocked() -> None:
 def test_ordinary_commands_are_not_blocked() -> None:
     assert not blocked("ls apps/api")
     assert not blocked("uv run pytest tests/unit")
+
+
+# ── Commit message text is data, not a command ──────────────────────────────────────────────────
+
+HEREDOC_MESSAGE = """git commit -q -m "$(cat <<'EOF'
+chore: explain why cat .env.local and git reset --hard are blocked
+
+The pattern for sudo rm and grep SECRET .env.prod matched this text.
+(Closing parenthesis, "quotes" and 1) numbering are all fine in a message.)
+
+Co-Authored-By: Claude <noreply@example.com>
+EOF
+)\""""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "chore: mentions cat .env in the text"',
+        "git commit -m 'chore: also grep SECRET .env.local here'",
+        'git commit --message="explains why git reset --hard is blocked"',
+        'git commit --message "explains sudo rm"',
+        'git commit -m"chore: attached cat .env text"',
+        HEREDOC_MESSAGE,
+    ],
+)
+def test_text_inside_a_commit_message_is_not_scanned(command: str) -> None:
+    assert not blocked(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "ok" && cat .env',  # a real read after the message
+        'git commit -m "ok" && git reset --hard HEAD~1',
+        HEREDOC_MESSAGE + " && cat .env.local",
+        'git commit -m "$(cat .env)"',  # command substitution inside the message really runs
+        'git commit -m "`cat .env`"',
+        'git commit -m "$(sudo ls)"',
+        'echo "cat .env"',  # outside a commit message the text is still matched
+    ],
+)
+def test_real_commands_next_to_or_inside_a_message_stay_blocked(command: str) -> None:
+    assert blocked(command)
