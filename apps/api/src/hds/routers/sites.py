@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import require_manager
+from hds.core.types import Address, Name, Timezone
 from hds.models.user import User
 from hds.repositories.site import SiteRepository
 from hds.services.site import SiteService
@@ -29,15 +30,15 @@ class SiteRead(BaseModel):
 
 
 class SiteCreateRequest(BaseModel):
-    name: str
-    address: str
-    timezone: str
+    name: Name
+    address: Address
+    timezone: Timezone
 
 
 class SiteUpdateRequest(BaseModel):
-    name: str | None = None
-    address: str | None = None
-    timezone: str | None = None
+    name: Name | None = None
+    address: Address | None = None
+    timezone: Timezone | None = None
 
 
 class SiteListResponse(BaseModel):

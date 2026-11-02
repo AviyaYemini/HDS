@@ -14,7 +14,7 @@ user_groups = Table(
     "user_groups",
     Base.metadata,
     Column("user_id", ForeignKey("users.id"), primary_key=True),
-    Column("group_id", ForeignKey("groups.id"), primary_key=True),
+    Column("group_id", ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
 )
 
 

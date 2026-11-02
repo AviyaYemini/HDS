@@ -1,8 +1,11 @@
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 
 from hds.core.exceptions import (
     AuthError,
@@ -64,9 +67,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         extra = {"field": exc.field} if exc.field else None
         return _problem(409, "Conflict", exc.detail, exc.code, request, extra)
 
+    @app.exception_handler(DataError)
     @app.exception_handler(IntegrityError)
-    async def handle_integrity(request: Request, exc: IntegrityError) -> JSONResponse:
-        # Database CHECK / unique violations that slipped past service validation.
+    async def handle_integrity(request: Request, exc: IntegrityError | DataError) -> JSONResponse:
+        # CHECK / unique violations and over-long / out-of-range values that slipped past
+        # validation. Connection and other operational errors are NOT mapped: they stay 5xx.
         return _problem(
             422,
             "Unprocessable Entity",
@@ -78,3 +83,50 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainValidationError)
     async def handle_validation(request: Request, exc: DomainValidationError) -> JSONResponse:
         return _problem(422, "Unprocessable Entity", exc.detail, exc.code, request)
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        errors = [
+            {"loc": [str(part) for part in err["loc"]], "msg": err["msg"], "type": err["type"]}
+            for err in exc.errors()
+        ]
+        return _problem(
+            422,
+            "Unprocessable Entity",
+            "The request body or parameters are invalid.",
+            "validation.request_invalid",
+            request,
+            {"errors": errors},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        if exc.status_code == 400:
+            return _problem(
+                400,
+                "Bad Request",
+                "The request could not be parsed.",
+                "http.bad_request",
+                request,
+            )
+        if exc.status_code != 405:
+            return JSONResponse(
+                {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+            )
+        # Each method is its own route, so Starlette's Allow lists only one of them.
+        allowed: set[str] = set()
+        for route in request.app.routes:
+            match, _ = route.matches(request.scope)
+            if match != Match.NONE:
+                allowed |= set(getattr(route, "methods", None) or ())
+        response = _problem(
+            405,
+            "Method Not Allowed",
+            "This method is not allowed for the resource.",
+            "http.method_not_allowed",
+            request,
+        )
+        response.headers["Allow"] = ", ".join(sorted(allowed))
+        return response

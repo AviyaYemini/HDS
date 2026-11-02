@@ -63,6 +63,18 @@ async def require_manager(
     return user
 
 
+async def require_manager_or_client(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Project read access: Manager+ (all) or Client (own projects, enforced in the service)."""
+    if user.role not in {UserRole.manager, UserRole.admin, UserRole.client}:
+        raise ForbiddenError(
+            code="users.manager_required",
+            detail="Manager or Admin role required",
+        )
+    return user
+
+
 async def require_admin(
     user: User = Depends(get_current_user),
 ) -> User:

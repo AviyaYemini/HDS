@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.config import get_settings
 from hds.core.database import get_db
 from hds.core.deps import get_current_user
+from hds.core.types import Password, Token
 from hds.models.user import User
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: Password
 
 
 class TokenResponse(BaseModel):
@@ -28,7 +29,7 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: Token
 
 
 def _make_service(db: AsyncSession) -> AuthService:

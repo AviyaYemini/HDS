@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import get_current_user_or_self, require_admin, require_manager
+from hds.core.types import AssignableRole, Money, Name, Password, Phone
 from hds.models.group import Group
 from hds.models.qualification import Qualification
 from hds.models.user import User, UserRole
@@ -41,18 +42,18 @@ class UserRead(BaseModel):
 
 class UserCreateRequest(BaseModel):
     email: EmailStr
-    full_name: str
-    phone: str | None = None
-    role: UserRole = UserRole.employee
-    initial_password: str = Field(min_length=12)
-    default_hourly_rate: Decimal | None = None
+    full_name: Name
+    phone: Phone | None = None
+    role: AssignableRole = "employee"
+    initial_password: Password = Field(min_length=12)
+    default_hourly_rate: Money | None = None
 
 
 class UserUpdateRequest(BaseModel):
-    full_name: str | None = None
-    phone: str | None = None
-    role: UserRole | None = None
-    default_hourly_rate: Decimal | None = None
+    full_name: Name | None = None
+    phone: Phone | None = None
+    role: AssignableRole | None = None
+    default_hourly_rate: Money | None = None
 
 
 class IDListRequest(BaseModel):

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import require_admin, require_manager
+from hds.core.types import Name, Password, Phone, StrictDate
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.user import UserRepository
@@ -34,20 +35,20 @@ class ClientRead(BaseModel):
 
 
 class ClientCreateRequest(BaseModel):
-    name: str
-    contact_name: str | None = None
+    name: Name
+    contact_name: Name | None = None
     contact_email: EmailStr | None = None
-    contact_phone: str | None = None
-    contract_start: date
-    contract_end: date | None = None
+    contact_phone: Phone | None = None
+    contract_start: StrictDate
+    contract_end: StrictDate | None = None
 
 
 class ClientUpdateRequest(BaseModel):
-    name: str | None = None
-    contact_name: str | None = None
+    name: Name | None = None
+    contact_name: Name | None = None
     contact_email: EmailStr | None = None
-    contact_phone: str | None = None
-    contract_end: date | None = None
+    contact_phone: Phone | None = None
+    contract_end: StrictDate | None = None
     is_active: bool | None = None
 
 
@@ -71,9 +72,9 @@ class ClientUserRead(BaseModel):
 
 class ClientUserCreateRequest(BaseModel):
     email: EmailStr
-    full_name: str
-    phone: str | None = None
-    initial_password: str = Field(min_length=12)
+    full_name: Name
+    phone: Phone | None = None
+    initial_password: Password = Field(min_length=12)
 
 
 def _svc(db: AsyncSession) -> ClientService:

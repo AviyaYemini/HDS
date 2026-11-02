@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hds.core.error_handler import register_exception_handlers
 from hds.core.logging import configure_logging
+from hds.core.openapi import install_openapi
 
 
 def create_app() -> FastAPI:
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
         return response
 
     register_exception_handlers(application)
+    install_openapi(application)
 
     @application.get("/health", include_in_schema=False)
     async def health() -> dict[str, str]:

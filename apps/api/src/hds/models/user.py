@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -66,6 +67,7 @@ class User(TimestampedBase):
     )
 
     __table_args__ = (
+        CheckConstraint("default_hourly_rate > 0", name="ck_users_hourly_rate_positive"),
         Index(
             "uq_users_email",
             "email",

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.database import get_db
 from hds.core.deps import require_manager
 from hds.core.mail import MailSender, get_mail_sender
+from hds.core.types import Password, Token
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -22,8 +23,8 @@ class InviteRequest(BaseModel):
 
 
 class AcceptInviteRequest(BaseModel):
-    token: str
-    password: str = Field(min_length=12)
+    token: Token
+    password: Password = Field(min_length=12)
 
 
 class PasswordResetRequest(BaseModel):
@@ -31,8 +32,8 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str
-    new_password: str = Field(min_length=12)
+    token: Token
+    new_password: Password = Field(min_length=12)
 
 
 def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
@@ -44,7 +45,7 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
     )
 
 
-@router.post("/invite", status_code=202)
+@router.post("/invite", status_code=202, response_class=Response)
 async def create_invitation(
     body: InviteRequest,
     current_user: User = Depends(require_manager),
@@ -66,7 +67,7 @@ async def accept_invitation(
     await _svc(db, mailer).accept_invitation(raw_token=body.token, new_password=body.password)
 
 
-@router.post("/password-reset/request", status_code=202)
+@router.post("/password-reset/request", status_code=202, response_class=Response)
 async def request_password_reset(
     body: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),

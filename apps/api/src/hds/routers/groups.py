@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import require_manager
+from hds.core.types import Name
 from hds.models.user import User
 from hds.repositories.group import GroupRepository
 from hds.services.group import GroupService
@@ -27,7 +28,7 @@ class GroupRead(BaseModel):
 
 
 class GroupWriteRequest(BaseModel):
-    name: str
+    name: Name
 
 
 class GroupListResponse(BaseModel):

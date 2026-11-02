@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import get_current_user
+from hds.core.types import Name, Phone
 from hds.models.user import User, UserRole
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -38,8 +39,8 @@ class ProfileUpdate(BaseModel):
     # instead of the schema silently dropping e.g. ``role``.
     model_config = {"extra": "allow"}
 
-    full_name: str | None = None
-    phone: str | None = None
+    full_name: Name | None = None
+    phone: Phone | None = None
 
 
 @router.get("", response_model=UserRead)

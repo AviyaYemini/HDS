@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
-from hds.core.deps import get_current_user, require_admin, require_manager
+from hds.core.deps import require_admin, require_manager, require_manager_or_client
+from hds.core.types import Money, Name, StrictDate
 from hds.models.project import ProjectStatus, ProjectType
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
@@ -40,17 +41,17 @@ class ProjectRead(BaseModel):
 class ProjectCreateRequest(BaseModel):
     client_id: uuid.UUID
     site_id: uuid.UUID
-    name: str
+    name: Name
     type: ProjectType
-    billing_rate: Decimal
-    start_date: date
-    end_date: date | None = None
+    billing_rate: Money
+    start_date: StrictDate
+    end_date: StrictDate | None = None
 
 
 class ProjectUpdateRequest(BaseModel):
-    name: str | None = None
-    billing_rate: Decimal | None = None
-    end_date: date | None = None
+    name: Name | None = None
+    billing_rate: Money | None = None
+    end_date: StrictDate | None = None
     status: ProjectStatus | None = None
 
 
@@ -70,7 +71,7 @@ def _svc(db: AsyncSession) -> ProjectService:
 async def list_projects(
     status: ProjectStatus | None = None,
     client_id: uuid.UUID | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_client),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectListResponse:
     svc = _svc(db)
@@ -96,7 +97,7 @@ async def create_project(
 @router.get("/{id}", response_model=ProjectRead)
 async def get_project(
     id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_client),
     db: AsyncSession = Depends(get_db),
 ) -> object:
     svc = _svc(db)

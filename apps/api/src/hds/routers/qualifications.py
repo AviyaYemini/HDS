@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_db
 from hds.core.deps import require_manager
+from hds.core.types import Name
 from hds.models.user import User
 from hds.repositories.qualification import QualificationRepository
 from hds.services.qualification import QualificationService
@@ -27,7 +28,7 @@ class QualificationRead(BaseModel):
 
 
 class QualificationWriteRequest(BaseModel):
-    name: str
+    name: Name
 
 
 class QualificationListResponse(BaseModel):

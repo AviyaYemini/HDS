@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hds.models.base import Base
@@ -20,8 +20,13 @@ class InvitationToken(Base):
     purpose: Mapped[str] = mapped_column(String(16), nullable=False, comment="invite | reset")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     user: Mapped["User"] = relationship("User")
 
-    __table_args__ = (Index("idx_invitation_tokens_user", "user_id"),)
+    __table_args__ = (
+        CheckConstraint("purpose IN ('invite','reset')", name="ck_invitation_tokens_purpose"),
+        Index("idx_invitation_tokens_user", "user_id"),
+    )

@@ -6,7 +6,9 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator, Generator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import email_validator
 import pytest
@@ -157,3 +159,86 @@ async def seed_users(test_db: AsyncSession, seed_org: Organisation) -> dict[str,
         users[role.value] = u
     await test_db.commit()
     return users
+
+
+@dataclass
+class RoleEnv:
+    runner: asyncio.Runner
+    tokens: dict[str, str]
+
+    def call(
+        self, principal: str, method: str, path: str, body: Any, params: dict[str, str]
+    ) -> tuple[int, str]:
+        headers = {}
+        if principal != "anonymous":
+            headers["Authorization"] = f"Bearer {self.tokens[principal]}"
+
+        async def _go() -> tuple[int, str]:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                r = await client.request(method, path.format(**params), json=body, headers=headers)
+                try:
+                    code = str(r.json().get("code", "")) if r.content else ""
+                except (ValueError, AttributeError):
+                    code = ""
+                return r.status_code, code
+
+        return self.runner.run(_go())
+
+
+@pytest.fixture(scope="module")
+def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
+    runner = asyncio.Runner()
+    engine = create_async_engine(migrated_test_db, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def _override() -> Any:
+        async with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override
+
+    async def _seed() -> dict[str, str]:
+        async with factory() as session:
+            org = Organisation(name="Matrix Org", timezone="UTC")
+            session.add(org)
+            await session.flush()
+            for role in UserRole:
+                session.add(
+                    User(
+                        organization_id=org.id,
+                        email=f"{role.value}@matrix.test",
+                        password_hash=hash_password("Dev1234!"),
+                        full_name=role.value,
+                        role=role,
+                    )
+                )
+            await session.commit()
+        tokens: dict[str, str] = {}
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            for role in UserRole:
+                r = await client.post(
+                    "/auth/login",
+                    json={"email": f"{role.value}@matrix.test", "password": "Dev1234!"},
+                )
+                assert r.status_code == 200, r.text
+                tokens[role.value] = r.json()["access_token"]
+        return tokens
+
+    tokens = runner.run(_seed())
+    try:
+        yield RoleEnv(runner, tokens)
+    finally:
+
+        async def _clean() -> None:
+            tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+            async with engine.begin() as conn:
+                await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+            await engine.dispose()
+
+        runner.run(_clean())
+        runner.close()
+        app.dependency_overrides.pop(get_db, None)

@@ -4,7 +4,17 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Index, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hds.models.base import TimestampedBase
@@ -54,6 +64,7 @@ class Project(TimestampedBase):
     site: Mapped["Site"] = relationship("Site")
 
     __table_args__ = (
+        CheckConstraint("billing_rate > 0", name="ck_projects_billing_rate_positive"),
         Index("idx_projects_org", "organization_id"),
         Index("idx_projects_client", "client_id"),
     )

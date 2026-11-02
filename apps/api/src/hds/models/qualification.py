@@ -14,7 +14,11 @@ user_qualifications = Table(
     "user_qualifications",
     Base.metadata,
     Column("user_id", ForeignKey("users.id"), primary_key=True),
-    Column("qualification_id", ForeignKey("qualifications.id"), primary_key=True),
+    Column(
+        "qualification_id",
+        ForeignKey("qualifications.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
