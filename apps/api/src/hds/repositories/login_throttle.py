@@ -1,7 +1,8 @@
 """Storage for failure counts and locks of keys with no account row.
 
 Layer: repositories. May import ``hds.models`` and ``hds.core``; MUST NOT import services or
-routers. Keys are SHA-256 hex digests, so no address or network address is stored.
+routers. Keys are HMAC-SHA-256 hex digests, so no address or network address is stored in the clear
+and a copy of the table alone cannot confirm one (see ``hds.services.throttle.hash_key``).
 """
 
 from datetime import datetime, timedelta
@@ -30,7 +31,7 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
 
         Args:
             kind: ``address``, ``network`` or ``reset``.
-            key_hash: SHA-256 hex digest of the key.
+            key_hash: HMAC-SHA-256 hex digest of the key.
 
         Returns:
             The row, or ``None``.
@@ -64,7 +65,7 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
 
         Args:
             kind: ``address``, ``network`` or ``reset``.
-            key_hash: SHA-256 hex digest of the key.
+            key_hash: HMAC-SHA-256 hex digest of the key.
             limit: Count at which the key locks.
             lock_until: Timezone-aware UTC end of the lock, for an ``address``.
             window_minutes: Length of the fixed window, for ``network`` and ``reset``.

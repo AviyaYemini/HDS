@@ -44,6 +44,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout: the account locks on the failure that reaches the limit, and the count restarts when the lock ends | `5`, `15` |
 | `REFRESH_REUSE_GRACE_SECONDS` | A refresh token used a second time within this many seconds is refused and nothing else happens; later, every session of the user ends. Must be greater than 0 | `10` |
 | `LOGIN_RATE_LIMIT_PER_NETWORK` | Failed sign-ins allowed from one network address in one window of `LOGIN_LOCKOUT_MINUTES`; a success does not clear the count; `0` turns the limit off | `30` |
+| `THROTTLE_SECRET_KEY` | Optional key for the HMAC of addresses in the throttle table, at least 32 bytes outside development. Unset, a key is derived from `JWT_SECRET_KEY`. Changing either restarts every count | derived |
 | `LOGIN_THROTTLE_RETENTION_HOURS` | Age at which an unlocked throttle row may be removed. Normal requests remove them, so no scheduled job is needed | `24` |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limit set to `0`: otherwise every user shares the proxy's address and one bad window locks everyone out. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |

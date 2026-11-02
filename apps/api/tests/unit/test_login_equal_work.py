@@ -76,6 +76,7 @@ def service(user: User | None) -> AuthService:
     config.LOGIN_LOCKOUT_MINUTES = 15
     config.LOGIN_RATE_LIMIT_PER_NETWORK = 0
     config.LOGIN_THROTTLE_RETENTION_HOURS = 24
+    config.throttle_key = b"test-key"
     return AuthService(users, AsyncMock(), config, AsyncMock(), _no_counts())
 
 

@@ -7,6 +7,7 @@ work: a registered address keeps its count on the user row, and an unregistered 
 """
 
 import hashlib
+import hmac
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -16,16 +17,21 @@ from hds.repositories.login_throttle import ADDRESS, NETWORK, LoginThrottleRepos
 from hds.repositories.user import UserRepository
 
 
-def hash_key(value: str) -> str:
-    """Hash a key so that no address is stored.
+def hash_key(value: str, secret: bytes) -> str:
+    """Key a throttle row by an HMAC, so a copy of the table cannot confirm an address.
+
+    A plain hash could be checked against any list of addresses. With the HMAC that needs the server
+    secret too. Whoever holds the secret can still confirm a known address, so the keys are
+    protected, not anonymous.
 
     Args:
         value: An address or network key.
+        secret: The server secret (``Settings.throttle_key``).
 
     Returns:
-        Its SHA-256 hex digest.
+        The HMAC-SHA-256 hex digest.
     """
-    return hashlib.sha256(value.encode()).hexdigest()
+    return hmac.new(secret, value.encode(), hashlib.sha256).hexdigest()
 
 
 def live_lock(locked_until: datetime | None, now: datetime) -> datetime | None:
@@ -77,7 +83,9 @@ class SignInThrottle:
         """
         if network is None or self._config.LOGIN_RATE_LIMIT_PER_NETWORK == 0:
             return None
-        row = await self._throttle_repo.get(NETWORK, hash_key(network_key(network)))
+        row = await self._throttle_repo.get(
+            NETWORK, hash_key(network_key(network), self._config.throttle_key)
+        )
         return live_lock(row.locked_until, now) if row else None
 
     async def address_locked_until(
@@ -95,7 +103,9 @@ class SignInThrottle:
         """
         if user is not None:
             return live_lock(user.locked_until, now)
-        row = await self._throttle_repo.get(ADDRESS, hash_key(address.strip().lower()))
+        row = await self._throttle_repo.get(
+            ADDRESS, hash_key(address.strip().lower(), self._config.throttle_key)
+        )
         return live_lock(row.locked_until, now) if row else None
 
     async def register_failure(
@@ -118,7 +128,7 @@ class SignInThrottle:
         else:
             await self._throttle_repo.register_failure(
                 ADDRESS,
-                hash_key(address.strip().lower()),
+                hash_key(address.strip().lower(), self._config.throttle_key),
                 config.LOGIN_MAX_FAILURES,
                 lock_until,
                 config.LOGIN_LOCKOUT_MINUTES,
@@ -127,7 +137,7 @@ class SignInThrottle:
         if network is not None and config.LOGIN_RATE_LIMIT_PER_NETWORK > 0:
             await self._throttle_repo.register_failure(
                 NETWORK,
-                hash_key(network_key(network)),
+                hash_key(network_key(network), self._config.throttle_key),
                 config.LOGIN_RATE_LIMIT_PER_NETWORK,
                 lock_until,
                 config.LOGIN_LOCKOUT_MINUTES,

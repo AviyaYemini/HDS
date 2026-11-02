@@ -36,3 +36,57 @@ Mutation results, all caught, files restored:
 
 Review: not run on this commit alone. The instruction applies reviews to each group, so this diff is
 reviewed with B2.
+
+### Correction: the mutation harness used the shared database
+
+The scratch script `mut.py` hard-coded `hds_test`, so every mutation run in this feature until now,
+including K1 to K5 above, ran on the shared database and not on `hds_p3_test`. That broke the rule
+for this sprint. It is corrected, and K1 to K5 were rerun on `hds_p3_test` with the same result.
+
+## Step 0b: where the stray duplicate-key row came from (decision 3)
+
+The Group B mutation J1 failed at setup with a duplicate-key error on `uq_users_email_ci`.
+
+- No test leaks rows: after each of the four relevant test files, `hds_p3_test` holds no users or
+  organisations.
+- The run was on `hds_test` (see the correction above), not on a private database.
+- `hds_test` is empty and has no other connections now, so the row was short-lived.
+
+Conclusion: most likely another session's test run was using `hds_test` at that moment, which is the
+collision F26 describes. The owner had noted an unexplained pytest process. This is the most likely
+cause, not a proven one: the row is gone, so it cannot be inspected. The mechanism does explain the
+symptom, and my runs no longer touch that database. F26 (P6) removes the possibility for good.
+
+## Step 0c: HMAC keys in the throttle table (decision 2)
+
+Decisions taken here:
+- New optional setting `THROTTLE_SECRET_KEY`. Unset, a key is derived from `JWT_SECRET_KEY` by HMAC
+  with a fixed label, so the signing secret has no second use. It is not required, because a new
+  required setting would break the documented one-line quickstart and every existing deployment for
+  a value that can be derived safely. Set, it must be at least 32 bytes outside development, the
+  same bar as the signing secret.
+- Consequence, recorded in the README: changing either secret restarts every count. A lock can
+  therefore end early on a secret rotation. Accepted, because rotation is rare and deliberate.
+- The compose file does not pass the setting, so the Docker stack uses the derived key.
+
+Text corrected: `services/throttle.py`, `repositories/login_throttle.py`, `models/login_throttle.py`,
+`research.md`, `data-model.md`, `plan.md`, `contracts/error-codes.md`. They now say a copy of the
+table alone cannot confirm an address, and that the keys are protected, not anonymous.
+
+Differs from the instruction: migration 018's docstring still says "Only hashes are stored". It is
+committed, and the sprint rules forbid editing committed migrations. The statement stays true.
+
+Failing first: all new tests failed (`hash_key` took one argument, `throttle_key` did not exist).
+
+A process note: the first commit attempt of this step was chained after a script that had failed, so
+it went in without this log section and with one lint error. It was amended before any further
+work. Later steps do not chain a commit after a step that can fail.
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| L1 | Plain SHA-256 again | `test_the_key_is_not_a_plain_hash_of_the_value` |
+| L2 | The signing secret used directly | `test_without_a_setting_the_key_is_derived_and_never_the_signing_secret` |
+| L3 | The setting ignored | `test_the_configured_secret_is_used` |
+| L4 | Short secret allowed | `test_a_short_secret_is_refused_outside_development` |

@@ -46,6 +46,7 @@ def _make_config() -> MagicMock:
     cfg.LOGIN_LOCKOUT_MINUTES = 15
     cfg.LOGIN_RATE_LIMIT_PER_NETWORK = 0
     cfg.LOGIN_THROTTLE_RETENTION_HOURS = 24
+    cfg.throttle_key = b"test-key"
     cfg.REFRESH_REUSE_GRACE_SECONDS = 10
     return cfg
 

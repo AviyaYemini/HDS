@@ -221,7 +221,7 @@ client create and edit (date order), employee edit (Client role locked).
 | III. Pure scheduling package | Not touched | Pass |
 | IV. Test-first | Every item has a failing-first test; security items add mutation checks | Pass |
 | V. API-first | New response codes `429` and `503` and new problem codes are declared; drift check stays green | Pass |
-| VI. Security | Strengthens it (F01, F02, F03, F05, F08, F09, F04). The throttle table stores hashes of addresses, not addresses | Pass |
+| VI. Security | Strengthens it (F01, F02, F03, F05, F08, F09, F04). The throttle table stores an HMAC of each address, not the address | Pass |
 | VII. Money and time | F10 makes time-zone names canonical; no money change | Pass |
 | VIII. Internationalisation | New codes need `en` and `he`; `test_i18n` enforces parity | Pass |
 | IX. Quality gates | `mypy --strict src tests`, ruff, interrogate, import graph, `alembic check` stay required | Pass |
@@ -311,7 +311,7 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
   failures, a success, one more failure locks), and 0 turns it off; the client address follows
   `TRUSTED_PROXY_COUNT` for 0, 1, 2, a short or malformed header and a forged header, and an IPv6
   address is keyed by its /64; stale rows are removed in
-  batches during normal requests with no scheduled job; keys are stored hashed. New settings with
+  batches during normal requests with no scheduled job; keys are stored as an HMAC keyed by a server secret. New settings with
   defaults, new codes `auth.rate_limited` and `service.busy` (en, he), 429 declared on login and
   503 declared on all six hashing operations, `docs/hds-api.md` corrected (D4) and the FR-005 exception retired.
 - **F06** (D17). Test first: with a deliberately slow sender, `POST /auth/password-reset/request`

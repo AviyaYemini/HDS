@@ -25,6 +25,7 @@ from hds.core.config import get_settings
 from hds.models.user import User
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.user import UserRepository
+from hds.services.throttle import hash_key
 
 KNOWN = "employee@hds.test"
 UNKNOWN = "nobody@hds.test"
@@ -78,7 +79,7 @@ def shape(response: Response) -> dict[str, Any]:
 
 
 def key(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
+    return hash_key(value, get_settings().throttle_key)
 
 
 async def row(db: AsyncSession, kind: str, value: str) -> Any:
@@ -277,6 +278,8 @@ async def test_only_hashes_are_stored(
     rows = (await test_db.execute(text("SELECT kind, key_hash FROM login_throttle"))).all()
     assert {r.kind for r in rows} == {"address", "network"}
     assert all(len(r.key_hash) == 64 and "@" not in r.key_hash for r in rows)
+    plain = hashlib.sha256(UNKNOWN.encode()).hexdigest()
+    assert plain not in {r.key_hash for r in rows}  # a copy of the table alone cannot confirm it
     assert (await row(test_db, "address", UNKNOWN)) is not None
 
 

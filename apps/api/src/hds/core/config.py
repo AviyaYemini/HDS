@@ -10,6 +10,8 @@ deployment that forgets them stops instead of starting with a published key. Onl
 every other value (``production``, ``staging``, ...) gets the strict checks.
 """
 
+import hashlib
+import hmac
 from pathlib import Path
 from typing import Self
 
@@ -48,6 +50,8 @@ class Settings(BaseSettings):
         ACCESS_TOKEN_TTL_SECONDS: Access-token lifetime; Constitution VI caps it at 15 minutes.
         REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again.
         LOGIN_MAX_FAILURES: Consecutive failed sign-ins before the account locks.
+        THROTTLE_SECRET_KEY: Keys the HMAC of the addresses in the throttle table. Without it a key
+            is derived from ``JWT_SECRET_KEY``. Changing either restarts every count.
         LOGIN_RATE_LIMIT_PER_NETWORK: Failed sign-ins allowed from one network address inside one
             window of ``LOGIN_LOCKOUT_MINUTES``; 0 turns this limit off.
         LOGIN_THROTTLE_RETENTION_HOURS: Age at which an unlocked throttle row may be removed.
@@ -76,6 +80,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds"
     JWT_SECRET_KEY: SecretStr
     JWT_ALGORITHM: str = "HS256"
+    THROTTLE_SECRET_KEY: SecretStr | None = None
     ACCESS_TOKEN_TTL_SECONDS: int = 900  # 15 minutes
     REFRESH_TOKEN_TTL_DAYS: int = 7
     LOGIN_MAX_FAILURES: int = 5
@@ -107,6 +112,17 @@ class Settings(BaseSettings):
         """Whether ``ENVIRONMENT`` is a development environment (``development`` or ``test``)."""
         return self.ENVIRONMENT.lower() in DEVELOPMENT_ENVIRONMENTS
 
+    @property
+    def throttle_key(self) -> bytes:
+        """The HMAC key for throttle rows: the setting, or one derived from the signing secret.
+
+        The derivation keeps the signing secret itself out of a second use.
+        """
+        if self.THROTTLE_SECRET_KEY is not None:
+            return self.THROTTLE_SECRET_KEY.get_secret_value().encode()
+        signing = self.JWT_SECRET_KEY.get_secret_value().encode()
+        return hmac.new(signing, b"hds.login-throttle", hashlib.sha256).digest()
+
     @field_validator("CORS_ORIGINS")
     @classmethod
     def _no_wildcard(cls, origins: list[str]) -> list[str]:
@@ -134,6 +150,11 @@ class Settings(BaseSettings):
         if len(secret.encode()) < MIN_JWT_SECRET_BYTES:
             raise ValueError(
                 f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_BYTES} bytes "
+                "unless ENVIRONMENT is development or test"
+            )
+        if self.THROTTLE_SECRET_KEY is not None and len(self.throttle_key) < MIN_JWT_SECRET_BYTES:
+            raise ValueError(
+                f"THROTTLE_SECRET_KEY must be at least {MIN_JWT_SECRET_BYTES} bytes "
                 "unless ENVIRONMENT is development or test"
             )
         if self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:

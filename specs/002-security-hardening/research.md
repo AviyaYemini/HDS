@@ -369,7 +369,8 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
 **Decision (revised 2026-11-03; supersedes the 429-for-both choice of the first draft)**:
 
 - New table `login_throttle` (migration 018), one row per key: `kind` (`address` or `network`),
-  `key_hash` (SHA-256 hex of the lowercased submitted address, or of the client network address),
+  `key_hash` (HMAC-SHA-256 hex, keyed by a server secret, of the lowercased submitted address or of
+  the client network address),
   `failures`, `locked_until`, `updated_at`; primary key (`kind`, `key_hash`). It mirrors the columns
   the users table already has for the account lock, so an address with no account is treated by the
   same rule as one with an account.
@@ -421,7 +422,9 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
   per distinct key (not per attempt), and random addresses are the only way to add many. The script
   `purge_expired_records` stays for a bulk clean and for expired credentials, but nothing depends
   on it being scheduled.
-- Keys are hashed, so no address or network address is stored.
+- Keys are an HMAC keyed by a server secret (`THROTTLE_SECRET_KEY`, or derived from
+  `JWT_SECRET_KEY`), so a copy of the table alone cannot confirm an address. They are protected, not
+  anonymous: whoever holds the secret can still check a known address.
 
 **Reset requests (F28)**: a third key kind, `reset`, counts requests per lowercased address in a
 fixed window of `RESET_TTL_MINUTES`, limit `RESET_REQUEST_LIMIT_PER_ADDRESS` (default 5; 0 turns it
