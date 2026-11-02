@@ -24,6 +24,7 @@ dev = [
     "httpx>=0.27",
     "aiosqlite>=0.20",
     "ruff>=0.5",
+    "interrogate>=1.7",
     "mypy>=1.10",
     "pip-audit>=2.7",
     "pyyaml>=6",
@@ -42,12 +43,34 @@ src = ["src"]
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP"]
+select = ["E", "F", "I", "N", "UP", "D"]
 # UP042/UP046: str+Enum and Generic[...] are kept deliberately (stable DB enum/JSON behaviour).
 ignore = ["UP042", "UP046"]
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are exempt from missing-docstring rules (D1xx); the module docstring that cites
+# requirement ids is checked in review (Constitution XI.5), not by pydocstyle.
+"tests/**" = ["D1"]
+
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.interrogate]
+# Constitution XI.9: 100% docstring coverage of src/. Public API only: private, magic and
+# nested definitions and __init__ methods are exempt; modules (incl. __init__.py) are not.
+fail-under = 100
+ignore-init-method = true
+ignore-init-module = false
+ignore-magic = true
+ignore-private = true
+ignore-semiprivate = true
+ignore-nested-functions = true
+ignore-nested-classes = true
+exclude = ["tests"]
+verbose = 1
 
 [tool.mypy]
 strict = true

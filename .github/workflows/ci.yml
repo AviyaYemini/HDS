@@ -19,6 +19,29 @@ jobs:
       - run: uv run ruff format --check src/ tests/
         working-directory: apps/api
 
+  docstrings:
+    name: Docstring coverage (interrogate, Constitution XI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+        working-directory: apps/api
+      - run: uv run interrogate src/
+        working-directory: apps/api
+
+  markdown-links:
+    name: Markdown link check (Constitution XI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Offline mode checks relative links and anchors only, so the job stays deterministic
+      # and does not fail when a third-party site is down.
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress --include-fragments "**/*.md"
+          fail: true
+
   dependency-audit:
     name: Dependency audit (pip-audit)
     runs-on: ubuntu-latest
