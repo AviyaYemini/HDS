@@ -231,7 +231,9 @@ outside the window revokes every token of the user.
 - [ ] T259 [P] [US3] In `apps/api/src/hds/repositories/invitation_token.py` replace `mark_used` with `spend(id) -> bool` implemented as `UPDATE ... SET used_at = now WHERE id = :id AND used_at IS NULL` returning whether a row changed
 - [ ] T260 [US3] Rewrite `AuthService.refresh` in `apps/api/src/hds/services/auth.py` per research D3: guarded rotation; on a lost race re-read and decide (rotated and outside the window: `revoke_all_for_user(reason="all")`, call the repository's explicit `commit()`, then refuse; otherwise refuse with no effect). `logout` uses reason `logout`, `logout_all` uses `all`. Update the docstrings
 - [ ] T261 [US3] Make `apps/api/src/hds/services/invitation.py` redeem links through `spend()` (a false result means refused as used) and make `apps/api/src/hds/services/employee.py` pass reason `account` when revoking tokens on deactivate, delete and role change; reset passes `all`
-- [ ] T262 [US3] Write `docs/adr/006-refresh-token-reuse-detection.md` (context, decision, grace window, consequences) and add it to the ADR table in `docs/README.md`
+- [ ] T262 [US3] Cross-organisation sweep (beyond the ten findings; feature 001 NFR-001 and FR-012): write `apps/api/tests/integration/test_cross_organisation_sweep.py`. It holds an inventory of every operation that takes an id or an email from the request (path, query, body), generated from the application's OpenAPI document and checked against it, so a new endpoint cannot be forgotten: each operation is either a sweep case or an exempt entry with a stated reason (public operations that authenticate by credential or token). For each sweep case the test sends another organisation's id or address as an authorised caller and asserts the refusal (404 for an id, so it is indistinguishable from a missing one; 409 `users.duplicate_email` for an address) and that nothing changed, by comparing a digest of every table before and after. Also record in `spec.md` Assumptions that a 409 for an address held by another organisation reveals that the address exists in the deployment, which email uniqueness across the deployment makes unavoidable
+- [ ] T263 [US3] Fix every gap the sweep finds, test first: for each failing case, show it failing for the right reason, fix the service or repository, and list the cases and fixes in the commit message (write "none found" if there are none). A refused request must change nothing in any organisation
+- [ ] T264 [US3] Write `docs/adr/006-refresh-token-reuse-detection.md` (context, decision, grace window, consequences) and add it to the ADR table in `docs/README.md`
 
 **Checkpoint**: all three P1 stories pass. Highest-risk security work is done.
 
@@ -246,14 +248,14 @@ took effect.
 
 ### Tests for User Story 4 (write first)
 
-- [ ] T263 [P] [US4] Write `apps/api/tests/integration/test_atomicity.py` on PostgreSQL with failure injection in the last step: refresh (old token still valid, no new token), password reset (old password, link unspent, sessions intact), client update with portal-user deactivation (users unchanged), role change with token revocation (role and tokens unchanged)
-- [ ] T264 [P] [US4] Write `apps/api/tests/integration/test_mail_after_commit.py`: an invitation whose transaction fails sends no email and leaves no usable link; a successful one sends exactly one email, after the commit
+- [ ] T265 [P] [US4] Write `apps/api/tests/integration/test_atomicity.py` on PostgreSQL with failure injection in the last step: refresh (old token still valid, no new token), password reset (old password, link unspent, sessions intact), client update with portal-user deactivation (users unchanged), role change with token revocation (role and tokens unchanged)
+- [ ] T266 [P] [US4] Write `apps/api/tests/integration/test_mail_after_commit.py`: an invitation whose transaction fails sends no email and leaves no usable link; a successful one sends exactly one email, after the commit
 
 ### Implementation for User Story 4
 
-- [ ] T265 [US4] Make `InvitationService` queue every email through `DeferredMailer`: build `DeferredMailer(db, mailer)` in `apps/api/src/hds/routers/invitations.py`; update `apps/api/src/hds/services/invitation.py` docstrings (email is sent after commit)
-- [ ] T266 [US4] Review the order of steps in `apps/api/src/hds/services/auth.py` (`refresh`), `apps/api/src/hds/services/invitation.py` (`reset_password`) and `apps/api/src/hds/services/client.py` (`edit_client`) so each is a single unit of work with no step that needs an earlier commit; fix any that do
-- [ ] T267 [US4] Write `docs/adr/005-request-scoped-transactions.md` (decision D1, the explicit-commit exception, `scope="function"`, alternatives) and add it to the ADR table in `docs/README.md`
+- [ ] T267 [US4] Make `InvitationService` queue every email through `DeferredMailer`: build `DeferredMailer(db, mailer)` in `apps/api/src/hds/routers/invitations.py`; update `apps/api/src/hds/services/invitation.py` docstrings (email is sent after commit)
+- [ ] T268 [US4] Review the order of steps in `apps/api/src/hds/services/auth.py` (`refresh`), `apps/api/src/hds/services/invitation.py` (`reset_password`) and `apps/api/src/hds/services/client.py` (`edit_client`) so each is a single unit of work with no step that needs an earlier commit; fix any that do
+- [ ] T269 [US4] Write `docs/adr/005-request-scoped-transactions.md` (decision D1, the explicit-commit exception, `scope="function"`, alternatives) and add it to the ADR table in `docs/README.md`
 
 **Checkpoint**: Story 4 passes; D1 is documented.
 
@@ -266,10 +268,10 @@ took effect.
 **Independent Test**: two Admins deactivate each other at once, 100 rounds, an active Admin remains
 each time.
 
-- [ ] T268 [P] [US5] Write `apps/api/tests/concurrency/test_last_admin.py`: 100 rounds of two simultaneous deactivations between the only two Admins, plus simultaneous demotions; exactly one action succeeds and an active Admin remains (SC-205)
-- [ ] T269 [P] [US5] Extend `apps/api/tests/unit/test_employee_manager.py`: the last-Admin guard counts the ids returned by the locking query and raises `users.last_admin` at one
-- [ ] T270 [US5] In `apps/api/src/hds/repositories/user.py` add `lock_active_admins(org_id) -> list[UUID]`: `SELECT id ... WHERE organization_id = :org AND role = 'admin' AND is_active AND NOT is_deleted ORDER BY id FOR UPDATE`; document that the lock lasts until the unit of work ends
-- [ ] T271 [US5] Make `_guard_last_admin` in `apps/api/src/hds/services/employee.py` use `lock_active_admins` instead of `count_active_admins`; remove the unused count method if nothing else calls it
+- [ ] T270 [P] [US5] Write `apps/api/tests/concurrency/test_last_admin.py`: 100 rounds of two simultaneous deactivations between the only two Admins, plus simultaneous demotions; exactly one action succeeds and an active Admin remains (SC-205)
+- [ ] T271 [P] [US5] Extend `apps/api/tests/unit/test_employee_manager.py`: the last-Admin guard counts the ids returned by the locking query and raises `users.last_admin` at one
+- [ ] T272 [US5] In `apps/api/src/hds/repositories/user.py` add `lock_active_admins(org_id) -> list[UUID]`: `SELECT id ... WHERE organization_id = :org AND role = 'admin' AND is_active AND NOT is_deleted ORDER BY id FOR UPDATE`; document that the lock lasts until the unit of work ends
+- [ ] T273 [US5] Make `_guard_last_admin` in `apps/api/src/hds/services/employee.py` use `lock_active_admins` instead of `count_active_admins`; remove the unused count method if nothing else calls it
 
 **Checkpoint**: Story 5 passes.
 
@@ -281,10 +283,10 @@ each time.
 
 **Independent Test**: N-1 failures then success; N failures then locked; after expiry N attempts.
 
-- [ ] T272 [P] [US6] Write `apps/api/tests/integration/test_lockout.py` on PostgreSQL for limits 2 to 10: N-1 failures then the correct password signs in; N failures then the next attempt returns `auth.account_locked`; after the lock is expired by setting `locked_until` in the past, N new attempts are allowed and the account locks only after the N-th (SC-206)
-- [ ] T273 [P] [US6] Extend `apps/api/tests/unit/test_auth_service.py`: the service uses the count returned by the repository and does not add one itself; an expired lock is cleared before the password check
-- [ ] T274 [US6] In `apps/api/src/hds/repositories/user.py` add `register_failed_login(user_id, max_failures, lock_until) -> tuple[int, datetime | None]` as one `UPDATE ... SET failed_login_attempts = failed_login_attempts + 1, locked_until = CASE WHEN failed_login_attempts + 1 >= :max THEN :until ELSE locked_until END ... RETURNING` with session synchronisation off, followed by the explicit `commit()`; add `clear_expired_lock(user_id, now)` as `UPDATE ... SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id AND locked_until IS NOT NULL AND locked_until <= :now`. Remove `increment_failed_attempts` and `set_locked_until`
-- [ ] T275 [US6] Rewrite the failure path of `AuthService.login` in `apps/api/src/hds/services/auth.py`: clear an expired lock first, then check the lock, then verify; use `register_failed_login` and its returned count; delete the `user.failed_login_attempts + 1` line. Update the docstring (lock after N, restart on expiry)
+- [ ] T274 [P] [US6] Write `apps/api/tests/integration/test_lockout.py` on PostgreSQL for limits 2 to 10: N-1 failures then the correct password signs in; N failures then the next attempt returns `auth.account_locked`; after the lock is expired by setting `locked_until` in the past, N new attempts are allowed and the account locks only after the N-th (SC-206)
+- [ ] T275 [P] [US6] Extend `apps/api/tests/unit/test_auth_service.py`: the service uses the count returned by the repository and does not add one itself; an expired lock is cleared before the password check
+- [ ] T276 [US6] In `apps/api/src/hds/repositories/user.py` add `register_failed_login(user_id, max_failures, lock_until) -> tuple[int, datetime | None]` as one `UPDATE ... SET failed_login_attempts = failed_login_attempts + 1, locked_until = CASE WHEN failed_login_attempts + 1 >= :max THEN :until ELSE locked_until END ... RETURNING` with session synchronisation off, followed by the explicit `commit()`; add `clear_expired_lock(user_id, now)` as `UPDATE ... SET failed_login_attempts = 0, locked_until = NULL WHERE id = :id AND locked_until IS NOT NULL AND locked_until <= :now`. Remove `increment_failed_attempts` and `set_locked_until`
+- [ ] T277 [US6] Rewrite the failure path of `AuthService.login` in `apps/api/src/hds/services/auth.py`: clear an expired lock first, then check the lock, then verify; use `register_failed_login` and its returned count; delete the `user.failed_login_attempts + 1` line. Update the docstring (lock after N, restart on expiry)
 
 **Checkpoint**: Story 6 passes.
 
@@ -294,10 +296,10 @@ each time.
 
 **Goal**: equal work for unknown and known emails (FR-214).
 
-- [ ] T276 [P] [US7] Write `apps/api/tests/unit/test_login_equal_work.py`: with a spy on the password check, an unknown email, a known email with a wrong password and an inactive account each cause exactly one check, and all return the same code and message (this is the automated check of SC-207)
-- [ ] T277 [P] [US7] Write `apps/api/tests/integration/test_login_timing.py` (SC-207): 500 samples each for unknown and known emails with a wrong password, compared with a statistical test; mark it `timing`, register the marker in `apps/api/pyproject.toml` and deselect it by default; it is opt-in and is run by hand in the final phase before a release
-- [ ] T278 [US7] In `apps/api/src/hds/core/security.py` create `DUMMY_PASSWORD_HASH` at import with the same Argon2id parameters as real hashes and a `verify_against_dummy(plain)` helper; docstring explains why
-- [ ] T279 [US7] In `AuthService.login` (`apps/api/src/hds/services/auth.py`) call `verify_against_dummy` when no account matches, then return the same `auth.invalid_credentials`
+- [ ] T278 [P] [US7] Write `apps/api/tests/unit/test_login_equal_work.py`: with a spy on the password check, an unknown email, a known email with a wrong password and an inactive account each cause exactly one check, and all return the same code and message (this is the automated check of SC-207)
+- [ ] T279 [P] [US7] Write `apps/api/tests/integration/test_login_timing.py` (SC-207): 500 samples each for unknown and known emails with a wrong password, compared with a statistical test; mark it `timing`, register the marker in `apps/api/pyproject.toml` and deselect it by default; it is opt-in and is run by hand in the final phase before a release
+- [ ] T280 [US7] In `apps/api/src/hds/core/security.py` create `DUMMY_PASSWORD_HASH` at import with the same Argon2id parameters as real hashes and a `verify_against_dummy(plain)` helper; docstring explains why
+- [ ] T281 [US7] In `AuthService.login` (`apps/api/src/hds/services/auth.py`) call `verify_against_dummy` when no account matches, then return the same `auth.invalid_credentials`
 
 **Checkpoint**: Story 7 passes.
 
@@ -307,17 +309,17 @@ each time.
 
 **Goal**: one address, one account, whatever the case (FR-215, FR-216).
 
-- [ ] T280 [P] [US8] Write `apps/api/tests/unit/test_email_type.py`: the `Email` type trims and lowercases; invalid addresses are still rejected; the generated OpenAPI schema for the field is unchanged (`format: email`)
-- [ ] T281 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208)
-- [ ] T282 [P] [US8] Write `apps/api/tests/integration/test_migration_016.py`: data with two addresses that differ only by case makes the migration stop with a message listing both; clean data is lowercased and the old index is replaced by `uq_users_email_ci`; downgrade restores `uq_users_email`
-- [ ] T283 [P] [US8] Write `apps/api/tests/unit/test_find_email_case_duplicates.py` for the listing script (read-only; prints nothing when clean)
-- [ ] T284 [US8] Add the `Email` type to `apps/api/src/hds/core/types.py`: an `EmailStr` with an after-validator that trims and lowercases, so OpenAPI is unchanged
-- [ ] T285 [US8] Use `Email` instead of `EmailStr` in the request models of `apps/api/src/hds/routers/auth.py`, `invitations.py`, `employees.py`, `clients.py` (user requests only; contact emails of clients are not account identifiers)
-- [ ] T286 [US8] In `apps/api/src/hds/repositories/user.py` lowercase the address in `get_by_email` and `create` as a second line of defence for non-HTTP callers
-- [ ] T287 [US8] In `apps/api/src/hds/models/user.py` replace the `uq_users_email` index with `uq_users_email_ci` with this constraint verbatim: `unique on lower(email) where is_deleted = false`; `alembic check` must agree with migration 016
-- [ ] T288 [US8] Create `apps/api/alembic/versions/016_case_insensitive_email.py`: first find addresses that differ only by case and, if any, raise with a message that lists them and tells staff to resolve them (nothing is merged or deactivated); otherwise lowercase all addresses, drop `uq_users_email`, create `uq_users_email_ci`; downgrade recreates `uq_users_email` and its docstring states that the lowercasing is not reversed
-- [ ] T289 [P] [US8] Create `apps/api/src/hds/scripts/find_email_case_duplicates.py` (read-only; lists clashing addresses and exits non-zero if any)
-- [ ] T290 [US8] Confirm the duplicate checks in `services/employee.py`, `services/client.py` and `services/invitation.py` now match case-insensitively through `get_by_email`; add a unit test per service if one is missing
+- [ ] T282 [P] [US8] Write `apps/api/tests/unit/test_email_type.py`: the `Email` type trims and lowercases; invalid addresses are still rejected; the generated OpenAPI schema for the field is unchanged (`format: email`)
+- [ ] T283 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208)
+- [ ] T284 [P] [US8] Write `apps/api/tests/integration/test_migration_016.py`: data with two addresses that differ only by case makes the migration stop with a message listing both; clean data is lowercased and the old index is replaced by `uq_users_email_ci`; downgrade restores `uq_users_email`
+- [ ] T285 [P] [US8] Write `apps/api/tests/unit/test_find_email_case_duplicates.py` for the listing script (read-only; prints nothing when clean)
+- [ ] T286 [US8] Add the `Email` type to `apps/api/src/hds/core/types.py`: an `EmailStr` with an after-validator that trims and lowercases, so OpenAPI is unchanged
+- [ ] T287 [US8] Use `Email` instead of `EmailStr` in the request models of `apps/api/src/hds/routers/auth.py`, `invitations.py`, `employees.py`, `clients.py` (user requests only; contact emails of clients are not account identifiers)
+- [ ] T288 [US8] In `apps/api/src/hds/repositories/user.py` lowercase the address in `get_by_email` and `create` as a second line of defence for non-HTTP callers
+- [ ] T289 [US8] In `apps/api/src/hds/models/user.py` replace the `uq_users_email` index with `uq_users_email_ci` with this constraint verbatim: `unique on lower(email) where is_deleted = false`; `alembic check` must agree with migration 016
+- [ ] T290 [US8] Create `apps/api/alembic/versions/016_case_insensitive_email.py`: first find addresses that differ only by case and, if any, raise with a message that lists them and tells staff to resolve them (nothing is merged or deactivated); otherwise lowercase all addresses, drop `uq_users_email`, create `uq_users_email_ci`; downgrade recreates `uq_users_email` and its docstring states that the lowercasing is not reversed
+- [ ] T291 [P] [US8] Create `apps/api/src/hds/scripts/find_email_case_duplicates.py` (read-only; lists clashing addresses and exits non-zero if any)
+- [ ] T292 [US8] Confirm the duplicate checks in `services/employee.py`, `services/client.py` and `services/invitation.py` now match case-insensitively through `get_by_email`; add a unit test per service if one is missing
 
 **Checkpoint**: Story 8 passes.
 
@@ -327,11 +329,11 @@ each time.
 
 **Goal**: only loadable IANA zone names are stored (FR-217, FR-218).
 
-- [ ] T291 [P] [US9] Extend `apps/api/tests/unit/test_site_service.py`: `Asia/Jerusalem` and `UTC` and `Asia/Kolkata` (a zone without daylight saving) accepted on create and edit; `Mars/Base`, an empty string and a name with path characters raise `DomainValidationError` with code `sites.timezone_invalid`
-- [ ] T292 [P] [US9] Write `apps/api/tests/integration/test_site_timezone.py`: `POST` and `PATCH /api/v1/sites` return 422 with code `sites.timezone_invalid` for invalid zones and store nothing (SC-209)
-- [ ] T293 [US9] In `apps/api/src/hds/services/site.py` add the zone check (`ZoneInfo(name)`; any failure raises `sites.timezone_invalid`) to `create_site` and `edit_site`; update docstrings
-- [ ] T294 [P] [US9] Add `sites.timezone_invalid` to `apps/api/src/hds/locales/en.json` and `he.json`
-- [ ] T295 [P] [US9] Create `apps/api/src/hds/scripts/check_site_timezones.py` (read-only; lists sites and organisations with an invalid zone; FR-218) with a test in `apps/api/tests/unit/test_check_site_timezones.py`
+- [ ] T293 [P] [US9] Extend `apps/api/tests/unit/test_site_service.py`: `Asia/Jerusalem` and `UTC` and `Asia/Kolkata` (a zone without daylight saving) accepted on create and edit; `Mars/Base`, an empty string and a name with path characters raise `DomainValidationError` with code `sites.timezone_invalid`
+- [ ] T294 [P] [US9] Write `apps/api/tests/integration/test_site_timezone.py`: `POST` and `PATCH /api/v1/sites` return 422 with code `sites.timezone_invalid` for invalid zones and store nothing (SC-209)
+- [ ] T295 [US9] In `apps/api/src/hds/services/site.py` add the zone check (`ZoneInfo(name)`; any failure raises `sites.timezone_invalid`) to `create_site` and `edit_site`; update docstrings
+- [ ] T296 [P] [US9] Add `sites.timezone_invalid` to `apps/api/src/hds/locales/en.json` and `he.json`
+- [ ] T297 [P] [US9] Create `apps/api/src/hds/scripts/check_site_timezones.py` (read-only; lists sites and organisations with an invalid zone; FR-218) with a test in `apps/api/tests/unit/test_check_site_timezones.py`
 
 **Checkpoint**: all nine stories pass.
 
@@ -339,12 +341,12 @@ each time.
 
 ## Phase 12: Polish & Cross-Cutting
 
-- [ ] T296 [P] Update `docs/hds-api.md` (error table, sign-in, refresh, invitation and site sections) to match [contracts/error-codes.md](contracts/error-codes.md)
-- [ ] T297 [P] Update `docs/README.md` ADR table (005 and 006 present) and the ADR text if any decision changed during implementation
-- [ ] T298 Final docstring pass over `apps/api/src/hds/`: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
-- [ ] T299 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
-- [ ] T300 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
-- [ ] T301 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request; also run `uv run pytest -m timing` by hand and record that the timing comparison (SC-207) found no difference
+- [ ] T298 [P] Update `docs/hds-api.md` (error table, sign-in, refresh, invitation and site sections) to match [contracts/error-codes.md](contracts/error-codes.md)
+- [ ] T299 [P] Update `docs/README.md` ADR table (005 and 006 present) and the ADR text if any decision changed during implementation
+- [ ] T300 Final docstring pass over `apps/api/src/hds/`: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
+- [ ] T301 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
+- [ ] T302 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
+- [ ] T303 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request; also run `uv run pytest -m timing` by hand and record that the timing comparison (SC-207) found no difference
 
 ---
 
@@ -379,9 +381,9 @@ Tests first and failing, then models and migrations, repositories, services, rou
 - US1: T217 to T221 together; T226, T229, T230, T231 and T224 together.
 - US2: T233 to T237 together (T238 follows T234, same file); T242 and T247; T248.
 - US3: T250 to T254 together; T259.
-- US4: T263 with T264. US5: T268 with T269. US6: T272 with T273. US7: T276 with T277.
-- US8: T280 to T283 together; T289.
-- US9: T291, T292, T294, T295.
+- US4: T265 with T266. US5: T270 with T271. US6: T274 with T275. US7: T278 with T279.
+- US8: T282 to T285 together; T291.
+- US9: T293, T294, T296, T297.
 - US1 and US9 can be done by a second person while the first does US2 and US3.
 
 ### Parallel example: User Story 3 tests
@@ -434,28 +436,28 @@ Task: "Write tests/integration/test_migration_015.py (T254)"
 | FR-207 | T234, T243, T245, T247 |
 | FR-208 | T250, T251, T214, T258, T259, T261 |
 | FR-209 | T252, T253, T257, T260 |
-| FR-210 | T204 to T216, T263, T264, T265, T266 |
-| FR-211 | T268, T269, T270, T271 |
-| FR-212 | T272, T273, T274, T275 |
-| FR-213 | T272, T273, T274, T275 |
-| FR-214 | T276, T278, T279 |
-| FR-215 | T280, T281, T284, T285, T286, T290 |
-| FR-216 | T282, T283, T288, T289 |
-| FR-217 | T291, T292, T293 |
-| FR-218 | T295 |
+| FR-210 | T204 to T216, T265, T266, T267, T268 |
+| FR-211 | T270, T271, T272, T273 |
+| FR-212 | T274, T275, T276, T277 |
+| FR-213 | T274, T275, T276, T277 |
+| FR-214 | T278, T280, T281 |
+| FR-215 | T282, T283, T286, T287, T288, T292 |
+| FR-216 | T284, T285, T290, T291 |
+| FR-217 | T293, T294, T295 |
+| FR-218 | T297 |
 | FR-219 | every test task above |
 | FR-220 | T238, T246, T248 |
 | SC-201 | T217 |
 | SC-202 | T220 |
 | SC-203 | T250, T251 |
 | SC-204 | T235, T236 |
-| SC-205 | T268 |
-| SC-206 | T272 |
-| SC-207 | T276 (automated), T277 (opt-in, run by hand in T301) |
-| SC-208 | T281, T282 |
-| SC-209 | T292, T295 |
+| SC-205 | T270 |
+| SC-206 | T274 |
+| SC-207 | T278 (automated), T279 (opt-in, run by hand in T303) |
+| SC-208 | T283, T284 |
+| SC-209 | T294, T297 |
 
-101 tasks (T201 to T301). Every requirement FR-201 to FR-220 and every success criterion SC-201 to
+103 tasks (T201 to T303; T262 and T263 are extra hardening against feature 001 NFR-001 and FR-012 and map to no FR-2xx). Every requirement FR-201 to FR-220 and every success criterion SC-201 to
 SC-209 has at least one implementing task and one test task.
 
 ## Notes
