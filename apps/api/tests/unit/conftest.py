@@ -8,6 +8,21 @@ from typing import Any
 import pytest
 
 
+@pytest.fixture
+def real_mail_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pretend a real mail backend is available so a production configuration can start.
+
+    No real backend exists yet (specs/002 research D6), and production refuses to start without
+    one. Tests of the other start-up rules use this fixture to get past that check. It sets the
+    environment variable and the registry of real backends; both are harmless before the config
+    knows about them, so tests using it pass on either side of that change.
+    """
+    import hds.core.config as config
+
+    monkeypatch.setenv("MAIL_BACKEND", "test-smtp")
+    monkeypatch.setattr(config, "REAL_MAIL_BACKENDS", frozenset({"test-smtp"}), raising=False)
+
+
 class FakeSession:
     """A stand-in for ``AsyncSession`` that records commits and rollbacks in order.
 

@@ -88,6 +88,10 @@ jobs:
   test-unit:
     name: Unit tests (SQLite)
     runs-on: ubuntu-latest
+    env:
+      # The settings need an explicit environment and secret (specs/002-security-hardening).
+      ENVIRONMENT: test
+      JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -154,6 +158,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://hds:hds_check@localhost:5432/hds_check
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
+      ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -184,6 +189,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://hds:hds_scratch@localhost:5432/hds_scratch
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
+      ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4

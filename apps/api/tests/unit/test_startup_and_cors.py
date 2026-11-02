@@ -55,7 +55,9 @@ def test_production_with_placeholder_secret_refuses_to_start(
         Settings()
 
 
-def test_production_with_real_secret_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_with_real_secret_starts(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 48)
     assert Settings().JWT_SECRET_KEY == SecretStr("x" * 48)
@@ -81,7 +83,7 @@ def test_reserved_email_domains_allowed_outside_production(
 
 
 def test_reserved_email_domains_rejected_in_production(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
 ) -> None:
     import email_validator
 
@@ -104,13 +106,17 @@ def test_production_refuses_a_secret_shorter_than_32_bytes(
         Settings()
 
 
-def test_production_accepts_exactly_32_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_accepts_exactly_32_bytes(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
     Settings()
 
 
-def test_multibyte_secret_is_measured_in_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_multibyte_secret_is_measured_in_bytes(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "ש" * 16)  # 16 characters, 32 UTF-8 bytes
     Settings()

@@ -13,6 +13,7 @@ import sys
 import uuid
 from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+# The settings refuse to load without an explicit environment and secret (specs/002 research D5),
+# so the suite states both before any hds import. `test` is a development environment.
+os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789-abcdef")  # >= 32 bytes
 
 from hds.core.database import get_db
@@ -102,7 +106,17 @@ class OutboxMailSender:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str, str]] = []
 
-    async def send(self, to: str, subject: str, body: str) -> None:
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        secret: str | None = None,
+        purpose: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> None:
+        """Record the message in memory; the options exist so services can pass them."""
         self.messages.append((to, subject, body))
 
     def last_token_for(self, to: str) -> str:
