@@ -14,72 +14,29 @@ Covers: FR-205, FR-207.
 
 import asyncio
 import importlib.util
-import os
-import subprocess
-import sys
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-API_DIR = Path(__file__).resolve().parents[2]
+from tests.integration.migration_support import API_DIR, alembic, scratch_database
+
 MIGRATION_FILE = API_DIR / "alembic" / "versions" / "014_user_activation.py"
-BASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
-)
 SCRATCH_DB = "hds_migration_014_test"  # must end in _test: it is dropped after every test
 CONSTRAINT = "ck_users_active_has_activated_at"
-
-
-def alembic(url: str, *args: str) -> None:
-    """Run an Alembic command against ``url`` and fail loudly with its output."""
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        cwd=API_DIR,
-        env={**os.environ, "DATABASE_URL": url},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"alembic {' '.join(args)} failed:\n{result.stderr[-1500:]}"
-
-
-async def admin_execute(sql: str) -> None:
-    engine = create_async_engine(
-        make_url(BASE_URL).set(database="postgres"),
-        isolation_level="AUTOCOMMIT",
-        poolclass=NullPool,
-    )
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text(sql))
-    finally:
-        await engine.dispose()
 
 
 @pytest_asyncio.fixture
 async def scratch() -> AsyncGenerator[tuple[str, AsyncEngine], None]:
     """A fresh database migrated to 013, with an engine on it; dropped afterwards."""
-    assert SCRATCH_DB.endswith("_test")
-    await admin_execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
-    await admin_execute(f'CREATE DATABASE "{SCRATCH_DB}"')
-    url = make_url(BASE_URL).set(database=SCRATCH_DB).render_as_string(hide_password=False)
-    await asyncio.to_thread(alembic, url, "upgrade", "013_membership_cascade")
-    engine = create_async_engine(url, poolclass=NullPool)
-    try:
-        yield url, engine
-    finally:
-        await engine.dispose()
-        await admin_execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
+    async with scratch_database(SCRATCH_DB, "013_membership_cascade") as pair:
+        yield pair
 
 
 CREATED = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)

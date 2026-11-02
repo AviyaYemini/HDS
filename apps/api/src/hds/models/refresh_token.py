@@ -3,11 +3,12 @@
 Layer: models. Depends on ``hds.models.base`` and ``hds.models.user`` only.
 """
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from hds.models.base import Base
@@ -16,13 +17,28 @@ if TYPE_CHECKING:
     from hds.models.user import User
 
 
+class RevocationReason(str, enum.Enum):
+    """Why a refresh token was revoked.
+
+    Stored as short text in ``refresh_tokens.revoked_reason`` and restricted by a check
+    constraint, so adding a value needs a migration. Only ``rotated`` can mean "this token was
+    replayed after it was replaced", which is what the theft response looks for.
+    """
+
+    rotated = "rotated"  # replaced by a new token when it was used to refresh
+    logout = "logout"  # the user signed out of this session
+    all = "all"  # every session of the user ended (sign-out everywhere, password reset, reuse)
+    account = "account"  # the account was deactivated, deleted or changed role
+
+
 class RefreshToken(Base):
     """One issued refresh token, identified only by its SHA-256 hash.
 
     The raw token is never stored. A token is usable while ``revoked_at`` is ``None`` and
     ``expires_at`` is in the future; rotation, sign-out and password reset set
     ``revoked_at`` instead of deleting the row, so a replayed old token is rejected as revoked
-    rather than as unknown.
+    rather than as unknown. ``revoked_reason`` says why (see `RevocationReason`); it is empty
+    for tokens revoked before the column existed, which the service treats as unknown.
     """
 
     __tablename__ = "refresh_tokens"
@@ -36,7 +52,17 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(String(16))
 
     user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
 
-    __table_args__ = (Index("idx_refresh_tokens_user", "user_id"),)
+    __table_args__ = (
+        CheckConstraint(
+            "revoked_reason IS NULL OR revoked_reason IN "
+            + "("
+            + ", ".join(f"'{reason.value}'" for reason in RevocationReason)
+            + ")",
+            name="ck_refresh_tokens_revoked_reason",
+        ),
+        Index("idx_refresh_tokens_user", "user_id"),
+    )

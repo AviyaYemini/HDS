@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Self
 
 import email_validator
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 # The placeholder value that older configuration files and examples published. It is public,
@@ -49,6 +49,9 @@ class Settings(BaseSettings):
         REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again.
         LOGIN_MAX_FAILURES: Consecutive failed sign-ins before the account locks.
         LOGIN_LOCKOUT_MINUTES: How long a locked account stays locked.
+        REFRESH_REUSE_GRACE_SECONDS: After a refresh token is used, a second use within this
+            many seconds is refused without ending the user's sessions (an honest retry); a
+            later one ends them all. Must be positive.
         CORS_ORIGINS: Explicit allowed origins; credentials are allowed, so ``*`` is rejected.
         MAIL_BACKEND: How messages are delivered. Defaults to ``outbox`` in a development
             environment; outside development it must name a real backend.
@@ -70,6 +73,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_TTL_DAYS: int = 7
     LOGIN_MAX_FAILURES: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
+    REFRESH_REUSE_GRACE_SECONDS: int = Field(default=10, gt=0)
     # JSON list in the environment, e.g. CORS_ORIGINS='["https://app.example.com"]'.
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
     MAIL_BACKEND: str | None = None

@@ -220,13 +220,13 @@ outside the window revokes every token of the user.
 - [ ] T251 [P] [US3] Write `apps/api/tests/concurrency/test_link_single_use.py`: 100 rounds of two simultaneous invitation acceptances and two simultaneous reset confirmations; exactly one succeeds each round
 - [ ] T252 [P] [US3] Write `apps/api/tests/integration/test_refresh_reuse.py`: reuse after the grace window revokes all of the user's tokens; reuse within the window is refused and keeps sessions (set `REFRESH_REUSE_GRACE_SECONDS` to 1 and wait); reuse of a token revoked by logout is refused with no revoke-all; a legacy token with no reason is refused with no revoke-all; a token revoked with reason `account` (user deactivated) is refused with no other effect
 - [ ] T253 [P] [US3] Extend `apps/api/tests/unit/test_auth_service.py` with the decision table of research D3 using fake repositories
-- [ ] T254 [P] [US3] Write `apps/api/tests/integration/test_migration_015.py`: the check constraint accepts `rotated`, `logout`, `all`, `account` and null and rejects any other value; downgrade drops the column
+- [X] T254 [P] [US3] Write `apps/api/tests/integration/test_migration_015.py`: the check constraint accepts `rotated`, `logout`, `all`, `account` and null and rejects any other value; downgrade drops the column
 
 ### Implementation for User Story 3
 
-- [ ] T255 [US3] In `apps/api/src/hds/models/refresh_token.py` add `revoked_reason` with this constraint verbatim: `short text, null. One of rotated, logout, all, account. Null for tokens revoked before this change`, plus a check constraint for those values
-- [ ] T256 [US3] Create `apps/api/alembic/versions/015_refresh_revoked_reason.py` (add column and check constraint; reversible; docstring says what and why)
-- [ ] T257 [US3] Add `REFRESH_REUSE_GRACE_SECONDS: int = 10` to `apps/api/src/hds/core/config.py` (must be positive)
+- [X] T255 [US3] In `apps/api/src/hds/models/refresh_token.py` add `revoked_reason` with this constraint verbatim: `short text, null. One of rotated, logout, all, account. Null for tokens revoked before this change`, plus a check constraint for those values
+- [X] T256 [US3] Create `apps/api/alembic/versions/015_refresh_revoked_reason.py` (add column and check constraint; reversible; docstring says what and why)
+- [X] T257 [US3] Add `REFRESH_REUSE_GRACE_SECONDS: int = 10` to `apps/api/src/hds/core/config.py` (must be positive)
 - [ ] T258 [US3] In `apps/api/src/hds/repositories/refresh_token.py` add `revoke_if_live(token_id, reason) -> bool` implemented as `UPDATE ... WHERE id = :id AND revoked_at IS NULL` returning whether a row changed; give `revoke_all_for_user` a `reason` argument; replace the unguarded `revoke`
 - [ ] T259 [P] [US3] In `apps/api/src/hds/repositories/invitation_token.py` replace `mark_used` with `spend(id) -> bool` implemented as `UPDATE ... SET used_at = now WHERE id = :id AND used_at IS NULL` returning whether a row changed
 - [ ] T260 [US3] Rewrite `AuthService.refresh` in `apps/api/src/hds/services/auth.py` per research D3: guarded rotation; on a lost race re-read and decide (rotated and outside the window: `revoke_all_for_user(reason="all")`, call the repository's explicit `commit()`, then refuse; otherwise refuse with no effect). `logout` uses reason `logout`, `logout_all` uses `all`. Update the docstrings

@@ -132,3 +132,28 @@ def test_an_empty_secret_is_refused_even_in_development(
 ) -> None:
     """A copied example file leaves the secret blank; a zero-length signing key is never valid."""
     assert "JWT_SECRET_KEY" in refusal(monkeypatch, ENVIRONMENT=environment, JWT_SECRET_KEY=secret)
+
+
+# ── Refresh-token reuse grace window (T257, spec FR-209) ──────────────────────────────────────
+
+
+def test_the_reuse_grace_window_defaults_to_ten_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = build(monkeypatch, ENVIRONMENT="test", JWT_SECRET_KEY=SHORT)
+    assert settings.REFRESH_REUSE_GRACE_SECONDS == 10
+
+
+def test_the_reuse_grace_window_can_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = build(
+        monkeypatch, ENVIRONMENT="test", JWT_SECRET_KEY=SHORT, REFRESH_REUSE_GRACE_SECONDS="1"
+    )
+    assert settings.REFRESH_REUSE_GRACE_SECONDS == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_the_reuse_grace_window_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    text = refusal(
+        monkeypatch, ENVIRONMENT="test", JWT_SECRET_KEY=SHORT, REFRESH_REUSE_GRACE_SECONDS=value
+    )
+    assert "REFRESH_REUSE_GRACE_SECONDS" in text
