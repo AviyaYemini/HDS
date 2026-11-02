@@ -5,11 +5,11 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 
 | Resource group | Example endpoints | Notes |
 | --- | --- | --- |
-| Auth | `POST /auth/login`, `/auth/refresh`, `/auth/logout` | Access token 15 minutes; refresh token rotates on every use |
+| Auth | `POST /auth/login`, `/auth/refresh`, `/auth/logout` | Access token 15 minutes; refresh token rotates on every use and works exactly once. Addresses are matched without regard to letter case. Sign-in locks after exactly the configured number of consecutive failures and the count restarts when the lock ends |
 | Invitations and password reset *(Proposed)* | `POST /auth/invite`, `/auth/invite/accept`, `/auth/password-reset/request`, `/auth/password-reset/confirm` | One-time links. An invitation completes only a pending account (never activated); a deactivated account cannot be invited back; links are cancelled when an account is deactivated, deleted or activated |
 | People | `GET/POST /employees`, `PATCH /employees/{id}`, `GET/POST /groups` | Managers create and edit; only admins delete |
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
-| Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here |
+| Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
 | Availability | `GET/POST /employees/{id}/constraints` | Employees edit their own; admins edit any |
 | Shifts | `GET /shifts?from=&to=&project=`, `PATCH /shifts/{id}` | Cursor pagination; admins edit the pay field |
 | Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Returns constraint warnings, not just errors |
@@ -27,9 +27,29 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 
 - Errors use RFC 9457 problem-details JSON with a stable machine-readable `code`.
 - An account is *pending* (invited, never activated), *active*, *deactivated* or *deleted*. Only accepting an invitation leaves pending; staff reactivation applies to deactivated accounts, and reactivating a pending one returns 409 `users.pending_cannot_reactivate` *(Proposed)*.
+- An email address is one address whatever its letter case: it is trimmed and lowercased on the way in, sign-in, reset and invitation find the same account, and a second account with the same address in another case is refused with 409 `users.duplicate_email`. Because addresses are unique across the whole deployment, that 409 reveals that the address exists somewhere in the deployment (not in which organisation).
+- A refresh token works once. Presenting a used one is refused with 401 `auth.token_revoked`; if it was rotated more than `REFRESH_REUSE_GRACE_SECONDS` (default 10) ago, every session of that user also ends, because it may be a stolen copy. Invitation and reset links are single use too (`auth.token_used`).
+- A refused sign-in (unknown address, wrong password, inactive account) returns the same 401 `auth.invalid_credentials` after the same amount of work. The locked-account answer (423 `auth.account_locked`) is the one accepted difference.
+- Every request is one transaction: a change either fully happens or does not, and invitation and reset email is sent only after the change is saved.
 - Timestamps travel as ISO 8601 in UTC; clients render in the site's timezone.
 - Writes that can be retried (job creation, assignment) accept an `Idempotency-Key` header.
 - Breaking changes ship under a new `/api/v2` prefix; additive changes do not.
+
+**Error codes added or changed by feature 002**
+
+| Code | HTTP | When |
+| --- | --- | --- |
+| `invitations.account_deactivated` | 409 | Inviting an address that belongs to a deactivated account |
+| `users.pending_cannot_reactivate` | 409 | Reactivating an account that was invited and never activated |
+| `sites.timezone_invalid` | 422 | A site is saved with a time zone that cannot be loaded |
+| `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
+| `auth.token_revoked` | 401 | A refresh token was already used (see above) |
+| `auth.account_locked` | 423 | After exactly N consecutive failed sign-ins, until the cooldown ends |
+| `users.duplicate_email` | 409 | The address exists in any letter case, in any organisation |
+| `users.admin_required` | 403 | A Manager re-inviting a pending account as Admin |
+| `users.last_admin` | 409 | Removing, deactivating or demoting the last active Admin; safe against two Admins acting at once |
+
+Asking for another organisation's id (path, query or body) is always 404, the same as for an id that does not exist; the employee list refuses a `group_id` or `qualification_id` from another organisation the same way.
 
 **Offline and real time**
 

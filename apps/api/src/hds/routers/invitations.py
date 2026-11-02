@@ -129,7 +129,8 @@ async def accept_invitation(
     summary="Request a password reset",
     description=(
         "Public. Email a one-time reset token valid for 60 minutes if the address "
-        "belongs to an active account. Always answers 202, whether or not the address "
+        "belongs to an active account (letter case is ignored; the email is sent after "
+        "the request is saved). Always answers 202, whether or not the address "
         "is registered, so it cannot be used to find out who has an account."
     ),
 )
@@ -141,7 +142,8 @@ async def request_password_reset(
     """Request a password reset.
 
     Public. Email a one-time reset token valid for 60 minutes if the address belongs to an
-    active account. Always answers 202, whether or not the address is registered, so it cannot
+    active account (letter case is ignored; the email is sent after the request is saved).
+    Always answers 202, whether or not the address is registered, so it cannot
     be used to find out who has an account.
     """
     await _svc(db, mailer).request_password_reset(email=str(body.email))

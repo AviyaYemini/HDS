@@ -97,8 +97,11 @@ async def login(
     summary="Refresh tokens",
     description=(
         "Exchange a refresh token for a new access and refresh token. The presented "
-        "refresh token is spent: using it again returns 401 (`auth.token_revoked`). An "
-        "expired token returns `auth.token_expired`."
+        "refresh token is spent and works exactly once, even if sent twice at the same "
+        "moment: using it again returns 401 (`auth.token_revoked`). If it was replaced "
+        "more than the grace window ago (default 10 seconds), every session of the user "
+        "also ends, because it may be a stolen copy. An expired token returns "
+        "`auth.token_expired`."
     ),
 )
 async def refresh_token(
@@ -108,8 +111,10 @@ async def refresh_token(
     """Refresh tokens.
 
     Exchange a refresh token for a new access and refresh token. The presented refresh token is
-    spent: using it again returns 401 (`auth.token_revoked`). An expired token returns
-    `auth.token_expired`.
+    spent and works exactly once, even if sent twice at the same moment: using it again returns
+    401 (`auth.token_revoked`). If it was replaced more than the grace window ago (default 10
+    seconds), every session of the user also ends, because it may be a stolen copy. An expired
+    token returns `auth.token_expired`.
     """
     settings = get_settings()
     svc = _make_service(db)

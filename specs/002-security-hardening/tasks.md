@@ -465,13 +465,36 @@ each time.
 
 ## Phase 12: Polish & Cross-Cutting
 
-- [ ] T298 [P] Update `docs/hds-api.md` (error table, sign-in, refresh, invitation and site sections) to match [contracts/error-codes.md](contracts/error-codes.md)
-- [ ] T299 [P] Update `docs/README.md` ADR table (005 and 006 present) and the ADR text if any decision changed during implementation
-- [ ] T300 Final docstring pass over `apps/api/src/hds/`: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
-- [ ] T301 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
-- [ ] T302 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
-- [ ] T303 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request; also run `uv run pytest -m timing` by hand and record that the timing comparison (SC-207) found no difference
-- [ ] T304 Extend the cross-organisation sweep to callers other than Admin: run every case in `apps/api/tests/integration/test_cross_organisation_sweep.py` as a Manager (same refusals as for the Admin, except cases that need the Admin role, which must be refused 403) and, for the Employee and Client roles, assert that every operation is refused by role (403) before any organisation lookup, so another organisation's id never gets a different answer from a missing one; nothing may change in any case. Body ids are already covered by the existing cases (`ids` of the employee group and qualification replacements, `client_id` and `site_id` of a new project, `email` of invitations, employees and client users)
+- [X] T298 [P] Update `docs/hds-api.md` (error table, sign-in, refresh, invitation and site sections) to match [contracts/error-codes.md](contracts/error-codes.md)
+- [X] T299 [P] Update `docs/README.md` ADR table (005 and 006 present) and the ADR text if any decision changed during implementation
+- [X] T300 Final docstring pass over `apps/api/src/hds/`: every changed or added public symbol states rules, error codes and side effects; `uv run interrogate src` stays at 100%; every endpoint whose behaviour changed has an updated `description`
+- [X] T301 Run every gate from `apps/api/` and the full suite on PostgreSQL, including `apps/api/tests/concurrency/`, and the OpenAPI drift check against `specs/001-foundation-auth-org/contracts/openapi.yaml`; the generated document may differ from the pre-feature baseline only in descriptions
+- [X] T302 Run `apps/api/tests/concurrency/` three times in a row to catch flaky timing; fix or tighten any test that fails once
+- [X] T303 Run the validation steps of `specs/002-security-hardening/quickstart.md` end to end (start-up refusals, scripts, migrations 014 to 016 on a copy of seeded data) and record the result in the pull request; also run `uv run pytest -m timing` by hand and record that the timing comparison (SC-207) found no difference
+- [X] T304 Extend the cross-organisation sweep to callers other than Admin: run every case in `apps/api/tests/integration/test_cross_organisation_sweep.py` as a Manager (same refusals as for the Admin, except cases that need the Admin role, which must be refused 403) and, for the Employee and Client roles, assert that every operation is refused by role (403) before any organisation lookup, so another organisation's id never gets a different answer from a missing one; nothing may change in any case. Body ids are already covered by the existing cases (`ids` of the employee group and qualification replacements, `client_id` and `site_id` of a new project, `email` of invitations, employees and client users)
+
+### Scope additions recorded during implementation (Phase 12)
+
+- **T304, result**: no gap found. As a Manager every case gets the Admin's refusal, except the
+  three Admin-only deletes (employee, client, project), which are refused 403 before any lookup.
+  Employee and Client users get 403 on every operation, except that a Client user may read
+  projects: the list ignores a foreign `client_id` and shows only their own, and a foreign project
+  id is 404 like a missing one. 165 sweep cases pass.
+- **T299**: ADR 005 text updated (the lockout write is now `register_failed_login`).
+- **T300**: descriptions updated for refresh (single use, grace window), password-reset request
+  (case, mail after save) and the employee list (404 for a foreign filter). Interrogate 100%.
+- **T301**: ruff, format (src, tests, alembic), interrogate, `mypy --strict src/`, import graph and
+  `alembic check` clean; 909 tests pass including `tests/concurrency/`; the drift check agrees with
+  the contract and the document differs from the pre-feature baseline only in descriptions.
+  `mypy --strict tests/` (not a CI gate) reports 127 errors against 26 on `main`; not touched, as
+  it is outside this task list.
+- **T302**: `tests/concurrency/` three runs in a row, 9 passed each.
+- **T303**: start-up refusals checked by hand (unset `ENVIRONMENT`, unset secret, the published
+  placeholder, a 20-byte secret, production without a mail backend: each refuses and names the
+  setting, none prints the secret); migrations 013 to head on seeded data, downgrade to 013 and up
+  again all exit 0; `find_email_case_duplicates` prints nothing, `check_site_timezones` lists the
+  one bad site by id and exits 1; `dev_issue_link` prints a token in development and refuses in
+  production. `pytest -m timing`: median 54.8 ms unknown against 57.7 ms known (ratio 1.05).
 
 ---
 

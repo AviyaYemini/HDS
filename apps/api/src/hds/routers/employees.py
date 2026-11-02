@@ -130,7 +130,8 @@ async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: Use
     description=(
         "Manager or Admin. Search the organisation's non-deleted users by name or email "
         "and filter by role, active state, group or qualification. All filters combine "
-        "with AND and the result is ordered by name."
+        "with AND and the result is ordered by name. A group or qualification from "
+        "another organisation, or one that does not exist, returns 404."
     ),
 )
 async def list_employees(
@@ -146,7 +147,8 @@ async def list_employees(
 
     Manager or Admin. Search the organisation's non-deleted users by name or email and filter by
     role, active state, group or qualification. All filters combine with AND and the result is
-    ordered by name.
+    ordered by name. A group or qualification from another organisation, or one that does not
+    exist, returns 404.
     """
     users = await _employee_svc(db).list_employees(
         current_user,

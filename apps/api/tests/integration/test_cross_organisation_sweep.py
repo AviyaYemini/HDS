@@ -471,3 +471,92 @@ async def test_foreign_id_or_address_is_refused_and_nothing_changes(
         assert response.json().get("code") == case.code, response.text
     assert await digest(test_db) == before, "a refused request changed data"
     assert outbox.messages == [], "a refused request sent mail"
+
+
+# ── Callers other than an Admin (T304) ───────────────────────────────────────────────────
+
+# Cases a Manager may not perform at all: the role check comes first, so the answer is 403 and
+# says nothing about whether the foreign id exists.
+ADMIN_ONLY = {
+    "DELETE /api/v1/employees/{id}": "users.admin_required",
+    "DELETE /api/v1/clients/{id}": "users.admin_required",
+    "DELETE /api/v1/projects/{id}": "users.admin_required",
+}
+
+# The two project reads that a Client user (the customer's portal account) may use for the
+# client's own projects. A foreign id must still get the answer of a missing one.
+PORTAL_READS = {
+    "GET /api/v1/projects": "the client_id filter is ignored; only their own projects",
+    "GET /api/v1/projects/{id}": "404 for another organisation's project, as for a missing one",
+}
+
+# Employee and Client users may not use any of these operations: refused by role (403) before any
+# lookup by organisation, so another organisation's id never gets a different answer from a
+# missing one.
+NOT_STAFF = ("employee", "client")
+
+
+async def headers_for(client: AsyncClient, role: str) -> dict[str, str]:
+    response = await client.post(
+        "/auth/login", json={"email": f"{role}@hds.test", "password": PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+@pytest.mark.parametrize("key,case", FLAT, ids=[f"{k} | {c.why}" for k, c in FLAT])
+async def test_a_manager_gets_the_same_refusals(
+    key: str,
+    case: Case,
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    mine: Mine,
+    other_org: OtherOrg,
+    outbox: Any,
+) -> None:
+    headers = await headers_for(async_client, "manager")
+    path, kwargs = case.build(World(mine, other_org))
+    method = key.split(" ", 1)[0]
+    before = await digest(test_db)
+
+    response = await async_client.request(method, path, headers=headers, **kwargs)
+
+    if key in ADMIN_ONLY:
+        assert response.status_code == 403, response.text
+        assert response.json()["code"] == ADMIN_ONLY[key]
+    else:
+        assert response.status_code == case.status, response.text
+        assert response.json().get("code") == case.code, response.text
+    assert await digest(test_db) == before, "a refused request changed data"
+    assert outbox.messages == [], "a refused request sent mail"
+
+
+@pytest.mark.parametrize("role", NOT_STAFF)
+@pytest.mark.parametrize("key,case", FLAT, ids=[f"{k} | {c.why}" for k, c in FLAT])
+async def test_employees_and_client_users_are_refused_by_role_before_any_lookup(
+    role: str,
+    key: str,
+    case: Case,
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    mine: Mine,
+    other_org: OtherOrg,
+    outbox: Any,
+) -> None:
+    headers = await headers_for(async_client, role)
+    path, kwargs = case.build(World(mine, other_org))
+    method = key.split(" ", 1)[0]
+    before = await digest(test_db)
+
+    response = await async_client.request(method, path, headers=headers, **kwargs)
+
+    if role == "client" and key == "GET /api/v1/projects":
+        assert response.status_code == 200, response.text
+        assert str(other_org.project.id) not in response.text, "another organisation's project"
+    elif role == "client" and key in PORTAL_READS:
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "resource.not_found"
+    else:
+        assert response.status_code == 403, response.text
+    assert await digest(test_db) == before, "a refused request changed data"
+    assert outbox.messages == [], "a refused request sent mail"
