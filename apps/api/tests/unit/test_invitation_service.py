@@ -1,6 +1,6 @@
 """Unit tests for InvitationService (T099).
 
-Covers: FR-006, NFR-005.
+Covers: FR-006, FR-247, NFR-005.
 """
 
 import uuid
@@ -13,6 +13,7 @@ import pytest
 from hds.core.exceptions import AuthError, ConflictError, ForbiddenError
 from hds.models.user import User, UserRole
 from hds.services.invitation import InvitationService
+from hds.services.throttle import hash_key
 
 
 def _make_user(**kw: object) -> MagicMock:
@@ -42,7 +43,8 @@ def _svc() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock]:
     token_repo = AsyncMock()
     mailer = AsyncMock()
     refresh_repo = AsyncMock()
-    svc = InvitationService(user_repo, token_repo, mailer, refresh_repo)
+    config = MagicMock(RESET_REQUEST_LIMIT_PER_ADDRESS=0, LOGIN_THROTTLE_RETENTION_HOURS=24)
+    svc = InvitationService(user_repo, token_repo, mailer, refresh_repo, AsyncMock(), config)
     return svc, user_repo, token_repo, mailer
 
 
@@ -542,5 +544,64 @@ async def test_a_re_invitation_is_refused_if_the_account_was_deleted_during_the_
         await svc.create_invitation(actor, pending.email, pending.role)
 
     assert refused.value.code == "users.duplicate_email"
+    token_repo.create.assert_not_awaited()
+    mailer.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_reset_request_is_counted_under_the_folded_address() -> None:
+    throttle_repo = AsyncMock()
+    throttle_repo.register_failure = AsyncMock(return_value=(1, None))
+    config = MagicMock(
+        RESET_REQUEST_LIMIT_PER_ADDRESS=5,
+        LOGIN_THROTTLE_RETENTION_HOURS=24,
+        throttle_key=b"k" * 32,
+    )
+    user_repo = AsyncMock()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    svc = InvitationService(user_repo, AsyncMock(), AsyncMock(), AsyncMock(), throttle_repo, config)
+
+    await svc.request_password_reset(" Someone@HDS.test ")
+
+    key = throttle_repo.register_failure.await_args.args[1]
+    assert key == hash_key("someone@hds.test", config.throttle_key)
+
+
+def _limited() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock, AsyncMock]:
+    """Build a service with the reset limit on, returning its repositories and mailer."""
+    user_repo, token_repo, mailer, throttle_repo = (AsyncMock() for _ in range(4))
+    throttle_repo.register_failure = AsyncMock(return_value=(1, None))
+    config = MagicMock(
+        RESET_REQUEST_LIMIT_PER_ADDRESS=5,
+        LOGIN_THROTTLE_RETENTION_HOURS=24,
+        throttle_key=b"k" * 32,
+    )
+    svc = InvitationService(user_repo, token_repo, mailer, AsyncMock(), throttle_repo, config)
+    return svc, user_repo, token_repo, mailer, throttle_repo
+
+
+@pytest.mark.asyncio
+async def test_a_reset_request_saves_its_count_before_it_touches_the_account() -> None:
+    svc, user_repo, _, _, throttle_repo = _limited()
+    order: list[str] = []
+    throttle_repo.commit = AsyncMock(side_effect=lambda: order.append("commit"))
+    user_repo.get_by_email = AsyncMock(side_effect=lambda _: order.append("lookup"))
+
+    await svc.request_password_reset("someone@hds.test")
+
+    assert order[0] == "commit"
+
+
+@pytest.mark.parametrize("after_the_lock", [None, _make_user(is_active=False)])
+@pytest.mark.asyncio
+async def test_a_reset_request_stops_if_the_account_changed_while_it_waited_for_the_lock(
+    after_the_lock: MagicMock | None,
+) -> None:
+    svc, user_repo, token_repo, mailer, _ = _limited()
+    user_repo.get_by_email = AsyncMock(side_effect=[_make_user(is_active=True), after_the_lock])
+
+    await svc.request_password_reset("someone@hds.test")
+
+    token_repo.cancel_for_user.assert_not_awaited()
     token_repo.create.assert_not_awaited()
     mailer.send.assert_not_awaited()

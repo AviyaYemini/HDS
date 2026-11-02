@@ -33,6 +33,8 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789-abcdef"
 # Many tests fail sign-ins from one address on purpose. An assignment, not ``setdefault``, so a
 # developer's shell cannot change it; test_login_throttle.py turns the limit on for itself.
 os.environ["LOGIN_RATE_LIMIT_PER_NETWORK"] = "0"
+# The same for reset requests; test_reset_request_limit.py turns the limit on for itself.
+os.environ["RESET_REQUEST_LIMIT_PER_ADDRESS"] = "0"
 
 from hds.core.database import get_db
 from hds.core.mail import get_mail_sender

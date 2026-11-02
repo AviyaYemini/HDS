@@ -90,3 +90,82 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | L2 | The signing secret used directly | `test_without_a_setting_the_key_is_derived_and_never_the_signing_secret` |
 | L3 | The setting ignored | `test_the_configured_secret_is_used` |
 | L4 | Short secret allowed | `test_a_short_secret_is_refused_outside_development` |
+
+## Group B2: limit reset requests per address (T417 to T419, F28, FR-247)
+
+Decisions taken here:
+- `RESET_REQUEST_LIMIT_PER_ADDRESS` is 0 in `tests/conftest.py` by assignment, the same as the network
+  limit. `tests/integration/test_reset_request_limit.py` turns it on for itself.
+- `purge_stale` runs on every request, including at a limit of 0, because T418 says every request.
+- `lock_until` is passed to `register_failure` although the repository ignores it for windowed kinds.
+  The parameter is required, and a separate signature was not worth adding.
+
+Test changes, and why:
+- `tests/unit/test_invitation_service.py`: `_svc()` passes the two new constructor arguments. No
+  assertion changed.
+
+Failing first: 8 of the 9 tests in `test_reset_request_limit.py` failed once the setting existed, on
+behaviour (6 mails, no rows). The ninth, a limit of 0, passes before and after by design. The three
+follow-up unit tests failed before their fixes.
+
+Reviews, covering Step 0 (Money), Step 0c (HMAC) and this group:
+
+`/hds-review`:
+
+| Finding | Action |
+| --- | --- |
+| `mypy --strict` failed at `invitation.py:305` (`no-any-return`) | Fixed: `limit: int` |
+| `test_invitation_service.py` did not cite FR-247 | Fixed |
+| `spec.md:548` named a technology ("the Argon2 check") | Fixed: "the password check". This is wording in a known-limitation note, not a requirement |
+
+`/code-review high` (read-only, ten findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | No commit after counting, so a deadlock with a failed sign-in | Scenario is wrong: `register_failed_login` commits on its own, so a failed sign-in does not hold the user's row while it upserts. The commit is still right, for findings 6 and for keeping the count if a later step fails, so it was added, test first. A race test with both limits on was added too |
+| 2 | Under the limit, an attacker can still replace a link every 12 minutes | **Not fixed, owner to decide.** Left as designed: see below. The docstring claim is corrected |
+| 3 | No network limit on this path, so random addresses add rows for 24 hours | **Not fixed, owner to decide.** See below. The false "cannot grow faster than it is cleaned" text is corrected in `research.md` and `data-model.md` |
+| 4 | A registered address does more work, so timing can differ | Group C scope (T359 to T361), then measured by T360 |
+| 5 | No re-read after `lock_user`, so a deactivation that wins the lock still gets a link | Fixed, test first, as the re-invitation path does |
+| 6 | The upsert's lock is held for the whole request | Fixed by the commit in finding 1. Over-limit requests still write the row: skipped, it is a small bounded cost |
+| 7 | Nothing tests the limit under parallel requests | Fixed: `tests/concurrency/test_reset_request_races.py` |
+| 8 | `data-model.md` column rules were stale for reset rows | Fixed, including "restarts at 0", which was already wrong (the code restarts at 1) |
+| 9 | Key folding and purge lines are repeated | Skipped as cosmetic. T418 places the code in `invitation.py` |
+| 10 | Naming, the `count = 0` starting value | Skipped as cosmetic |
+
+Findings 2 and 3, why this was not a stop:
+- The stop rule covers a fix that changes a requirement. Their root fixes would (keeping earlier links
+  contradicts "only the latest link works"; a network limit on this path is not in FR-247 and D16 says
+  there is none). FR-247 as written, the 5-per-hour limit and "the 5th of 5 still sends" are the
+  owner's decisions, and the code meets them, so there is no defect to fix inside the spec.
+- These are residual risks, not failures of the requirement, so I continued. One sentence of FR-247
+  does overstate the result: "a third party cannot keep cancelling a victim's links". Under the limit
+  they can replace a link about every 12 minutes, though each replacement mails the owner a working
+  link, and over the limit the last link stands. The bound on the table is the request rate times
+  `LOGIN_THROTTLE_RETENTION_HOURS`, not a fixed size. **spec.md was not changed. Both are raised in the
+  final report for the owner to decide.**
+
+Differs from the tasks:
+- T418 has the unit of work save the count. It is committed early instead, and the account is read
+  again after the lock. Both come from the review.
+
+Mutation results on the final code, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| R1 | Limit check removed | `test_the_fifth_of_five_still_sends_and_the_sixth_does_not` |
+| R2 | Links cancelled before the check | `test_requests_over_the_limit_leave_the_last_link_working` |
+| R3 | Raw address as the key | `test_a_registered_and_an_unregistered_address_answer_alike_at_every_step` |
+| R4 | Count equal to the limit is over | `test_the_fifth_of_five_still_sends_and_the_sixth_does_not` |
+| R5 | No purge on this path | `test_each_request_removes_stale_rows_and_never_a_live_lock` |
+| R6 | Any `locked_until` counts as locked | same test |
+| R7 | Letter case not folded | `test_a_reset_request_is_counted_under_the_folded_address` (not caught at first: the `Email` schema type already folds case over HTTP, so a service-level test was added) |
+| R8 | A limit of 0 still counts | `test_a_limit_of_zero_turns_it_off` |
+| R9 | Check after the lookup | `test_a_registered_and_an_unregistered_address_answer_alike_at_every_step` |
+| R10 | No commit after counting | `test_a_reset_request_saves_its_count_before_it_touches_the_account` |
+| R11 | No re-read after the lock | `test_a_reset_request_stops_if_the_account_changed_while_it_waited_for_the_lock` |
+| R12 | Re-read ignores `is_active` | same test |
+| R13 | Count never decides | `test_parallel_requests_send_no_more_mail_than_the_limit` |
+
+Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass; OpenAPI drift check
+passes in its current form.

@@ -46,6 +46,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `LOGIN_RATE_LIMIT_PER_NETWORK` | Failed sign-ins allowed from one network address in one window of `LOGIN_LOCKOUT_MINUTES`; a success does not clear the count; `0` turns the limit off | `30` |
 | `THROTTLE_SECRET_KEY` | Optional key for the HMAC of addresses in the throttle table, at least 32 bytes outside development. Unset, a key is derived from `JWT_SECRET_KEY`. Changing either restarts every count | derived |
 | `LOGIN_THROTTLE_RETENTION_HOURS` | Age at which an unlocked throttle row may be removed. Normal requests remove them, so no scheduled job is needed | `24` |
+| `RESET_REQUEST_LIMIT_PER_ADDRESS` | Password-reset requests one address may make in one 60-minute window. Above it the answer stays 202 and nothing is cancelled or sent; `0` turns the limit off | `5` |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limit set to `0`: otherwise every user shares the proxy's address and one bad window locks everyone out. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |

@@ -104,14 +104,14 @@ columns; a network address always uses this table.
 | --- | --- | --- |
 | `kind` | short text | `address`, `network` or `reset`; check constraint `ck_login_throttle_kind`; part of the primary key |
 | `key_hash` | text (64) | HMAC-SHA-256 hex, keyed by a server secret, of the lowercased submitted address or of the client network address (an IPv6 address reduced to its /64); never the value itself, and a copy of the table alone cannot confirm one; part of the primary key |
-| `failures` | integer | consecutive failures, at least 0; restarts at 0 when a lock ends; for `address` rows cleared by a successful sign-in, for `network` rows never cleared by one |
-| `window_started_at` | timestamptz, null | `network` and `reset` rows only: start of the fixed counting window; a failure after `LOGIN_LOCKOUT_MINUTES` restarts it and the count |
-| `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit (`address`) or the window limit (`network`) |
+| `failures` | integer | consecutive failures, at least 0; restarts at 1 on the first failure after a lock ends or a window ends; for `address` rows cleared by a successful sign-in, for `network` rows never cleared by one |
+| `window_started_at` | timestamptz, null | `network` and `reset` rows only: start of the fixed counting window; a failure after the window restarts it and the count; the window is `LOGIN_LOCKOUT_MINUTES` for `network` and `RESET_TTL_MINUTES` for `reset` |
+| `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit (`address`) or the window limit (`network`, `reset`); a `reset` request is refused only when the count is above the limit, so this column does not decide it |
 | `updated_at` | timestamptz | UTC; index `ix_login_throttle_updated_at` for the batch clean |
 
 No foreign key: unregistered addresses have no account. One row per distinct key, not per attempt.
 Each recorded failure or reset request deletes up to 50 unlocked rows (`locked_until` empty or in
-the past) older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24), so growth is bounded without a scheduled job; `purge_expired_records` does the same in
+the past) older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24), so the table is bounded by the request rate over that period, without a scheduled job; `purge_expired_records` does the same in
 bulk. Downgrade drops the table (the counts are disposable).
 
 ## Changed rules on existing data

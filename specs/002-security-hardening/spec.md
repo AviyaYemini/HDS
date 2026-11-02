@@ -545,7 +545,7 @@ change no behaviour, so they need no requirement.
   soft-delete removes one. Accepted.
 - **Known limitation, equal work is not equal time to the last millisecond:** a known account's
   wrong password also writes and commits its failure count, about 3 ms on top of about 55 ms for
-  the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
+  the password check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
 - Creating or reactivating a portal user while its client is being deactivated is check-then-write,

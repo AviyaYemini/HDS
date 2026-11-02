@@ -8,12 +8,14 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
 from hds.core.types import Email, Password, Token
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.invitation import InvitationService
@@ -54,6 +56,8 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
         token_repo=InvitationTokenRepository(db),
         mailer=DeferredMailer(db, mailer),  # mail goes out only after the request is saved
         refresh_token_repo=RefreshTokenRepository(db),
+        throttle_repo=LoginThrottleRepository(db),
+        config=get_settings(),
     )
 
 
@@ -131,8 +135,10 @@ async def accept_invitation(
         "Public. Email a one-time reset token valid for 60 minutes if the address "
         "belongs to an active account (letter case is ignored; the email is sent after "
         "the request is saved). Only the latest reset token works: earlier unused ones "
-        "are cancelled. Always answers 202, whether or not the address "
-        "is registered, so it cannot be used to find out who has an account."
+        "are cancelled. Requests are limited per address in a 60-minute window; over the "
+        "limit nothing is cancelled or sent, so an earlier token keeps working. Always "
+        "answers 202, whether or not the address is registered and whether or not the "
+        "limit is reached, so it cannot be used to find out who has an account."
     ),
 )
 async def request_password_reset(
@@ -144,8 +150,10 @@ async def request_password_reset(
 
     Public. Email a one-time reset token valid for 60 minutes if the address belongs to an
     active account (letter case is ignored; the email is sent after the request is saved). Only
-    the latest reset token works: earlier unused ones are cancelled. Always answers 202, whether
-    or not the address is registered, so it cannot be used to find out who has an account.
+    the latest reset token works: earlier unused ones are cancelled. Requests are limited per
+    address in a 60-minute window; over the limit nothing is cancelled or sent, so an earlier token
+    keeps working. Always answers 202, whether or not the address is registered and whether or not
+    the limit is reached, so it cannot be used to find out who has an account.
     """
     await _svc(db, mailer).request_password_reset(email=str(body.email))
     return Response(status_code=202)
