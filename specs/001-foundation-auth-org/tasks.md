@@ -259,6 +259,7 @@ every migration.
 - [X] T144 Drift check compares query parameters (name, type, required) as well as method, path and 2xx codes (`tests/unit/test_export_openapi.py`); operation IDs are NOT compared yet. It exposed three documented-but-missing items: the contract's `cursor`/`limit` parameters (removed from the contract, see T146) and `GET /clients?is_active=` (implemented, T143)
 - [X] T145 `scripts/contract_cli.sh` refuses to run unless `DATABASE_URL` names a database ending in `_test` or `_scratch`, and prints how to start a scratch database (`tests/unit/test_contract_cli_guard.py`); the CI contract job uses `hds_scratch`
 - [ ] T146 Cursor pagination for list endpoints (`research.md` API convention): implement `cursor` and `limit` on `GET /employees`, `/clients` and `/projects`, then restore the parameters in `contracts/openapi.yaml` (they were removed because nothing implemented them); tests first
+- [ ] T147 Enable the TypeScript client check in `.github/workflows/ci.yml` (`ts-client-check`: regenerate the client from the OpenAPI file, fail if the committed copy differs, run its tests) once `apps/client` and a real generator in `packages/api-client` land (Constitution V). Blocked on the client feature.
 
 ---
 
