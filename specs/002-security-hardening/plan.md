@@ -263,7 +263,8 @@ phase does not start before the previous checkpoint passes. Item ids are from `p
   state. Add expired-record cleanup (D19). FR-209 text is already amended in the spec.
 - **F09** (D20). Concurrency tests first: refresh racing each revoke-all path (reset, logout
   everywhere, theft response, account change) leaves no live token, **and a login that verified the
-  old password cannot create a session after a reset finishes**. Take the user-row lock in refresh
+  old password cannot create a session after a reset finishes (the test asserts the refusal, so a
+  re-read that returns stale values fails it; the re-read uses `populate_existing()`)**. Take the user-row lock in refresh
   (then read the user), in login (then re-read the user and compare the password hash), and in
   every revoke-all.
 - **F11** (D12, confirmed default). Test first: lock the account, complete a reset, sign in with the
@@ -287,22 +288,28 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
 
 - **F04 hashing** (D15). Test first: during a burst of unknown-address sign-ins another request is
   answered promptly (the loop is not blocked); the number of concurrent hashes is bounded; 50
-  concurrent sign-ins against a pool of 5 connections still let a plain request through (no
-  connection is held while hashing); when the hash queue is full the request is refused at once
+  concurrent sign-ins **and 50 concurrent employee creations** against a pool of 5 connections
+  still let a plain request through (no connection is held while hashing, on all six paths:
+  sign-in, accept invitation, confirm reset, create employee, create client user, create
+  invitation); when the hash queue is full the request is refused at once
   with 503 `service.busy` and `Retry-After`. Async wrappers over `hash_password`, `verify_password`
   and `verify_against_dummy` run in a thread behind a per-event-loop limiter; callers in four
-  services await them, hashes are computed before any row lock, and `login` ends its transaction
-  before hashing. The work-counting tests (SC-207) still pass.
+  services await them, hashes are computed before any row lock and before the request's first
+  write, and each path that reads first ends its read-only transaction (`release_connection()`,
+  which refuses if a write is pending) before hashing. The work-counting tests (SC-207) still pass.
 - **F04 lockout and network limit, FR-221, FR-223** (D16). Tests first: for a registered and an
   unregistered address (any letter case) `LOGIN_MAX_FAILURES` failures give 401 and then 423
   `auth.account_locked`, with identical bodies, headers and amount of work, and a correct password
   is refused while locked without being verified; the count restarts after the lock; a success
-  clears the count (nine typos, a success, one typo does not lock); the network limit gives 429 with
-  `Retry-After` for every address and 0 turns it off; the client address follows
-  `TRUSTED_PROXY_COUNT` for 0, 1, 2, a short header and a forged header; stale rows are removed in
+  clears the count (nine typos, a success, one typo does not lock); the network limit counts in a
+  fixed window of `LOGIN_LOCKOUT_MINUTES` (failures spread over two windows do not add up), gives
+  429 with `Retry-After` for every address, is **not** cleared by a successful sign-in (29
+  failures, a success, one more failure locks), and 0 turns it off; the client address follows
+  `TRUSTED_PROXY_COUNT` for 0, 1, 2, a short or malformed header and a forged header, and an IPv6
+  address is keyed by its /64; stale rows are removed in
   batches during normal requests with no scheduled job; keys are stored hashed. New settings with
-  defaults, new codes `auth.rate_limited` and `service.busy` (en, he), 429 and 503 declared on
-  login, `docs/hds-api.md` corrected (D4) and the FR-005 exception retired.
+  defaults, new codes `auth.rate_limited` and `service.busy` (en, he), 429 declared on login and
+  503 declared on all six hashing operations, `docs/hds-api.md` corrected (D4) and the FR-005 exception retired.
 - **F06** (D17). Test first: with a deliberately slow sender, `POST /auth/password-reset/request`
   returns before delivery starts, and a registered and an unregistered address take comparable time
   (opt-in timing test extended). After-commit actions run as a background task after the response.

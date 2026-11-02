@@ -325,6 +325,16 @@ deactivation turns "never activated" into "was activated".
 - New `core/passwords.py` exposes `async` `hash_password`, `verify_password` and
   `verify_against_dummy`. Each runs the synchronous Argon2 call with `asyncio.to_thread`.
   `core/security.py` keeps the synchronous core for scripts and the seed.
+- **All six paths release the connection.** Sign-in, accept invitation, confirm reset, create
+  employee, create client user and create invitation (whose placeholder password is hashed) each
+  hash with no connection held. A request's connection is taken lazily at its first statement, so a
+  path that can hash before its first statement does (create invitation) simply does so first; a
+  path that must read first (validate a link, check the address is free, load the user) ends that
+  read-only transaction with `commit()` before hashing, and only then writes. **Rule: release only
+  before the request's first write**, because `commit()` also saves any earlier write. A helper
+  `release_connection()` on the base repository does it and refuses (raises) if the session has
+  pending writes. The pool test covers sign-in **and** a non-login path (50 concurrent creations
+  against a pool of 5).
 - **Bounded, with a bounded queue.** At most `HASH_CONCURRENCY` (default 2) hashes run at once, and
   at most `HASH_QUEUE_LIMIT` (default 8) more may wait. A request that would join a full queue is
   refused at once with 503 `service.busy` and `Retry-After`. The limiter is created **per running
@@ -371,19 +381,31 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
   when a lock ends (FR-213).
 - **Said openly.** While an address is locked a correct password is refused and is not verified,
   as the existing account lock already does. A real user who is locked out waits for the lock to end.
-- **Per network address.** `LOGIN_RATE_LIMIT_PER_NETWORK` (default 30; **0 disables it**) failures
-  from one network address lock that address for `LOGIN_LOCKOUT_MINUTES`: **429 `auth.rate_limited`
-  with `Retry-After`**, answered before any lookup and for every submitted address alike. This is
-  the only 429.
+- **Per network address, in a fixed window.** The row also has `window_started_at`. A failure first
+  restarts the count if the window (`LOGIN_LOCKOUT_MINUTES`) has ended, then adds one; at
+  `LOGIN_RATE_LIMIT_PER_NETWORK` (default 30; **0 disables it**) failures inside one window the
+  address is refused until the window ends: **429 `auth.rate_limited` with `Retry-After`**, answered
+  before any lookup and for every submitted address alike. This is the only 429. One atomic upsert
+  does the restart, the increment and the decision. Because the window is fixed, typos spread over
+  days never accumulate, and the 24-hour clean only removes rows that already expired.
+- **A successful sign-in does not clear the network count** (it clears only the address count).
+  Otherwise an attacker holding one valid account could sign in every 29 guesses and never reach
+  the limit. Tests: failures spread across two windows do not add up; 29 failures, a success, then
+  one more failure locks the network.
 - **Which network address.** `TRUSTED_PROXY_COUNT` (default 0). At 0 the forwarded header is
   ignored and the connecting address is used, which is right for the shipped compose file (no
   proxy). Behind N reverse proxies set it to N: the client address is the Nth entry from the right
   of `X-Forwarded-For` (each trusted proxy appends the address it saw), and if the header has fewer
-  than N entries the connecting address is used. A forwarded header is never read at 0, so a client
-  cannot pick its own address. **Deployment risk, stated in the README and the settings table:**
+  than N entries, or the chosen entry is not a valid address, the connecting address is used (a
+  malformed entry is ignored, not trusted). An IPv6 address is keyed by its **/64 prefix** (a client
+  controls the whole /64 and could otherwise rotate addresses inside it); an IPv4 address by the
+  full address. A forwarded header is never read at 0, so a client cannot pick its own address. **Deployment risk, stated in the README and the settings table:**
   behind a proxy with the value left at 0 every user shares the proxy's address and 30 failures
-  would lock everyone out; either set the count or set the network limit to 0. Tests cover 0, 1, 2,
-  a short header and a forged header.
+  inside a window would lock everyone out; either set the count or set the network limit to 0.
+  Nothing is deployed behind a proxy yet, so the default stays 0; the deployment feature that adds
+  the ingress must set the count and add a check to its steps (a wrong value cannot be detected at
+  start-up). Tests cover 0, 1, 2, a short header, a forged header, a malformed entry and IPv6 /64
+  keying.
 - **Staleness without a scheduler.** Each recorded failure also deletes up to 50 rows whose
   `updated_at` is older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24) and that are not locked,
   using the index on `updated_at`, so the table cannot grow faster than it is cleaned. Rows are one
@@ -470,9 +492,11 @@ and every path that creates a session or ends all sessions takes it:
 - **Refresh** takes the lock first and **then reads the user** (`is_active`, deletion), so it never
   acts on a stale copy read before the lock.
 - **Login** verifies the password without a lock (so no lock is held during hashing), then takes
-  the lock, re-reads the user, and refuses with `auth.invalid_credentials` if the account is no
-  longer active **or its password hash changed since it was verified**; only then does it create the
-  token. A login that verified the old password therefore cannot create a session after a reset
+  the lock, re-reads the user **with `populate_existing()`** (the session keeps the values it
+  loaded before the lock, so a plain re-read would return the old password hash and active flag),
+  and refuses with `auth.invalid_credentials` if the account is no longer active **or its password
+  hash changed since it was verified**; only then does it create the token. The race test asserts
+  the refusal, so a plain re-read fails it. A login that verified the old password therefore cannot create a session after a reset
   finishes.
 - **Every revoke-all** (`revoke_all_for_user` callers: reset, logout everywhere, theft response,
   account changes) takes the same lock first.

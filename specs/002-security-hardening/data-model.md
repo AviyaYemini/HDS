@@ -103,9 +103,10 @@ columns; a network address always uses this table.
 | Column | Type | Rule |
 | --- | --- | --- |
 | `kind` | short text | `address` or `network`; check constraint `ck_login_throttle_kind`; part of the primary key |
-| `key_hash` | text (64) | SHA-256 hex of the lowercased submitted address, or of the client network address; never the value itself; part of the primary key |
-| `failures` | integer | consecutive failures, at least 0; restarts at 0 when a lock ends; cleared by a successful sign-in |
-| `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit |
+| `key_hash` | text (64) | SHA-256 hex of the lowercased submitted address, or of the client network address (an IPv6 address reduced to its /64); never the value itself; part of the primary key |
+| `failures` | integer | consecutive failures, at least 0; restarts at 0 when a lock ends; for `address` rows cleared by a successful sign-in, for `network` rows never cleared by one |
+| `window_started_at` | timestamptz, null | `network` rows only: start of the fixed counting window; a failure after `LOGIN_LOCKOUT_MINUTES` restarts it and the count |
+| `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit (`address`) or the window limit (`network`) |
 | `updated_at` | timestamptz | UTC; index `ix_login_throttle_updated_at` for the batch clean |
 
 No foreign key: unregistered addresses have no account. One row per distinct key, not per attempt.

@@ -402,15 +402,21 @@ valid one is accepted.
   account exists. The count restarts when the lock ends and is cleared by a successful sign-in. A
   correct password is refused while the address is locked and is not verified, exactly as for the
   existing account lock; this is stated openly, not hidden. Failures per network address are counted
-  too: after `LOGIN_RATE_LIMIT_PER_NETWORK` failures (0 turns this limit off) that network address
-  is refused with 429 `auth.rate_limited` and a `Retry-After` header for the lock period, before
-  any lookup or password work and for every address alike. Counts are kept in the database, so all
-  workers share them and they survive a restart. Stale counts MUST be removed without a
+  too, in a **fixed window** of `LOGIN_LOCKOUT_MINUTES`: failures older than the window do not
+  count, so ordinary typos over days never add up. After `LOGIN_RATE_LIMIT_PER_NETWORK` failures
+  inside one window (0 turns this limit off) that network address is refused with 429
+  `auth.rate_limited` and a `Retry-After` header until the window ends, before any lookup or
+  password work and for every address alike. A successful sign-in MUST NOT clear the network count
+  (otherwise a holder of one valid account could sign in every few guesses and never be limited).
+  An IPv6 client is counted by its /64 prefix, and a malformed forwarded-header entry is ignored.
+  Counts are kept in the database, so all workers share them and they survive a restart. Stale counts MUST be removed without a
   separately scheduled job being required.
 - **FR-222**: Password hashing and verification MUST NOT hold a database connection while they
-  run, MUST NOT block other requests, and MUST be bounded: when the queue for hashing is full the
-  request is refused at once with 503 `service.busy` and a `Retry-After` header. Hashes MUST be
-  computed before any row lock is taken.
+  run, on every path that hashes (sign-in, accepting an invitation, confirming a reset, creating an
+  employee, creating a client user, and inviting, which hashes a placeholder password). They MUST
+  NOT block other requests, and MUST be bounded: when the queue for hashing is full the request is
+  refused at once with 503 `service.busy` and a `Retry-After` header. Hashes MUST be computed
+  before any row lock is taken and before any write of the request.
 - **FR-223**: A client address taken from a forwarded header MUST be trusted only as configured by
   `TRUSTED_PROXY_COUNT` (default 0: the header is ignored and the connecting address is used).
 
@@ -476,6 +482,9 @@ valid one is accepted.
   the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
+- **Proxy deployment (open until the ingress exists):** `TRUSTED_PROXY_COUNT` stays 0 because
+  nothing is deployed behind a proxy yet. When the deployment feature adds the ingress it must set
+  the count and add a check to its deployment steps; a wrong value cannot be detected at start-up.
 - **Confirmed defaults (2026-11-03):** a completed password reset clears that account's lockout
   and failure count (F11); a Client portal account's role cannot be changed (F23); a client's
   contract end date must not be earlier than its start date (F24).
