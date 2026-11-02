@@ -692,9 +692,9 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 ### Group C: a failed rollback does not hide the original error (F12; research D23)
 
-- [ ] T377 [P] [F12] Write `apps/api/tests/unit/test_rollback_failure.py` with the `FakeSession` from `apps/api/tests/unit/conftest.py`: when the block raises and `rollback()` also raises, the ORIGINAL exception propagates unchanged and the rollback error is logged by exception type only (no message); when the commit fails and rollback fails too, the commit error propagates. Show it failing
-- [ ] T378 [F12] In `unit_of_work` in `apps/api/src/hds/core/database.py` run the rollback inside its own `try`: log a rollback failure by exception type only and re-raise the original error. Update the docstring
-- [ ] T379 [F12] Commit as `fix(api): a failing rollback no longer replaces the request's real error`
+- [X] T377 [P] [F12] Write `apps/api/tests/unit/test_rollback_failure.py` with the `FakeSession` from `apps/api/tests/unit/conftest.py`: when the block raises and `rollback()` also raises, the ORIGINAL exception propagates unchanged and the rollback error is logged by exception type only (no message); when the commit fails and rollback fails too, the commit error propagates. Show it failing
+- [X] T378 [F12] In `unit_of_work` in `apps/api/src/hds/core/database.py` run the rollback inside its own `try`: log a rollback failure by exception type only and re-raise the original error. Update the docstring
+- [X] T379 [F12] Commit as `fix(api): a failing rollback no longer replaces the request's real error`
 
 **Checkpoint P4: all gates, full suite, the OpenAPI comparison. Stop and report before P5**
 

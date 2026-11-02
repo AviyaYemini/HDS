@@ -15,7 +15,7 @@ direction. This is a defence for text that should not hold secrets at all: free 
 parsed exactly, so callers still must not log them.
 Logs are
 copied to systems with weaker access control than the database, and invitation or reset tokens in
-them would let a reader take over an account (specs/002-security-hardening, FR-203).
+them would let a reader take over an account (specs/002-security-hardening, FR-203, FR-227).
 """
 
 import json

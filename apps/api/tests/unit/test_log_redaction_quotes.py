@@ -4,7 +4,7 @@ The value pattern stopped at the first matching quote, even an escaped one, so t
 password stayed in the log. Logs go to systems with weaker access control than the database, and a
 fragment of a password is still part of a password.
 
-Covers: FR-203.
+Covers: FR-203, FR-227.
 """
 
 import json

@@ -126,8 +126,10 @@ async def unit_of_work(
     After a successful commit the queued ``after_commit`` actions run in order, at once or, given
     ``background``, as one task after the response. A failing action does not undo the saved
     change or stop the remaining actions. If the block or the commit raises, the queue is
-    discarded, the transaction is rolled back and the error is re-raised unchanged. Cancellation
-    counts as an error and also rolls back.
+    discarded, the transaction is rolled back and the error is re-raised unchanged. A rollback that
+    fails too is logged by exception type only and does not replace that error (FR-233). A
+    cancellation during the rollback is not a failed rollback: it goes through, because swallowing
+    one breaks the caller's cancellation. Cancellation counts as an error and also rolls back.
 
     Args:
         session: The session to commit or roll back.
@@ -144,7 +146,10 @@ async def unit_of_work(
         await session.commit()
     except BaseException:
         session.info.pop(_AFTER_COMMIT, None)
-        await session.rollback()
+        try:
+            await session.rollback()
+        except Exception as rollback_error:  # the original error is the one that matters
+            logger.error("rollback failed: %s", type(rollback_error).__name__)
         raise
     actions = session.info.pop(_AFTER_COMMIT, [])
     if actions and background is not None:

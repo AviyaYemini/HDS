@@ -637,3 +637,34 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | T3 | List not checked | same test |
 | T4 | Load not checked | `test_a_listed_name_must_still_load` |
 
+## P4 Group C: a failed rollback does not hide the real error (T377 to T379, F12)
+
+Decision taken here: a cancellation raised during the rollback goes through, and replaces the original
+error. Swallowing a cancellation is worse, because the caller is being stopped. Stated in the docstring
+and pinned by `test_a_cancellation_during_the_rollback_is_never_swallowed`.
+
+Failing first: all 5 tests.
+
+`/hds-review` covered all of P4: two tests cited the wrong requirement (fixed: FR-227 and FR-233).
+
+`/code-review high` (read-only, six findings, none reproduced):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | A cancellation during the rollback replaces the error | Kept on purpose, documented and tested |
+| 2 | Closing the session could raise after a dead connection and replace the error | Not changed. Reasoned, not reproduced, and outside `unit_of_work`. Not raised unless it is seen |
+| 3 | The commit and cancellation tests did not assert a rollback happened | Fixed |
+| 4 | The test re-implemented `FakeSession` | Fixed: a small subclass |
+| 5 | Tasks not ticked | Ticked on commit |
+| 6 | Wrong requirement cited, and an unused `caplog` | Fixed |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| C1 | Rollback error replaces the real one | `test_the_original_error_propagates_when_the_rollback_fails_too` |
+| C2 | Message logged | `test_the_failed_rollback_is_logged_by_type_only` |
+| C3 | Not logged | same test |
+| C4 | Queue kept | `test_actions_are_dropped_when_the_rollback_fails_too` |
+| C5 | Error swallowed | `test_the_original_error_propagates_when_the_rollback_fails_too` |
+
