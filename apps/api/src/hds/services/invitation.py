@@ -47,7 +47,9 @@ class InvitationService:
         Args:
             user_repo: User lookup, creation and update.
             token_repo: Invitation and reset token storage.
-            mailer: Delivery channel for the raw token.
+            mailer: Delivery channel for the raw token. The router passes a ``DeferredMailer``, so
+                a message is sent only after the request's transaction commits and is dropped if
+                it rolls back; a link is never mailed for a change that was not saved.
             refresh_token_repo: Used to end sessions after a password reset.
         """
         self._user_repo = user_repo
@@ -89,7 +91,7 @@ class InvitationService:
 
         Side effects:
             May create or re-role a pending account, cancels the earlier links of a pending
-            account, stores a new token and sends an email.
+            account, stores a new token and queues an email, sent after the commit.
         """
         ensure_role(actor, *MANAGER_ROLES)
         if role == UserRole.client:
@@ -214,7 +216,8 @@ class InvitationService:
             email: Address that asked for a reset.
 
         Side effects:
-            For an active account, stores a 60-minute token and sends an email.
+            For an active account, stores a 60-minute token and queues an email, sent after the
+            commit.
         """
         user = await self._user_repo.get_by_email(email)
         if user is None or not user.is_active:

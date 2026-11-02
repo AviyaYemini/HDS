@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
-from hds.core.mail import MailSender, get_mail_sender
+from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
 from hds.core.types import Password, Token
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -52,7 +52,7 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
     return InvitationService(
         user_repo=UserRepository(db),
         token_repo=InvitationTokenRepository(db),
-        mailer=mailer,
+        mailer=DeferredMailer(db, mailer),  # mail goes out only after the request is saved
         refresh_token_repo=RefreshTokenRepository(db),
     )
 

@@ -256,8 +256,8 @@ Work done in Phase 5 that differs from, or goes beyond, the task text above.
 - **T263, fix**: `EmployeeService` now takes the group and qualification repositories and refuses
   an unknown or foreign filter id with 404. The two feature 001 tests that asserted the old empty
   answer (`test_employee_filters.py`) now assert 404, as NFR-001 requires.
-- **T264, numbering**: ADR 006 is written before ADR 005 (T269, phase 6) because the task order
-  fixes the names; ADR 006 refers to 005 and the README table says it follows.
+- **T264, numbering**: ADR 006 was written before ADR 005 because the task order fixes the names;
+  ADR 005 followed in Phase 6 (T269).
 
 **Checkpoint**: all three P1 stories pass. Highest-risk security work is done.
 
@@ -272,14 +272,28 @@ took effect.
 
 ### Tests for User Story 4 (write first)
 
-- [ ] T265 [P] [US4] Write `apps/api/tests/integration/test_atomicity.py` on PostgreSQL with failure injection in the last step: refresh (old token still valid, no new token), password reset (old password, link unspent, sessions intact), client update with portal-user deactivation (users unchanged), role change with token revocation (role and tokens unchanged)
-- [ ] T266 [P] [US4] Write `apps/api/tests/integration/test_mail_after_commit.py`: an invitation whose transaction fails sends no email and leaves no usable link; a successful one sends exactly one email, after the commit
+- [X] T265 [P] [US4] Write `apps/api/tests/integration/test_atomicity.py` on PostgreSQL with failure injection in the last step: refresh (old token still valid, no new token), password reset (old password, link unspent, sessions intact), client update with portal-user deactivation (users unchanged), role change with token revocation (role and tokens unchanged)
+- [X] T266 [P] [US4] Write `apps/api/tests/integration/test_mail_after_commit.py`: an invitation whose transaction fails sends no email and leaves no usable link; a successful one sends exactly one email, after the commit
 
 ### Implementation for User Story 4
 
-- [ ] T267 [US4] Make `InvitationService` queue every email through `DeferredMailer`: build `DeferredMailer(db, mailer)` in `apps/api/src/hds/routers/invitations.py`; update `apps/api/src/hds/services/invitation.py` docstrings (email is sent after commit)
-- [ ] T268 [US4] Review the order of steps in `apps/api/src/hds/services/auth.py` (`refresh`), `apps/api/src/hds/services/invitation.py` (`reset_password`) and `apps/api/src/hds/services/client.py` (`edit_client`) so each is a single unit of work with no step that needs an earlier commit; fix any that do
-- [ ] T269 [US4] Write `docs/adr/005-request-scoped-transactions.md` (decision D1, the explicit-commit exception, `scope="function"`, alternatives) and add it to the ADR table in `docs/README.md`
+- [X] T267 [US4] Make `InvitationService` queue every email through `DeferredMailer`: build `DeferredMailer(db, mailer)` in `apps/api/src/hds/routers/invitations.py`; update `apps/api/src/hds/services/invitation.py` docstrings (email is sent after commit)
+- [X] T268 [US4] Review the order of steps in `apps/api/src/hds/services/auth.py` (`refresh`), `apps/api/src/hds/services/invitation.py` (`reset_password`) and `apps/api/src/hds/services/client.py` (`edit_client`) so each is a single unit of work with no step that needs an earlier commit; fix any that do
+- [X] T269 [US4] Write `docs/adr/005-request-scoped-transactions.md` (decision D1, the explicit-commit exception, `scope="function"`, alternatives) and add it to the ADR table in `docs/README.md`
+
+### Scope additions recorded during implementation (Phase 6)
+
+- **T268, review result**: no step needed an earlier commit, so no code changed. `refresh`,
+  `reset_password` and `edit_client` (and the role change in `employee.py`) are each one unit of
+  work; the only explicit commits left in `src/` are the documented ones (failed-sign-in count and
+  lock in `repositories/user.py`, the theft response in `services/auth.py`).
+- **T265, failing-first by mutation**: the atomicity tests already pass after Phase 2, because the
+  unit of work gives atomicity. Their evidence is a mutation check: an early `commit()` placed
+  after the first step of refresh, reset, client change and role change makes the matching test
+  fail for the right reason (four mutations, all caught, files restored).
+- **T266/T267**: the three mail tests failed before the change (mail sent with 0 links visible to
+  another connection; mail sent for a change whose commit failed). Making the router's
+  `DeferredMailer` a plain mailer again is caught by all three (mutation M9).
 
 **Checkpoint**: Story 4 passes; D1 is documented.
 

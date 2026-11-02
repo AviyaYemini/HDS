@@ -29,7 +29,7 @@ Using a token after sign-out, or after the account was changed, is not theft, so
 
 **The grace window** is `REFRESH_REUSE_GRACE_SECONDS`, default 10, and must be greater than zero. It covers an honest retry and the loser of two simultaneous renewals, so "exactly one wins" does not sign the owner out.
 
-**The theft response must survive its own refusal.** Raising the error rolls the request's transaction back, which would undo the revocation. The service therefore calls the repository's documented explicit `commit()` (the explicit-commit exception in ADR 005, written in a later phase of this feature) after `revoke_all_for_user` and before raising.
+**The theft response must survive its own refusal.** Raising the error rolls the request's transaction back, which would undo the revocation. The service therefore calls the repository's documented explicit `commit()` (the explicit-commit exception in ADR 005) after `revoke_all_for_user` and before raising.
 
 ## Consequences
 

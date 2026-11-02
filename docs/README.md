@@ -16,7 +16,8 @@
 | [002](adr/002-soft-delete.md) | Soft delete strategy |
 | [003](adr/003-jwt-refresh.md) | Short-lived JWT access tokens with rotating refresh tokens |
 | [004](adr/004-pyjwt.md) | Replace python-jose with PyJWT |
-| [006](adr/006-refresh-token-reuse-detection.md) | Refresh-token reuse detection with a grace window (005, request-scoped transactions, follows in phase 6) |
+| [005](adr/005-request-scoped-transactions.md) | One transaction per request, mail after commit |
+| [006](adr/006-refresh-token-reuse-detection.md) | Refresh-token reuse detection with a grace window |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 
