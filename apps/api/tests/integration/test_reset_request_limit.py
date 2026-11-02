@@ -1,10 +1,10 @@
-"""Reset requests are limited per address, so nobody can keep cancelling someone's links (T417).
+"""Reset requests are limited per address, so nobody can fill someone's mailbox (T417).
 
-A new request cancels the earlier reset link, and the request needs no proof of anything, so without
-a limit anyone could replace the owner's link as often as they liked. Over the limit the answer
-stays 202, because any other answer would say the address was being asked about.
+The request needs no proof of anything, so without a limit anyone could fill someone's mailbox. Over
+the limit the answer stays 202, because any other answer would say the address was being asked
+about, and no job is queued. A request cancels no link, so nothing is lost by asking.
 
-Covers: FR-247, FR-221.
+Covers: FR-247, FR-221, FR-224.
 """
 
 import uuid
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.config import get_settings
 from hds.models.user import User
 from hds.repositories.login_throttle import RESET
+from hds.repositories.user import UserRepository
 from hds.services.throttle import hash_key
 from tests.conftest import OutboxMailSender
 
@@ -97,17 +98,37 @@ async def test_the_fifth_of_five_still_sends_and_the_sixth_does_not(
         assert mails(outbox, KNOWN) == LIMIT
 
 
-async def test_requests_over_the_limit_leave_the_last_link_working(
+async def test_requests_never_take_away_a_link_already_mailed(
     async_client: AsyncClient, seed_users: dict[str, User], outbox: OutboxMailSender
 ) -> None:
-    for _ in range(LIMIT):
-        await ask(async_client, KNOWN)
-    last = outbox.last_token_for(KNOWN)
+    await ask(async_client, KNOWN)
+    first = outbox.last_token_for(KNOWN)
 
-    for _ in range(3):
+    for _ in range(LIMIT + 3):
         await ask(async_client, KNOWN)
 
-    assert (await confirm(async_client, last)).status_code == 204
+    assert (await confirm(async_client, first)).status_code == 204
+
+
+async def test_over_the_limit_no_job_is_queued(
+    async_client: AsyncClient,
+    seed_users: dict[str, User],
+    outbox: OutboxMailSender,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = UserRepository.get_by_email
+    lookups: list[str] = []
+
+    async def spy(self: UserRepository, email: str) -> Any:
+        lookups.append(email)
+        return await real(self, email)
+
+    monkeypatch.setattr(UserRepository, "get_by_email", spy)
+
+    for _ in range(LIMIT + 3):
+        assert (await ask(async_client, UNKNOWN)).status_code == 202
+
+    assert lookups == [UNKNOWN] * LIMIT
 
 
 async def test_a_registered_and_an_unregistered_address_answer_alike_at_every_step(

@@ -6,14 +6,16 @@ link, PostgreSQL aborted one of them with a deadlock, which reached the caller a
 Each test races the two sides for many rounds and fails on any 5xx or raised database error. Which
 side wins does not matter here; other tests cover what each outcome must leave behind.
 
-Covers: FR-246.
+Covers: FR-246, FR-228.
 """
 
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +70,26 @@ async def admin_headers(client: AsyncClient) -> dict[str, str]:
     )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+async def add_active(db: AsyncSession, org_id: uuid.UUID, email: str) -> uuid.UUID:
+    user_id = uuid.uuid4()
+    await db.execute(
+        text(
+            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "is_active, activated_at) VALUES (:i, :o, :e, 'h', 'Active', "
+            "CAST('employee' AS user_role), true, now())"
+        ),
+        {"i": user_id, "o": org_id, "e": email},
+    )
+    await db.commit()
+    return user_id
+
+
+def assert_no_failed_job(caplog: pytest.LogCaptureFixture, round_number: int) -> None:
+    """A reset job runs after the answer, so its failure shows only in the log."""
+    failures = [r.getMessage() for r in caplog.records if r.name == "hds.database"]
+    assert failures == [], f"round {round_number}: {failures}"
 
 
 def assert_no_server_error(results: list[Any], round_number: int) -> None:
@@ -227,3 +249,85 @@ async def test_a_reset_and_a_client_deactivation_never_deadlock(
             )
 
         assert_no_server_error(await race(reset, deactivate), n)
+
+
+async def test_a_reset_job_and_a_deactivation_never_deadlock(
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    seed_users: dict[str, User],
+    outbox: OutboxMailSender,
+    race: Race,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user_id = seed_users["employee"].id
+    headers = await admin_headers(async_client)
+
+    async def request() -> Any:
+        return await async_client.post("/auth/password-reset/request", json={"email": EMAIL})
+
+    async def deactivate() -> Any:
+        return await async_client.post(f"/api/v1/employees/{user_id}/deactivate", headers=headers)
+
+    with caplog.at_level(logging.ERROR, logger="hds.database"):
+        for n in range(ROUNDS):
+            await test_db.execute(
+                text("UPDATE users SET is_active = true WHERE id = :u"), {"u": user_id}
+            )
+            await test_db.commit()
+            assert_no_server_error(await race(request, deactivate), n)
+            assert_no_failed_job(caplog, n)
+
+
+async def test_a_reset_job_and_deleting_the_account_never_deadlock(
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    seed_users: dict[str, User],
+    outbox: OutboxMailSender,
+    race: Race,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    org_id = seed_users["admin"].organization_id
+    headers = await admin_headers(async_client)
+
+    with caplog.at_level(logging.ERROR, logger="hds.database"):
+        for n in range(ROUNDS):
+            email = f"gone{n}@hds.test"
+            user_id = await add_active(test_db, org_id, email)
+
+            async def request(address: str = email) -> Any:
+                return await async_client.post(
+                    "/auth/password-reset/request", json={"email": address}
+                )
+
+            async def delete(target: uuid.UUID = user_id) -> Any:
+                return await async_client.delete(f"/api/v1/employees/{target}", headers=headers)
+
+            assert_no_server_error(await race(request, delete), n)
+            assert_no_failed_job(caplog, n)
+
+
+async def test_a_reset_job_and_a_reset_confirmation_never_deadlock(
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    seed_users: dict[str, User],
+    outbox: OutboxMailSender,
+    race: Race,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user_id = seed_users["employee"].id
+
+    async def request() -> Any:
+        return await async_client.post("/auth/password-reset/request", json={"email": EMAIL})
+
+    with caplog.at_level(logging.ERROR, logger="hds.database"):
+        for n in range(ROUNDS):
+            link = await add_link(test_db, user_id, "reset")
+
+            async def confirm(token: str = link) -> Any:
+                return await async_client.post(
+                    "/auth/password-reset/confirm",
+                    json={"token": token, "new_password": NEW_PASSWORD},
+                )
+
+            assert_no_server_error(await race(confirm, request), n)
+            assert_no_failed_job(caplog, n)

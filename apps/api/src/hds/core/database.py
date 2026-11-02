@@ -6,14 +6,15 @@ session this module hands out (Constitution II); routers and services must not.
 One request is one transaction (specs/002-security-hardening/research.md D1). Repositories only
 ``flush``; the unit of work commits once when the handler returns, and rolls back on any error.
 Work that must happen only if the change was saved (sending email) is queued with
-``after_commit`` and runs after a successful commit.
+``after_commit``. In a request it runs after the response has been sent (docs/adr/008), and it never
+runs if the commit failed.
 """
 
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import Depends
+from fastapi import BackgroundTasks, Depends
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import ORMExecuteState, Session, SessionTransaction
@@ -59,6 +60,17 @@ def _forget_writes(session: Session, transaction: SessionTransaction) -> None:
 AfterCommitAction = Callable[[], Awaitable[None]]
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return the factory for work that outlives the request's session.
+
+    A dependency, so tests can point background jobs at their own database.
+
+    Returns:
+        The shared session factory.
+    """
+    return AsyncSessionLocal
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Yield one database session per request and close it afterwards.
 
@@ -86,18 +98,40 @@ def after_commit(session: AsyncSession, action: AfterCommitAction) -> None:
     session.info.setdefault(_AFTER_COMMIT, []).append(action)
 
 
+async def _run_actions(actions: list[AfterCommitAction]) -> None:
+    """Run after-commit actions in order; a failure is logged and stops nothing.
+
+    Only the exception type is logged, never its message or traceback, which could carry a secret.
+
+    Args:
+        actions: The actions queued by ``after_commit``.
+    """
+    for action in actions:
+        try:
+            await action()
+        except Exception as exc:
+            logger.error(
+                "after-commit action %s failed: %s",
+                getattr(action, "__qualname__", "action"),
+                type(exc).__name__,
+            )
+
+
 @asynccontextmanager
-async def unit_of_work(session: AsyncSession) -> AsyncIterator[AsyncSession]:
+async def unit_of_work(
+    session: AsyncSession, background: BackgroundTasks | None = None
+) -> AsyncIterator[AsyncSession]:
     """Run a block as one transaction: commit once on success, roll back on any error.
 
-    After a successful commit the queued ``after_commit`` actions run in order. An action that
-    fails is logged (its exception type only, never its message or traceback, which could carry a
-    secret) and does not undo the saved change or stop the remaining actions. If the block or the
-    commit raises, the queue is discarded, the transaction is rolled back and the error is
-    re-raised unchanged. Cancellation counts as an error and also rolls back.
+    After a successful commit the queued ``after_commit`` actions run in order, at once or, given
+    ``background``, as one task after the response. A failing action does not undo the saved
+    change or stop the remaining actions. If the block or the commit raises, the queue is
+    discarded, the transaction is rolled back and the error is re-raised unchanged. Cancellation
+    counts as an error and also rolls back.
 
     Args:
         session: The session to commit or roll back.
+        background: The request's background tasks, when there is a request.
 
     Yields:
         The same session, so callers can write ``async with unit_of_work(db) as session``.
@@ -112,31 +146,31 @@ async def unit_of_work(session: AsyncSession) -> AsyncIterator[AsyncSession]:
         session.info.pop(_AFTER_COMMIT, None)
         await session.rollback()
         raise
-    for action in session.info.pop(_AFTER_COMMIT, []):
-        try:
-            await action()
-        except Exception as exc:
-            logger.error(
-                "after-commit action %s failed: %s",
-                getattr(action, "__qualname__", "action"),
-                type(exc).__name__,
-            )
+    actions = session.info.pop(_AFTER_COMMIT, [])
+    if actions and background is not None:
+        background.add_task(_run_actions, actions)
+    elif actions:
+        await _run_actions(actions)
 
 
 async def get_unit_of_work(
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide the request's session inside a unit of work.
 
     Declare it as ``Depends(get_unit_of_work, scope="function")`` so the commit happens when the
     handler returns and before the response is sent: a failed commit then becomes an error
-    response instead of a success that was not saved.
+    response instead of a success that was not saved. After-commit actions run after the response
+    has been sent, so a slow mail provider cannot hold a request open or show which addresses are
+    registered (FR-228).
 
     Args:
+        background_tasks: FastAPI's background tasks for this request.
         db: The session from ``get_db`` (or a test override of it).
 
     Yields:
         The session for the handler to pass to repositories.
     """
-    async with unit_of_work(db):
+    async with unit_of_work(db, background_tasks):
         yield db

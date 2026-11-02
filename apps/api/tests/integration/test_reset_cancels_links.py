@@ -72,7 +72,7 @@ async def unused(db: AsyncSession, token_hash: str) -> bool:
     return bool(row.scalar_one())
 
 
-async def test_a_new_request_cancels_the_earlier_reset_link(
+async def test_a_completed_reset_ends_the_other_reset_link(
     async_client: AsyncClient, seed_users: dict[str, User], outbox: OutboxMailSender
 ) -> None:
     older = await request_reset(async_client, outbox)
@@ -87,17 +87,14 @@ async def test_a_new_request_cancels_the_earlier_reset_link(
     assert await sign_in(async_client, NEWER_PASSWORD) == 200
 
 
-async def test_the_earlier_reset_link_stops_working_as_soon_as_a_new_one_is_requested(
+async def test_a_new_request_takes_no_link_away(
     async_client: AsyncClient, seed_users: dict[str, User], outbox: OutboxMailSender
 ) -> None:
     older = await request_reset(async_client, outbox)
     await request_reset(async_client, outbox)
 
-    refused = await confirm(async_client, older, OLDER_PASSWORD)  # no reset has completed yet
-
-    assert refused.status_code == 401
-    assert refused.json()["code"] == "auth.token_used"
-    assert await sign_in(async_client, PASSWORD) == 200
+    assert (await confirm(async_client, older, OLDER_PASSWORD)).status_code == 204
+    assert await sign_in(async_client, OLDER_PASSWORD) == 200
 
 
 async def test_a_completed_reset_ends_every_other_outstanding_link(

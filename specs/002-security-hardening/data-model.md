@@ -110,7 +110,7 @@ columns; a network address always uses this table.
 | `updated_at` | timestamptz | UTC; index `ix_login_throttle_updated_at` for the batch clean |
 
 No foreign key: unregistered addresses have no account. One row per distinct key, not per attempt.
-Each recorded failure or reset request deletes up to 50 unlocked rows (`locked_until` empty or in
+Each recorded failure or counted reset request deletes up to 50 unlocked rows (`locked_until` empty or in
 the past) older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24), so the table is bounded by the request rate over that period, without a scheduled job; `purge_expired_records` does the same in
 bulk. Downgrade drops the table (the counts are disposable).
 

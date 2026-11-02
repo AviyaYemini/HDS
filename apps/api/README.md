@@ -46,8 +46,11 @@ Settings are read from the environment (and a `.env` file in development) by
 | `LOGIN_RATE_LIMIT_PER_NETWORK` | Failed sign-ins allowed from one network address in one window of `LOGIN_LOCKOUT_MINUTES`; a success does not clear the count; `0` turns the limit off | `30` |
 | `THROTTLE_SECRET_KEY` | Optional key for the HMAC of addresses in the throttle table, at least 32 bytes outside development. Unset, a key is derived from `JWT_SECRET_KEY`. Changing either restarts every count | derived |
 | `LOGIN_THROTTLE_RETENTION_HOURS` | Age at which an unlocked throttle row may be removed. Normal requests remove them, so no scheduled job is needed | `24` |
-| `RESET_REQUEST_LIMIT_PER_ADDRESS` | Password-reset requests one address may make in one 60-minute window. Above it the answer stays 202 and nothing is cancelled or sent; `0` turns the limit off | `5` |
-| `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limit set to `0`: otherwise every user shares the proxy's address and one bad window locks everyone out. A wrong value cannot be detected at start-up | `0` |
+| `RESET_REQUEST_LIMIT_PER_ADDRESS` | Password-reset requests for one address in one 60-minute window. Above it the answer stays 202 and nothing is issued or sent; `0` turns the limit off | `5` |
+| `RESET_REQUEST_LIMIT_PER_NETWORK` | The same for one network address, whatever the addresses submitted. Above it the answer stays 202, nothing is issued or sent, and one warning per window is logged; `0` turns the limit off | `30` |
+| `RESET_JOB_CONCURRENCY`, `RESET_JOB_QUEUE_LIMIT` | Reset jobs that may run at once in one worker, and that may wait. A job runs after its response; past that it is dropped and logged without the address, and that one email is lost | `2`, `100` |
+| `RESET_JOB_TIMEOUT_SECONDS` | How long one reset job may run before it is stopped, so a stalled mail provider cannot hold every place. Its link stays stored, and its email is lost | `30` |
+| `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limits set to `0`: otherwise every user shares the proxy's address, so one bad window locks everyone out of sign-in and silently stops reset mail for everyone, with only a warning in the log. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |
 

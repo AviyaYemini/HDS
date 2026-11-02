@@ -8,12 +8,15 @@ system once, through ``MailSender``. Invitations last 7 days and resets 60 minut
 """
 
 import hashlib
+import logging
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from hds.core import passwords
 from hds.core.authz import MANAGER_ROLES, ensure_role
+from hds.core.client_address import network_key
 from hds.core.exceptions import AuthError, ConflictError, ForbiddenError
 from hds.core.mail import MailSender
 from hds.core.security import generate_refresh_token
@@ -23,12 +26,16 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import RESET, LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
-from hds.services.throttle import hash_key
+from hds.services.throttle import hash_key, live_lock
+
+logger = logging.getLogger("hds.invitation")
 
 #: How long an invitation link stays valid. Public because the development link script uses it.
 INVITE_TTL_DAYS = 7
 #: How long a password-reset link stays valid.
 RESET_TTL_MINUTES = 60
+#: Starts a network's reset count. No address can start like this, so the two never meet.
+RESET_NETWORK_PREFIX = "network:"
 
 
 def _hash_token(raw: str) -> str:
@@ -53,11 +60,12 @@ class InvitationService:
             user_repo: User lookup, creation and update.
             token_repo: Invitation and reset token storage.
             mailer: Delivery channel for the raw token. The router passes a ``DeferredMailer``, so
-                a message is sent only after the request's transaction commits and is dropped if
-                it rolls back; a link is never mailed for a change that was not saved.
+                a message is sent only after the transaction it belongs to commits, the request's
+                or a reset job's, and is dropped if it rolls back; a link is never mailed for a
+                change that was not saved.
             refresh_token_repo: Used to end sessions after a password reset.
-            throttle_repo: Counts reset requests per address.
-            config: Settings supplying the reset request limit.
+            throttle_repo: Counts reset requests per address and per network.
+            config: Settings supplying the reset request limits.
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
@@ -232,36 +240,123 @@ class InvitationService:
         await self._token_repo.cancel_for_user(owner.id)
         return user
 
-    async def request_password_reset(self, email: str) -> None:
-        """Mail a reset token to an active account, and say nothing otherwise.
+    async def request_password_reset(
+        self, email: str, network: str, queue_job: Callable[[str], None]
+    ) -> None:
+        """Count one reset request and queue its job if it is within its limits.
 
-        Returns without error for unknown or inactive addresses so the endpoint cannot be used
-        to discover which emails are registered. Requests are counted per address before any
-        lookup, so every address, registered or not, follows the same rule; over the limit nothing
-        is cancelled or sent and the last link keeps working (FR-247). The limit caps how often a
-        third party can replace a link; it does not stop the requests under it.
+        This is all a request does, for every address, so its time says nothing about who has an
+        account (FR-228). It reads no account and no link.
+
+        Args:
+            email: Address that asked for a reset.
+            network: The client's network address.
+            queue_job: Queues ``issue_reset_link`` for the address, to run after the response.
+
+        Side effects:
+            See ``_within_reset_limits``.
+        """
+        if await self._within_reset_limits(email, network):
+            queue_job(email)
+
+    async def _within_reset_limits(self, email: str, network: str) -> bool:
+        """Count a reset request and say whether it is within both limits.
+
+        The network comes first. A network already over its limit only reads its row, so a flood
+        takes no lock and no address is counted, or one client could use up the allowance of every
+        address for no mail at all. What it skips says nothing about any address. The decision comes
+        from the counts and not from ``locked_until``, which is set when a count reaches its limit,
+        so the request that reaches it is still within it (FR-247). Stale rows go before any count
+        takes a row lock: this path has no hashing cost and can add rows faster than sign-in, and
+        FR-221 promises no scheduled job.
+
+        Args:
+            email: Address that asked for a reset.
+            network: The client's network address.
+
+        Returns:
+            ``True`` when the request is within both limits.
+
+        Side effects:
+            Counts the request and removes stale throttle rows, unless the network is over its
+            limit. The first request over that limit in a window logs a warning, because a wrong
+            ``TRUSTED_PROXY_COUNT`` makes every user share one address, and reset mail would stop
+            for everyone with no other sign.
+        """
+        config = self._config
+        now = datetime.now(UTC)
+        address_limit: int = config.RESET_REQUEST_LIMIT_PER_ADDRESS
+        network_limit: int = config.RESET_REQUEST_LIMIT_PER_NETWORK
+        network_hash = hash_key(
+            f"{RESET_NETWORK_PREFIX}{network_key(network)}", config.throttle_key
+        )
+        if network_limit > 0:
+            row = await self._throttle_repo.get(RESET, network_hash)
+            if (
+                row is not None
+                and row.failures > network_limit
+                and live_lock(row.locked_until, now) is not None
+            ):
+                return False
+        retention = timedelta(hours=config.LOGIN_THROTTLE_RETENTION_HOURS)
+        await self._throttle_repo.purge_stale(now - retention, now)
+        network_count = await self._count_reset(network_hash, network_limit, now)
+        if network_count > network_limit:
+            if network_count == network_limit + 1:
+                logger.warning(
+                    "reset request network limit reached; reset mail stops for this network until "
+                    "the window ends. Check TRUSTED_PROXY_COUNT if this API is behind a proxy"
+                )
+            return False
+        address_hash = hash_key(email.strip().lower(), config.throttle_key)
+        return await self._count_reset(address_hash, address_limit, now) <= address_limit
+
+    async def _count_reset(self, key_hash: str, limit: int, now: datetime) -> int:
+        """Count one reset request under ``key_hash``, unless its limit is off.
+
+        Args:
+            key_hash: The HMAC of the folded address or of the prefixed network key.
+            limit: Requests allowed in one window; 0 turns the limit off.
+            now: Timezone-aware UTC current time.
+
+        Returns:
+            The count in this window, or 0 when the limit is off.
+        """
+        if limit == 0:
+            return 0
+        count, _ = await self._throttle_repo.register_failure(
+            RESET,
+            key_hash,
+            limit,
+            now + timedelta(minutes=RESET_TTL_MINUTES),
+            RESET_TTL_MINUTES,
+            now,
+        )
+        return count
+
+    async def issue_reset_link(self, email: str) -> None:
+        """Mail a reset token to an active account, and do nothing otherwise.
+
+        Runs after the response, in its own session, for every address within its limits, so
+        nothing here can reach the caller. Earlier links are left alone: anyone can make a request,
+        so a request must not be able to take a link away. A completed reset cancels the rest
+        (FR-224).
 
         Args:
             email: Address that asked for a reset.
 
         Side effects:
-            Counts the request and removes stale throttle rows. Within the limit, for an active
-            account, cancels its earlier unused reset links, stores a 60-minute token and queues
-            an email, sent after the commit. Only the latest reset link works; an invitation link
-            is a different flow and is left alone.
+            For an active account, stores a 60-minute token and queues an email, sent after this
+            job's commit.
         """
-        if await self._over_reset_limit(email):
-            return
         user = await self._user_repo.get_by_email(email)
         if user is None or not user.is_active:
-            return  # Silent — never reveal whether the email exists
-
+            return
         await self._user_repo.lock_user(user.id)  # before its links (see `lock_user_row`)
         # Staff may have deactivated or deleted the account while this waited for the lock.
         user = await self._user_repo.get_by_email(email)
         if user is None or not user.is_active:
             return
-        await self._token_repo.cancel_for_user(user.id, purpose="reset")
         raw, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + timedelta(minutes=RESET_TTL_MINUTES)
         await self._token_repo.create(
@@ -278,39 +373,6 @@ class InvitationService:
             purpose="reset",
             expires_at=expires_at,
         )
-
-    async def _over_reset_limit(self, email: str) -> bool:
-        """Count one reset request, remove stale rows and say whether the address is over.
-
-        The decision comes from the count and not from ``locked_until``, which is set when the
-        count reaches the limit, so the request that reaches it still sends. This path has no
-        hashing cost or network limit, so it can add rows faster than sign-in, and each request
-        removes stale ones (FR-221 promises no scheduled job). The commit keeps the count if a
-        later step fails, and ends the row lock here, so requests for one address do not each hold
-        a connection while the first waits for the user's row.
-
-        Args:
-            email: Address that asked for a reset.
-
-        Returns:
-            ``True`` when the count is above the limit; always ``False`` at a limit of 0.
-        """
-        now = datetime.now(UTC)
-        limit: int = self._config.RESET_REQUEST_LIMIT_PER_ADDRESS
-        count = 0
-        if limit > 0:
-            count, _ = await self._throttle_repo.register_failure(
-                RESET,
-                hash_key(email.strip().lower(), self._config.throttle_key),
-                limit,
-                now + timedelta(minutes=RESET_TTL_MINUTES),
-                RESET_TTL_MINUTES,
-                now,
-            )
-        retention = timedelta(hours=self._config.LOGIN_THROTTLE_RETENTION_HOURS)
-        await self._throttle_repo.purge_stale(now - retention, now)
-        await self._throttle_repo.commit()
-        return count > limit
 
     async def reset_password(self, raw_token: str, new_password: str) -> None:
         """Redeem a reset token: replace the password and end every earlier credential.

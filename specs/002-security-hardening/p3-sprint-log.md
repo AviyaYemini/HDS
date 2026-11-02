@@ -220,13 +220,114 @@ Decisions taken here, without asking:
 - `RESET_JOB_CONCURRENCY` 2 and `RESET_JOB_QUEUE_LIMIT` 100. The owner asked for a cap on running and
   waiting jobs and set no values. Two matches the hashing limit and keeps most connections free. The
   queue is long because a dropped job is a lost mail, and a waiting job costs almost nothing.
-- Both counts always run, even when the first is over. A request over one limit then does exactly the
-  same work as any other. It costs nothing extra: a blocked network has already had its chance at the
-  address limit.
+- First version: both counts always ran, so a request over one limit did the same work as any other.
+  **The code review showed this was wrong and it was reversed**: see finding 1 below.
 - The network warning is logged once per window, at the first request over the limit, not on every
-  request, so an attacker cannot fill the log. It still appears in the first over-limit request.
+  request, so an attacker cannot fill the log.
 - The early commit from Group B2 is removed: nothing follows the count in the request any more, and
   the job is queued as an after-commit action, so it only runs if the count was saved.
 - `pr4-fix-list.md` still says a new link cancels earlier ones. It is the historical input list, so it
   is left as it was; the spec is the current rule.
 - Tasks: T420 to T427 are added to Group C; T359 and T360 are amended by T421.
+
+### Group C, finished (T359 to T364, T420 to T427)
+
+Timing on the final code, pooled engine, as the permanent form of T360: **ratio 1.010** (2.85 ms
+unknown, 2.82 ms registered), against 1.58 to 1.74 before and a pass mark of 1.15. The test also
+asserts that all 300 mails went out, so the job really ran between samples.
+
+Test changes, and why:
+- `test_reset_cancels_links.py`: `test_a_new_request_cancels_the_earlier_reset_link` and
+  `test_the_earlier_reset_link_stops_working_as_soon_as_a_new_one_is_requested` asserted the rule the
+  owner removed from FR-224. Replaced by `test_a_completed_reset_ends_the_other_reset_link` (the same
+  outcome, kept) and `test_a_new_request_takes_no_link_away`.
+- `test_reset_request_limit.py`: `test_requests_over_the_limit_leave_the_last_link_working` became
+  `test_requests_never_take_away_a_link_already_mailed`, which is stricter: it redeems the first link.
+- `test_invitation_service.py`: `test_a_reset_request_cancels_earlier_reset_links_only` became
+  `test_issuing_a_reset_link_cancels_nothing`. The five `request_password_reset` tests that looked at
+  the account now call `issue_reset_link`, where that work moved, with the same assertions.
+- `test_unit_of_work.py`: two calls pass the new argument, no assertion changed, three tests added.
+- `cancel_for_user` lost its `purpose` argument: nothing else used it. No test exercised it directly.
+
+Failing first: 22 of 74 tests failed on the new flow before the service change, and 7 before the
+review fixes.
+
+Reviews:
+
+`/hds-review`: no principle violated. `plan.md:254` still described the removed cancel (fixed), and
+this log needed its section. It did not flag the router decision that the code review found (finding
+8 below), and it should have.
+
+`/code-review high` (read-only, nine findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | A request over the network limit still counted the address, so one client could silently use up any address's allowance | **Fixed, test first. This was my own decision above, and it was wrong.** The network is decided first, and over it no address is counted |
+| 2 | No timeout, so a stalled mail provider holds every job slot | Fixed, test first: `RESET_JOB_TIMEOUT_SECONDS` (30). The job is stopped and logged by type; a stored link stays valid and its mail is lost. A new setting, not in the owner's decisions |
+| 3 | Over-limit requests queue on one locked row, which could fill the pool | Fixed, test first: over its limit a network only reads its row. Stale rows go before any count lock |
+| 4 | Invitation mail also moved after the response | Kept: D17 and T361 ask for it. **ADR 008 now records that a crash after a 202 leaves an invitee with no mail**, which the owner has not explicitly accepted. Raised in the report |
+| 5 | `docs/hds-api.md` still described the old rules | Fixed |
+| 6 | A failed job logged as "action action" | Fixed, test first: the job is a named function |
+| 7 | The limiter is copied from `core/passwords.py` | Skipped: about 20 lines, no defect. Sharing it would touch the hashing path for no change in behaviour |
+| 8 | The router decided whether to queue, against Principle II, although T423 said it should | Fixed: `request_password_reset` decides and calls a `queue_job` it is given, so the rule has unit tests |
+| 9 | Stale comments | Fixed |
+
+Differs from the tasks and the first design:
+- T418's "purge on every request" is now every request that adds a row. A network over its limit adds
+  none, and the purge would only be load during a flood.
+- A network over its limit answers a little faster than one within it. That shows only that network's
+  own state, which the client knows from its own count, and nothing about any address.
+- T423 said the router queues the job. The service decides it, as finding 8 requires.
+- `RESET_JOB_TIMEOUT_SECONDS` is an addition from the review.
+
+Mutation results on the final code, all caught on `hds_p3_test`, files restored. Every run names a
+failing test, and the harness now has a timeout per mutation:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| X1 | After-commit actions before the response (T363) | `test_the_response_is_complete_before_delivery_starts` |
+| X2 | Job started inside the request | `test_nothing_looks_at_the_address_before_the_response` |
+| X3 | Job queued over a limit | `test_the_fifth_of_five_still_sends_and_the_sixth_does_not` |
+| X4 | Job queued only for a registered address | `test_nothing_looks_at_the_address_before_the_response` |
+| X5 | Cap not enforced | `test_past_the_running_and_waiting_cap_a_job_is_dropped_and_logged_by_type` (first run was invalid, see below) |
+| X6 | No concurrency limit | `test_no_more_than_the_limit_run_at_once` |
+| X7 | Address in the drop log | `test_past_the_cap_a_job_is_dropped_and_the_answer_stays_202` (not caught at first, see below) |
+| X8 | Cancel restored | `test_a_new_request_takes_no_link_away` |
+| X9 | No re-read after the lock | `test_a_reset_job_stops_if_the_account_changed_while_it_waited_for_the_lock` |
+| X10 | Link before the user lock | `test_issuing_a_reset_link_takes_the_users_row_before_the_link` |
+| X11 | Network key without its prefix | `test_it_counts_every_address_from_one_network_together` |
+| X12 | A limit of 0 does not turn it off | `test_the_last_within_the_limit_sends_and_the_next_does_not` |
+| X13 | Every limit off | `test_the_fifth_of_five_still_sends_and_the_sixth_does_not` |
+| X14 | Warning on every request over | `test_parallel_requests_over_the_network_limit_log_one_warning` |
+| X15 | No warning | `test_one_warning_per_window_with_no_address_in_it` |
+| X16 | Job uses the request's session | `test_the_job_uses_its_own_session_from_the_factory` |
+| X17 | Network limit not decided | `test_the_last_within_the_limit_sends_and_the_next_does_not` |
+| X18 | Address limit not decided | `test_the_fifth_of_five_still_sends_and_the_sixth_does_not` |
+| X19 | Network count equal to the limit is over | `test_the_last_within_the_limit_sends_and_the_next_does_not` |
+| X20 | No purge on this path | `test_each_request_removes_stale_rows_and_never_a_live_lock` |
+| X21 | Any `locked_until` counts as locked | same test |
+| X22 | Raw address as the key | `test_a_registered_and_an_unregistered_address_answer_alike_at_every_step` |
+| X23 | Letter case not folded | `test_a_reset_request_is_counted_under_the_folded_address` |
+| X24 | Job skips its unit of work | `test_the_response_is_complete_before_delivery_starts` |
+| X25 | Re-read ignores `is_active` | `test_a_reset_job_stops_if_the_account_changed_while_it_waited_for_the_lock` |
+| X26 | Over-limit request writes | `test_over_the_limit_a_request_only_reads_so_a_flood_takes_no_lock` |
+| X27 | Address counted over the network limit | `test_over_the_limit_no_address_is_counted_so_its_allowance_is_not_used_up` |
+| X28 | Read ignores the end of the window | `test_the_count_restarts_after_the_window` |
+| X29 | Purge after the count locks | `test_a_reset_request_removes_stale_rows_before_it_takes_a_count_lock` (not caught at first, see below) |
+| X30 | No job timeout | `test_a_job_that_hangs_is_stopped_and_gives_its_place_back` |
+| X31 | Address counted at the crossing request | `test_over_the_limit_no_address_is_counted_so_its_allowance_is_not_used_up` (not caught at first, see below) |
+
+What the first runs showed:
+- X5 hung and then counted as caught with no failing test. A hang is not a catch: the test now bounds
+  its wait, and the harness reports a hang as a problem.
+- X7 was not caught, because the log filter masks addresses (`n***@hds.test`), so the test's "address
+  not in the message" passed. That filter is a useful second layer, but the test now asserts the exact
+  message.
+- X29 ran with the network limit off, so it could not see the network count. The test now has it on.
+- X31 found that no test looked at the address of the exact request that crossed the limit.
+- The new timeout test first passed for the wrong reason, because an outer `wait_for` raises the same
+  error. It now bounds the elapsed time.
+- `RESET_JOB_TIMEOUT_SECONDS` was first a `float`. The static money check refused it, which is a fair
+  rule to keep, so it is an `int`.
+
+Gates: ruff, format, mypy strict, interrogate, import graph and alembic check pass.

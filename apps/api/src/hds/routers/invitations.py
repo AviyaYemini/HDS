@@ -4,12 +4,16 @@ Layer: routers. Delegates to ``InvitationService``. Accepting an invite and both
 endpoints are public because the caller has no session yet; the one-time token is the credential.
 """
 
-from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
+from collections.abc import Callable
 
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from hds.core.background import run_reset_job
+from hds.core.client_address import client_address
 from hds.core.config import get_settings
-from hds.core.database import get_unit_of_work
+from hds.core.database import after_commit, get_session_factory, get_unit_of_work, unit_of_work
 from hds.core.deps import require_manager
 from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
 from hds.core.types import Email, Password, Token
@@ -59,6 +63,27 @@ def _svc(db: AsyncSession, mailer: MailSender) -> InvitationService:
         throttle_repo=LoginThrottleRepository(db),
         config=get_settings(),
     )
+
+
+def _queue_reset_job(
+    db: AsyncSession, factory: async_sessionmaker[AsyncSession], mailer: MailSender
+) -> Callable[[str], None]:
+    """Return what queues a reset job on this request, to run after the response.
+
+    The job needs a session of its own, because the request's has finished by then.
+    """
+
+    def queue(email: str) -> None:
+        async def reset_job() -> None:
+            async def issue() -> None:
+                async with factory() as job_db, unit_of_work(job_db):
+                    await _svc(job_db, mailer).issue_reset_link(email)
+
+            await run_reset_job(issue)
+
+        after_commit(db, reset_job)
+
+    return queue
 
 
 @router.post(
@@ -133,29 +158,37 @@ async def accept_invitation(
     summary="Request a password reset",
     description=(
         "Public. Email a one-time reset token valid for 60 minutes if the address "
-        "belongs to an active account (letter case is ignored; the email is sent after "
-        "the request is saved). Only the latest reset token works: earlier unused ones "
-        "are cancelled. Requests are limited per address in a 60-minute window; over the "
-        "limit nothing is cancelled or sent, so an earlier token keeps working. Always "
-        "answers 202, whether or not the address is registered and whether or not the "
-        "limit is reached, so it cannot be used to find out who has an account."
+        "belongs to an active account (letter case is ignored). The request only counts "
+        "and answers: the account is looked at and the email sent after the response, so "
+        "a failure there is not reported, and an email can be lost if the service stops. "
+        "Earlier tokens keep working until one is redeemed, which cancels the rest. "
+        "Requests are limited per address and per network in a 60-minute window; over a "
+        "limit nothing is issued or sent. Always answers 202, whether or not the address "
+        "is registered and whether or not a limit is reached, so it cannot be used to "
+        "find out who has an account."
     ),
 )
 async def request_password_reset(
     body: PasswordResetRequest,
+    request: Request,
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
     mailer: MailSender = Depends(get_mail_sender),
+    factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ) -> Response:
     """Request a password reset.
 
     Public. Email a one-time reset token valid for 60 minutes if the address belongs to an
-    active account (letter case is ignored; the email is sent after the request is saved). Only
-    the latest reset token works: earlier unused ones are cancelled. Requests are limited per
-    address in a 60-minute window; over the limit nothing is cancelled or sent, so an earlier token
-    keeps working. Always answers 202, whether or not the address is registered and whether or not
-    the limit is reached, so it cannot be used to find out who has an account.
+    active account (letter case is ignored). The request only counts and answers: the account is
+    looked at and the email sent after the response, so a failure there is not reported, and an
+    email can be lost if the service stops. Earlier tokens keep working until one is redeemed, which
+    cancels the rest. Requests are limited per address and per network in a 60-minute window; over a
+    limit nothing is issued or sent. Always answers 202, whether or not the address is registered
+    and whether or not a limit is reached, so it cannot be used to find out who has an account.
     """
-    await _svc(db, mailer).request_password_reset(email=str(body.email))
+    network = client_address(request, get_settings().TRUSTED_PROXY_COUNT)
+    await _svc(db, mailer).request_password_reset(
+        str(body.email), network, _queue_reset_job(db, factory, mailer)
+    )
     return Response(status_code=202)
 
 

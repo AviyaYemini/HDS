@@ -60,8 +60,9 @@ class LoginThrottleRepository(BaseRepository[LoginThrottle]):
         restarts both, and the lock lasts until the window ends. ``updated_at`` is set here
         because the model's ``onupdate`` does not apply inside ``ON CONFLICT DO UPDATE``.
 
-        The caller commits, through `BaseRepository.commit`, so that a refusal raised next does not
-        undo the count.
+        The caller commits: sign-in at once, through `BaseRepository.commit`, because a refusal
+        raised next would undo the count; a reset request through its unit of work, because it
+        refuses nothing.
 
         Args:
             kind: ``address``, ``network`` or ``reset``.

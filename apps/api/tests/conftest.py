@@ -35,8 +35,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789-abcdef"
 os.environ["LOGIN_RATE_LIMIT_PER_NETWORK"] = "0"
 # The same for reset requests; test_reset_request_limit.py turns the limit on for itself.
 os.environ["RESET_REQUEST_LIMIT_PER_ADDRESS"] = "0"
+os.environ["RESET_REQUEST_LIMIT_PER_NETWORK"] = "0"
 
-from hds.core.database import get_db
+from hds.core.database import get_db, get_session_factory
 from hds.core.mail import get_mail_sender
 from hds.core.security import hash_password
 from hds.main import app
@@ -150,11 +151,13 @@ async def test_db(migrated_test_db: str) -> AsyncGenerator[AsyncSession, None]:
             yield db
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
     try:
         async with session_factory() as session:
             yield session
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_session_factory, None)
         tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
         async with engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
@@ -226,6 +229,7 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
             yield session
 
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_session_factory] = lambda: factory
 
     async def _seed() -> dict[str, str]:
         async with factory() as session:
@@ -271,3 +275,4 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
         runner.run(_clean())
         runner.close()
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_session_factory, None)

@@ -430,7 +430,7 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
 fixed window of `RESET_TTL_MINUTES`, limit `RESET_REQUEST_LIMIT_PER_ADDRESS` (default 5; 0 turns it
 off). It is checked before any lookup, so a registered and an unregistered address behave alike.
 The decision uses the returned count: over the limit means a count above it, so the 5th of 5 still
-works. This path also deletes stale rows on every request, because it has no hashing cost and no
+works. This path also deletes stale rows on every request that adds a row, because it has no hashing cost and no
 network limit and could otherwise add rows far faster than sign-in. The table is then bounded by
 the request rate over `LOGIN_THROTTLE_RETENTION_HOURS`, not by a fixed size. The count is committed
 before the account is looked at, so it survives a later failure and its row lock is not held while
@@ -441,8 +441,11 @@ about mail volume, not about protecting a link.
 
 **Reset requests per network**: `RESET_REQUEST_LIMIT_PER_NETWORK` (default 30 in the same window; 0
 turns it off) counts under kind `reset` with a `network:` key prefix, which no address can collide
-with, so no migration is needed. Both counts always run, so a request over one limit does the same
-work as any other. The first request over the network limit in a window logs one warning: behind a
+with, so no migration is needed. The network is checked first. Once it is over its limit a request
+only reads its row: no lock, no purge and no address count. Otherwise one client could flood a
+single row until it held every connection, and could use up every address's allowance for no mail.
+What it skips depends on the network and on no address. The first request over the network limit in
+a window logs one warning: behind a
 proxy with a wrong `TRUSTED_PROXY_COUNT` every user shares one address, so this would silently stop
 reset mail for everyone. A warning per request would let an attacker fill the log.
 
@@ -492,7 +495,8 @@ stores a link and sends the mail once its transaction has committed.
 
 `RESET_JOB_CONCURRENCY` (2) jobs run at once per worker and `RESET_JOB_QUEUE_LIMIT` (100) more may
 wait, so a burst cannot take every database connection. Past that the job is dropped and logged by
-type, without the address; the answer is already sent. A job costs an unregistered address a lookup,
+type, without the address; the answer is already sent. A job running longer than
+`RESET_JOB_TIMEOUT_SECONDS` (30) is stopped, so a stalled mail provider cannot hold every place. A job costs an unregistered address a lookup,
 so the cap also holds under random addresses. A crash after the response loses that one mail, and
 the requester can ask again. ADR 008 records this.
 

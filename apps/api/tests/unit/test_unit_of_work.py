@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 import pytest
+from fastapi import BackgroundTasks
 
 from hds.core.database import after_commit, get_unit_of_work, unit_of_work
 
@@ -109,7 +110,7 @@ async def test_failing_after_commit_action_is_logged_without_secrets_and_ignored
 
 
 async def test_dependency_commits_when_the_handler_returns(fake_session: Any) -> None:
-    gen = get_unit_of_work(fake_session)
+    gen = get_unit_of_work(BackgroundTasks(), fake_session)
     assert id(await anext(gen)) == id(fake_session)
     with pytest.raises(StopAsyncIteration):
         await anext(gen)
@@ -117,8 +118,57 @@ async def test_dependency_commits_when_the_handler_returns(fake_session: Any) ->
 
 
 async def test_dependency_rolls_back_when_the_handler_raises(fake_session: Any) -> None:
-    gen = get_unit_of_work(fake_session)
+    gen = get_unit_of_work(BackgroundTasks(), fake_session)
     await anext(gen)
     with pytest.raises(BoomError):
         await gen.athrow(BoomError())
     assert fake_session.events == ["rollback"]
+
+
+async def test_the_dependency_leaves_actions_for_one_background_task(fake_session: Any) -> None:
+    background = BackgroundTasks()
+    ran: list[str] = []
+
+    async def first() -> None:
+        ran.append("first")
+
+    async def second() -> None:
+        ran.append("second")
+
+    gen = get_unit_of_work(background, fake_session)
+    await anext(gen)
+    after_commit(fake_session, first)
+    after_commit(fake_session, second)
+    with pytest.raises(StopAsyncIteration):
+        await anext(gen)
+
+    assert fake_session.events == ["commit"]
+    assert ran == []  # still queued when the dependency has finished
+    assert len(background.tasks) == 1
+    await background()
+    assert ran == ["first", "second"]
+
+
+async def test_the_dependency_adds_no_task_when_nothing_was_queued(fake_session: Any) -> None:
+    background = BackgroundTasks()
+    gen = get_unit_of_work(background, fake_session)
+    await anext(gen)
+    with pytest.raises(StopAsyncIteration):
+        await anext(gen)
+
+    assert background.tasks == []
+
+
+async def test_the_dependency_adds_no_task_after_a_rollback(fake_session: Any) -> None:
+    background = BackgroundTasks()
+
+    async def action() -> None:
+        raise AssertionError("must not run")
+
+    gen = get_unit_of_work(background, fake_session)
+    await anext(gen)
+    after_commit(fake_session, action)
+    with pytest.raises(BoomError):
+        await gen.athrow(BoomError())
+
+    assert background.tasks == []

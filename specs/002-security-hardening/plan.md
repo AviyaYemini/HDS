@@ -251,8 +251,8 @@ phase does not start before the previous checkpoint passes. Item ids are from `p
 
 - **F01** (D12). Tests first: two reset links, complete with the newer, the older is refused
   `auth.token_used` and the password is unchanged (fails today). Change `reset_password` to cancel
-  every other outstanding link of the account, and `request_password_reset` to cancel earlier unused
-  reset links only. Mutation: drop either cancellation.
+  every other outstanding link of the account. Mutation: drop the cancellation. (A new request also
+  cancelled earlier reset links until 2026-11-03; it no longer does, see FR-224 and D17.)
 - **F02** (D13). Tests first: client deactivation, client delete and portal-user removal each end the
   user's refresh tokens (`account`) and cancel links; a pre-deactivation token stays refused after a
   later reactivation; reactivating a portal user of an inactive or deleted client is refused with a

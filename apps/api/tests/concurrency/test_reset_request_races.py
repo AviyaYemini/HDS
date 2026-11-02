@@ -7,6 +7,7 @@ than the limit, and the count does not deadlock with the paths that hold the sam
 Covers: FR-246, FR-247.
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -69,3 +70,24 @@ async def test_a_counted_request_never_deadlocks_with_a_failed_sign_in(
     for round_number in range(30):
         outcomes = statuses(await race(request, sign_in))
         assert outcomes == [202, 401], f"round {round_number}"
+
+
+async def test_parallel_requests_over_the_network_limit_log_one_warning(
+    async_client: AsyncClient,
+    seed_users: dict[str, User],
+    outbox: OutboxMailSender,
+    race: Race,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(get_settings(), "RESET_REQUEST_LIMIT_PER_NETWORK", 1)
+
+    async def request() -> Any:
+        return await async_client.post("/auth/password-reset/request", json={"email": EMAIL})
+
+    with caplog.at_level(logging.WARNING, logger="hds.invitation"):
+        results = await race(*[request for _ in range(10)])
+
+    assert statuses(results) == [202] * 10
+    assert len(outbox.messages) == 1
+    assert len(caplog.records) == 1

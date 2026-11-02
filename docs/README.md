@@ -18,6 +18,7 @@
 | [004](adr/004-pyjwt.md) | Replace python-jose with PyJWT |
 | [005](adr/005-request-scoped-transactions.md) | One transaction per request, mail after commit |
 | [006](adr/006-refresh-token-reuse-detection.md) | Refresh-token reuse detection with a grace window |
+| [008](adr/008-delivery-after-the-response.md) | Work on a reset request's address runs after the response |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 

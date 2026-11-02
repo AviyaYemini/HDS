@@ -1,6 +1,6 @@
 """Unit tests for InvitationService (T099).
 
-Covers: FR-006, FR-247, NFR-005.
+Covers: FR-006, FR-224, FR-228, FR-247, NFR-005.
 """
 
 import uuid
@@ -194,34 +194,34 @@ async def test_reset_token_cannot_be_used_as_invitation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_request_password_reset_unknown_email_is_silent() -> None:
+async def test_issuing_a_reset_link_unknown_email_is_silent() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     user_repo.get_by_email = AsyncMock(return_value=None)
 
-    await svc.request_password_reset("unknown@hds.test")
+    await svc.issue_reset_link("unknown@hds.test")
 
     token_repo.create.assert_not_awaited()
     mailer.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_request_password_reset_inactive_user_is_silent() -> None:
+async def test_issuing_a_reset_link_inactive_user_is_silent() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     user_repo.get_by_email = AsyncMock(return_value=_make_user(is_active=False))
 
-    await svc.request_password_reset("pending@hds.test")
+    await svc.issue_reset_link("pending@hds.test")
 
     token_repo.create.assert_not_awaited()
     mailer.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_request_password_reset_known_user_mails_token() -> None:
+async def test_issuing_a_reset_link_known_user_mails_token() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     user = _make_user(is_active=True)
     user_repo.get_by_email = AsyncMock(return_value=user)
 
-    await svc.request_password_reset(user.email)
+    await svc.issue_reset_link(user.email)
 
     assert token_repo.create.await_args.kwargs["purpose"] == "reset"
     assert token_repo.create.await_args.kwargs["user_id"] == user.id
@@ -247,14 +247,29 @@ async def test_reset_password_valid_token_succeeds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_reset_request_cancels_earlier_reset_links_only() -> None:
+async def test_issuing_a_reset_link_cancels_nothing() -> None:
     svc, user_repo, token_repo, _ = _svc()
     user = _make_user(is_active=True)
     user_repo.get_by_email = AsyncMock(return_value=user)
 
-    await svc.request_password_reset(user.email)
+    await svc.issue_reset_link(user.email)
 
-    token_repo.cancel_for_user.assert_awaited_once_with(user.id, purpose="reset")
+    token_repo.create.assert_awaited_once()
+    token_repo.cancel_for_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_issuing_a_reset_link_takes_the_users_row_before_the_link() -> None:
+    svc, user_repo, token_repo, _ = _svc()
+    user = _make_user(is_active=True)
+    order: list[str] = []
+    user_repo.get_by_email = AsyncMock(return_value=user)
+    user_repo.lock_user.side_effect = lambda *_: order.append("lock")
+    token_repo.create.side_effect = lambda **_: order.append("link")
+
+    await svc.issue_reset_link(user.email)
+
+    assert order == ["lock", "link"]
 
 
 @pytest.mark.asyncio
@@ -299,12 +314,12 @@ async def test_create_invitation_passes_the_token_as_secret_with_purpose_and_exp
 
 
 @pytest.mark.asyncio
-async def test_request_password_reset_passes_the_token_as_secret_with_purpose_and_expiry() -> None:
+async def test_issuing_a_reset_link_passes_the_token_as_secret_with_purpose_and_expiry() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     user = _make_user(is_active=True)
     user_repo.get_by_email = AsyncMock(return_value=user)
 
-    await svc.request_password_reset(user.email)
+    await svc.issue_reset_link(user.email)
 
     sent = mailer.send.await_args.kwargs
     assert sent["secret"] and sent["secret"] in sent["body"]
@@ -554,6 +569,7 @@ async def test_a_reset_request_is_counted_under_the_folded_address() -> None:
     throttle_repo.register_failure = AsyncMock(return_value=(1, None))
     config = MagicMock(
         RESET_REQUEST_LIMIT_PER_ADDRESS=5,
+        RESET_REQUEST_LIMIT_PER_NETWORK=0,
         LOGIN_THROTTLE_RETENTION_HOURS=24,
         throttle_key=b"k" * 32,
     )
@@ -561,7 +577,7 @@ async def test_a_reset_request_is_counted_under_the_folded_address() -> None:
     user_repo.get_by_email = AsyncMock(return_value=None)
     svc = InvitationService(user_repo, AsyncMock(), AsyncMock(), AsyncMock(), throttle_repo, config)
 
-    await svc.request_password_reset(" Someone@HDS.test ")
+    await svc.request_password_reset(" Someone@HDS.test ", "203.0.113.9", lambda _: None)
 
     key = throttle_repo.register_failure.await_args.args[1]
     assert key == hash_key("someone@hds.test", config.throttle_key)
@@ -573,6 +589,7 @@ def _limited() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock, Asyn
     throttle_repo.register_failure = AsyncMock(return_value=(1, None))
     config = MagicMock(
         RESET_REQUEST_LIMIT_PER_ADDRESS=5,
+        RESET_REQUEST_LIMIT_PER_NETWORK=0,
         LOGIN_THROTTLE_RETENTION_HOURS=24,
         throttle_key=b"k" * 32,
     )
@@ -581,27 +598,57 @@ def _limited() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock, Asyn
 
 
 @pytest.mark.asyncio
-async def test_a_reset_request_saves_its_count_before_it_touches_the_account() -> None:
-    svc, user_repo, _, _, throttle_repo = _limited()
+async def test_a_reset_request_touches_no_account_and_queues_one_job_for_the_address() -> None:
+    svc, user_repo, token_repo, mailer, _ = _limited()
+    queued: list[str] = []
+
+    await svc.request_password_reset("someone@hds.test", "203.0.113.9", queued.append)
+
+    assert queued == ["someone@hds.test"]
+    assert user_repo.mock_calls == []
+    assert token_repo.mock_calls == []
+    assert mailer.mock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_reset_request_over_the_address_limit_queues_nothing() -> None:
+    svc, _, _, _, throttle_repo = _limited()
+    throttle_repo.register_failure = AsyncMock(return_value=(6, None))
+    queued: list[str] = []
+
+    await svc.request_password_reset("someone@hds.test", "203.0.113.9", queued.append)
+
+    assert queued == []
+
+
+@pytest.mark.asyncio
+async def test_a_reset_request_removes_stale_rows_before_it_takes_a_count_lock() -> None:
+    svc, _, _, _, throttle_repo = _limited()
+    svc._config.RESET_REQUEST_LIMIT_PER_NETWORK = 30
+    throttle_repo.get = AsyncMock(return_value=None)
     order: list[str] = []
-    throttle_repo.commit = AsyncMock(side_effect=lambda: order.append("commit"))
-    user_repo.get_by_email = AsyncMock(side_effect=lambda _: order.append("lookup"))
+    throttle_repo.purge_stale.side_effect = lambda *_: order.append("purge")
 
-    await svc.request_password_reset("someone@hds.test")
+    async def count(*_: object) -> tuple[int, None]:
+        order.append("count")
+        return 1, None
 
-    assert order[0] == "commit"
+    throttle_repo.register_failure = AsyncMock(side_effect=count)
+
+    await svc.request_password_reset("someone@hds.test", "203.0.113.9", lambda _: None)
+
+    assert order == ["purge", "count", "count"]
 
 
 @pytest.mark.parametrize("after_the_lock", [None, _make_user(is_active=False)])
 @pytest.mark.asyncio
-async def test_a_reset_request_stops_if_the_account_changed_while_it_waited_for_the_lock(
+async def test_a_reset_job_stops_if_the_account_changed_while_it_waited_for_the_lock(
     after_the_lock: MagicMock | None,
 ) -> None:
     svc, user_repo, token_repo, mailer, _ = _limited()
     user_repo.get_by_email = AsyncMock(side_effect=[_make_user(is_active=True), after_the_lock])
 
-    await svc.request_password_reset("someone@hds.test")
+    await svc.issue_reset_link("someone@hds.test")
 
-    token_repo.cancel_for_user.assert_not_awaited()
     token_repo.create.assert_not_awaited()
     mailer.send.assert_not_awaited()

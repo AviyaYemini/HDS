@@ -85,7 +85,7 @@ changed error answers; each needs English and Hebrew text where it is a new code
 
 `HASH_CONCURRENCY` (default 2), `HASH_QUEUE_LIMIT` (8), `LOGIN_RATE_LIMIT_PER_NETWORK` (30 per
 fixed window of `LOGIN_LOCKOUT_MINUTES`; 0 turns the network limit off), `TRUSTED_PROXY_COUNT` (0:
-ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24), `THROTTLE_SECRET_KEY` (optional, at least 32 bytes outside development; derived from `JWT_SECRET_KEY` when unset), `RESET_REQUEST_LIMIT_PER_ADDRESS` (5 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_REQUEST_LIMIT_PER_NETWORK` (30 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_JOB_CONCURRENCY` (2), `RESET_JOB_QUEUE_LIMIT` (100). The per-address limit and lock length
+ignore the forwarded header; N behind N reverse proxies; set by the deployment feature), `LOGIN_THROTTLE_RETENTION_HOURS` (24), `THROTTLE_SECRET_KEY` (optional, at least 32 bytes outside development; derived from `JWT_SECRET_KEY` when unset), `RESET_REQUEST_LIMIT_PER_ADDRESS` (5 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_REQUEST_LIMIT_PER_NETWORK` (30 per `RESET_TTL_MINUTES`; 0 turns it off), `RESET_JOB_CONCURRENCY` (2), `RESET_JOB_QUEUE_LIMIT` (100), `RESET_JOB_TIMEOUT_SECONDS` (30). The per-address limit and lock length
 reuse `LOGIN_MAX_FAILURES` and `LOGIN_LOCKOUT_MINUTES`. All go into `.env.example` and the
 configuration table; the existing test enforces both. Behind a proxy with `TRUSTED_PROXY_COUNT`
 left at 0 every user shares one address: set the count or set the network limits to 0. For sign-in

@@ -1,7 +1,7 @@
 # ADR 005: One transaction per request
 
 **Date**: 2026-11-02
-**Status**: Accepted
+**Status**: Accepted. [ADR 008](008-delivery-after-the-response.md) moves after-commit actions after the response.
 
 ## Context
 

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
         LOGIN_THROTTLE_RETENTION_HOURS: Age at which an unlocked throttle row may be removed.
         RESET_REQUEST_LIMIT_PER_ADDRESS: Password-reset requests one address may make inside one
             reset-link lifetime; 0 turns this limit off.
+        RESET_REQUEST_LIMIT_PER_NETWORK: The same for one network address, whatever the addresses
+            submitted; 0 turns this limit off.
+        RESET_JOB_CONCURRENCY: Reset jobs that may run at once in one worker.
+        RESET_JOB_QUEUE_LIMIT: Reset jobs that may wait; beyond that a job is dropped.
+        RESET_JOB_TIMEOUT_SECONDS: How long one reset job may run before it is stopped.
         TRUSTED_PROXY_COUNT: Reverse proxies in front of the API. At 0 the forwarded header is
             ignored. A wrong value cannot be detected at start-up.
         HASH_CONCURRENCY: Password hashes that may run at once in one worker.
@@ -91,6 +96,10 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_PER_NETWORK: int = Field(default=30, ge=0)
     LOGIN_THROTTLE_RETENTION_HOURS: int = Field(default=24, gt=0)
     RESET_REQUEST_LIMIT_PER_ADDRESS: int = Field(default=5, ge=0)
+    RESET_REQUEST_LIMIT_PER_NETWORK: int = Field(default=30, ge=0)
+    RESET_JOB_CONCURRENCY: int = Field(default=2, ge=1)
+    RESET_JOB_QUEUE_LIMIT: int = Field(default=100, ge=0)
+    RESET_JOB_TIMEOUT_SECONDS: int = Field(default=30, gt=0)
     TRUSTED_PROXY_COUNT: int = Field(default=0, ge=0)
     HASH_CONCURRENCY: int = Field(default=2, ge=1)
     HASH_QUEUE_LIMIT: int = Field(default=8, ge=0)
