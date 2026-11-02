@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import case, func, or_, select, update
+from sqlalchemy import and_, case, func, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -261,13 +261,15 @@ class UserRepository(OrgScopedRepository[User]):
         return fields
 
     async def register_failed_login(
-        self, user_id: uuid.UUID, max_failures: int, lock_until: datetime
+        self, user_id: uuid.UUID, max_failures: int, lock_until: datetime, now: datetime
     ) -> tuple[int, datetime | None]:
         """Count one wrong password and lock the account at the limit, then commit it now.
 
         One ``UPDATE`` adds one to the consecutive-failure count and, when the new count reaches
         ``max_failures``, sets the lock, so the decision is made on the stored value and is
-        correct when several wrong passwords arrive together. The in-memory user is left alone
+        correct when several wrong passwords arrive together. A stored lock that has run out
+        restarts the count at 1 and goes away in the same statement (FR-213), so sign-in writes
+        nothing before the password is verified. The in-memory user is left alone
         (``synchronize_session`` is off): the caller must use the count returned here, never
         the object's own, which is the value from before this call.
 
@@ -280,18 +282,22 @@ class UserRepository(OrgScopedRepository[User]):
             max_failures: Consecutive failures that lock the account.
             lock_until: Timezone-aware UTC time at which sign-in is allowed again, used if this
                 failure reaches the limit.
+            now: Timezone-aware UTC current time, to tell whether a stored lock has run out.
 
         Returns:
             ``(failures, locked_until)`` as stored after the update; ``locked_until`` is empty
             while the account is not locked.
         """
+        expired = and_(User.locked_until.is_not(None), User.locked_until <= now)
+        new_count = case((expired, 1), else_=User.failed_login_attempts + 1)
         result = await self.session.execute(
             update(User)
             .where(User.id == user_id)
             .values(
-                failed_login_attempts=User.failed_login_attempts + 1,
+                failed_login_attempts=new_count,
                 locked_until=case(
-                    (User.failed_login_attempts + 1 >= max_failures, lock_until),
+                    (new_count >= max_failures, lock_until),
+                    (expired, null()),
                     else_=User.locked_until,
                 ),
             )
@@ -301,29 +307,6 @@ class UserRepository(OrgScopedRepository[User]):
         failures, locked_until = result.one()
         await self.commit()
         return int(failures), locked_until
-
-    async def clear_expired_lock(self, user_id: uuid.UUID, now: datetime) -> bool:
-        """Zero the failure count and remove the lock if the lock has run out.
-
-        Called at the start of every sign-in, before the password is checked, so that after the
-        cooldown the user has the full number of attempts again (FR-213). A lock that has not
-        expired, or an account that was never locked, is left untouched.
-
-        Args:
-            user_id: The account signing in.
-            now: Timezone-aware UTC current time.
-
-        Returns:
-            ``True`` if an expired lock was cleared.
-        """
-        result = await self.session.execute(
-            update(User)
-            .where(User.id == user_id, User.locked_until.is_not(None), User.locked_until <= now)
-            .values(failed_login_attempts=0, locked_until=None)
-            .returning(User.id)
-            .execution_options(synchronize_session=False)
-        )
-        return result.scalar_one_or_none() is not None
 
     async def reset_failed_attempts(self, user_id: uuid.UUID) -> None:
         """Zero the failure counter and clear any lock (after a good sign-in).

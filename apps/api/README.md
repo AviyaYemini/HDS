@@ -43,6 +43,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
 | `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout: the account locks on the failure that reaches the limit, and the count restarts when the lock ends | `5`, `15` |
 | `REFRESH_REUSE_GRACE_SECONDS` | A refresh token used a second time within this many seconds is refused and nothing else happens; later, every session of the user ends. Must be greater than 0 | `10` |
+| `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |
 
 ## Common tasks

@@ -51,5 +51,6 @@
   "http.bad_request": "The request could not be parsed.",
   "sites.timezone_invalid": "The time zone must be an IANA name such as Asia/Jerusalem.",
   "users.client_inactive": "This user's client is inactive or deleted; reactivate the client first.",
-  "users.pending_cannot_deactivate": "This account has not accepted its invitation yet, so it cannot be deactivated."
+  "users.pending_cannot_deactivate": "This account has not accepted its invitation yet, so it cannot be deactivated.",
+  "service.busy": "The service is busy; try again shortly."
 }

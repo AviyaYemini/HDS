@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.database import TRANSACTION_WROTE
 from hds.core.exceptions import NotFoundError
 from hds.models.base import Base
 
@@ -45,6 +46,22 @@ class BaseRepository(Generic[ModelT]):
         the failed-sign-in count, because everything else is rolled back when the request fails.
         Anything written earlier in the same request is committed with it.
         """
+        await self.session.commit()
+
+    async def release_connection(self) -> None:
+        """End a read-only transaction, returning its connection to the pool.
+
+        Call this before slow work that needs no database, such as hashing a password, so that
+        requests waiting for it do not use up the pool (FR-222). The next statement starts a new
+        transaction. Objects already loaded stay usable. Use it only before the request's first
+        write and first row lock: a commit would save the write and drop the lock, so this refuses
+        rather than silently splitting the request's transaction.
+
+        Raises:
+            RuntimeError: If anything was written, or a row was locked, in this transaction.
+        """
+        if self.session.info.get(TRANSACTION_WROTE):
+            raise RuntimeError("release_connection after a write or row lock in this transaction")
         await self.session.commit()
 
 

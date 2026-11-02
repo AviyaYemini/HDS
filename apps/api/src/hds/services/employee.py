@@ -12,6 +12,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
+from hds.core import passwords
 from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
 from hds.core.exceptions import (
     ConflictError,
@@ -19,7 +20,6 @@ from hds.core.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
-from hds.core.security import hash_password
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
@@ -227,7 +227,8 @@ class EmployeeService:
             )
         initial_password = data.pop("initial_password")
         validate_initial_password(initial_password)
-        data["password_hash"] = hash_password(initial_password)
+        await self._user_repo.release_connection()  # none held while hashing (FR-222)
+        data["password_hash"] = await passwords.hash_password(initial_password)
         data["role"] = role
         return await self._user_repo.create(actor.organization_id, data)
 

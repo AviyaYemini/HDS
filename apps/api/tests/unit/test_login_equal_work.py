@@ -62,7 +62,6 @@ def account(*, is_active: bool = True) -> User:
 def service(user: User | None) -> AuthService:
     users = AsyncMock()
     users.get_by_email.return_value = user
-    users.clear_expired_lock.return_value = False
     users.register_failed_login.return_value = (1, None)
     config = MagicMock()
     config.LOGIN_MAX_FAILURES = 5

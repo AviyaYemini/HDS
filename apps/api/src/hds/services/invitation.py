@@ -12,10 +12,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from hds.core import passwords
 from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.exceptions import AuthError, ConflictError, ForbiddenError
 from hds.core.mail import MailSender
-from hds.core.security import generate_refresh_token, hash_password
+from hds.core.security import generate_refresh_token
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -108,13 +109,15 @@ class InvitationService:
         account = await self._user_repo.get_by_email(email)
         created = False
         if account is None:
+            await self._user_repo.release_connection()
+            placeholder = await passwords.hash_password(str(uuid.uuid4()))
             account, created = await self._user_repo.create_if_absent(
                 actor.organization_id,
                 {
                     "email": email,
                     "full_name": email,
                     "role": role,
-                    "password_hash": hash_password(str(uuid.uuid4())),
+                    "password_hash": placeholder,
                     "is_active": False,
                 },
             )
@@ -199,7 +202,9 @@ class InvitationService:
             every other outstanding link of the account.
         """
         token = await self._valid_token(raw_token, "invite")
-        password_hash = hash_password(new_password)  # before any lock is taken
+        # No connection or lock is held while the password is hashed (FR-222).
+        await self._user_repo.release_connection()
+        password_hash = await passwords.hash_password(new_password)
         # The user's row comes first, before the link (see `lock_user_row`). Then spend the link:
         # this single conditional write is what lets only one of two simultaneous redemptions
         # through. The loser finds the link used and is refused before it writes anything.
@@ -280,7 +285,8 @@ class InvitationService:
             refresh tokens and clears the failed sign-in count and lock.
         """
         token = await self._valid_token(raw_token, "reset")
-        password_hash = hash_password(new_password)  # before any lock is taken
+        await self._user_repo.release_connection()  # see accept_invitation
+        password_hash = await passwords.hash_password(new_password)
         await self._user_repo.lock_user(token.user_id)
         if not await self._token_repo.spend(token.id):  # see accept_invitation
             raise AuthError(code="auth.token_used", detail="This token has already been used.")

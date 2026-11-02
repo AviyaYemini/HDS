@@ -19,6 +19,7 @@ _DESCRIPTIONS = {
     "409": "The request conflicts with the current state (duplicate, last admin, in use).",
     "422": "The request is invalid.",
     "423": "The account is temporarily locked after repeated failed sign-ins.",
+    "503": "The password-hashing queue is full; try again after the Retry-After interval.",
 }
 _PROBLEM_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -43,6 +44,17 @@ _PUBLIC_401 = {
     "/auth/refresh",
     "/auth/invite/accept",
     "/auth/password-reset/confirm",
+}
+
+
+# Operations that hash a password, which answer 503 when the hashing queue is full (FR-222).
+_HASHING = {
+    ("/auth/login", "post"),
+    ("/auth/invite", "post"),
+    ("/auth/invite/accept", "post"),
+    ("/auth/password-reset/confirm", "post"),
+    ("/api/v1/employees", "post"),
+    ("/api/v1/clients/{id}/users", "post"),
 }
 
 
@@ -86,6 +98,8 @@ def _statuses(
         found.add("423")
     if method != "get" and "{" not in path and operation.get("security"):
         found.add("409")
+    if (path, method) in _HASHING:
+        found.add("503")
     return found
 
 

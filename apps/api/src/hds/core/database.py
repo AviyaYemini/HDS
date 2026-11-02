@@ -14,7 +14,9 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import Depends
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import ORMExecuteState, Session, SessionTransaction
 
 from hds.core.config import settings
 
@@ -26,6 +28,33 @@ AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 #: Key under which the queue of after-commit actions is stored in ``session.info``.
 _AFTER_COMMIT = "hds.after_commit"
+TRANSACTION_WROTE = "hds.transaction_wrote"
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _note_statement(state: ORMExecuteState) -> None:
+    """Record a write or a row lock, for ``BaseRepository.release_connection``.
+
+    This sees direct ``UPDATE``, ``INSERT`` and ``DELETE`` statements, which ``session.new`` and
+    ``session.dirty`` do not.
+    """
+    locks = state.is_select and getattr(state.statement, "_for_update_arg", None) is not None
+    if state.is_insert or state.is_update or state.is_delete or locks:
+        state.session.info[TRANSACTION_WROTE] = True
+
+
+@event.listens_for(Session, "after_flush")
+def _note_flush(session: Session, flush_context: object) -> None:
+    """Record ORM changes written by a flush."""
+    session.info[TRANSACTION_WROTE] = True
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_writes(session: Session, transaction: SessionTransaction) -> None:
+    """Clear the record when the outermost transaction commits or rolls back."""
+    if transaction.parent is None:
+        session.info.pop(TRANSACTION_WROTE, None)
+
 
 AfterCommitAction = Callable[[], Awaitable[None]]
 

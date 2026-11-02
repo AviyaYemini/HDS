@@ -10,9 +10,9 @@ client that is no longer under contract cannot keep signing in.
 import uuid
 from typing import Any
 
+from hds.core import passwords
 from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
-from hds.core.security import hash_password
 from hds.models.client import Client
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
@@ -151,7 +151,8 @@ class ClientService:
         data = dict(data)
         initial_password = data.pop("initial_password")
         validate_initial_password(initial_password)
-        data["password_hash"] = hash_password(initial_password)
+        await self._user_repo.release_connection()  # none held while hashing (FR-222)
+        data["password_hash"] = await passwords.hash_password(initial_password)
         data["role"] = UserRole.client
         data["client_id"] = client_id
         return await self._user_repo.create(actor.organization_id, data)

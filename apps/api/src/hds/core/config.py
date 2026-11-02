@@ -48,6 +48,8 @@ class Settings(BaseSettings):
         ACCESS_TOKEN_TTL_SECONDS: Access-token lifetime; Constitution VI caps it at 15 minutes.
         REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again.
         LOGIN_MAX_FAILURES: Consecutive failed sign-ins before the account locks.
+        HASH_CONCURRENCY: Password hashes that may run at once in one worker.
+        HASH_QUEUE_LIMIT: Password hashes that may wait; beyond that a request is refused (503).
         LOGIN_LOCKOUT_MINUTES: How long a locked account stays locked.
         REFRESH_REUSE_GRACE_SECONDS: After a refresh token is used, a second use within this
             many seconds is refused without ending the user's sessions (an honest retry); a
@@ -74,6 +76,8 @@ class Settings(BaseSettings):
     LOGIN_MAX_FAILURES: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
     REFRESH_REUSE_GRACE_SECONDS: int = Field(default=10, gt=0)
+    HASH_CONCURRENCY: int = Field(default=2, ge=1)
+    HASH_QUEUE_LIMIT: int = Field(default=8, ge=0)
     # JSON list in the environment, e.g. CORS_ORIGINS='["https://app.example.com"]'.
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
     MAIL_BACKEND: str | None = None

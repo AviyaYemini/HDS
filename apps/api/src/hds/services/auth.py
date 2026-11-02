@@ -13,21 +13,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, NoReturn
 
+from hds.core import passwords
 from hds.core.exceptions import AuthError
-from hds.core.security import (
-    create_access_token,
-    generate_refresh_token,
-    verify_against_dummy,
-    verify_password,
-)
+from hds.core.security import create_access_token, generate_refresh_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 
 
-def _verify_password(plain: str, hashed: str) -> bool:
-    return verify_password(plain, hashed)
+async def _verify_password(plain: str, hashed: str) -> bool:
+    return await passwords.verify_password(plain, hashed)
 
 
 @dataclass
@@ -74,9 +70,10 @@ class AuthService:
         Unknown email, wrong password and an inactive account all return the same
         ``auth.invalid_credentials`` so a caller cannot tell which accounts exist. The lock is
         checked before the password, so a locked account cannot be probed. A lock that has
-        expired is cleared first, with the failure count, so the user has the full number of
-        attempts again. A wrong password adds one to the count and the account locks for
-        ``LOGIN_LOCKOUT_MINUTES`` on the failure that makes the count reach
+        expired no longer counts, and the next failure restarts the count, so the user has the
+        full number of attempts again. Nothing is written and no connection is held while the
+        password is checked (FR-222). A wrong password adds one to the count and the account
+        locks for ``LOGIN_LOCKOUT_MINUTES`` on the failure that makes the count reach
         ``LOGIN_MAX_FAILURES``, not before; a success resets the count. After the password check
         the user's row is locked and read again, so a reset or deactivation that finished in
         between refuses this sign-in instead of leaving a session behind (FR-230).
@@ -91,24 +88,24 @@ class AuthService:
         Raises:
             AuthError: ``auth.invalid_credentials`` (HTTP 401) or ``auth.account_locked``
                 (HTTP 423).
+            ServiceBusyError: ``service.busy`` (HTTP 503) when the hashing queue is full.
 
         Side effects:
-            Clears an expired lock; on a wrong password counts it, locks at the limit and commits
-            that at once so the refusal does not undo it; on success stores the new refresh-token
-            hash and removes the user's expired tokens and links.
+            On a wrong password counts it, locks at the limit and commits that at once so the
+            refusal does not undo it; on success stores the new refresh-token hash and removes
+            the user's expired tokens and links.
         """
         user = await self._user_repo.get_by_email(email)
         if user is None:
             # Do the same expensive check as for a real account, so the answer takes as long and
             # an attacker cannot tell unknown addresses from known ones (FR-214).
-            verify_against_dummy(password)
+            await self._user_repo.release_connection()
+            await passwords.verify_against_dummy(password)
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
-        # A lock that has run out is cleared first, with the count, so the user starts again
-        # from zero; whatever lock is left after that is a live one.
+        # Judged from the row just read: a lock that has run out simply no longer counts.
         now = datetime.now(UTC)
-        cleared = await self._user_repo.clear_expired_lock(user.id, now)
-        locked_until = None if cleared else user.locked_until
+        locked_until = user.locked_until
         if locked_until is not None:
             if locked_until.tzinfo is None:
                 locked_until = locked_until.replace(tzinfo=UTC)
@@ -118,13 +115,15 @@ class AuthService:
                     detail=f"Account locked until {locked_until.isoformat()}",
                 )
 
-        if not _verify_password(password, user.password_hash):
+        await self._user_repo.release_connection()
+        if not await _verify_password(password, user.password_hash):
             # The repository counts and locks in one statement. The count on ``user`` is the
             # value from before this failure, so nothing here adds to it.
             await self._user_repo.register_failed_login(
                 user.id,
                 self._config.LOGIN_MAX_FAILURES,
                 now + timedelta(minutes=self._config.LOGIN_LOCKOUT_MINUTES),
+                now,
             )
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 

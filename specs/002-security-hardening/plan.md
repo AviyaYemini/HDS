@@ -290,8 +290,8 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
 ### P3 Sign-in under load and abuse
 
 - **F04 hashing** (D15). Test first: during a burst of unknown-address sign-ins another request is
-  answered within a multiple of a baseline measured in the same test (median of 9 probes: at most
-  10 times the idle median, with a 50 ms floor; a fixed limit would be flaky in CI); the number of concurrent hashes is bounded; 50
+  not delayed (a heartbeat counts loop stalls against the measured cost of one password check, so
+  the bar holds on a slow CI machine); the number of concurrent hashes is bounded; 50
   concurrent sign-ins **and 50 concurrent employee creations** against a pool of 5 connections
   still let a plain request through (no connection is held while hashing, on all six paths:
   sign-in, accept invitation, confirm reset, create employee, create client user, create
