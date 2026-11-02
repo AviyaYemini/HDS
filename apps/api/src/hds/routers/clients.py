@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager
-from hds.core.types import Name, Password, Phone, StrictDate
+from hds.core.types import Email, Name, Password, Phone, StrictDate
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -88,7 +88,7 @@ class ClientUserRead(BaseModel):
 class ClientUserCreateRequest(BaseModel):
     """New portal account; the initial password needs at least 12 characters."""
 
-    email: EmailStr
+    email: Email
     full_name: Name
     phone: Phone | None = None
     initial_password: Password = Field(min_length=12)

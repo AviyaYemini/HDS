@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.models.group import user_groups
@@ -36,13 +36,16 @@ class UserRepository(OrgScopedRepository[User]):
         organisation is learned from the account rather than supplied by the caller.
 
         Args:
-            email: Address exactly as stored; the match is case-sensitive.
+            email: The address in any letter case; it is trimmed and compared in lowercase
+                (FR-215), through the same expression as the unique index.
 
         Returns:
             The user, or ``None``.
         """
         result = await self.session.execute(
-            select(User).where(User.email == email, User.is_deleted.is_(False)).limit(1)
+            select(User)
+            .where(func.lower(User.email) == email.strip().lower(), User.is_deleted.is_(False))
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -210,8 +213,15 @@ class UserRepository(OrgScopedRepository[User]):
 
     @staticmethod
     def _with_activation(data: dict[str, Any]) -> dict[str, Any]:
-        """Stamp ``activated_at`` on an account that is created active, as the database requires."""
+        """Prepare the column values of a new account.
+
+        Stamps ``activated_at`` on an account that is created active, as the database requires,
+        and stores the address trimmed and lowercased (FR-215), so a caller that bypasses the
+        request types still cannot create a second spelling of an address.
+        """
         fields = dict(data)
+        if isinstance(fields.get("email"), str):
+            fields["email"] = fields["email"].strip().lower()
         if fields.get("is_active", True) and fields.get("activated_at") is None:
             fields["activated_at"] = datetime.now(UTC)
         return fields

@@ -7,9 +7,6 @@ organisation with another organisation's id or address. The answer must be 404 f
 as for an id that does not exist) or 409 ``users.duplicate_email`` for an address, and nothing may
 change in any organisation, shown by a digest of every table taken before and after.
 
-Addresses that differ only by letter case are covered by the US8 tests (T283), when case-insensitive
-addresses are introduced.
-
 Covers: NFR-001, FR-012 (feature 001); the 409 limit is recorded in the spec assumptions.
 """
 
@@ -169,6 +166,18 @@ CASES: dict[str, list[Case]] = {
             ),
         ),
         Case(
+            "own client, same address in different letter case",
+            lambda w: req(
+                f"/api/v1/clients/{w.mine.client.id}/users",
+                json={
+                    "email": w.foreign_email.upper(),
+                    "full_name": "New Portal",
+                    "initial_password": "A-long-password-1",
+                },
+            ),
+            **DUPLICATE,
+        ),
+        Case(
             "own client, address held by another organisation",
             lambda w: req(
                 f"/api/v1/clients/{w.mine.client.id}/users",
@@ -202,6 +211,11 @@ CASES: dict[str, list[Case]] = {
         Case(
             "address held by another organisation",
             lambda w: req("/api/v1/employees", json=new_employee(w.foreign_email)),
+            **DUPLICATE,
+        ),
+        Case(
+            "same address in different letter case",
+            lambda w: req("/api/v1/employees", json=new_employee(w.foreign_email.upper())),
             **DUPLICATE,
         ),
     ],
@@ -344,6 +358,13 @@ CASES: dict[str, list[Case]] = {
         Case(
             "address held by another organisation",
             lambda w: req("/auth/invite", json={"email": w.foreign_email, "role": "employee"}),
+            **DUPLICATE,
+        ),
+        Case(
+            "same address in different letter case",
+            lambda w: req(
+                "/auth/invite", json={"email": w.foreign_email.upper(), "role": "employee"}
+            ),
             **DUPLICATE,
         ),
     ],

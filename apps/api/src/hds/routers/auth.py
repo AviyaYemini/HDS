@@ -5,13 +5,13 @@ Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the othe
 """
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
-from hds.core.types import Password, Token
+from hds.core.types import Email, Password, Token
 from hds.models.user import User
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     """Credentials for ``POST /auth/login``."""
 
-    email: EmailStr
+    email: Email
     password: Password
 
 

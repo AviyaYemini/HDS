@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     String,
+    func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,9 +49,10 @@ class User(TimestampedBase):
     """A person who can sign in.
 
     Rules the schema enforces: ``email`` is unique across all organisations among
-    non-deleted users (partial index ``uq_users_email``); ``default_hourly_rate`` is positive
-    when set; users are soft-deleted (``is_deleted``) so history stays intact and the email
-    can be reused. ``failed_login_attempts`` and ``locked_until`` implement account lockout.
+    non-deleted users, whatever the letter case (partial index ``uq_users_email_ci`` on
+    ``lower(email)``); ``default_hourly_rate`` is positive when set; users are soft-deleted
+    (``is_deleted``) so history stays intact and the email can be reused.
+    ``failed_login_attempts`` and ``locked_until`` implement account lockout.
 
     ``activated_at`` is when the account was first active; it is null only for a *pending* account
     (invited, never activated). The check constraint ``ck_users_active_has_activated_at`` makes
@@ -101,8 +103,8 @@ class User(TimestampedBase):
             name="ck_users_active_has_activated_at",
         ),
         Index(
-            "uq_users_email",
-            "email",
+            "uq_users_email_ci",
+            func.lower(email),
             unique=True,
             postgresql_where=text("is_deleted = false"),
         ),

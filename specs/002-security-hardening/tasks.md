@@ -355,17 +355,40 @@ each time.
 
 **Goal**: one address, one account, whatever the case (FR-215, FR-216).
 
-- [ ] T282 [P] [US8] Write `apps/api/tests/unit/test_email_type.py`: the `Email` type trims and lowercases; invalid addresses are still rejected; the generated OpenAPI schema for the field is unchanged (`format: email`)
-- [ ] T283 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208); and re-add the letter-case address cases to the cross-organisation sweep in `apps/api/tests/integration/test_cross_organisation_sweep.py` (an upper-cased address held by another organisation is refused with 409 `users.duplicate_email` on `POST /employees`, `POST /auth/invite` and `POST /clients/{id}/users`, and nothing changes)
-- [ ] T284 [P] [US8] Write `apps/api/tests/integration/test_migration_016.py`: data with two addresses that differ only by case makes the migration stop with a message listing both; clean data is lowercased and the old index is replaced by `uq_users_email_ci`; downgrade restores `uq_users_email`
-- [ ] T285 [P] [US8] Write `apps/api/tests/unit/test_find_email_case_duplicates.py` for the listing script (read-only; prints nothing when clean)
-- [ ] T286 [US8] Add the `Email` type to `apps/api/src/hds/core/types.py`: an `EmailStr` with an after-validator that trims and lowercases, so OpenAPI is unchanged
-- [ ] T287 [US8] Use `Email` instead of `EmailStr` in the request models of `apps/api/src/hds/routers/auth.py`, `invitations.py`, `employees.py`, `clients.py` (user requests only; contact emails of clients are not account identifiers)
-- [ ] T288 [US8] In `apps/api/src/hds/repositories/user.py` lowercase the address in `get_by_email` and `create` as a second line of defence for non-HTTP callers
-- [ ] T289 [US8] In `apps/api/src/hds/models/user.py` replace the `uq_users_email` index with `uq_users_email_ci` with this constraint verbatim: `unique on lower(email) where is_deleted = false`; `alembic check` must agree with migration 016
-- [ ] T290 [US8] Create `apps/api/alembic/versions/016_case_insensitive_email.py`: first find addresses that differ only by case and, if any, raise with a message that lists them and tells staff to resolve them (nothing is merged or deactivated); otherwise lowercase all addresses, drop `uq_users_email`, create `uq_users_email_ci`; downgrade recreates `uq_users_email` and its docstring states that the lowercasing is not reversed
-- [ ] T291 [P] [US8] Create `apps/api/src/hds/scripts/find_email_case_duplicates.py` (read-only; lists clashing addresses and exits non-zero if any)
-- [ ] T292 [US8] Confirm the duplicate checks in `services/employee.py`, `services/client.py` and `services/invitation.py` now match case-insensitively through `get_by_email`; add a unit test per service if one is missing
+- [X] T282 [P] [US8] Write `apps/api/tests/unit/test_email_type.py`: the `Email` type trims and lowercases; invalid addresses are still rejected; the generated OpenAPI schema for the field is unchanged (`format: email`)
+- [X] T283 [P] [US8] Write `apps/api/tests/integration/test_email_case.py`: sign in with a different case; create a duplicate with a different case (409 `users.duplicate_email`); request a reset with a different case and receive the email; invite with a different case (SC-208); and re-add the letter-case address cases to the cross-organisation sweep in `apps/api/tests/integration/test_cross_organisation_sweep.py` (an upper-cased address held by another organisation is refused with 409 `users.duplicate_email` on `POST /employees`, `POST /auth/invite` and `POST /clients/{id}/users`, and nothing changes)
+- [X] T284 [P] [US8] Write `apps/api/tests/integration/test_migration_016.py`: data with two addresses that differ only by case makes the migration stop with a message listing both; clean data is lowercased and the old index is replaced by `uq_users_email_ci`; downgrade restores `uq_users_email`
+- [X] T285 [P] [US8] Write `apps/api/tests/unit/test_find_email_case_duplicates.py` for the listing script (read-only; prints nothing when clean)
+- [X] T286 [US8] Add the `Email` type to `apps/api/src/hds/core/types.py`: an `EmailStr` with an after-validator that trims and lowercases, so OpenAPI is unchanged
+- [X] T287 [US8] Use `Email` instead of `EmailStr` in the request models of `apps/api/src/hds/routers/auth.py`, `invitations.py`, `employees.py`, `clients.py` (user requests only; contact emails of clients are not account identifiers)
+- [X] T288 [US8] In `apps/api/src/hds/repositories/user.py` lowercase the address in `get_by_email` and `create` as a second line of defence for non-HTTP callers
+- [X] T289 [US8] In `apps/api/src/hds/models/user.py` replace the `uq_users_email` index with `uq_users_email_ci` with this constraint verbatim: `unique on lower(email) where is_deleted = false`; `alembic check` must agree with migration 016
+- [X] T290 [US8] Create `apps/api/alembic/versions/016_case_insensitive_email.py`: first find addresses that differ only by case and, if any, raise with a message that lists them and tells staff to resolve them (nothing is merged or deactivated); otherwise lowercase all addresses, drop `uq_users_email`, create `uq_users_email_ci`; downgrade recreates `uq_users_email` and its docstring states that the lowercasing is not reversed
+- [X] T291 [P] [US8] Create `apps/api/src/hds/scripts/find_email_case_duplicates.py` (read-only; lists clashing addresses and exits non-zero if any)
+- [X] T292 [US8] Confirm the duplicate checks in `services/employee.py`, `services/client.py` and `services/invitation.py` now match case-insensitively through `get_by_email`; add a unit test per service if one is missing
+
+### Scope additions recorded during implementation (Phase 10)
+
+- **T283, sweep**: the three letter-case address cases were re-added to the cross-organisation
+  sweep (`POST /employees`, `POST /auth/invite`, `POST /clients/{id}/users`); they failed before the
+  change (an upper-cased foreign address was accepted) and pass now.
+- **T284/T290, ids only**: the migration's stop message lists account ids and organisation ids,
+  not addresses (the same choice as migration 014), and the listing script does the same. A
+  deleted account is not compared. Shown on a database with realistic data: upgrade with a clash
+  stops and changes nothing; after staff delete the duplicate it upgrades, a duplicate in another
+  case is refused by `uq_users_email_ci`; downgrade restores `uq_users_email` and keeps the
+  lowercase addresses; upgrading again works.
+- **T288**: lowercasing sits in `UserRepository.get_by_email` (compared as `lower(email)`, the same
+  expression as the index) and in `_with_activation`, which both `create` and `create_if_absent`
+  use.
+- **T285**: the listing script is split into a pure `find_clashes`, a `run(fetch)` and a thin
+  database `fetch`, so the unit test needs no database.
+- **`tests/integration/migration_support.py`**: gained `alembic_run`, which returns the finished
+  process instead of asserting success, so a test can inspect a migration that stops on purpose.
+- **ADR 002** now names `uq_users_email_ci` in its example.
+- **Mutation checks** (all caught, files restored): the type no longer lowercases; `get_by_email`
+  case-sensitive again; the repository stores the address as given; the migration skips the clash
+  check; the new index not on `lower(email)`.
 
 **Checkpoint**: Story 8 passes.
 

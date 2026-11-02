@@ -11,7 +11,14 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BeforeValidator, Field, StringConstraints, WithJsonSchema
+from pydantic import (
+    AfterValidator,
+    BeforeValidator,
+    EmailStr,
+    Field,
+    StringConstraints,
+    WithJsonSchema,
+)
 
 # PostgreSQL text cannot contain NUL; reject it at the edge instead of failing with a 500.
 _NO_NUL = r"^[^\x00]*$"
@@ -26,6 +33,10 @@ def _text(max_length: int) -> object:
     return _Str(max_length=max_length, pattern=_NO_NUL)
 
 
+# An account address: valid as an email, then trimmed and lowercased as a whole, because
+# ``Bob@Corp.com`` and ``bob@corp.com`` are one address (FR-215). The published schema stays a
+# string with ``format: email``. Not for contact addresses of clients, which identify nobody.
+Email = Annotated[EmailStr, AfterValidator(lambda address: address.strip().lower())]
 Name = Annotated[str, _text(255)]
 Phone = Annotated[str, _text(32)]
 Timezone = Annotated[str, _text(64)]

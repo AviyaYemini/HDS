@@ -5,13 +5,13 @@ endpoints are public because the caller has no session yet; the one-time token i
 """
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
-from hds.core.types import Password, Token
+from hds.core.types import Email, Password, Token
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/auth", tags=["invitations"])
 class InviteRequest(BaseModel):
     """Email and role to invite; the role defaults to employee."""
 
-    email: EmailStr
+    email: Email
     role: UserRole = UserRole.employee
 
 
@@ -38,7 +38,7 @@ class AcceptInviteRequest(BaseModel):
 class PasswordResetRequest(BaseModel):
     """Email address that asked for a password reset."""
 
-    email: EmailStr
+    email: Email
 
 
 class PasswordResetConfirm(BaseModel):

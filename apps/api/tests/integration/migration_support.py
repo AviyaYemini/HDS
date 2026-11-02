@@ -27,9 +27,9 @@ BASE_URL = os.environ.get(
 )
 
 
-def alembic(url: str, *args: str) -> None:
-    """Run an Alembic command against ``url`` and fail loudly with its output."""
-    result = subprocess.run(
+def alembic_run(url: str, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run an Alembic command against ``url`` and return the finished process, success or not."""
+    return subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=API_DIR,
         env={**os.environ, "DATABASE_URL": url},
@@ -37,6 +37,11 @@ def alembic(url: str, *args: str) -> None:
         text=True,
         check=False,
     )
+
+
+def alembic(url: str, *args: str) -> None:
+    """Run an Alembic command against ``url`` and fail loudly with its output."""
+    result = alembic_run(url, *args)
     assert result.returncode == 0, f"alembic {' '.join(args)} failed:\n{result.stderr[-1500:]}"
 
 
