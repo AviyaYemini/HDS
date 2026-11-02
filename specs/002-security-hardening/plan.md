@@ -171,20 +171,25 @@ decisions shape the work:
    refusal, and `activated_at` is only ever written by a real activation (F03).
 2. **An expired credential ends no sessions** (Q3): FR-209 is amended; expired records are purged
    (F08).
-3. **Sign-in gets a database-backed rate limit** (Q4, Q5, new FR-221) and its password hashing moves
-   off the event loop behind a bound (F04). This is the largest item and adds a table.
-4. **Three defaults are proposed, not yet confirmed** (quota reached): a completed reset clears the
-   lockout (F11), a Client account's role cannot change (F23), a client's contract end may not
-   precede its start (F24). Each can be reversed before its phase starts.
+3. **Sign-in locks every address the same way** (Q4, Q5 and the follow-up, FR-221): an unregistered
+   address is locked after `LOGIN_MAX_FAILURES` failures and answers 423 exactly like a registered
+   one, which closes the last enumeration gap. A separate network limit answers 429. Password
+   hashing moves off the event loop, holds no database connection, and is bounded with a bounded
+   queue (FR-222, F04). This is the largest item and adds a table.
+4. **The three defaults are confirmed**: a completed reset clears the lockout (F11), a Client
+   account's role cannot change (F23), a client's contract end may not precede its start (F24).
+5. **Accepted consequence of Q2**: Managers cannot withdraw a pending invitation (only an Admin's
+   soft-delete removes one).
 
 ## Technical Context (changes only)
 
 **Primary Dependencies**: no new runtime dependency. `tzdata` (already required) becomes the
-authoritative zone list (D21). `asyncio.to_thread` and a semaphore carry the hashing bound (D15).
+authoritative zone list (D21). `asyncio.to_thread` and a per-event-loop limiter carry the hashing
+bound (D15).
 
 **Storage**: two new migrations. **017** is a data migration that corrects migration 014's
-"pending" backfill (F07, D18). **018** adds the `login_attempts` table for the rate limit
-(F04, D16). Migration 014 is already committed and the project hook forbids editing it.
+"pending" backfill (F07, D18). **018** adds the `login_throttle` table for the address and
+network lockout (FR-221, D16). Migration 014 is already committed and the project hook forbids editing it.
 
 **Testing**: each item gets a test that fails first, on PostgreSQL where it touches locking,
 constraints or migrations. New: a concurrency test per revoke-all path (F09), an event-loop
@@ -192,13 +197,14 @@ responsiveness test (F04), a delivery-ordering test (F06), per-run test database
 checks accompany every security fix, as in Part 1.
 
 **Constraints**: the OpenAPI drift check stays green (operations, success codes and query
-parameters unchanged); `429` is declared on login as a response code and described; the generated
+parameters unchanged); `423`, `429` and `503` are declared on login as response codes and described; the generated
 document may differ from the pre-feature baseline in descriptions and in the added error
 responses only. Constitution X: no edit to an applied migration. Constitution VIII: every new
 error code has English and Hebrew text.
 
 **Behaviour changes to existing endpoints** (each is listed in `contracts/error-codes.md`, Part 2):
-`POST /auth/login` (429), `POST /auth/refresh` (expired rotated token), password reset request and
+`POST /auth/login` (423 for unregistered addresses too; 429 for a network over its limit; 503 when
+hashing is saturated), `POST /auth/refresh` (expired rotated token), password reset request and
 confirm (older links cancelled; lockout cleared), employee deactivate and reactivate (pending
 refused; portal user of an inactive client refused), client edit and delete (sessions ended),
 `PATCH` on me, employees, clients, projects and sites (explicit `null` clears), logout (ownership),
@@ -212,8 +218,8 @@ client create and edit (date order), employee edit (Client role locked).
 | II. Layered backend | Hashing bound and rate-limit logic live in `core` and a repository; F20 moves router reads back into services, which restores the rule | Pass (F20 repairs an existing breach) |
 | III. Pure scheduling package | Not touched | Pass |
 | IV. Test-first | Every item has a failing-first test; security items add mutation checks | Pass |
-| V. API-first | New response code `429` and new problem codes are declared; drift check stays green | Pass |
-| VI. Security | Strengthens it (F01, F02, F03, F05, F08, F09, F04). The rate-limit table stores hashes of addresses, not addresses | Pass |
+| V. API-first | New response codes `429` and `503` and new problem codes are declared; drift check stays green | Pass |
+| VI. Security | Strengthens it (F01, F02, F03, F05, F08, F09, F04). The throttle table stores hashes of addresses, not addresses | Pass |
 | VII. Money and time | F10 makes time-zone names canonical; no money change | Pass |
 | VIII. Internationalisation | New codes need `en` and `he`; `test_i18n` enforces parity | Pass |
 | IX. Quality gates | `mypy --strict src tests`, ruff, interrogate, import graph, `alembic check` stay required | Pass |
@@ -233,8 +239,8 @@ phase does not start before the previous checkpoint passes. Item ids are from `p
 | Phase | Items | Why here | Migration |
 | --- | --- | --- | --- |
 | **P1 Credentials and sessions** | F01, F02, F03, F08, F09, F11 | Highest-risk account-takeover and session bugs; none needs schema | none |
-| **P2 Data migrations** | F07 (017), rate-limit storage (018) | Schema before the code that uses it; 017 corrects stored data | 017, 018 |
-| **P3 Sign-in under load and abuse** | F04 (executor bound, rate limit FR-221), F06 | Needs 018; touches the same path as the equal-work tests | uses 018 |
+| **P2 Data migrations** | F07 (017), throttle storage (018) | Schema before the code that uses it; 017 corrects stored data | 017, 018 |
+| **P3 Sign-in under load and abuse** | F04 (bounded hashing, FR-221 lockout for every address, FR-222, FR-223), F06 | Needs 018; touches the same path as the equal-work tests | uses 018 |
 | **P4 Input, logging and reliability** | F05, F10, F12 | Independent and small; F10 also adds a stored-data report | none |
 | **P5 Tests, tool and documents** | F13, F14, F15, F16 | No production behaviour change | none |
 | **P6 Older gaps** | F17, F18, F19, F20, F21, F22, F23, F24, F25, F26 | Contract-affecting changes (F17, F23, F24, F25) last, refactors (F20 to F22) after the behaviour is pinned by tests, F26 first within the phase because it makes every later run safe to repeat | none |
@@ -256,9 +262,11 @@ phase does not start before the previous checkpoint passes. Item ids are from `p
   leaves other sessions live; an unexpired one still ends them. Check expiry before the revoked
   state. Add expired-record cleanup (D19). FR-209 text is already amended in the spec.
 - **F09** (D20). Concurrency tests first: refresh racing each revoke-all path (reset, logout
-  everywhere, theft response, account change) leaves no live token. Take the user-row lock in refresh
-  and in every revoke-all.
-- **F11** (D12, proposed default). Test first: lock the account, complete a reset, sign in with the
+  everywhere, theft response, account change) leaves no live token, **and a login that verified the
+  old password cannot create a session after a reset finishes**. Take the user-row lock in refresh
+  (then read the user), in login (then re-read the user and compare the password hash), and in
+  every revoke-all.
+- **F11** (D12, confirmed default). Test first: lock the account, complete a reset, sign in with the
   new password at once. Reset clears the failure count and the lock.
 
 Checkpoint P1: full suite, concurrency suite three times, mutation checks for F01, F02, F03, F08, F09.
@@ -270,7 +278,7 @@ Checkpoint P1: full suite, concurrency suite three times, mutation checks for F0
   end deactivated), one with a refresh-token history (deactivated), a genuine pending invitee
   (stays pending), and an undecidable row (reported, not guessed). Also shown on realistic data,
   upgrade and downgrade, as for 014 to 016.
-- **018 `login_attempts`** (rate limit, D16). New table and index; tests for upgrade, downgrade and
+- **018 `login_throttle`** (lockout for every address and network limit, D16). New table; tests for upgrade, downgrade and
   the retention rule. `alembic check` must agree with the models.
 
 Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back.
@@ -278,14 +286,23 @@ Checkpoint P2: `alembic check`, migration tests, round trip 013 to head and back
 ### P3 Sign-in under load and abuse
 
 - **F04 hashing** (D15). Test first: during a burst of unknown-address sign-ins another request is
-  answered promptly (the loop is not blocked); the number of concurrent hashes is bounded. Async
-  wrappers over `hash_password`, `verify_password` and `verify_against_dummy` run in a thread behind
-  a semaphore; callers in four services await them. The work-counting tests (SC-207) still pass.
-- **F04 rate limit, FR-221** (D16). Tests first: N failures for one address (known or
-  unknown, any letter case) give 429 with `Retry-After`, identical for both, and no password
-  verification happens over the limit; per-network-address limit likewise; a success is not
-  limited; old rows are purged. New settings with defaults, new code `auth.rate_limited` (en, he),
-  429 declared on login, `docs/hds-api.md` corrected (D4).
+  answered promptly (the loop is not blocked); the number of concurrent hashes is bounded; 50
+  concurrent sign-ins against a pool of 5 connections still let a plain request through (no
+  connection is held while hashing); when the hash queue is full the request is refused at once
+  with 503 `service.busy` and `Retry-After`. Async wrappers over `hash_password`, `verify_password`
+  and `verify_against_dummy` run in a thread behind a per-event-loop limiter; callers in four
+  services await them, hashes are computed before any row lock, and `login` ends its transaction
+  before hashing. The work-counting tests (SC-207) still pass.
+- **F04 lockout and network limit, FR-221, FR-223** (D16). Tests first: for a registered and an
+  unregistered address (any letter case) `LOGIN_MAX_FAILURES` failures give 401 and then 423
+  `auth.account_locked`, with identical bodies, headers and amount of work, and a correct password
+  is refused while locked without being verified; the count restarts after the lock; a success
+  clears the count (nine typos, a success, one typo does not lock); the network limit gives 429 with
+  `Retry-After` for every address and 0 turns it off; the client address follows
+  `TRUSTED_PROXY_COUNT` for 0, 1, 2, a short header and a forged header; stale rows are removed in
+  batches during normal requests with no scheduled job; keys are stored hashed. New settings with
+  defaults, new codes `auth.rate_limited` and `service.busy` (en, he), 429 and 503 declared on
+  login, `docs/hds-api.md` corrected (D4) and the FR-005 exception retired.
 - **F06** (D17). Test first: with a deliberately slow sender, `POST /auth/password-reset/request`
   returns before delivery starts, and a registered and an unregistered address take comparable time
   (opt-in timing test extended). After-commit actions run as a background task after the response.
@@ -319,7 +336,7 @@ Order inside the phase: **F26**, then **F18**, **F19**, **F25**, then the contra
 - **F17** (D25). Explicit `null` clears optional fields; omitted fields are left alone; `null` for a
   required field is 422. Tests per endpoint and field.
 - **F18, F19, F23, F24, F25**: small service changes, each with its failing test; D5 and D6 are the
-  proposed defaults above; F25 reuses the savepoint insert already used for invitations.
+  confirmed defaults above; F25 reuses the savepoint insert already used for invitations.
 - **F20 to F22**: pure refactors with the behaviour already pinned; OpenAPI must not change (the
   shared `UserRead` keeps its component name).
 
@@ -332,16 +349,16 @@ the contract script, the opt-in timing test, the OpenAPI comparison.
 apps/api/
   alembic/versions/
     017_pending_backfill_correction.py   # F07
-    018_login_attempts.py                # rate limit
+    018_login_throttle.py                # address and network lockout state
   src/hds/
     core/passwords.py        # async hashing behind a bound (F04); security.py keeps the sync core
-    core/rate_limit.py       # window check and recording (FR-221)
-    models/login_attempt.py
-    repositories/login_attempt.py
-    scripts/purge_expired_records.py     # expired credentials and old attempts (F08, FR-221)
+    core/throttle.py         # lockout rule shared by registered and unregistered addresses (FR-221)
+    models/login_throttle.py
+    repositories/login_throttle.py
+    scripts/purge_expired_records.py     # bulk clean of expired credentials and stale throttle rows (F08)
   tests/
     concurrency/test_revoke_all_races.py        # F09
-    integration/test_rate_limit.py, test_event_loop_not_blocked.py, test_migration_017.py,
+    integration/test_login_throttle.py, test_event_loop_not_blocked.py, test_client_address.py, test_migration_017.py,
     integration/test_migration_018.py, test_reset_cancels_links.py, test_client_sessions.py
     unit/test_log_redaction_quotes.py, test_rollback_failure.py, test_site_timezone_canonical.py
 docs/adr/007-sign-in-abuse-controls.md, 008-delivery-after-the-response.md
@@ -351,6 +368,6 @@ docs/adr/007-sign-in-abuse-controls.md, 008-delivery-after-the-response.md
 
 | Item | Why it is bigger than a fix | Simpler option rejected |
 | --- | --- | --- |
-| Rate limit in the database (FR-221) | Chosen at clarification: shared by workers, survives restart, counts unknown addresses | In-memory per worker; per-network only |
+| Throttle state in the database (FR-221) | Chosen at clarification: shared by workers, survives restart, gives unknown addresses the lockout answer | In-memory per worker; per-network only; 429 for the per-address limit |
 | Post-response delivery (F06) | A request-lifecycle change that ADR 005 described the other way | A delay or a fake send on the unknown path |
 | Per-run test databases (F26) | The only way two runs can coexist | A lock that refuses the second run |

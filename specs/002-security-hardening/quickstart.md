@@ -85,22 +85,24 @@ data: [data model, Part 2](data-model.md).
 | F01 | Request two reset links, complete with the newer, then use the older | Older refused `auth.token_used`; password unchanged |
 | F02 | Sign in as a portal user, deactivate the client, reactivate the user, refresh with the old token | Reactivation refused while the client is inactive; old token refused after any later reactivation |
 | F03 | Invite, deactivate the pending account, try to reactivate | Deactivation refused 409; account stays pending; link still valid |
-| F04 | 20 concurrent unknown-address sign-ins while timing a plain request | The plain request is answered promptly; at most `HASH_CONCURRENCY` hashes run at once |
-| FR-221 | Fail sign-in for one address 10 times (known, then an unknown one, mixed case) | Both get 429 with `Retry-After`; no password check over the limit; a success is unaffected |
+| F04 | 20 concurrent unknown-address sign-ins while timing a plain request; 50 concurrent sign-ins against a pool of 5 connections | The plain request is answered promptly both times; at most `HASH_CONCURRENCY` hashes run at once; a full queue gives 503 `service.busy` with `Retry-After` |
+| FR-221 | Fail sign-in `LOGIN_MAX_FAILURES` times for a registered and for an unregistered address (mixed case); then try the right password | Both: 401 then 423 with identical bodies and headers; locked addresses are not verified; after the lock the count restarts; a success clears the count |
+| FR-221 network | Fail `LOGIN_RATE_LIMIT_PER_NETWORK` times from one address, then any address | 429 with `Retry-After` for every address; limit 0 disables it; `TRUSTED_PROXY_COUNT` 0, 1, 2, a short header and a forged header pick the right client address |
+| FR-221 growth | Fail sign-in for many random addresses, wait past the retention | Stale rows are removed by normal requests with no job scheduled |
 | F05 | Log `{"password": "ab\"cd"}` and values with `'` and `\` | No fragment of the secret in the output; redacting twice changes nothing |
 | F06 | Slow sender on password-reset request; compare registered and unknown addresses (`pytest -m timing`) | Response returns before delivery starts; ratio below 1.15 |
 | F07 | Run migration 017 on a scratch database at 016 with a deactivated account that has an unused invite and a used reset link | It ends deactivated; a genuine pending invitee stays pending; undecidable ids are printed |
 | F08 | Replay a rotated token after its expiry; replay one that is unexpired | `auth.token_expired`, other sessions live; the second ends them |
-| F09 | Concurrency tests: refresh racing reset, logout everywhere, theft response and account change | No live token afterwards in any round |
+| F09 | Concurrency tests: refresh racing reset, logout everywhere, theft response and account change; a login that verified the old password racing a reset | No live token afterwards in any round; the late login is refused |
 | F10 | Create a site with `posixrules`, `Factory`, `asia/jerusalem`, `ASIA/JERUSALEM`; run `check_site_timezones` | 422 `sites.timezone_invalid`; the script lists stored values that fail |
 | F11 | Lock an account, complete a reset, sign in with the new password | 200 |
 | F12 | Unit test with a rollback that raises | The original exception propagates; the rollback error is logged by type |
 | F13 to F16 | Run the named tests; read the edited documents | Test fails when the index is absent; dev tool refuses a deactivated account; numbering and environment named |
 | F17 | `PATCH` each optional field with `null`, and omit it | Cleared with `null`; untouched when omitted; `null` for a required field is 422 |
-| F18, F19, F23, F24, F25 | The named tests | As in the fix list; F23 and F24 follow the proposed defaults unless reversed |
+| F18, F19, F23, F24, F25 | The named tests | As in the fix list; F23 and F24 follow the confirmed defaults |
 | F20 to F22 | Full suite and the OpenAPI comparison | No behaviour or document change |
 | F26 | Start two test runs at once | Both pass; no leftover database after either |
 
-Operational: run `python -m hds.scripts.purge_expired_records` on a schedule; run
+Operational: `python -m hds.scripts.purge_expired_records` does a bulk clean (nothing depends on scheduling it); run
 `python -m hds.scripts.check_site_timezones` after F10; read migration 017's output before accepting
 it on real data.

@@ -283,7 +283,7 @@ gains an optional `purpose` argument.
 
 **Rationale**: a reset means the owner regained control, so every earlier credential is stale
 (F01). The owner proved control of the mailbox, so a lockout from earlier guessing should not
-stand (F11; proposed default, reversible). Cancelling only reset links on a new request keeps a
+stand (F11; confirmed default). Cancelling only reset links on a new request keeps a
 pending invitation alive, which is a different flow.
 
 **Alternatives**: cancel nothing and rely on the 60-minute expiry (the defect); cancel all
@@ -318,46 +318,93 @@ deactivation turns "never activated" into "was activated".
 **Alternatives**: keep pending and cancel the link (adds a state nobody can see); a new
 "withdrawn" state (schema and UI cost for no requirement).
 
-## D15. Password hashing off the event loop (F04)
+## D15. Password hashing off the event loop, without holding a connection (F04, FR-222)
 
-**Decision**: new `core/passwords.py` exposes `async` `hash_password`, `verify_password` and
-`verify_against_dummy` that run the synchronous Argon2 call with `asyncio.to_thread` behind an
-`asyncio.Semaphore(HASH_CONCURRENCY)` (setting, default 2, at least 1). `core/security.py` keeps the
-synchronous core for scripts and the seed. The four services `await` the new functions. The
-work-counting tests wrap the synchronous core, so one verification per refusal is still counted.
+**Decision**:
+
+- New `core/passwords.py` exposes `async` `hash_password`, `verify_password` and
+  `verify_against_dummy`. Each runs the synchronous Argon2 call with `asyncio.to_thread`.
+  `core/security.py` keeps the synchronous core for scripts and the seed.
+- **Bounded, with a bounded queue.** At most `HASH_CONCURRENCY` (default 2) hashes run at once, and
+  at most `HASH_QUEUE_LIMIT` (default 8) more may wait. A request that would join a full queue is
+  refused at once with 503 `service.busy` and `Retry-After`. The limiter is created **per running
+  event loop** (a `WeakKeyDictionary` keyed by the loop), because a semaphore made at import and
+  used from several loops raises in tests.
+- **No connection held while hashing.** `login` does its reads, ends the transaction
+  (`commit()` on a read-only transaction returns the connection to the pool), then hashes; the
+  next database call begins a new transaction. The pool default is 15 connections; before this
+  change about 16 simultaneous sign-ins would have held all of them while waiting for a hash and
+  every other endpoint would have waited for a connection. A test runs 50 concurrent sign-ins
+  against a pool of 5 and requires a plain request to be answered meanwhile.
+- **Hash before locking.** `accept_invitation` and `reset_password` compute the new password's hash
+  after validating the link by a read and **before** any row lock or write, so no lock is held
+  while a request waits in the hash queue.
+- The work-counting tests wrap the synchronous core, so one verification per refusal is still
+  counted (SC-207).
 
 **Rationale**: measured 36 ms per check and 724 ms of stalled loop for 20 concurrent unknown-address
 sign-ins. Threads release the loop (argon2-cffi releases the GIL while hashing). The bound keeps
-the machine from running more hashes than it has cores, which also protects memory (64 MiB each).
+CPU and memory (64 MiB per hash) predictable, and refusing when the queue is full turns an outage
+into a clear, fast answer for the excess.
 
-**Alternatives**: a process pool (more memory, start-up and pickling for no gain); a smaller
-cost parameter (weakens stored hashes); unbounded threads (an attacker chooses the memory use).
+**Alternatives**: a process pool (more memory, start-up and pickling for no gain); a smaller cost
+parameter (weakens stored hashes); unbounded threads (an attacker chooses the memory use); an
+unbounded wait queue (moves the outage to latency and, with held connections, to the pool).
 
-## D16. Sign-in rate limit (FR-221; F04, clarification Q4, Q5)
+## D16. Sign-in lockout for every address, and a network limit (FR-221; F04)
 
-**Decision**: new table `login_attempts` (migration 018), one row per **failed** sign-in:
-`id`, `kind` (`address` or `network`), `key_hash` (SHA-256 of the lowercased submitted address, or
-of the client network address), `attempted_at` (UTC). Before any lookup or hashing, sign-in counts
-rows for both keys inside `LOGIN_RATE_WINDOW_SECONDS` (default 900); at or above
-`LOGIN_RATE_LIMIT_PER_ADDRESS` (default 10) or `LOGIN_RATE_LIMIT_PER_NETWORK` (default 30) it
-answers **429 `auth.rate_limited` with `Retry-After`** and does no password work. Failures are
-recorded through the explicit-commit path so the refusal does not undo them. Old rows are deleted
-when a key is written and by `purge_expired_records`.
+**Decision (revised 2026-11-03; supersedes the 429-for-both choice of the first draft)**:
 
-**Rationale**: counting before the lookup makes the answer identical for registered and
-unregistered addresses and costs one indexed count. Hashing the keys keeps addresses and network
-addresses out of the table. The network address is `request.client.host`; a forwarded header is
-trusted only if `TRUST_FORWARDED_FOR` is set (default off), so a client cannot dodge the limit by
-sending the header.
+- New table `login_throttle` (migration 018), one row per key: `kind` (`address` or `network`),
+  `key_hash` (SHA-256 hex of the lowercased submitted address, or of the client network address),
+  `failures`, `locked_until`, `updated_at`; primary key (`kind`, `key_hash`). It mirrors the columns
+  the users table already has for the account lock, so an address with no account is treated by the
+  same rule as one with an account.
+- **Per address.** The limit is `LOGIN_MAX_FAILURES` and the lock lasts `LOGIN_LOCKOUT_MINUTES`; no
+  separate setting. For a registered address the existing account columns remain the state; for an
+  unregistered one the `address` row is. Both go through one small interface, so the sign-in code
+  has a single path: clear an expired lock, refuse with **423 `auth.account_locked`** while locked
+  (same body shape, lock-end time computed the same way), otherwise verify (a real or the dummy
+  hash), and on failure register the failure with one atomic upsert that locks at the limit and is
+  committed at once so the refusal does not undo it. A successful sign-in clears the count (nine
+  typos followed by a good sign-in followed by a typo is one failure, not ten). The count restarts
+  when a lock ends (FR-213).
+- **Said openly.** While an address is locked a correct password is refused and is not verified,
+  as the existing account lock already does. A real user who is locked out waits for the lock to end.
+- **Per network address.** `LOGIN_RATE_LIMIT_PER_NETWORK` (default 30; **0 disables it**) failures
+  from one network address lock that address for `LOGIN_LOCKOUT_MINUTES`: **429 `auth.rate_limited`
+  with `Retry-After`**, answered before any lookup and for every submitted address alike. This is
+  the only 429.
+- **Which network address.** `TRUSTED_PROXY_COUNT` (default 0). At 0 the forwarded header is
+  ignored and the connecting address is used, which is right for the shipped compose file (no
+  proxy). Behind N reverse proxies set it to N: the client address is the Nth entry from the right
+  of `X-Forwarded-For` (each trusted proxy appends the address it saw), and if the header has fewer
+  than N entries the connecting address is used. A forwarded header is never read at 0, so a client
+  cannot pick its own address. **Deployment risk, stated in the README and the settings table:**
+  behind a proxy with the value left at 0 every user shares the proxy's address and 30 failures
+  would lock everyone out; either set the count or set the network limit to 0. Tests cover 0, 1, 2,
+  a short header and a forged header.
+- **Staleness without a scheduler.** Each recorded failure also deletes up to 50 rows whose
+  `updated_at` is older than `LOGIN_THROTTLE_RETENTION_HOURS` (default 24) and that are not locked,
+  using the index on `updated_at`, so the table cannot grow faster than it is cleaned. Rows are one
+  per distinct key (not per attempt), and random addresses are the only way to add many. The script
+  `purge_expired_records` stays for a bulk clean and for expired credentials, but nothing depends
+  on it being scheduled.
+- Keys are hashed, so no address or network address is stored.
 
-**Residual**: an account lock (423, after 5 failures) and the rate limit (429, after 10) differ, so
-a determined caller can still tell a locked registered address from an unregistered one. This is the
-accepted notice of feature 001 FR-005. Making the per-address limit answer exactly like the lock
-(423) would close it; it is **not** what was clarified, so it is recorded here as an open
-alternative for the tasks stage to confirm.
+**Rationale**: the first draft answered 429 above a limit of 10 while a registered address locked
+with 423 at 5, so anyone could still tell them apart and FR-221's "same answer" did not hold.
+Mirroring the account lock for unregistered addresses removes the difference instead of
+describing it, and supersedes the exception feature 001 (FR-005) accepted.
 
-**Alternatives**: in-memory per worker (resets on restart, unshared); per-network only (does not
-stop a distributed guess at one address); a reverse proxy limit (not available in every deployment).
+**Residual**: a registered address that is locked skips the password check while an unregistered
+locked address does too, so the work is equal. Retention (24 hours) clears an unregistered
+address's partial count sooner than a registered account's count, which persists until success; an
+attacker would need a day's patience to observe it, and it is documented.
+
+**Alternatives**: an event table with one row per failed attempt (grows with attack volume);
+in-memory per worker (resets on restart, unshared); 429 for the per-address limit (the rejected
+draft); a reverse-proxy limit (not available in every deployment).
 
 ## D17. Delivery after the response (F06)
 
@@ -398,28 +445,46 @@ invitees).
 ## D19. Expired credentials (F08, clarification Q3)
 
 **Decision**: `refresh` checks expiry **before** the revoked state. An expired credential, rotated or
-not, answers `auth.token_expired` and changes nothing. Expired refresh tokens and spent or expired
-links are deleted: opportunistically for the user at sign-in and refresh, and in bulk by
-`purge_expired_records`. ADR 006 gets a note.
+not, answers `auth.token_expired` and changes nothing. Cleanup deletes **only records past their
+expiry**: expired refresh tokens, and links whose `expires_at` has passed. A spent or cancelled link
+that is still inside its lifetime is **kept**, because cancelling marks a link used and its answer
+must stay `auth.token_used` (F01's acceptance check and the error contract). Cleanup runs
+opportunistically for the user at sign-in and refresh and in bulk by `purge_expired_records`.
+ADR 006 gets a note.
+
+**Consequence, stated**: once a link is past its expiry and has been deleted, it answers
+`auth.token_expired` whether or not it had been spent. Both are 401, and nothing about the account
+is revealed either way.
 
 **Rationale**: a credential past its expiry cannot be used for anything, so presenting it is not
 evidence of theft, and unbounded replay of an old token must not be a way to sign the owner out.
 
-**Alternatives**: keep revoking and rate-limit replays (still a harassment path); purge only by cron
-(replays work until the first run).
+**Alternatives**: keep revoking and rate-limit replays (still a harassment path); delete spent links
+at once (would turn `auth.token_used` into `auth.token_expired` inside the lifetime).
 
-## D20. Refresh in flight versus "end every session" (F09)
+## D20. Sessions that start while "end every session" runs (F09)
 
-**Decision**: a repository method `lock_user(user_id)` runs `SELECT ... FOR UPDATE` on the user
-row. `refresh` takes it before spending the token, and every revoke-all path
-(`revoke_all_for_user` callers: reset, logout everywhere, theft response, account changes) takes it
-before revoking. One waits for the other; the later one sees the earlier one's rows.
+**Decision**: a repository method `lock_user(user_id)` runs `SELECT ... FOR UPDATE` on the user row,
+and every path that creates a session or ends all sessions takes it:
 
-**Rationale**: the new token row is invisible to a concurrent revoke-all until commit; serialising
-on the user row removes the window. The lock order is always user row first, so there is no
-deadlock with the last-Admin lock (which locks other rows, ordered by id).
+- **Refresh** takes the lock first and **then reads the user** (`is_active`, deletion), so it never
+  acts on a stale copy read before the lock.
+- **Login** verifies the password without a lock (so no lock is held during hashing), then takes
+  the lock, re-reads the user, and refuses with `auth.invalid_credentials` if the account is no
+  longer active **or its password hash changed since it was verified**; only then does it create the
+  token. A login that verified the old password therefore cannot create a session after a reset
+  finishes.
+- **Every revoke-all** (`revoke_all_for_user` callers: reset, logout everywhere, theft response,
+  account changes) takes the same lock first.
 
-**Alternatives**: revoke by `issued_at` cut-off (needs a new column and a check on every refresh);
+One side waits for the other and the later one sees the earlier one's rows. The lock order is
+always user row first; the last-Admin guard locks Admin rows ordered by id and only ever waits for
+rows another request holds briefly, and sign-in holds just one user row, so no cycle is possible.
+
+**Rationale**: the new token row is invisible to a concurrent revoke-all until commit; serialising on
+the user row removes the window for refresh and for login alike.
+
+**Alternatives**: revoke by `issued_at` cut-off (a new column and a check on every refresh);
 serialisable isolation (a retry loop in every request).
 
 ## D21. Canonical time-zone names (F10; amends D11)
@@ -428,8 +493,9 @@ serialisable isolation (a retry loop in every request).
 `zones` resource), is not `Factory`, and loads with `ZoneInfo`. Matching is **case-sensitive**.
 `check_site_timezones` applies the same rule.
 
-**Rationale**: D11 rejected `available_timezones()` because it differs per environment (598 on the
-development host, 486 in the slim image). The `tzdata` package is a declared dependency and the same
+**Rationale**: D11 rejected `available_timezones()` because it depends on the environment (D11 recorded 598 names
+on the development host and 486 in the slim image; the 486 figure has not been re-checked and this
+decision does not rest on it). The `tzdata` package is a declared dependency and the same
 on every platform (598 names; `Factory` is the only non-zone; `posixrules` is absent), so a
 package-based list gives one answer everywhere, and the case-sensitive match removes the dependence
 on a case-insensitive file system. The load check stays so "valid" still means "will load".
@@ -486,9 +552,9 @@ for a required field is a 422 with the existing validation code. The OpenAPI sch
 - **F20, F21, F22**: refactors with behaviour already pinned by tests. Reads move into services;
   one shared `UserRead` keeps the OpenAPI component name; one helper each for the token lookup, the
   token hash and password verification (tests patch the underlying function instead).
-- **F23 (D5, proposed default)**: any role change on a Client-role account is refused (409
+- **F23 (D5, confirmed default)**: any role change on a Client-role account is refused (409
   `users.client_role_locked`); portal users are created and removed through the client.
-- **F24 (D6, proposed default)**: a client's `contract_end` before `contract_start` is a 422
+- **F24 (D6, confirmed default)**: a client's `contract_end` before `contract_start` is a 422
   `clients.date_range_invalid`; on PATCH the stored value is used for the field not sent.
 - **F25**: employee and client-user creation use the savepoint insert already used for invitations,
   so simultaneous creation of one address returns 409 `users.duplicate_email`.

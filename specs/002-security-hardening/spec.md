@@ -55,6 +55,13 @@ they cannot be confused with the ids of feature 001, which tests already cite.
   network address, in a new database table, so the limit is shared by all workers, survives a
   restart and covers unknown addresses. Limits and window are settings with defaults. Over the
   limit the answer is 429 with `Retry-After`, identical for registered and unregistered addresses.
+- Q: (Follow-up, 2026-11-03) Which answer does the per-address rate limit give? → A: The lockout
+  answer. The per-address limit equals `LOGIN_MAX_FAILURES` and unknown addresses get exactly the
+  lockout answer (423), which closes the last enumeration gap and supersedes the accepted FR-005
+  exception. Only the network limit answers 429. This replaces the earlier choice of 429 for both.
+- Q: (Follow-up, 2026-11-03) Are the three proposed defaults kept? → A: Yes: a completed reset
+  clears the lockout (F11), a Client account's role cannot change (F23), a client's contract end
+  may not precede its start (F24).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -225,8 +232,8 @@ attempt is refused as locked, while one fewer wrong attempt leaves sign-in possi
 ### User Story 7 — Sign-in does not reveal which accounts exist (Priority: P2)
 
 An attacker cannot learn which email addresses are registered by comparing how long sign-in takes
-or by any other difference in the answer, apart from the locked-account notice that feature 001
-accepts (FR-005).
+or by any other difference in the answer. (Feature 001 accepted a locked-account notice that only
+registered addresses could produce; FR-221 removes that exception.)
 
 **Why this priority**: Unknown emails are answered immediately while known ones take noticeably
 longer, so the generic error text protects nothing.
@@ -388,12 +395,24 @@ valid one is accepted.
 
 **Sign-in rate limiting (PR 4 clarification, F04)**
 
-- **FR-221**: Sign-in MUST limit failed attempts per submitted address (case-insensitive) and per
-  network address within a configurable window. Counts are kept in the database, so they are
-  shared by all workers and survive a restart. Over the limit, sign-in MUST answer 429 with a
-  `Retry-After` header, with the same answer for a registered and an unregistered address, and
-  without verifying the password. The limit counts failures only; a successful sign-in is not
-  limited and does not reset another address's count. Old counts MUST be removed.
+- **FR-221**: Sign-in MUST treat every submitted address, registered or not, by the same lockout
+  rule. After `LOGIN_MAX_FAILURES` consecutive failures for an address (compared without regard to
+  letter case) that address is locked for `LOGIN_LOCKOUT_MINUTES`: sign-in answers 423
+  `auth.account_locked`, in the same form and with the same lock-end time rule, whether or not an
+  account exists. The count restarts when the lock ends and is cleared by a successful sign-in. A
+  correct password is refused while the address is locked and is not verified, exactly as for the
+  existing account lock; this is stated openly, not hidden. Failures per network address are counted
+  too: after `LOGIN_RATE_LIMIT_PER_NETWORK` failures (0 turns this limit off) that network address
+  is refused with 429 `auth.rate_limited` and a `Retry-After` header for the lock period, before
+  any lookup or password work and for every address alike. Counts are kept in the database, so all
+  workers share them and they survive a restart. Stale counts MUST be removed without a
+  separately scheduled job being required.
+- **FR-222**: Password hashing and verification MUST NOT hold a database connection while they
+  run, MUST NOT block other requests, and MUST be bounded: when the queue for hashing is full the
+  request is refused at once with 503 `service.busy` and a `Retry-After` header. Hashes MUST be
+  computed before any row lock is taken.
+- **FR-223**: A client address taken from a forwarded header MUST be trusted only as configured by
+  `TRUSTED_PROXY_COUNT` (default 0: the header is ignored and the connecting address is used).
 
 ## Success Criteria *(mandatory)*
 
@@ -445,21 +464,18 @@ valid one is accepted.
   address can belong to only one account, and it reveals nothing about which organisation holds it.
   Every request that names an id (rather than an address) from another organisation is answered
   404, the same as for an id that does not exist.
-- **Known limitation, unknown addresses cannot be locked (superseded by FR-221 once it is
-  implemented: the rate limit counts unknown addresses too, though the account lock itself still
-  needs an account):** the failure count and the lock belong
-  to an account, so an address with no account has nothing to count against. Once an account is
-  locked it answers 423 `auth.account_locked` while an unknown address keeps answering 401
-  `auth.invalid_credentials`. This is the locked-account notice that feature 001 (FR-005) accepts
-  and that Story 7 excludes from "indistinguishable"; it is not fixed here. Closing it would need
-  a record of failures per address, which is a new table and a new decision.
+- **Unknown addresses are locked like known ones (FR-221, clarification of 2026-11-03).** This
+  closes the last sign-in enumeration gap and supersedes the locked-account exception that feature
+  001 (FR-005) accepted: a registered and an unregistered address now give the same answers, 401 and
+  then 423.
+- **Managers cannot withdraw a pending invitation (consequence of the 2026-11-03 clarification Q2).**
+  Refusing to deactivate a pending account leaves staff without a way to cancel it; only an Admin's
+  soft-delete removes one. Accepted.
 - **Known limitation, equal work is not equal time to the last millisecond:** a known account's
   wrong password also writes and commits its failure count, about 3 ms on top of about 55 ms for
   the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
-- **Proposed defaults awaiting confirmation (clarification quota reached, 2026-11-03):** a completed
-  password reset clears that account's lockout and failure count (D3, F11); a Client portal
-  account's role cannot be changed (D5, F23); a client's contract end date must not be earlier than
-  its start date (D6, F24). Each follows the recommendation in `pr4-fix-list.md` and can be
-  reversed before the plan is implemented.
+- **Confirmed defaults (2026-11-03):** a completed password reset clears that account's lockout
+  and failure count (F11); a Client portal account's role cannot be changed (F23); a client's
+  contract end date must not be earlier than its start date (F24).

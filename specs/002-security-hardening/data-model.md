@@ -93,20 +93,25 @@ Only a reuse of a token revoked as `rotated` can trigger the revoke-everything r
 
 # Part 2: PR 4 fixes
 
-## New table: `login_attempts` (migration 018, FR-221, research D16)
+## New table: `login_throttle` (migration 018, FR-221, research D16)
 
-One row per failed sign-in, used only to count attempts inside a window.
+Failure count and lock for an address or a network address that has no account row to hold them. It
+mirrors the `failed_login_attempts` and `locked_until` columns of `users`, so an unregistered address
+is locked by the same rule as a registered one. Registered addresses keep using the `users`
+columns; a network address always uses this table.
 
 | Column | Type | Rule |
 | --- | --- | --- |
-| `id` | UUID | primary key |
-| `kind` | short text | `address` or `network`; check constraint `ck_login_attempts_kind` |
-| `key_hash` | text (64) | SHA-256 hex of the lowercased submitted address, or of the client network address; never the value itself |
-| `attempted_at` | timestamptz | UTC, default now |
+| `kind` | short text | `address` or `network`; check constraint `ck_login_throttle_kind`; part of the primary key |
+| `key_hash` | text (64) | SHA-256 hex of the lowercased submitted address, or of the client network address; never the value itself; part of the primary key |
+| `failures` | integer | consecutive failures, at least 0; restarts at 0 when a lock ends; cleared by a successful sign-in |
+| `locked_until` | timestamptz, null | UTC; set when `failures` reaches the limit |
+| `updated_at` | timestamptz | UTC; index `ix_login_throttle_updated_at` for the batch clean |
 
-Index `ix_login_attempts_key` on (`kind`, `key_hash`, `attempted_at`). No foreign key: unregistered
-addresses have no account. Rows older than the window are deleted when a key is written and by
-`purge_expired_records`. Downgrade drops the table (the counts are disposable).
+No foreign key: unregistered addresses have no account. One row per distinct key, not per attempt.
+Each recorded failure deletes up to 50 unlocked rows older than `LOGIN_THROTTLE_RETENTION_HOURS`
+(default 24), so growth is bounded without a scheduled job; `purge_expired_records` does the same in
+bulk. Downgrade drops the table (the counts are disposable).
 
 ## Changed rules on existing data
 
@@ -116,8 +121,10 @@ addresses have no account. Rows older than the window are deleted when a key is 
   (D18). The constraint `ck_users_active_has_activated_at` is unchanged.
 - **`refresh_tokens`** (F08, F09): expired rows are deleted; `revoked_reason` values are unchanged.
   Refresh and every revoke-all take a row lock on the owning user (no schema change).
-- **`invitation_tokens`** (F01, F02): `cancel_for_user` gains an optional purpose; a completed reset
-  cancels every other link of the account; a new reset request cancels earlier unused reset links.
+- **`invitation_tokens`** (F01, F02, F08): `cancel_for_user` gains an optional purpose; a completed
+  reset cancels every other link of the account; a new reset request cancels earlier unused reset
+  links. Cleanup deletes only links past `expires_at`; spent and cancelled links inside their
+  lifetime are kept so their answer stays `auth.token_used`.
 - **Client accounts** (F23, F24): a user with role `client` has no role change; a client's
   `contract_end` is on or after `contract_start` (service rule, not a new constraint, because
   existing rows might violate it; a check constraint is left to a later migration after a report).
