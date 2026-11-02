@@ -37,3 +37,46 @@ text in `apps/api/src/hds/locales` (Constitution VIII; `test_i18n` enforces pari
 
 - `docs/hds-api.md`: error table and the sign-in, refresh and invitation sections.
 - Operation `description` text for the endpoints above (they feed the OpenAPI document).
+
+
+---
+
+# Part 2: PR 4 fixes
+
+No operation, parameter or success code changes, so the drift check against
+`specs/001-foundation-auth-org/contracts/openapi.yaml` stays green. The items below are new or
+changed error answers; each needs English and Hebrew text where it is a new code.
+
+## New codes and responses
+
+| Code | HTTP | When | Operation | Item |
+| --- | --- | --- | --- | --- |
+| `auth.rate_limited` | 429 + `Retry-After` | Too many failed sign-ins for the submitted address or from the network address inside the window; same answer for registered and unregistered addresses | `POST /auth/login` | FR-221 |
+| `users.pending_cannot_deactivate` | 409 | Staff deactivate an account that was invited and never accepted | `POST /api/v1/employees/{id}/deactivate` | F03 |
+| `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted | `POST /api/v1/employees/{id}/reactivate` | F02 |
+| `users.client_role_locked` | 409 | Changing the role of a Client account (proposed default D5) | employee edit, promote operations | F23 |
+| `clients.date_range_invalid` | 422 | `contract_end` earlier than `contract_start` (proposed default D6) | `POST /api/v1/clients`, `PATCH /api/v1/clients/{id}` | F24 |
+
+## Existing answers whose conditions change
+
+| Answer | New condition | Operation | Item |
+| --- | --- | --- | --- |
+| `auth.token_used` 401 | Any older link of an account after a reset completes | confirm reset, accept invitation | F01 |
+| `auth.token_expired` 401 | A rotated or revoked refresh token that is also past its expiry; ends no session | `POST /auth/refresh` | F08 |
+| 204 | Logout with a token owned by someone else: nothing is revoked, the answer is unchanged | `POST /auth/logout` | F19 |
+| 409 `users.duplicate_email` | Simultaneous creation of one address | employee and client-user creation | F25 |
+| 422 `sites.timezone_invalid` | Non-canonical names (`posixrules`, `Factory`, wrong case) | site create and edit | F10 |
+| 200 | An explicit `null` clears an optional field (phone, hourly rate, project end date, contract end, contact fields); omitted fields are untouched | `PATCH` on me, employees, clients, projects, sites | F17 |
+
+## Behaviour that is not an error code
+
+- A completed reset clears the lockout and the failure count (F11).
+- Deactivating or deleting a client, or removing a portal user, ends that user's sessions (F02).
+- Password-reset request returns before delivery runs (F06); delivery failures are logged by type.
+- A Client-role user without a client sees no projects (F18).
+
+## New settings
+
+`HASH_CONCURRENCY` (default 2), `LOGIN_RATE_WINDOW_SECONDS` (900), `LOGIN_RATE_LIMIT_PER_ADDRESS`
+(10), `LOGIN_RATE_LIMIT_PER_NETWORK` (30), `TRUST_FORWARDED_FOR` (false). All go into `.env.example`
+and the configuration table; the existing test enforces both.

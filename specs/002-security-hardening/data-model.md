@@ -87,3 +87,47 @@ Only a reuse of a token revoked as `rotated` can trigger the revoke-everything r
 - Email (create, sign-in, invite, reset): trimmed and lowercased before use.
 - Site time zone (create, edit): must load as a zone; otherwise 422 `sites.timezone_invalid`.
 - Settings: described in [contracts/configuration.md](contracts/configuration.md).
+
+
+---
+
+# Part 2: PR 4 fixes
+
+## New table: `login_attempts` (migration 018, FR-221, research D16)
+
+One row per failed sign-in, used only to count attempts inside a window.
+
+| Column | Type | Rule |
+| --- | --- | --- |
+| `id` | UUID | primary key |
+| `kind` | short text | `address` or `network`; check constraint `ck_login_attempts_kind` |
+| `key_hash` | text (64) | SHA-256 hex of the lowercased submitted address, or of the client network address; never the value itself |
+| `attempted_at` | timestamptz | UTC, default now |
+
+Index `ix_login_attempts_key` on (`kind`, `key_hash`, `attempted_at`). No foreign key: unregistered
+addresses have no account. Rows older than the window are deleted when a key is written and by
+`purge_expired_records`. Downgrade drops the table (the counts are disposable).
+
+## Changed rules on existing data
+
+- **`users.activated_at`** (F03, F07): written only by a real activation (accepting an invitation,
+  creating an active account, the 014 backfill). Deactivation never writes it. Migration 017
+  clears the cases where 014 left an account pending despite evidence of earlier activity
+  (D18). The constraint `ck_users_active_has_activated_at` is unchanged.
+- **`refresh_tokens`** (F08, F09): expired rows are deleted; `revoked_reason` values are unchanged.
+  Refresh and every revoke-all take a row lock on the owning user (no schema change).
+- **`invitation_tokens`** (F01, F02): `cancel_for_user` gains an optional purpose; a completed reset
+  cancels every other link of the account; a new reset request cancels earlier unused reset links.
+- **Client accounts** (F23, F24): a user with role `client` has no role change; a client's
+  `contract_end` is on or after `contract_start` (service rule, not a new constraint, because
+  existing rows might violate it; a check constraint is left to a later migration after a report).
+
+## State transitions affected
+
+| From | Action | Before | After |
+| --- | --- | --- | --- |
+| pending | staff deactivate | becomes deactivated, can be reactivated | refused 409; stays pending |
+| pending | client deactivated | portal user deactivated | skipped; stays pending |
+| active portal user | client deactivated, deleted, or user removed | tokens live | tokens revoked (`account`), links cancelled |
+| deactivated portal user | reactivate while client inactive | succeeds | refused 409 |
+| locked | password reset completes | still locked up to 15 min | lock and count cleared |

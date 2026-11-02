@@ -34,6 +34,28 @@ they cannot be confused with the ids of feature 001, which tests already cite.
   supersedes the earlier choice to keep the count until success, changed at planning on
   2026-11-02). A successful sign-in still clears the count.
 
+### Session 2026-11-03 (PR 4 fix list, `pr4-fix-list.md`)
+
+- Q: Which of the older gaps F17 to F26, which PR 4 did not introduce, are fixed in PR 4 before
+  merging? → A: All of them (F17 to F26). F23 and F24 need the role-change rule (D5) and the
+  contract-end-date rule (D6) decided below.
+- Q: What happens when staff deactivate an account that is still pending (invited, never
+  accepted)? (D1, F03) → A: It is refused with a dedicated, translated 409 error; the account
+  stays pending and its link stays valid. When a client is deactivated, its pending portal users
+  are skipped, not deactivated. `activated_at` is only ever set by a real activation.
+- Q: Should replaying a used refresh token that has also expired still end all of the user's
+  sessions? (D2, F08) → A: No. A credential past its expiry is refused with `auth.token_expired`
+  and ends no sessions; expired credential records are cleaned up. Only an unexpired rotated
+  token replayed after the grace window ends all sessions. This amends FR-209.
+- Q: Is rate limiting on sign-in part of PR 4? (D4, F04) → A: Yes. It is in scope, in addition to
+  moving password hashing off the event loop behind a bound. This reverses the earlier
+  "rate limiting is out of scope" assumption; its limits and storage are decided below.
+- Q: How does the sign-in rate limit count attempts and where are the counts kept? (F04) → A:
+  Failed sign-ins are counted per submitted address (lowercased, registered or not) and per
+  network address, in a new database table, so the limit is shared by all workers, survives a
+  restart and covers unknown addresses. Limits and window are settings with defaults. Over the
+  limit the answer is 429 with `Retry-After`, identical for registered and unregistered addresses.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Secrets and one-time links never leak (Priority: P1)
@@ -314,8 +336,10 @@ valid one is accepted.
 - **FR-208**: A renewal credential, invitation link or reset link MUST succeed at most once, even
   under simultaneous use.
 - **FR-209**: Presenting an already-used renewal credential MUST always be refused. If it is
-  presented after the grace window (default 10 seconds, configurable) it MUST also end all of that
-  user's sessions; within the window it MUST NOT.
+  presented after the grace window (default 10 seconds, configurable) and it has not expired, it
+  MUST also end all of that user's sessions; within the window it MUST NOT. A credential past its
+  expiry MUST be refused as expired and MUST NOT end any session; expired credential records MUST
+  be removed.
 
 **All-or-nothing (Story 4)**
 
@@ -361,6 +385,15 @@ valid one is accepted.
 - **Pending account**: an invited account that has not yet set a password and was never active.
 - **Failure count / lock**: the consecutive wrong-password count and the time until which sign-in
   is refused.
+
+**Sign-in rate limiting (PR 4 clarification, F04)**
+
+- **FR-221**: Sign-in MUST limit failed attempts per submitted address (case-insensitive) and per
+  network address within a configurable window. Counts are kept in the database, so they are
+  shared by all workers and survive a restart. Over the limit, sign-in MUST answer 429 with a
+  `Retry-After` header, with the same answer for a registered and an unregistered address, and
+  without verifying the password. The limit counts failures only; a successful sign-in is not
+  limited and does not reset another address's count. Old counts MUST be removed.
 
 ## Success Criteria *(mandatory)*
 
@@ -412,7 +445,9 @@ valid one is accepted.
   address can belong to only one account, and it reveals nothing about which organisation holds it.
   Every request that names an id (rather than an address) from another organisation is answered
   404, the same as for an id that does not exist.
-- **Known limitation, unknown addresses cannot be locked:** the failure count and the lock belong
+- **Known limitation, unknown addresses cannot be locked (superseded by FR-221 once it is
+  implemented: the rate limit counts unknown addresses too, though the account lock itself still
+  needs an account):** the failure count and the lock belong
   to an account, so an address with no account has nothing to count against. Once an account is
   locked it answers 423 `auth.account_locked` while an unknown address keeps answering 401
   `auth.invalid_credentials`. This is the locked-account notice that feature 001 (FR-005) accepts
@@ -421,5 +456,10 @@ valid one is accepted.
 - **Known limitation, equal work is not equal time to the last millisecond:** a known account's
   wrong password also writes and commits its failure count, about 3 ms on top of about 55 ms for
   the Argon2 check (a ratio of about 1.05 in the opt-in timing test, SC-207).
-- Out of scope: real email provider integration, rate limiting by network address, and multi-factor
-  sign-in.
+- Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
+  sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
+- **Proposed defaults awaiting confirmation (clarification quota reached, 2026-11-03):** a completed
+  password reset clears that account's lockout and failure count (D3, F11); a Client portal
+  account's role cannot be changed (D5, F23); a client's contract end date must not be earlier than
+  its start date (D6, F24). Each follows the recommendation in `pr4-fix-list.md` and can be
+  reversed before the plan is implemented.
