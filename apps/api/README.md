@@ -69,7 +69,7 @@ uv run python -m hds.scripts.purge_expired_records         # bulk clean; nothing
 `ENVIRONMENT` and `JWT_SECRET_KEY` must be set for every command that starts the application or
 reads its settings (`uvicorn`, `seed_dev`, `export_openapi`, `dev_issue_link`, the tests); a
 missing one stops the command with a validation error that names it. `alembic` does not need them.
-`dev_issue_link` issues a fresh invitation or reset token for an existing account, prints it once
+`dev_issue_link` issues a fresh invitation token for a pending account, or a reset token for an active one, prints it once
 and stores it nowhere; the mail outbox never holds a usable token.
 
 ## Tests

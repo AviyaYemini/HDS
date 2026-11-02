@@ -668,3 +668,50 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | C4 | Queue kept | `test_actions_are_dropped_when_the_rollback_fails_too` |
 | C5 | Error swallowed | `test_the_original_error_propagates_when_the_rollback_fails_too` |
 
+## P4 checkpoint
+
+Gates pass. Full suite: 1326 passed, 2 deselected (the timing tests), in 7 min 37 s. Drift check agrees.
+OpenAPI against the end of P3: only the three site operations' descriptions changed, from "a real IANA
+name" to "an exact IANA name".
+
+## P5 Group A: one commit for four corrections (T380 to T384, F13 to F16)
+
+- F13: the second insert in the repository test had no `role`, so it raised `IntegrityError` for the
+  wrong reason, with or without the unique index. It now has a role and asserts the index's name.
+  T380's check that the test fails without the index was done by dropping the index inside the test's
+  own transaction, which rolled back. The index was confirmed present afterwards.
+- F14: `dev_issue_link` issues an invitation only for a pending account and refuses a deactivated one
+  with status 1. `get_by_email` already skips deleted accounts, so they answer "no account" and need no
+  check of their own. The "pending" fixture was not pending; it now has `activated_at` empty. A new test
+  redeems the token through the real `accept_invitation`, which T381 asked for.
+- F15: the last scenario of User Story 3 is 4. Nothing referred to it by number.
+- F16: the start-up row in `quickstart.md` now says `ENVIRONMENT=production` for the 20-byte secret.
+
+Failing first: the deactivated case. The deleted case passed before and after, because
+`get_by_email` already skips those accounts.
+
+`/hds-review`: no violations.
+
+`/code-review high` (read-only, ten findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | The tool does not cancel a pending account's earlier links, as a real invitation does | Not changed: a development tool, and T381 does not ask for it |
+| 2 | The check runs on an unlocked read | Not changed, for the same reason |
+| 3 | The refusal test did not check that no token was stored | Fixed |
+| 4 | This log overstated the failing-first evidence | Fixed |
+| 5 | Docstring and message still said "inactive" | Fixed |
+| 6 | The quickstart and READMEs said any account | Fixed |
+| 7 | Tests did not cite FR-234 and FR-235 | Fixed |
+| 8 | Tasks not ticked | Ticked on commit |
+| 9 | The pending rule is written out in several places | Not changed: a refactor outside these tasks |
+| 10 | Mutation ids `F1` to `F3` read like fix-list ids | Fixed: `V1` to `V3` |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| V1 | No index (T380) | `test_the_repository_matches_and_stores_addresses_case_insensitively` |
+| V2 | The role missing again | same test |
+| V3 | A deactivated account gets a token | `test_an_invitation_is_refused_for_an_account_that_is_not_pending` |
+

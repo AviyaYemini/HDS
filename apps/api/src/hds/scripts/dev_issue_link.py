@@ -44,8 +44,9 @@ async def run(
 ) -> int:
     """Issue one token and print it.
 
-    An invitation is issued for an inactive account (one waiting to accept) and a reset for an
-    active account, the same accounts the real flows serve.
+    An invitation is issued for a pending account (never activated, waiting to accept) and a reset
+    for an active account, the same accounts the real flows serve. A deactivated account gets
+    neither: staff reactivate it.
 
     Side effects:
         Stores the token's hash in the database and prints the token to standard output once.
@@ -76,9 +77,12 @@ async def run(
             return 1
         if args.purpose == "invite" and user.is_active:
             print(
-                "that account is already active; an invitation completes an inactive account",
+                "that account is already active; an invitation completes a pending account",
                 file=sys.stderr,
             )
+            return 1
+        if args.purpose == "invite" and user.activated_at is not None:
+            print("that account is not pending; staff must reactivate it instead", file=sys.stderr)
             return 1
         if args.purpose == "reset" and not user.is_active:
             print("that account is not active; a reset needs an active account", file=sys.stderr)

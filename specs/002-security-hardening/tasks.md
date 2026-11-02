@@ -709,11 +709,11 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 ### Group A: one commit for four corrections
 
-- [ ] T380 [F13] F13: in `apps/api/tests/integration/test_email_case.py` (the repository test near line 176) add `role` to the second insert and assert `uq_users_email_ci` appears in the `IntegrityError`; show by a mutation (drop the index in a scratch database or monkeypatch it away) that the test fails when the index is absent; restore
-- [ ] T381 [F14] F14: in `apps/api/src/hds/scripts/dev_issue_link.py` (line 77) issue an invitation token only for a PENDING account (not active, not deleted, `activated_at` empty) and refuse a deactivated one with exit status 1; in `apps/api/tests/unit/test_dev_issue_link.py` (line 61) make the "pending" fixture account truly pending (`activated_at` None) and add a deactivated one; tests: deactivated refused with status 1 and a message, pending gets a token that `accept_invitation` can redeem. Show the new tests failing first
-- [ ] T382 [P] [F15] F15: in `specs/002-security-hardening/spec.md` renumber the last scenario of User Story 3 (about line 129) from `3.` to `4.` and update any reference to it (search `tasks.md`, `plan.md`, `quickstart.md`)
-- [ ] T383 [P] [F16] F16: in `specs/002-security-hardening/quickstart.md` (about line 47) change the start-up row to say `ENVIRONMENT=production` for the 20-byte-secret case
-- [ ] T384 [F13] [F14] [F15] [F16] Commit as `test(api): fix the duplicate-address and pending-account tests, and two document errors`
+- [X] T380 [F13] F13: in `apps/api/tests/integration/test_email_case.py` (the repository test near line 176) add `role` to the second insert and assert `uq_users_email_ci` appears in the `IntegrityError`; show by a mutation (drop the index in a scratch database or monkeypatch it away) that the test fails when the index is absent; restore
+- [X] T381 [F14] F14: in `apps/api/src/hds/scripts/dev_issue_link.py` (line 77) issue an invitation token only for a PENDING account (not active, not deleted, `activated_at` empty) and refuse a deactivated one with exit status 1; in `apps/api/tests/unit/test_dev_issue_link.py` (line 61) make the "pending" fixture account truly pending (`activated_at` None) and add a deactivated one; tests: deactivated refused with status 1 and a message, pending gets a token that `accept_invitation` can redeem. Show the new tests failing first
+- [X] T382 [P] [F15] F15: in `specs/002-security-hardening/spec.md` renumber the last scenario of User Story 3 (about line 129) from `3.` to `4.` and update any reference to it (search `tasks.md`, `plan.md`, `quickstart.md`)
+- [X] T383 [P] [F16] F16: in `specs/002-security-hardening/quickstart.md` (about line 47) change the start-up row to say `ENVIRONMENT=production` for the 20-byte-secret case
+- [X] T384 [F13] [F14] [F15] [F16] Commit as `test(api): fix the duplicate-address and pending-account tests, and two document errors`
 
 **Checkpoint P5: all gates and the full suite. Stop and report before P6**
 

@@ -4,7 +4,7 @@ The mail outbox stores no usable token, so a developer testing by hand needs ano
 one. The script issues a fresh token for an account and prints it to the terminal once. It must
 refuse to run outside a development environment and must leave the token in no file and no log.
 
-Covers: FR-203.
+Covers: FR-203, FR-235.
 """
 
 import hashlib
@@ -16,17 +16,24 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from hds.core.security import hash_password
 from hds.models.base import Base
+from hds.models.invitation_token import InvitationToken
 from hds.models.organisation import Organisation
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
+from hds.repositories.user import UserRepository
+from hds.services.invitation import InvitationService
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -47,7 +54,13 @@ async def factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     async with maker() as session:
         org = Organisation(id=uuid.uuid4(), name="Dev Org", timezone="UTC")
         session.add(org)
-        for email, active in (("pending@hds.test", False), ("active@hds.test", True)):
+        accounts = (
+            ("pending@hds.test", False, None, False),
+            ("active@hds.test", True, datetime.now(UTC), False),
+            ("deactivated@hds.test", False, datetime.now(UTC), False),
+            ("deleted@hds.test", False, None, True),
+        )
+        for email, active, activated_at, deleted in accounts:
             session.add(
                 User(
                     id=uuid.uuid4(),
@@ -57,8 +70,8 @@ async def factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
                     full_name=email,
                     role=UserRole.employee,
                     is_active=active,
-                    is_deleted=False,
-                    activated_at=datetime.now(UTC),
+                    is_deleted=deleted,
+                    activated_at=activated_at,
                 )
             )
         await session.commit()
@@ -143,6 +156,47 @@ async def test_issues_an_invitation_token_for_a_pending_account(
     assert row.purpose == "invite" and row.used_at is None
     expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=UTC)
     assert abs(expires - (datetime.now(UTC) + timedelta(days=7))) < timedelta(minutes=1)
+
+
+@pytest.mark.parametrize(
+    ("email", "message"),
+    [("deactivated@hds.test", "not pending"), ("deleted@hds.test", "no account")],
+)
+async def test_an_invitation_is_refused_for_an_account_that_is_not_pending(
+    email: str, message: str, script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = await script.run([email, "invite"], "development", factory)
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert message in captured.err
+    async with factory() as session:
+        stored_links = await session.execute(select(func.count()).select_from(InvitationToken))
+    assert stored_links.scalar_one() == 0
+
+
+async def test_the_token_for_a_pending_account_can_really_be_redeemed(
+    script: Any, factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    await script.run(["pending@hds.test", "invite"], "development", factory)
+    token = printed_token(capsys.readouterr().out)
+
+    async with factory() as session:
+        service = InvitationService(
+            UserRepository(session),
+            InvitationTokenRepository(session),
+            AsyncMock(),
+            RefreshTokenRepository(session),
+            LoginThrottleRepository(session),
+            MagicMock(),
+        )
+        await service.accept_invitation(raw_token=token, new_password="A-long-password-1")
+        await session.commit()
+
+    async with factory() as session:
+        user = await UserRepository(session).get_by_email("pending@hds.test")
+    assert user is not None and user.is_active and user.activated_at is not None
 
 
 async def test_issues_a_reset_token_for_an_active_account(

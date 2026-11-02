@@ -4,7 +4,7 @@ Each flow that takes an account address is driven with the address in a differen
 one stored: sign-in, creating an account, inviting, requesting a password reset and adding a
 portal user. The stored address is always the lowercase form.
 
-Covers: FR-215, SC-208.
+Covers: FR-215, FR-234, SC-208.
 """
 
 import uuid
@@ -170,11 +170,17 @@ async def test_the_repository_matches_and_stores_addresses_case_insensitively(
         },
     )
     assert created.email == "new.person@hds.test"
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError) as refused:
         await repo.create(
             seed_users["admin"].organization_id,
-            {"email": "NEW.PERSON@hds.test", "password_hash": "x", "full_name": "N"},
+            {
+                "email": "NEW.PERSON@hds.test",
+                "password_hash": "x",
+                "full_name": "N",
+                "role": "employee",
+            },
         )
+    assert "uq_users_email_ci" in str(refused.value)
 
 
 async def test_an_account_stored_before_the_rule_is_found_and_its_invitation_still_works(

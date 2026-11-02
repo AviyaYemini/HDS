@@ -173,7 +173,7 @@ present it a third time and confirm every session of that user is ended.
 3. **Given** a renewal credential that was used a moment ago, **When** it is presented again
    within the grace window (an honest retry), **Then** the request is refused but the user's
    sessions, including the one just issued, stay valid.
-3. **Given** one valid invitation or reset link, **When** two redemptions arrive simultaneously,
+4. **Given** one valid invitation or reset link, **When** two redemptions arrive simultaneously,
    **Then** exactly one succeeds.
 
 ---
