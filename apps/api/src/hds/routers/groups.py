@@ -1,4 +1,7 @@
-"""Groups router: CRUD for org groups."""
+"""Groups router: CRUD for org groups.
+
+Layer: routers. Delegates to ``GroupService``; all endpoints require Manager or Admin.
+"""
 
 import uuid
 from datetime import datetime
@@ -18,6 +21,8 @@ router = APIRouter(prefix="/api/v1/groups", tags=["groups"])
 
 
 class GroupRead(BaseModel):
+    """A group with its audit timestamps."""
+
     id: uuid.UUID
     organization_id: uuid.UUID
     name: str
@@ -28,49 +33,100 @@ class GroupRead(BaseModel):
 
 
 class GroupWriteRequest(BaseModel):
+    """Group name for create and rename; unique within the organisation."""
+
     name: Name
 
 
 class GroupListResponse(BaseModel):
+    """The organisation's groups."""
+
     items: list[GroupRead]
 
 
-@router.get("", response_model=GroupListResponse)
+@router.get(
+    "",
+    response_model=GroupListResponse,
+    summary="List groups",
+    description=("Manager or Admin. Return the organisation's groups ordered by name."),
+)
 async def list_groups(
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> GroupListResponse:
+    """List groups.
+
+    Manager or Admin. Return the organisation's groups ordered by name.
+    """
     repo = GroupRepository(db)
     groups = await repo.list_by_org(current_user.organization_id)
     return GroupListResponse(items=groups)  # type: ignore[arg-type]
 
 
-@router.post("", response_model=GroupRead, status_code=201)
+@router.post(
+    "",
+    response_model=GroupRead,
+    status_code=201,
+    summary="Create a group",
+    description=(
+        "Manager or Admin. Create a group. Names are unique within the organisation "
+        "(409 `groups.duplicate_name`)."
+    ),
+)
 async def create_group(
     body: GroupWriteRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> object:
+    """Create a group.
+
+    Manager or Admin. Create a group. Names are unique within the organisation (409
+    `groups.duplicate_name`).
+    """
     svc = GroupService(group_repo=GroupRepository(db))
     return await svc.create_group(actor=current_user, name=body.name)
 
 
-@router.patch("/{id}", response_model=GroupRead)
+@router.patch(
+    "/{id}",
+    response_model=GroupRead,
+    summary="Rename a group",
+    description=(
+        "Manager or Admin. Change a group's name. A name already used by another group "
+        "returns 409 (`groups.duplicate_name`)."
+    ),
+)
 async def rename_group(
     id: uuid.UUID,
     body: GroupWriteRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> object:
+    """Rename a group.
+
+    Manager or Admin. Change a group's name. A name already used by another group returns 409
+    (`groups.duplicate_name`).
+    """
     svc = GroupService(group_repo=GroupRepository(db))
     return await svc.rename_group(actor=current_user, group_id=id, new_name=body.name)
 
 
-@router.delete("/{id}", status_code=204)
+@router.delete(
+    "/{id}",
+    status_code=204,
+    summary="Delete a group",
+    description=(
+        "Manager or Admin. Delete the group and its memberships. The employees in it are kept."
+    ),
+)
 async def delete_group(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a group.
+
+    Manager or Admin. Delete the group and its memberships. The employees in it are kept.
+    """
     svc = GroupService(group_repo=GroupRepository(db))
     await svc.delete_group(actor=current_user, group_id=id)

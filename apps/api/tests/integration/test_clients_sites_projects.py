@@ -1,4 +1,7 @@
-"""Integration tests for clients, sites, and projects (US4)."""
+"""Integration tests for clients, sites and projects (US4, T090).
+
+Covers: FR-009a, FR-021, FR-023, FR-025, FR-026, FR-028.
+"""
 
 import pytest
 from httpx import AsyncClient

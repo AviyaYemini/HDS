@@ -1,4 +1,4 @@
-"""012 global unique email
+"""012 global unique email.
 
 Sign-in resolves the account by email alone (FR-001), so an email must be unique across
 ALL organisations, not just within one. Replaces ``uq_users_org_email``.
@@ -23,6 +23,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Replace the per-organisation unique email index with a global one.
+
+    Raises:
+        sqlalchemy.exc.IntegrityError: If two non-deleted users in different organisations
+            already share an email; resolve those rows first.
+    """
     op.drop_index("uq_users_org_email", table_name="users")
     op.create_index(
         "uq_users_email",
@@ -34,6 +40,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore the per-organisation unique email index.
+
+    Always succeeds: global uniqueness already implies uniqueness within each organisation.
+    """
     op.drop_index("uq_users_email", table_name="users")
     op.create_index(
         "uq_users_org_email",

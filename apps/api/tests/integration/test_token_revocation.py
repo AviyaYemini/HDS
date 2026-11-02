@@ -1,5 +1,10 @@
-"""T120: refresh tokens die with the account (deactivate, delete, role change) and refresh
-refuses inactive or soft-deleted users even if a token somehow survived."""
+"""T120: refresh tokens die with the account.
+
+Deactivating, deleting or changing the role of a user revokes their refresh tokens, and
+refresh refuses inactive or soft-deleted users even if a token somehow survived.
+
+Covers: FR-015, FR-016, NFR-005.
+"""
 
 import pytest
 from httpx import AsyncClient

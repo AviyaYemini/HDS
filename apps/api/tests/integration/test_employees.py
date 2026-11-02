@@ -1,4 +1,7 @@
-"""Integration tests for employee management endpoints (US3)."""
+"""Integration tests for employee management endpoints (US3, T071).
+
+Covers: FR-011, FR-011a, FR-012, FR-014, FR-015, FR-020.
+"""
 
 import pytest
 from httpx import AsyncClient

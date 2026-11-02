@@ -1,4 +1,7 @@
-"""T142: forged, expired and unsigned (alg=none) tokens are rejected."""
+"""T142: forged, expired and unsigned (alg=none) tokens are rejected.
+
+Covers: NFR-006.
+"""
 
 import base64
 import json

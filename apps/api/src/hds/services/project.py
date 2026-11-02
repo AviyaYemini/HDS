@@ -1,4 +1,11 @@
-"""Project service: create, edit, manage status, soft-delete; enforce rate and date rules."""
+"""Project service: create, edit, manage status, soft-delete; enforce rate and date rules.
+
+Layer: services. May import ``hds.repositories``, ``hds.models`` and ``hds.core``; MUST NOT
+import routers or build HTTP responses (Constitution II).
+
+Rules enforced here: billing rate above zero, end date not before start date, and client and
+site ids that belong to the caller's organisation. Clients see only their own projects.
+"""
 
 import uuid
 from datetime import date
@@ -31,12 +38,21 @@ def _validate_date_range(start: date | None, end: date | None) -> None:
 
 
 class ProjectService:
+    """Project administration and role-scoped project reads."""
+
     def __init__(
         self,
         project_repo: ProjectRepository,
         client_repo: ClientRepository,
         site_repo: SiteRepository,
     ) -> None:
+        """Wire the service.
+
+        Args:
+            project_repo: Project storage.
+            client_repo: Used to verify client ids.
+            site_repo: Used to verify site ids.
+        """
         self._repo = project_repo
         self._client_repo = client_repo
         self._site_repo = site_repo
@@ -50,6 +66,21 @@ class ProjectService:
             raise NotFoundError(resource="Site", id=site_id)
 
     async def create_project(self, actor: User, data: dict[str, Any]) -> Project:
+        """Create a project for a client and site of the actor's organisation (Manager+).
+
+        Args:
+            actor: The caller.
+            data: Project fields including ``client_id`` and ``site_id``.
+
+        Returns:
+            The new project.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            DomainValidationError: ``projects.billing_rate_invalid`` or
+                ``projects.date_range_invalid`` (HTTP 422).
+            NotFoundError: Client or site not in the organisation (HTTP 404).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         if data.get("billing_rate") is not None:
             _validate_billing_rate(data["billing_rate"])
@@ -59,6 +90,22 @@ class ProjectService:
         return await self._repo.create(actor.organization_id, data)
 
     async def edit_project(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Project:
+        """Update a project (Manager or Admin); the date rule is checked against stored dates.
+
+        Args:
+            actor: The caller.
+            id: Project to edit.
+            data: Fields to change.
+
+        Returns:
+            The updated project.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The project is not in the organisation (HTTP 404).
+            DomainValidationError: ``projects.billing_rate_invalid`` or
+                ``projects.date_range_invalid`` (HTTP 422).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
@@ -69,6 +116,20 @@ class ProjectService:
         return await self._repo.update(id, actor.organization_id, **data)
 
     async def set_status(self, actor: User, id: uuid.UUID, status: str) -> Project:
+        """Move a project between ``active`` and ``ended`` (Manager or Admin).
+
+        Args:
+            actor: The caller.
+            id: Project to change.
+            status: New status value.
+
+        Returns:
+            The updated project.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The project is not in the organisation (HTTP 404).
+        """
         ensure_role(actor, *MANAGER_ROLES)
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
@@ -76,6 +137,16 @@ class ProjectService:
         return await self._repo.update(id, actor.organization_id, status=status)
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
+        """Delete a project (Admin only); the row is kept and hidden.
+
+        Args:
+            actor: The caller.
+            id: Project to delete.
+
+        Raises:
+            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            NotFoundError: The project is not in the organisation (HTTP 404).
+        """
         ensure_role(actor, *ADMIN_ROLES)
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
@@ -89,6 +160,24 @@ class ProjectService:
         status: ProjectStatus | None = None,
         client_id: uuid.UUID | None = None,
     ) -> list[Project]:
+        """List projects visible to the caller.
+
+        A Client always sees only their own client's projects, whatever filter they send; this
+        method, not the router, enforces that data scope. Employees are rejected earlier by the
+        router dependency.
+
+        Args:
+            org_id: The caller's organisation.
+            current_user: The caller.
+            status: Keep only this status.
+            client_id: Keep only this client's projects (ignored for a Client caller).
+
+        Returns:
+            The visible projects.
+
+        Raises:
+            NotFoundError: ``client_id`` is not in the organisation (HTTP 404).
+        """
         if current_user.role == UserRole.client:
             client_id = current_user.client_id
         elif client_id is not None:
@@ -96,6 +185,21 @@ class ProjectService:
         return await self._repo.list_by_org(org_id, status=status, client_id=client_id)
 
     async def get_project(self, id: uuid.UUID, org_id: uuid.UUID, current_user: User) -> Project:
+        """Return one project, refusing a Client access to another client's project.
+
+        Args:
+            id: Project to load.
+            org_id: The caller's organisation.
+            current_user: The caller.
+
+        Returns:
+            The project.
+
+        Raises:
+            NotFoundError: Missing or in another organisation (HTTP 404).
+            ForbiddenError: ``projects.access_denied`` when a Client asks for a project of a
+                different client (HTTP 403).
+        """
         project = await self._repo.get_by_id(id, org_id)
         if project is None:
             raise NotFoundError(resource="Project", id=id)

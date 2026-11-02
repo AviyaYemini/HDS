@@ -1,4 +1,7 @@
-"""GET /clients?is_active= (documented in the contract), org-scoped."""
+"""GET /clients?is_active= filters by active state and stays organisation-scoped (T143).
+
+Covers: FR-021, NFR-001.
+"""
 
 import uuid
 from datetime import date

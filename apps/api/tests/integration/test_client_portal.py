@@ -1,4 +1,7 @@
-"""Integration tests for client portal — US5 (Client views own projects)."""
+"""Integration tests for the client portal: a Client sees only their own projects (US5, T096).
+
+Covers: FR-010, SC-004.
+"""
 
 import pytest
 from httpx import AsyncClient

@@ -1,4 +1,9 @@
-"""Unit tests for EmployeeService manager operations (roles, last-admin, token revocation)."""
+"""Unit tests for EmployeeService manager operations (T053, T143).
+
+Roles, last-admin protection and session revocation.
+
+Covers: FR-011, FR-011a, FR-012, FR-014, FR-015, FR-016, FR-028, NFR-005.
+"""
 
 import uuid
 from decimal import Decimal

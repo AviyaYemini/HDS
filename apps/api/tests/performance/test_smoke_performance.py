@@ -1,10 +1,12 @@
-"""T129 (SC-001): performance smoke test on a seeded PostgreSQL database.
+"""T129: performance smoke test on a seeded PostgreSQL database.
 
 * every read endpoint: p95 latency < 300 ms over repeated requests;
 * sign-in: < 3 s.
 
 Requests go through the full ASGI stack (routing, auth, services, SQL) in-process, so the
 numbers measure the application and the database, not the network.
+
+Covers: SC-001.
 """
 
 import math

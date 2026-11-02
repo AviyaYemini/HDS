@@ -1,4 +1,7 @@
-"""T141: the request id is in a context variable, every log line and problem+json bodies."""
+"""T141: the request id is in a context variable, every log line and problem+json bodies.
+
+Covers: NFR-004.
+"""
 
 import json
 import logging

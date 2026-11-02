@@ -1,3 +1,8 @@
+"""Qualifications an employee can hold, and the membership table.
+
+Layer: models. Depends on ``hds.models.base`` and sibling models only.
+"""
+
 import uuid
 from typing import TYPE_CHECKING
 
@@ -23,6 +28,12 @@ user_qualifications = Table(
 
 
 class Qualification(TimestampedBase):
+    """A named skill or certificate, unique by name within an organisation.
+
+    Deleting one cascades to its membership rows (``ON DELETE CASCADE`` on
+    ``user_qualifications.qualification_id``) but never to the users.
+    """
+
     __tablename__ = "qualifications"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

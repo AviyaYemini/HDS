@@ -1,3 +1,8 @@
+"""Accounts for staff and client contacts.
+
+Layer: models. Depends on ``hds.models.base`` and sibling models only.
+"""
+
 import enum
 import uuid
 from datetime import datetime
@@ -28,6 +33,11 @@ if TYPE_CHECKING:
 
 
 class UserRole(str, enum.Enum):
+    """Role in the permission matrix (Employee, Manager, Admin, Client).
+
+    Stored as the PostgreSQL enum ``user_role``; adding a value needs a migration.
+    """
+
     employee = "employee"
     manager = "manager"
     admin = "admin"
@@ -35,6 +45,17 @@ class UserRole(str, enum.Enum):
 
 
 class User(TimestampedBase):
+    """A person who can sign in.
+
+    Rules the schema enforces: ``email`` is unique across all organisations among
+    non-deleted users (partial index ``uq_users_email``); ``default_hourly_rate`` is positive
+    when set; users are soft-deleted (``is_deleted``) so history stays intact and the email
+    can be reused. ``failed_login_attempts`` and ``locked_until`` implement account lockout.
+
+    ``client_id`` ties a Client-role account to its client's projects. The schema does not
+    force it to be set only for that role; the client services guarantee it.
+    """
+
     __tablename__ = "users"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

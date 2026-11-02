@@ -1,4 +1,7 @@
-"""Shared integration fixtures: a second organisation holding one of each resource."""
+"""Shared integration fixtures: a second organisation holding one of each resource.
+
+Covers: none directly; fixtures for the cross-tenant tests (NFR-001).
+"""
 
 import uuid
 from dataclasses import dataclass

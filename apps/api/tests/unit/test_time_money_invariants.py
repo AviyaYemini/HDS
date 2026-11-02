@@ -1,5 +1,9 @@
-"""T125 (Constitution VII): timestamps are timezone-aware UTC; rates and durations are
-positive; money never touches ``float``. Static checks over models, schemas and source."""
+"""T125 (Constitution VII): timestamps are timezone-aware UTC; rates and durations are positive.
+
+Money never touches ``float``. Static checks over models, schemas and source.
+
+Covers: FR-028; Constitution VII.
+"""
 
 import ast
 from decimal import Decimal

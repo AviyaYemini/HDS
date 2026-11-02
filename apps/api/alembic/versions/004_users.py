@@ -1,4 +1,13 @@
-"""004 users
+"""004 users.
+
+Creates ``users``: one account table for all four roles.
+
+Notable rules: ``default_hourly_rate`` must be positive when set
+(``ck_users_hourly_rate_positive``); ``failed_login_attempts`` and ``locked_until`` back the
+sign-in lockout; ``client_id`` links a Client-role account to its client; users are soft-deleted.
+
+Why a partial unique index on the email (``uq_users_org_email``, non-deleted rows only): a
+deleted user's email can be reused. Migration 012 widens it from per organisation to global.
 
 Revision ID: 004_users
 Revises: 003_sites
@@ -18,6 +27,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the users table with its check constraint and three indexes."""
     op.create_table(
         "users",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -26,16 +36,34 @@ def upgrade() -> None:
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column("full_name", sa.String(255), nullable=False),
         sa.Column("phone", sa.String(32), nullable=True),
-        sa.Column("role", postgresql.ENUM("employee", "manager", "admin", "client", name="user_role", create_type=False), nullable=False),
+        sa.Column(
+            "role",
+            postgresql.ENUM(
+                "employee", "manager", "admin", "client", name="user_role", create_type=False
+            ),
+            nullable=False,
+        ),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("deleted_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("default_hourly_rate", sa.Numeric(12, 4), nullable=True),
         sa.Column("client_id", sa.UUID(), nullable=True),
-        sa.Column("failed_login_attempts", sa.SmallInteger(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "failed_login_attempts", sa.SmallInteger(), nullable=False, server_default=sa.text("0")
+        ),
         sa.Column("locked_until", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("default_hourly_rate > 0", name="ck_users_hourly_rate_positive"),
         sa.ForeignKeyConstraint(["organization_id"], ["organisations.id"]),
         sa.ForeignKeyConstraint(["client_id"], ["clients.id"]),
@@ -58,6 +86,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the users indexes and table."""
     op.drop_index("idx_users_client", table_name="users")
     op.drop_index("idx_users_org", table_name="users")
     op.drop_index("uq_users_org_email", table_name="users")

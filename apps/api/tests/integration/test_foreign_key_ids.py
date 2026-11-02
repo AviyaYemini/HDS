@@ -1,6 +1,8 @@
 """T137: foreign-key ids in bodies, paths and queries must belong to the caller's organisation.
 
 A foreign id is a 404 (never 403, never silently accepted) and nothing is written.
+
+Covers: NFR-001.
 """
 
 import uuid

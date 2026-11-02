@@ -1,4 +1,7 @@
-"""T124/C2: the drift check compares method, path, 2xx codes and query parameters."""
+"""T124, T144: the drift check compares method, path, 2xx codes and query parameters.
+
+Covers: no spec requirement; guards Constitution V (API-first).
+"""
 
 from typing import Any
 

@@ -1,4 +1,7 @@
-"""Unit tests for QualificationService."""
+"""Unit tests for QualificationService (T055).
+
+Covers: FR-019, FR-020, NFR-001.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock

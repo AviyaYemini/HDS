@@ -1,3 +1,8 @@
+"""Projects: the units of work delivered for a client at a site.
+
+Layer: models. Depends on ``hds.models.base`` and sibling models only.
+"""
+
 import enum
 import uuid
 from datetime import date, datetime
@@ -25,16 +30,28 @@ if TYPE_CHECKING:
 
 
 class ProjectType(str, enum.Enum):
+    """Kind of work. Stored as the PostgreSQL enum ``project_type``; new values need a migration."""
+
     security = "security"
     training = "training"
 
 
 class ProjectStatus(str, enum.Enum):
+    """Lifecycle state. Stored as the PostgreSQL enum ``project_status``."""
+
     active = "active"
     ended = "ended"
 
 
 class Project(TimestampedBase):
+    """A billable project for one client at one site.
+
+    ``billing_rate`` is ``NUMERIC(12,4)`` and must be positive
+    (``ck_projects_billing_rate_positive``); it is a ``Decimal`` in Python so money never passes
+    through ``float`` (Constitution VII).
+    ``end_date`` is open-ended when ``None``. Soft-deleted via ``is_deleted``.
+    """
+
     __tablename__ = "projects"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

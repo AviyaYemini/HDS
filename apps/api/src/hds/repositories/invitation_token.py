@@ -1,3 +1,8 @@
+"""Persistence of invitation and password-reset tokens (hashes only).
+
+Layer: repositories. Depends on ``hds.models`` only; it MUST NOT import services or routers.
+"""
+
 import uuid
 from datetime import UTC, datetime
 
@@ -8,7 +13,14 @@ from hds.models.invitation_token import InvitationToken
 
 
 class InvitationTokenRepository:
+    """Stores and spends single-use tokens. It does not validate expiry or purpose."""
+
     def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to a request-scoped session.
+
+        Args:
+            session: The session from ``hds.core.database.get_db``.
+        """
         self.session = session
 
     async def create(
@@ -18,6 +30,20 @@ class InvitationTokenRepository:
         purpose: str,
         expires_at: datetime,
     ) -> InvitationToken:
+        """Store a new token and commit.
+
+        Args:
+            user_id: User the token is for.
+            token_hash: SHA-256 hex digest of the raw token.
+            purpose: ``invite`` or ``reset``; any other value fails the database check.
+            expires_at: Timezone-aware UTC expiry.
+
+        Returns:
+            The persisted token.
+
+        Raises:
+            sqlalchemy.exc.IntegrityError: When ``purpose`` is not allowed.
+        """
         token = InvitationToken(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -32,12 +58,25 @@ class InvitationTokenRepository:
         return token
 
     async def get_by_hash(self, token_hash: str) -> InvitationToken | None:
+        """Find a token by hash, whether or not it is used or expired.
+
+        Args:
+            token_hash: SHA-256 hex digest of the presented token.
+
+        Returns:
+            The token row, or ``None`` if unknown.
+        """
         result = await self.session.execute(
             select(InvitationToken).where(InvitationToken.token_hash == token_hash)
         )
         return result.scalar_one_or_none()
 
     async def mark_used(self, id: uuid.UUID) -> None:
+        """Spend a token by stamping ``used_at`` with the current UTC time. Commits.
+
+        Args:
+            id: Primary key of the token.
+        """
         await self.session.execute(
             update(InvitationToken)
             .where(InvitationToken.id == id)

@@ -1,12 +1,13 @@
-"""T127: role matrix. For every (principal, operation) pair the outcome must match the spec
-(FR-004, FR-007..FR-010, contract summaries), whatever ids or bodies the caller sends.
+"""T127: role matrix.
+
+For every (principal, operation) pair the outcome must match the spec, whatever ids or
+bodies the caller sends:
 
 * a forbidden role is always ``403`` with a role-gate error code (never 200/404/422);
 * an allowed role is never turned away by the role gate;
 * anonymous callers get ``401`` on every protected operation.
 
-The matrix is written out by hand from the specification (not derived from the code), and a
-completeness test fails when an operation exists in the OpenAPI document but not here.
+Covers: FR-004, FR-007, FR-008, FR-009, FR-009a, FR-010, FR-016, SC-002, SC-004.
 """
 
 import uuid

@@ -1,4 +1,11 @@
-"""003 sites
+"""003 sites.
+
+Creates ``sites``: the physical locations where projects run, each with an address and an IANA
+time zone.
+
+Why a time zone per site: timestamps are stored in UTC and shown in the zone of the place the
+work happens (Constitution VII). Sites have no soft-delete flag because the API cannot delete
+them.
 
 Revision ID: 003_sites
 Revises: 002_clients
@@ -17,6 +24,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the sites table and its organisation index."""
     op.create_table(
         "sites",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -24,8 +32,18 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("address", sa.Text(), nullable=False),
         sa.Column("timezone", sa.String(64), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["organization_id"], ["organisations.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -33,5 +51,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the sites index and table."""
     op.drop_index("idx_sites_org", table_name="sites")
     op.drop_table("sites")

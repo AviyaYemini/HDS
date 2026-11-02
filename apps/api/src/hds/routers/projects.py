@@ -1,4 +1,9 @@
-"""Projects router: CRUD and status management."""
+"""Projects router: CRUD and status management.
+
+Layer: routers. Delegates to ``ProjectService``. Reads are open to Manager, Admin and Client
+(a Client is narrowed to their own projects in the service); writes need Manager or Admin and
+deletion needs Admin.
+"""
 
 import uuid
 from datetime import date, datetime
@@ -22,6 +27,8 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
 class ProjectRead(BaseModel):
+    """A project; ``billing_rate`` is a decimal string, never a float."""
+
     id: uuid.UUID
     organization_id: uuid.UUID
     client_id: uuid.UUID
@@ -39,6 +46,11 @@ class ProjectRead(BaseModel):
 
 
 class ProjectCreateRequest(BaseModel):
+    """New project.
+
+    ``billing_rate`` must be greater than zero and ``end_date`` not before ``start_date``.
+    """
+
     client_id: uuid.UUID
     site_id: uuid.UUID
     name: Name
@@ -49,6 +61,8 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
+    """Project fields that may change; omitted fields are left as they are."""
+
     name: Name | None = None
     billing_rate: Money | None = None
     end_date: StrictDate | None = None
@@ -56,6 +70,8 @@ class ProjectUpdateRequest(BaseModel):
 
 
 class ProjectListResponse(BaseModel):
+    """The projects visible to the caller."""
+
     items: list[ProjectRead]
 
 
@@ -67,13 +83,28 @@ def _svc(db: AsyncSession) -> ProjectService:
     )
 
 
-@router.get("", response_model=ProjectListResponse)
+@router.get(
+    "",
+    response_model=ProjectListResponse,
+    summary="List projects",
+    description=(
+        "Manager or Admin see every project of the organisation, optionally filtered by "
+        "status or client. A Client sees only their own client's projects whatever "
+        "filter is sent. Employees receive 403."
+    ),
+)
 async def list_projects(
     status: ProjectStatus | None = None,
     client_id: uuid.UUID | None = None,
     current_user: User = Depends(require_manager_or_client),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectListResponse:
+    """List projects.
+
+    Manager or Admin see every project of the organisation, optionally filtered by status or
+    client. A Client sees only their own client's projects whatever filter is sent. Employees
+    receive 403.
+    """
     svc = _svc(db)
     projects = await svc.list_projects(
         org_id=current_user.organization_id,
@@ -84,35 +115,78 @@ async def list_projects(
     return ProjectListResponse(items=projects)  # type: ignore[arg-type]
 
 
-@router.post("", response_model=ProjectRead, status_code=201)
+@router.post(
+    "",
+    response_model=ProjectRead,
+    status_code=201,
+    summary="Create a project",
+    description=(
+        "Manager or Admin. Create a project for a client and a site of the "
+        "organisation. The billing rate must be greater than zero "
+        "(`projects.billing_rate_invalid`) and the end date must not be before the "
+        "start date (`projects.date_range_invalid`)."
+    ),
+)
 async def create_project(
     body: ProjectCreateRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> object:
+    """Create a project.
+
+    Manager or Admin. Create a project for a client and a site of the organisation. The billing
+    rate must be greater than zero (`projects.billing_rate_invalid`) and the end date must not
+    be before the start date (`projects.date_range_invalid`).
+    """
     svc = _svc(db)
     return await svc.create_project(actor=current_user, data=body.model_dump())
 
 
-@router.get("/{id}", response_model=ProjectRead)
+@router.get(
+    "/{id}",
+    response_model=ProjectRead,
+    summary="Get a project",
+    description=(
+        "Manager or Admin for any project; a Client only for their own client's "
+        "projects (otherwise 403 `projects.access_denied`). Employees receive 403."
+    ),
+)
 async def get_project(
     id: uuid.UUID,
     current_user: User = Depends(require_manager_or_client),
     db: AsyncSession = Depends(get_db),
 ) -> object:
+    """Get a project.
+
+    Manager or Admin for any project; a Client only for their own client's projects (otherwise
+    403 `projects.access_denied`). Employees receive 403.
+    """
     svc = _svc(db)
     return await svc.get_project(
         id=id, org_id=current_user.organization_id, current_user=current_user
     )
 
 
-@router.patch("/{id}", response_model=ProjectRead)
+@router.patch(
+    "/{id}",
+    response_model=ProjectRead,
+    summary="Edit a project",
+    description=(
+        "Manager or Admin. Update name, billing rate, end date or status. The same rate "
+        "and date rules as creation apply."
+    ),
+)
 async def edit_project(
     id: uuid.UUID,
     body: ProjectUpdateRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_db),
 ) -> object:
+    """Edit a project.
+
+    Manager or Admin. Update name, billing rate, end date or status. The same rate and date
+    rules as creation apply.
+    """
     svc = _svc(db)
     data = body.model_dump(exclude_none=True)
     new_status = data.pop("status", None)
@@ -124,11 +198,20 @@ async def edit_project(
     return project
 
 
-@router.delete("/{id}", status_code=204)
+@router.delete(
+    "/{id}",
+    status_code=204,
+    summary="Delete a project",
+    description=("Admin only. Soft-delete the project; the record is kept and hidden."),
+)
 async def delete_project(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a project.
+
+    Admin only. Soft-delete the project; the record is kept and hidden.
+    """
     svc = _svc(db)
     await svc.soft_delete(actor=current_user, id=id)

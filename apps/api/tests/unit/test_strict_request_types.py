@@ -1,4 +1,7 @@
-"""Request booleans must be real JSON booleans: `0`/`1`/"yes" are schema violations (422)."""
+"""Request booleans must be real JSON booleans: 0, 1 and "yes" are schema violations (422).
+
+Covers: NFR-007.
+"""
 
 import pytest
 from pydantic import ValidationError

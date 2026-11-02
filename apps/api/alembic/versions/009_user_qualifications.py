@@ -1,4 +1,11 @@
-"""009 user_qualifications
+"""009 user_qualifications.
+
+Creates the ``user_qualifications`` link table: an employee can hold zero or more
+qualifications (FR-020). The composite primary key stops the same assignment from being stored
+twice.
+
+The foreign key to ``qualifications`` has no cascade here; migration 013 adds it so deleting a
+qualification removes its assignments.
 
 Revision ID: 009_user_qualifications
 Revises: 008_user_groups
@@ -17,6 +24,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the user_qualifications link table."""
     op.create_table(
         "user_qualifications",
         sa.Column("user_id", sa.UUID(), nullable=False),
@@ -28,4 +36,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the user_qualifications link table."""
     op.drop_table("user_qualifications")

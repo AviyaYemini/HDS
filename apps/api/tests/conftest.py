@@ -1,4 +1,10 @@
-"""Shared pytest fixtures for HDS API tests."""
+"""Shared pytest fixtures for HDS API tests.
+
+Provides the test database, the ASGI client, per-role sign-in helpers and the outbox mail
+sender used to read invitation and reset tokens.
+
+Covers: none directly; fixtures only.
+"""
 
 import asyncio
 import os

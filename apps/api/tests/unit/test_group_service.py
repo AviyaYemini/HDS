@@ -1,4 +1,7 @@
-"""Unit tests for GroupService."""
+"""Unit tests for GroupService (T054).
+
+Covers: FR-018, FR-020, NFR-001.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock

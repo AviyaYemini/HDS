@@ -90,6 +90,17 @@ def _statuses(
 
 
 def install_openapi(app: FastAPI) -> None:
+    """Replace ``app.openapi`` with a version that documents the problem-details errors.
+
+    The generated document is cached on the app after the first call. The error responses
+    are inferred from each operation (security, body, path parameters), so a new route is
+    documented without extra code, but a status that cannot be inferred must be added to
+    ``_statuses``. The drift check compares only 2xx codes, so these additions do not
+    affect it.
+
+    Args:
+        app: The application whose OpenAPI generation is wrapped.
+    """
     original = app.openapi
 
     def custom_openapi() -> dict[str, Any]:

@@ -1,4 +1,7 @@
-"""Unit tests for ClientService."""
+"""Unit tests for ClientService (T074).
+
+Covers: FR-009a, FR-021, FR-022, FR-024.
+"""
 
 import uuid
 from datetime import date

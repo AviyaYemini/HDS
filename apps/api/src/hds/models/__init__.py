@@ -1,4 +1,11 @@
-# Wire all model imports so Base.metadata contains every table for Alembic
+"""SQLAlchemy models, imported together so ``Base.metadata`` lists every table.
+
+Layer: models (the lowest layer). Models describe tables, constraints and relationships only;
+they MUST NOT import repositories, services, routers or schemas, and hold no business logic.
+Alembic's autogenerate and ``alembic check`` read ``Base.metadata`` through this package, so a
+new model must be imported here or its table is invisible to migrations.
+"""
+
 from hds.models.base import Base, TimestampedBase
 from hds.models.client import Client
 from hds.models.group import Group, user_groups

@@ -1,4 +1,7 @@
-"""T126: message lookup by error code, and parity between used codes and locale files."""
+"""T126: message lookup by error code, and parity between used codes and locale files.
+
+Covers: FR-029.
+"""
 
 import ast
 import json

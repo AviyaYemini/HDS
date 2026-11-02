@@ -1,4 +1,7 @@
-"""The Schemathesis CLI fuzzes with write access, so it must refuse non-scratch databases."""
+"""The Schemathesis CLI fuzzes with write access, so it must refuse non-scratch databases (T145).
+
+Covers: no spec requirement; protects real data from the contract run (Constitution IV).
+"""
 
 import os
 import subprocess

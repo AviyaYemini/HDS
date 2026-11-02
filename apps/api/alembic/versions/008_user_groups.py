@@ -1,4 +1,10 @@
-"""008 user_groups
+"""008 user_groups.
+
+Creates the ``user_groups`` link table: an employee can belong to zero or more groups (FR-020).
+The composite primary key stops the same membership from being stored twice.
+
+The foreign key to ``groups`` has no cascade here; migration 013 adds it so deleting a group
+removes its memberships.
 
 Revision ID: 008_user_groups
 Revises: 007_qualifications
@@ -17,6 +23,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the user_groups link table."""
     op.create_table(
         "user_groups",
         sa.Column("user_id", sa.UUID(), nullable=False),
@@ -28,4 +35,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the user_groups link table."""
     op.drop_table("user_groups")

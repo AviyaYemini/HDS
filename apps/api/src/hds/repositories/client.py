@@ -1,3 +1,9 @@
+"""Persistence of clients and the queries that depend on them.
+
+Layer: repositories. Depends on ``hds.models`` and ``hds.repositories.base`` only; it MUST NOT
+import services or routers.
+"""
+
 import uuid
 from typing import Any
 
@@ -10,9 +16,20 @@ from hds.repositories.base import OrgScopedRepository
 
 
 class ClientRepository(OrgScopedRepository[Client]):
+    """Queries and writes for ``Client``. Soft-deleted clients are invisible to lookups."""
+
     model = Client
 
     async def list_by_org(self, org_id: uuid.UUID, is_active: bool | None = None) -> list[Client]:
+        """List the organisation's non-deleted clients.
+
+        Args:
+            org_id: The caller's organisation.
+            is_active: Keep only active or only inactive clients; ``None`` keeps both.
+
+        Returns:
+            Matching clients in unspecified order.
+        """
         stmt = select(Client).where(
             Client.organization_id == org_id,
             Client.is_deleted.is_(False),
@@ -23,6 +40,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         return list(result.scalars().all())
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Client | None:
+        """Fetch a non-deleted client of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(
             select(Client).where(
                 Client.id == id,
@@ -33,6 +51,15 @@ class ClientRepository(OrgScopedRepository[Client]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Client:
+        """Insert a client in the organisation and commit.
+
+        Args:
+            org_id: Organisation that will own the client.
+            data: Column values for the new row.
+
+        Returns:
+            The persisted client.
+        """
         client = Client(id=uuid.uuid4(), organization_id=org_id, **data)
         self.session.add(client)
         await self.session.commit()
@@ -40,12 +67,39 @@ class ClientRepository(OrgScopedRepository[Client]):
         return client
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Client:
+        """Update columns of a client of the organisation and commit.
+
+        Args:
+            id: Client to update.
+            org_id: The caller's organisation.
+            **fields: Column values to set.
+
+        Returns:
+            The refreshed client.
+
+        Raises:
+            NotFoundError: When the client is not in the organisation.
+        """
         return await self._update_scoped(id, org_id, **fields)
 
     async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        """Mark a client deleted and commit; projects and users keep their reference.
+
+        Args:
+            id: Client to delete.
+            org_id: The caller's organisation.
+        """
         await self._soft_delete_scoped(id, org_id)
 
     async def deactivate_client_users(self, client_id: uuid.UUID) -> None:
+        """Deactivate every non-deleted user of a client so they can no longer sign in. Commits.
+
+        Not scoped by organisation: pass a ``client_id`` the service already verified belongs
+        to the caller's organisation.
+
+        Args:
+            client_id: The verified client.
+        """
         await self.session.execute(
             update(User)
             .where(User.client_id == client_id, User.is_deleted.is_(False))
@@ -54,6 +108,15 @@ class ClientRepository(OrgScopedRepository[Client]):
         await self.session.commit()
 
     async def list_users(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[User]:
+        """List the non-deleted user accounts attached to a client.
+
+        Args:
+            client_id: The client.
+            org_id: The caller's organisation.
+
+        Returns:
+            The client's portal users.
+        """
         result = await self.session.execute(
             select(User).where(
                 User.client_id == client_id,
@@ -64,6 +127,17 @@ class ClientRepository(OrgScopedRepository[Client]):
         return list(result.scalars().all())
 
     async def count_non_deleted_projects(self, client_id: uuid.UUID) -> int:
+        """Count a client's projects that are not soft-deleted.
+
+        Used to refuse deleting a client that is still in use. Not scoped by organisation:
+        pass a ``client_id`` the service already verified.
+
+        Args:
+            client_id: The verified client.
+
+        Returns:
+            The number of live projects.
+        """
         result = await self.session.execute(
             select(func.count()).where(
                 Project.client_id == client_id,

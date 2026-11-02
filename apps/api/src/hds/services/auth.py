@@ -1,4 +1,11 @@
-"""Authentication service: login, refresh, logout, logout-all."""
+"""Authentication service: login, refresh, logout, logout-all.
+
+Layer: services. May import ``hds.repositories``, ``hds.models`` and ``hds.core``; MUST NOT
+import routers or build HTTP responses (Constitution II).
+
+Policy implemented here: Argon2id password check, lockout after repeated failures, short-lived
+access tokens and rotating single-use refresh tokens (Constitution VI).
+"""
 
 import hashlib
 import uuid
@@ -22,23 +29,62 @@ def _verify_password(plain: str, hashed: str) -> bool:
 
 @dataclass
 class TokenResponse:
+    """The credentials returned by a successful sign-in or refresh.
+
+    Attributes:
+        access_token: Short-lived JWT for the ``Authorization`` header.
+        refresh_token: Raw single-use token; only its hash is stored server-side.
+        token_type: Always ``bearer``.
+    """
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
 
 
 class AuthService:
+    """Sign-in, token rotation and sign-out."""
+
     def __init__(
         self,
         user_repo: UserRepository,
         token_repo: RefreshTokenRepository,
         config: Any,
     ) -> None:
+        """Wire the service.
+
+        Args:
+            user_repo: User lookup and lockout counters.
+            token_repo: Refresh-token storage.
+            config: Settings supplying token lifetimes, the signing key and lockout limits.
+        """
         self._user_repo = user_repo
         self._token_repo = token_repo
         self._config = config
 
     async def login(self, email: str, password: str) -> TokenResponse:
+        """Authenticate by email and password and issue a token pair.
+
+        Unknown email, wrong password and an inactive account all return the same
+        ``auth.invalid_credentials`` so a caller cannot tell which accounts exist. The lock is
+        checked before the password, so a locked account cannot be probed. A wrong password
+        adds to the failure counter and, at ``LOGIN_MAX_FAILURES``, locks the account for
+        ``LOGIN_LOCKOUT_MINUTES``; a success resets the counter.
+
+        Args:
+            email: Account email, matched exactly.
+            password: Clear-text password.
+
+        Returns:
+            A new access and refresh token.
+
+        Raises:
+            AuthError: ``auth.invalid_credentials`` (HTTP 401) or ``auth.account_locked``
+                (HTTP 423).
+
+        Side effects:
+            Updates the failure counter and lock time; stores the new refresh-token hash.
+        """
         user = await self._user_repo.get_by_email(email)
         if user is None:
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
@@ -83,6 +129,25 @@ class AuthService:
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
     async def refresh(self, raw_token: str) -> TokenResponse:
+        """Exchange a refresh token for a new pair; the presented token is spent.
+
+        Rotation means each refresh token works once: replaying a used token fails as revoked,
+        which limits the damage of a stolen token. The user is reloaded, so a deactivated
+        account cannot refresh.
+
+        Args:
+            raw_token: The refresh token the client holds.
+
+        Returns:
+            A new access and refresh token.
+
+        Raises:
+            AuthError: ``auth.invalid_token`` (unknown token, or user gone or inactive),
+                ``auth.token_revoked`` or ``auth.token_expired``. All map to HTTP 401.
+
+        Side effects:
+            Revokes the presented token and stores the new one.
+        """
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None:
@@ -117,6 +182,14 @@ class AuthService:
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
     async def logout(self, raw_token: str) -> None:
+        """Revoke one refresh token, ending that session.
+
+        Idempotent and silent: an unknown or already-revoked token is ignored, so signing out
+        twice, or with a stale token, is not an error.
+
+        Args:
+            raw_token: The refresh token to revoke.
+        """
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None or stored.revoked_at is not None:
@@ -124,4 +197,11 @@ class AuthService:
         await self._token_repo.revoke(stored.id)
 
     async def logout_all(self, user_id: uuid.UUID) -> None:
+        """Revoke every refresh token of a user, ending all their sessions.
+
+        Existing access tokens stay valid until they expire (at most 15 minutes).
+
+        Args:
+            user_id: The user signing out everywhere (always the caller's own id).
+        """
         await self._token_repo.revoke_all_for_user(user_id)

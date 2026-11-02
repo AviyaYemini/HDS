@@ -1,4 +1,7 @@
-"""T123: IntegrityError is mapped to a 422 problem-details response, never a 500."""
+"""T123: IntegrityError is mapped to a 422 problem-details response, never a 500.
+
+Covers: FR-028.
+"""
 
 import pytest
 from fastapi import FastAPI

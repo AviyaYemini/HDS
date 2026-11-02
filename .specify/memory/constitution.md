@@ -1,13 +1,3 @@
-<!--
-SYNC IMPACT REPORT — remove before committing
-==============================================
-Version change:    (none) → 1.0.0
-Added sections:    Core Principles (10), Engineering Standards, Governance
-Removed sections:  n/a (initial creation)
-Modified principles: n/a
-Deferred TODOs:    none — all placeholders resolved from user input and docs/hds-spec.md
--->
-
 # HDS Constitution
 
 ## Core Principles
@@ -100,6 +90,9 @@ Every pull request MUST pass all of the following before merge:
 - `ruff` (lint and format), `mypy --strict`, and the full test suite (Python and TypeScript).
 - Migration check: `alembic check` detects no diff between models and migrations.
 - PRs MUST be small and focused; commits MUST follow the Conventional Commits specification.
+- Documentation checks (Principle XI): `ruff` pydocstyle with the Google convention on `src`,
+  `interrogate` at 100% docstring coverage, a Markdown link check, and the PR template's
+  documentation checkbox ticked.
 
 CI is the authority; local pre-commit hooks mirror CI but do not substitute for it.
 
@@ -108,10 +101,41 @@ CI is the authority; local pre-commit hooks mirror CI but do not substitute for 
 Every database schema change MUST be delivered as a versioned, reversible Alembic migration.
 
 - Manual `ALTER TABLE` statements in any environment are forbidden.
-- An applied migration is never edited; a destructive change ships in two releases
-  (stop using the column, then drop it).
+- An applied migration's executable code is never edited; a destructive change ships in two
+  releases (stop using the column, then drop it).
+- Documentation of an applied migration (its docstrings and comments) MAY be edited, because
+  it cannot change the schema. Such an edit MUST leave the parsed code of the file identical
+  once docstrings are removed.
 
-*Testable:* CI runs `alembic check` and fails if models and migrations diverge.
+*Testable:* CI runs `alembic check` and fails if models and migrations diverge; the edit
+hook blocks any change to a committed migration whose code, docstrings aside, differs.
+
+### XI. Documentation as a Deliverable
+
+Documentation is part of the definition of done, not an afterthought.
+
+1. Every Python module MUST have a module docstring stating its purpose, its layer, and what
+   it MUST NOT depend on.
+2. Every public class, function, and method MUST have a Google-style docstring with an
+   imperative summary line, plus `Args`, `Returns`, and `Raises` where not obvious.
+   Docstrings MUST explain constraints, rules, error codes, and side effects; they MUST NOT
+   restate the code.
+3. Every router endpoint MUST carry a `summary` and a `description` that feed the OpenAPI
+   document.
+4. Comments MUST explain why, not what. Commented-out code is forbidden. A TODO MUST use the
+   form `TODO(<task id>)`.
+5. Every migration MUST state what it changes and why. Every test MUST have a descriptive
+   name and cite the requirement it covers.
+6. The repository MUST keep a root `README`, a `README` in `apps/api` and in `infra`, and an
+   index in `docs/`. Every architectural decision MUST have an ADR.
+7. Documentation changes MUST ship in the same pull request as the behaviour they describe.
+8. All documentation MUST be written in English.
+9. CI MUST enforce this principle with `ruff` pydocstyle (Google convention) on `src`,
+   `interrogate` at 100% coverage, a Markdown link check, and a PR template checkbox
+   confirming documentation is updated.
+
+*Testable:* each item above maps to a CI check or a PR review checkbox; a PR that fails
+any of them is blocked.
 
 ## Engineering Standards
 
@@ -136,4 +160,4 @@ This constitution supersedes all other stated practices. An amendment requires:
 **Compliance review**: each PR checklist MUST include a line confirming no principle is
 violated by the change.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-01
+**Version**: 1.2.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-02

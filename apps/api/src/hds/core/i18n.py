@@ -2,6 +2,9 @@
 
 Locale keys are exactly the error ``code`` values raised by routers and services
 (e.g. ``users.last_admin``); ``tests/unit/test_i18n.py`` fails if a code has no message.
+
+Layer: core. Reads ``hds/locales/*.json`` and imports nothing from other ``hds`` packages.
+Hebrew is the primary language, English the fallback (Constitution VIII).
 """
 
 import json
@@ -25,7 +28,20 @@ def _normalise(language: str) -> str:
 
 
 def message(code: str, language: str = DEFAULT_LANGUAGE) -> str:
-    """Return the message for ``code``; fall back to English, then to the code itself."""
+    """Return the message for an error code in the requested language.
+
+    Lookup never raises, so an untranslated code degrades gracefully instead of turning one
+    error into another: unsupported languages and regional tags (``he-IL``) are reduced to a
+    supported base language or English, a missing key falls back to English, and a key
+    missing everywhere returns the code itself.
+
+    Args:
+        code: Error code, which is also the locale key.
+        language: Language tag such as ``he`` or ``en-US``.
+
+    Returns:
+        The translated text, or ``code`` if no catalogue has it.
+    """
     lang = _normalise(language)
     text = _catalog(lang).get(code)
     if text is None and lang != DEFAULT_LANGUAGE:

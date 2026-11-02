@@ -1,6 +1,10 @@
 """Request field types whose limits mirror the database column sizes.
 
 Without them an over-long value passes validation and fails in PostgreSQL (a 500).
+
+Layer: core. Imports only pydantic and the standard library; schemas in routers use these
+aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a ``float``
+(Constitution VII).
 """
 
 from datetime import date
@@ -18,6 +22,7 @@ _Str = StringConstraints
 
 
 def _text(max_length: int) -> object:
+    """Build the length-and-no-NUL constraint shared by the text types below."""
     return _Str(max_length=max_length, pattern=_NO_NUL)
 
 

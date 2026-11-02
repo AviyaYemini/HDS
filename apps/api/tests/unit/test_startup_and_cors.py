@@ -1,4 +1,7 @@
-"""T138 (CORS origins) and T139 (production refuses the placeholder JWT secret)."""
+"""T138 (CORS origins) and T139 (production refuses the placeholder JWT secret).
+
+Covers: NFR-002, NFR-003.
+"""
 
 import pytest
 from fastapi.testclient import TestClient
