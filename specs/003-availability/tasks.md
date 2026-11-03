@@ -83,8 +83,8 @@ None. Each group stands alone.
 
 ## Phase 6: Polish and checkpoint P7
 
-- [ ] T028 Merge gate as at the end of 002: all gates, full suite, concurrency suite three times, timing tests, `scripts/contract_cli.sh` on a throwaway database, drift check, migration round trip 018 ↔ 019 on a seeded database; quickstart.md rows checked
-- [ ] T029 Close the log with the results and anything left open; commit `docs(spec): close 003 Part 1`. Do not push.
+- [X] T028 Merge gate as at the end of 002: all gates, full suite, concurrency suite three times, timing tests, `scripts/contract_cli.sh` on a throwaway database, drift check, migration round trip 018 ↔ 019 on a seeded database; quickstart.md rows checked
+- [X] T029 Close the log with the results and anything left open; commit `docs(spec): close 003 Part 1`. Do not push.
 
 ## Dependencies
 

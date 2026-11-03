@@ -310,3 +310,31 @@ Tests run on the private database `hds_p3_test`; `hds_test` is never used.
   unknown fields, so a misspelt optional field answers 201 without it. `ChangeRequest` could become a
   general strict request base. This needs the owner's decision, because the spec put create requests
   out of scope.
+
+## Checkpoint P7 (T028, T029)
+
+The 002 merge gate, run without `TEST_DATABASE_URL` (per-run databases), on b0e5691:
+
+| Check | Result |
+| --- | --- |
+| ruff, format, mypy strict (208 files), interrogate, import graph, pip-audit | all pass |
+| Full suite | 1526 passed |
+| Concurrency suite, three runs | 36 passed each time |
+| Timing | sign-in ratio 1.003 (unknown 63.4 ms, known 63.6 ms); reset request ratio 1.016 |
+| Contract (`scripts/contract_cli.sh`, throwaway database) | passed on the first attempt, no 5xx |
+| Migrations, throwaway database | 013 to head, down to 013, head again; `alembic check` clean |
+| Seeded round trip | seed, down to 018, head again; `alembic check` clean |
+| Drift check | contract and implementation agree |
+| Per-run databases left | 0 |
+
+quickstart.md rows: FR-001 to FR-004 (Group A tests), FR-005 (Group B), FR-006 and FR-007 (Group C and the
+unchanged suite), FR-008 (the volume test's replayed plans), FR-009 (migration 019 tests and the
+seeded round trip) are each covered by a named test above.
+
+Part 1 is complete on `003-availability`. Not pushed. Left open for the owner:
+
+- The follow-ups above: strict create requests, `CONCURRENTLY` for later index builds on live tables,
+  and the `login_throttle` purge's query shape.
+- Spec wording clarified by review: FR-002 and FR-003 (Group A), and the Assumptions list of change
+  operations, which now includes the group and qualification renames (Group B). Behaviour matches
+  the owner's stated intent in both. Please confirm.
