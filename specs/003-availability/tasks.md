@@ -100,3 +100,127 @@ None. Each group stands alone.
 ## Implementation strategy
 
 US1 first (the only new capability), then US2, then US3. Each group is committed on its own, so the branch is in a good state after any of them.
+
+---
+
+# Tasks: Part 2, availability and manual shifts
+
+**Input**: spec.md Part 2 (US4 to US8, FR-101 to FR-125, SC-101 to SC-106), plan.md Part 2 (P8 to P13),
+research.md R1 to R10, data-model.md Part 2, contracts/part2-api.md, quickstart.md Part 2.
+
+**Tests**: required (Constitution IV), as in Part 1. Each group: failing tests seen failing for the right
+reason, then code, the contract, mutation checks naming the catching test, all gates on `hds_p3_test`
+(never `hds_test`; never while another run uses it), /hds-review and /code-review high, the log
+`specs/003-availability/p8-log.md`, one commit. API paths are under `apps/api/`; client paths under
+`apps/client/` unless stated.
+
+**Story order**: US8 (shift types) is P2 in the spec but runs before US6, because a shift is created from
+its project's shift types (FR-111). US4 and US5 share the availability modules and run as one group.
+
+## Phase 7: Setup (Part 2)
+
+- [ ] T030 Start `specs/003-availability/p8-log.md` (decisions, findings, mutation results, deviations); record the owner decisions of 2026-11-03 (Managers publish, absences any time, app in `apps/client`)
+
+## Phase 8: Foundational, P8 (blocks every Part 2 story)
+
+### Group E: the pure rules
+
+- [ ] T031 [P] Failing unit tests in `tests/unit/scheduling/test_rules.py` for `hds.scheduling.validate`: overlap (`warnings.overlap`); rest below `min_rest` (`warnings.rest_too_short`, 22:00–06:00 then 07:00 gives 1 hour); weekly hours over `max_weekly` in the Sunday-to-Saturday week of `week_zone` (`warnings.weekly_hours_exceeded`); assignment on a blocked entry, an absence, a close entry (`warnings.blocked`, `warnings.absence`, `warnings.close_preference`), matching date range, shift type and weekday, with the date taken as the shift's start date in its site zone (R2); `warnings.over_headcount` and `warnings.under_headcount`; no warning for open entries or for a clean assignment; each warning carries the employee id and every shift id involved
+- [ ] T032 [P] Failing property tests in `tests/property/test_rules_properties.py` (Hypothesis): for random shifts of one employee, every pair that overlaps or rests less than `min_rest` is reported and no other pair is; reported weekly totals equal the real elapsed hours per week
+- [ ] T033 Failing purity test in `tests/unit/scheduling/test_purity.py`: importing `hds.scheduling` in a subprocess with only the standard library on the path succeeds, and its modules import nothing outside the standard library and the package (Constitution III)
+- [ ] T034 Implement `src/hds/scheduling/__init__.py`, `types.py` (`ShiftSlot(id, project_id, starts_at, ends_at, headcount, assigned)`, `Entry(kind, starts_on, ends_on, shift_type_id, weekday)`, `Settings(min_rest, max_weekly, week_zone)`, `Warning(code, employee_id, shift_ids)`, frozen dataclasses with standard-library types only) and `rules.py` (`validate`), and `local_span(date, start_local, end_local, crosses_midnight, zone)` for R4 (nonexistent local time moves forward by the gap; ambiguous takes the first occurrence)
+- [ ] T035 [P] DST tests in `tests/unit/scheduling/test_local_span.py`: 22:00–06:00 in `Asia/Jerusalem` is 8 hours on a normal night, 7 and 9 on the two change nights (SC-106); a start inside the spring gap moves forward
+- [ ] T036 Mutation checks on the rules: rest compared with `<=` instead of `<`; overlap ignoring touching ends; Monday-start weeks; close preference not reported; the date of a night shift taken from its end. Gates, both reviews, log; commit `feat(scheduling): pure validation rules for manual rostering (003 Group E)`
+
+### Group F: migration 020 and the models
+
+- [ ] T037 Failing migration test `tests/integration/test_migration_020.py` on a scratch database at 019: upgrade creates the six tables and the two `organisations` columns with the data-model constraints quoted exactly ("`min_rest_hours` SMALLINT NOT NULL DEFAULT 11", "`max_weekly_hours` SMALLINT NOT NULL DEFAULT 48", "`headcount` SMALLINT ≥ 1", "`pay_rate` NUMERIC(12,4) NULL (> 0 when set)", "`absence_kind` set if and only if kind is absence", "no two windows of one organisation overlap", "unique (`shift_id`, `user_id`)", "`ends_at` after `starts_at`"); each existing organisation gets morning 07:00–15:00, afternoon 15:00–23:00 and night 23:00–07:00 (crosses midnight); every check constraint refuses a bad row; downgrade removes all of it and upgrading again works; the revision id fits 32 characters
+- [ ] T038 Write `alembic/versions/020_availability_shifts.py` (revision id `020_availability_shifts`), creating `btree_gist` if absent and recording whether it did, so the downgrade removes it only then
+- [ ] T039 Models in `src/hds/models/{shift_type,availability,submission_window,shift,assignment}.py`, the `Organisation` settings columns, and the defaults for new organisations created by the app (the seed and any organisation-creation path); `alembic check` clean
+- [ ] T040 Mutation checks on the migration (a constraint missing, the downgrade leaving a table, defaults not seeded). Gates including the migration round trip; both reviews; log; commit `feat(db): tables for availability, shift types and shifts (003 Group F)`
+
+## Phase 9: US4 and US5, availability and windows (P1), Group G, P9
+
+**Goal**: FR-101 to FR-109. **Independent test**: US4 and US5 independent tests in spec.md.
+
+- [ ] T041 [P] [US5] Failing integration tests in `tests/integration/test_windows.py`: Manager and Admin create, change the deadline of, and delete a window; Employee may list windows but not create one (403); Client 403; overlapping periods refused 409 `windows.overlap`; `ends_on` before `starts_on` refused 422; another organisation's window is 404
+- [ ] T042 [P] [US5] Failing concurrency test `tests/concurrency/test_window_overlap.py`: two Managers creating overlapping windows at once leave exactly one (the exclusion constraint), the other 409
+- [ ] T043 [P] [US4] Failing integration tests in `tests/integration/test_availability_entries.py`: inside an open window an Employee adds, changes and removes blocked, open and close entries (date, range, shift type, weekday); after the deadline or with no window each is refused 409 `availability.window_closed` or `availability.no_window` and nothing changes; an absence (leave, reserve duty, sick) is accepted at any time (FR-105a); an entry with a shift type or weekday on an absence is refused 422; a second entry for an overlapping date and the same or no shift type is refused 409 `availability.conflict` (FR-104)
+- [ ] T044 [P] [US5] Failing integration tests in `tests/integration/test_availability_roles.py`: Manager and Admin list every employee's entries for a range; Admin adds, changes and removes any employee's entries after the deadline; Manager changing another's entry 403 `availability.admin_required`; Employee reading or changing another's 404; Client 403 on every operation (FR-107 to FR-109)
+- [ ] T045 [P] [US4] Failing concurrency test `tests/concurrency/test_entry_conflict.py`: two requests adding conflicting entries for one employee at once leave exactly one (the user row lock, R6)
+- [ ] T046 [US4] Repositories `src/hds/repositories/{submission_window,availability}.py`; services `src/hds/services/availability.py` (window rule judged at request time against the deadline, absence exception, conflict check under `lock_user_row`, role rules); routers `src/hds/routers/availability.py` for the window and constraint operations of contracts/part2-api.md; error codes with `en` and `he` text in `src/hds/locales/`
+- [ ] T047 [US4] Contract: the window and constraint operations in `specs/001-foundation-auth-org/contracts/openapi.yaml`, `docs/hds-api.md` Availability row and error codes; drift check
+- [ ] T048 [US4] Mutation checks: deadline compared inclusively the wrong way; absence made window-bound; Manager allowed to edit another's entry; conflict check ignoring weekday; the window rule judged on the first date only. Gates, both reviews, log; commit `feat(api): availability entries and submission windows (003 Group G)`
+
+## Phase 10: US8 and US6, shift types and the manual roster (P2, P1), Groups H and I, P10
+
+### Group H: shift types (US8)
+
+**Goal**: FR-110 to FR-112. **Independent test**: US8 independent test in spec.md.
+
+- [ ] T049 [P] [US8] Failing integration tests in `tests/integration/test_shift_types.py`: a new organisation lists morning, afternoon and night; Manager and Admin add, edit and retire a type; Employee may list, not change (403); Client 403; a non-crossing type ending before it starts refused 422; a duplicate active name refused 409 `shift_types.duplicate_name`; `PUT /projects/{id}/shift-types` sets the complete set and refuses another organisation's type with 404; changing a type's times leaves existing shifts unchanged (FR-112, checked after Group I creates shifts, so add that case in T053)
+- [ ] T050 [US8] Repository, service and router for shift types and project shift types (`src/hds/{repositories,services,routers}/shift_type*.py`), codes and locale texts; contract and `docs/hds-api.md`; mutation checks (crossing rule inverted, retire deleting, project set not scoped). Gates, reviews, log; commit `feat(api): shift types per project (003 Group H)`
+
+### Group I: shifts and assignments with warnings (US6)
+
+**Goal**: FR-113 to FR-120. **Independent test**: US6 independent test in spec.md.
+
+- [ ] T051 [P] [US6] Failing integration tests in `tests/integration/test_shifts.py`: Admin creates a shift from one of its project's types on a date, with times in the site zone (R4) and status draft; a type the project does not use refused 422 `shifts.type_not_in_project`; headcount < 1 and a non-positive pay rate refused 422; Admin changes times, headcount and pay rate, and deletes a shift with its assignments; Manager create, change, delete 403 (owner decision); Manager and Admin list drafts and published with assignments, cursor-paginated (FR-120); Employee and Client 403 on `GET /shifts`
+- [ ] T052 [P] [US6] Failing integration tests in `tests/integration/test_assignments.py`: Admin assigns and removes; each answer carries the warnings from `hds.scheduling.validate` for the cases of US6 scenarios 2 and 3 and every code in contracts/part2-api.md, and nothing is refused for a warning (FR-116, SC-103); warnings look across projects and drafts (FR-117); an inactive employee refused 409 `assignments.employee_inactive`; the same employee twice refused 409 `assignments.duplicate`; Manager 403
+- [ ] T053 [US6] Failing test in `tests/integration/test_shift_types.py` that editing a type's times leaves existing shifts unchanged (FR-112)
+- [ ] T054 [P] [US6] Failing concurrency test `tests/concurrency/test_assignment_duplicate.py`: two identical assignments at once leave one, the other 409
+- [ ] T055 [US6] Repositories `src/hds/repositories/{shift,assignment}.py` (the bounded read of R3, indexed by employee and start); service `src/hds/services/roster.py` (loads the R3 window, builds the pure inputs, calls `validate`, returns record plus warnings; pay rate Admin only, Decimal); router `src/hds/routers/shifts.py`; warning codes with `en` and `he` text
+- [ ] T056 [US6] Contract (`{shift, warnings}`, `{assignment, warnings}`, `Warning`) and `docs/hds-api.md` Shifts and Assignments rows; drift check
+- [ ] T057 [US6] Mutation checks: warnings computed from the current project only; drafts left out; a warning turned into a refusal; Manager allowed to create; pay rate accepted from a Manager. Gates, both reviews, log; commit `feat(api): manual shifts and assignments with rule warnings (003 Group I)`
+
+## Phase 11: US7, publishing and visibility (P1), Group J, P11
+
+**Goal**: FR-121 to FR-125, SC-104. **Independent test**: US7 independent test in spec.md.
+
+- [ ] T058 [P] [US7] Failing integration tests in `tests/integration/test_publish.py`: Manager and Admin publish a project's drafts for a date range (answers the count); Employee and Client 403; published shifts stay published when an Admin changes them and the change shows at once
+- [ ] T059 [P] [US7] Failing integration tests in `tests/integration/test_my_shifts.py`: `GET /me/shifts` returns only published shifts the caller is assigned to, with date, times, project and site; no draft; the response schema has no field naming another employee, an assignment list or a headcount (checked on the generated schema and on the body)
+- [ ] T060 [P] [US7] Failing sweep `tests/integration/test_roster_visibility_sweep.py`, in the style of `test_cross_organisation_sweep.py`: every Part 2 read, for every role and a second organisation, never returns another employee's entries or assignments to an Employee, any draft to an Employee, or anything to a Client (SC-104), and lists every Part 2 operation so a new one fails until it is added
+- [ ] T061 [US7] Publish operation in `src/hds/services/roster.py` and `src/hds/routers/shifts.py`; `src/hds/routers/me_shifts.py` with its own schema (R7); contract and `docs/hds-api.md`; drift check
+- [ ] T062 [US7] Mutation checks: drafts included in `/me/shifts`; co-workers' shifts included; publish allowed to an Employee; another organisation's project publishable. Gates, both reviews, log; commit `feat(api): publish shifts and show employees their own (003 Group J)`
+
+## Phase 12: client, employee screens first (US4, US7), Group K, P12
+
+**Goal**: the employee side of US4 and US7 in `apps/client`. **Independent test**: on the web build, an
+employee signs in, adds an availability entry inside an open window, and sees their published shifts,
+in English, with the layout mirrored when RTL is forced.
+
+- [ ] T063 Install Node.js 22 LTS and pnpm (R10), or record in the log that the client gates run in CI only until they are installed; add the client jobs to `.github/workflows/ci.yml`: ESLint, `tsc --noEmit`, Jest with coverage, Playwright web with the RTL smoke test, and the generated-client drift check
+- [ ] T064 Scaffold the Expo app in `apps/client` (Expo Router, TypeScript strict, React Native Web), keeping `src/locales/en.json`, `src/locales/he.json` and `tests/e2e/`; pin exact versions; ESLint with a literal-string rule for JSX (Constitution VIII)
+- [ ] T065 Generate `packages/api-client` from the OpenAPI document with `openapi-typescript`, with `openapi-fetch` as the typed client (R9); a `generate` script and a check that fails when the committed copy differs (Constitution V)
+- [ ] T066 [P] i18n in `apps/client/src/i18n/` with `i18next` and `react-i18next`, English strings in `src/locales/en.json`; RTL through `I18nManager` and start/end styles only; a failing Jest test that a screen renders with no literal strings and that forced RTL flips its row direction
+- [ ] T067 [US4] Failing Jest tests, then sign-in in `apps/client/app/sign-in.tsx` and `src/api/session.ts`: tokens in `expo-secure-store` on phones, in memory only on the web (R9); refresh on 401 once; the API's error codes shown through translation keys
+- [ ] T068 [US4] Failing Jest tests, then "My availability" in `apps/client/app/(employee)/availability.tsx`: shows the open window and deadline, lists the employee's entries, adds, edits and removes blocked, open, close and absence entries, shows the API's refusal reasons (window closed, conflict) translated, and stays usable read-only after the deadline
+- [ ] T069 [US7] Failing Jest tests, then "My shifts" in `apps/client/app/(employee)/shifts.tsx`: lists the caller's published shifts from `GET /me/shifts`, times shown in the site's zone, crossing midnight and DST correct, an empty state when none
+- [ ] T070 [US4] Playwright on the web build in `apps/client/tests/e2e/test_us_availability.spec.ts` and `test_us_my_shifts.spec.ts` against a seeded API, plus the RTL smoke test; enable the skipped sign-in tests in `tests/e2e/test_us1_signin.spec.ts` that the new screens make runnable, and leave the rest skipped with their reason
+- [ ] T071 Update the README (client setup, scripts) and `docs/hds-api.md` where touched; gates (API and client), both reviews, log; commit `feat(client): employee availability and shifts screens (003 Group K)`
+
+## Phase 13: Checkpoint P13
+
+- [ ] T072 The Part 1 merge gate (all API gates, full suite, concurrency three times, timing, contract, drift, migration round trips 019 ↔ 020 on a seeded database) plus the client gates; every quickstart.md Part 2 row checked
+- [ ] T073 Close `p8-log.md` with the results and open items; commit `docs(spec): close 003 Part 2`. Do not push.
+
+## Dependencies (Part 2)
+
+- T030, then Group E (T031 to T036) and Group F (T037 to T040); Group F needs no Group E code, but run E first so the rules exist when services need them.
+- Group G (US4, US5) after F. Group H (US8) after F. Group I (US6) after E, F and H. Group J (US7) after I.
+- Group K (client) after G and J for its screens; T063 to T066 can start after F.
+- Checkpoint after all.
+
+## Parallel examples (Part 2)
+
+- Group E: T031, T032 and T035 (different test files).
+- Group G: T041, T043 and T044; T042 and T045.
+- Group I: T051, T052 and T054.
+- Group J: T058, T059 and T060.
+- Group K: T066 alongside T064 and T065 once the scaffold exists.
+
+## Implementation strategy (Part 2)
+
+The MVP of Part 2 is Groups E to J: the API for availability and the manual roster, usable by staff
+through the API. Group K adds the employee app on top. Each group is committed on its own, so the
+branch is in a good state after any of them.
