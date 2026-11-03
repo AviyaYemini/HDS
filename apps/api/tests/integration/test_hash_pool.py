@@ -28,6 +28,7 @@ from hds.main import app
 from hds.models.organisation import Organisation
 from hds.models.user import User
 from hds.repositories.user import UserRepository
+from tests.address_count import address_state, set_address_state
 from tests.conftest import OutboxMailSender
 
 PASSWORD = "Dev1234!"
@@ -288,41 +289,24 @@ async def test_a_sign_in_after_the_cooldown_ends_can_release_its_connection(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
     """An expired lock is judged from the row that was read, with no write before verification."""
-    await test_db.execute(
-        text(
-            "UPDATE users SET failed_login_attempts = 5, "
-            "locked_until = now() - interval '1 minute' WHERE email = 'employee@hds.test'"
-        )
+    await set_address_state(
+        test_db, "employee@hds.test", 5, datetime.now(UTC) - timedelta(minutes=1)
     )
-    await test_db.commit()
 
     signed_in = await async_client.post(
         "/auth/login", json={"email": "employee@hds.test", "password": PASSWORD}
     )
     assert signed_in.status_code == 200, signed_in.text
 
-    await test_db.execute(
-        text(
-            "UPDATE users SET failed_login_attempts = 5, "
-            "locked_until = now() - interval '1 minute' WHERE email = 'employee@hds.test'"
-        )
+    await set_address_state(
+        test_db, "employee@hds.test", 5, datetime.now(UTC) - timedelta(minutes=1)
     )
-    await test_db.commit()
     wrong = await async_client.post(
         "/auth/login", json={"email": "employee@hds.test", "password": "not-it"}
     )
 
     assert wrong.status_code == 401, wrong.text
-    await test_db.rollback()
-    row = (
-        await test_db.execute(
-            text(
-                "SELECT failed_login_attempts, locked_until FROM users "
-                "WHERE email = 'employee@hds.test'"
-            )
-        )
-    ).one()
-    assert tuple(row) == (1, None)  # the count restarted; the stale lock is gone
+    assert await address_state(test_db, "employee@hds.test") == (1, False)  # restarted, no lock
 
 
 class TestReleaseConnection:

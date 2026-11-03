@@ -43,7 +43,11 @@ def _svc() -> tuple[InvitationService, AsyncMock, AsyncMock, AsyncMock]:
     token_repo = AsyncMock()
     mailer = AsyncMock()
     refresh_repo = AsyncMock()
-    config = MagicMock(RESET_REQUEST_LIMIT_PER_ADDRESS=0, LOGIN_THROTTLE_RETENTION_HOURS=24)
+    config = MagicMock(
+        RESET_REQUEST_LIMIT_PER_ADDRESS=0,
+        LOGIN_THROTTLE_RETENTION_HOURS=24,
+        throttle_key=b"k" * 32,
+    )
     svc = InvitationService(user_repo, token_repo, mailer, refresh_repo, AsyncMock(), config)
     return svc, user_repo, token_repo, mailer
 
@@ -243,7 +247,9 @@ async def test_reset_password_valid_token_succeeds() -> None:
     token_repo.spend.assert_awaited_once_with(token.id)
     cast(Any, svc._refresh_token_repo).revoke_all_for_user.assert_awaited_once_with(user.id, "all")
     token_repo.cancel_for_user.assert_awaited_once_with(user.id)  # every purpose
-    user_repo.reset_failed_attempts.assert_awaited_once_with(user.id)
+    clear = cast(Any, svc._throttle_repo).clear
+    clear.assert_awaited_once()
+    assert clear.await_args.args[0] == "address"
 
 
 @pytest.mark.asyncio

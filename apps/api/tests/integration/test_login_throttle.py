@@ -26,6 +26,7 @@ from hds.models.user import User
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.user import UserRepository
 from hds.services.throttle import hash_key
+from tests.address_count import set_address_state
 
 KNOWN = "employee@hds.test"
 UNKNOWN = "nobody@hds.test"
@@ -138,11 +139,7 @@ async def test_a_lock_set_during_the_password_check_refuses_the_right_password(
     real = UserRepository.lock_user
 
     async def lock_user(self: UserRepository, target: uuid.UUID) -> None:
-        await test_db.execute(
-            text("UPDATE users SET locked_until = :t WHERE id = :u"),
-            {"t": datetime.now(UTC) + timedelta(minutes=15), "u": target},
-        )
-        await test_db.commit()
+        await set_address_state(test_db, KNOWN, LIMIT, datetime.now(UTC) + timedelta(minutes=15))
         await real(self, target)
 
     monkeypatch.setattr(UserRepository, "lock_user", lock_user)
@@ -181,14 +178,7 @@ async def test_nothing_is_written_before_the_password_check_after_a_cooldown(
     seed_users: dict[str, User],
 ) -> None:
     """A write first would make ``release_connection`` refuse, and the sign-in would be a 500."""
-    await test_db.execute(
-        text(
-            "UPDATE users SET failed_login_attempts = :n, "
-            "locked_until = now() - interval '1 minute' WHERE email = :e"
-        ),
-        {"n": LIMIT, "e": KNOWN},
-    )
-    await test_db.commit()
+    await set_address_state(test_db, KNOWN, LIMIT, datetime.now(UTC) - timedelta(minutes=1))
 
     answer = await attempt(async_client, KNOWN, PASSWORD)
 
@@ -352,7 +342,7 @@ async def test_a_recent_failure_keeps_an_old_row_alive(
     await attempt(async_client, UNKNOWN)  # a second failure on the old row
 
     stored = await row(test_db, "address", UNKNOWN)
-    assert stored.failures == 2
+    assert stored.failures == 1  # more than a day without a failure restarts the count (FR-221)
     assert datetime.now(UTC) - stored.updated_at < timedelta(minutes=1)
 
     await attempt(async_client, "someone.else@hds.test")  # runs the batch clean

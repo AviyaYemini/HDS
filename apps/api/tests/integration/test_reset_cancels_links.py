@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.config import get_settings
 from hds.core.security import generate_refresh_token
 from hds.models.user import User
+from tests.address_count import address_state
 from tests.conftest import OutboxMailSender
 
 EMAIL = "employee@hds.test"
@@ -147,12 +148,5 @@ async def test_a_completed_reset_clears_the_lockout(
 
     assert (await confirm(async_client, link, NEWER_PASSWORD)).status_code == 204
 
-    await test_db.rollback()
-    row = (
-        await test_db.execute(
-            text("SELECT failed_login_attempts, locked_until FROM users WHERE email = :e"),
-            {"e": EMAIL},
-        )
-    ).one()
-    assert tuple(row) == (0, None)
+    assert await address_state(test_db, EMAIL) == (0, False)
     assert await sign_in(async_client, NEWER_PASSWORD) == 200

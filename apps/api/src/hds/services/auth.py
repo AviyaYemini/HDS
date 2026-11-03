@@ -21,7 +21,7 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
-from hds.services.throttle import SignInThrottle, live_lock
+from hds.services.throttle import SignInThrottle
 
 
 def _locked(locked_until: datetime) -> AuthError:
@@ -70,7 +70,7 @@ class AuthService:
         self._token_repo = token_repo
         self._config = config
         self._link_repo = link_repo
-        self._throttle = SignInThrottle(user_repo, throttle_repo, config)
+        self._throttle = SignInThrottle(throttle_repo, config)
 
     async def login(self, email: str, password: str, network: str | None = None) -> TokenResponse:
         """Authenticate by email and password and issue a token pair.
@@ -113,7 +113,7 @@ class AuthService:
         user = await self._user_repo.get_by_email(email)
         # Judged from what was just read: a lock that has run out simply no longer counts, and the
         # answer is the same whether or not the address has an account (FR-221).
-        locked_until = await self._throttle.address_locked_until(user, email, now)
+        locked_until = await self._throttle.address_locked_until(email, now)
         if locked_until is not None:
             raise _locked(locked_until)
 
@@ -122,11 +122,11 @@ class AuthService:
             # Do the same expensive check as for a real account, so the answer takes as long and
             # an attacker cannot tell unknown addresses from known ones (FR-214).
             await passwords.verify_against_dummy(password)
-            await self._throttle.register_failure(None, email, network, datetime.now(UTC))
+            await self._throttle.register_failure(email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
         if not await passwords.verify_password(password, user.password_hash):
-            await self._throttle.register_failure(user, email, network, datetime.now(UTC))
+            await self._throttle.register_failure(email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
         if not user.is_active:
@@ -141,11 +141,13 @@ class AuthService:
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
         # Guesses overlap while they wait for a hash, so the lock may have been set since the
         # first check. The current time matters: ``now`` is from before that wait (FR-221).
-        locked_until = live_lock(current.locked_until, datetime.now(UTC))
+        locked_until = await self._throttle.address_locked_until(email, datetime.now(UTC))
         if locked_until is not None:
             raise _locked(locked_until)
 
-        await self._user_repo.reset_failed_attempts(user.id)
+        locked_until = await self._throttle.clear_address(email, datetime.now(UTC))
+        if locked_until is not None:
+            raise _locked(locked_until)
 
         access_token = create_access_token(
             sub=user.id,

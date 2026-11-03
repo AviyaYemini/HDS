@@ -52,7 +52,9 @@ class User(TimestampedBase):
     non-deleted users, whatever the letter case (partial index ``uq_users_email_ci`` on
     ``lower(email)``); ``default_hourly_rate`` is positive when set; users are soft-deleted
     (``is_deleted``) so history stays intact and the email can be reused.
-    ``failed_login_attempts`` and ``locked_until`` implement account lockout.
+    ``failed_login_attempts`` and ``locked_until`` are no longer used: every address's sign-in
+    failures are counted in ``login_throttle`` (FR-221). They stay because dropping them needs a
+    migration.
 
     ``activated_at`` is when the account was first active; it is null only for a *pending* account
     (invited, never activated). The check constraint ``ck_users_active_has_activated_at`` makes

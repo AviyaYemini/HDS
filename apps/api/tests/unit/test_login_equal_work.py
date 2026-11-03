@@ -54,8 +54,6 @@ def account(*, is_active: bool = True) -> User:
     user.password_hash = HASH
     user.role = UserRole.employee
     user.is_active = is_active
-    user.failed_login_attempts = 0
-    user.locked_until = None
     return user
 
 
@@ -64,13 +62,13 @@ def _no_counts() -> AsyncMock:
     store = AsyncMock()
     store.get.return_value = None
     store.register_failure.return_value = (1, None)
+    store.clear_unless_locked.return_value = None
     return store
 
 
 def service(user: User | None) -> AuthService:
     users = AsyncMock()
     users.get_by_email.return_value = user
-    users.register_failed_login.return_value = (1, None)
     config = MagicMock()
     config.LOGIN_MAX_FAILURES = 5
     config.LOGIN_LOCKOUT_MINUTES = 15

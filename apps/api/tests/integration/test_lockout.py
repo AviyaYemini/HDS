@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.config import get_settings
 from hds.models.user import User
+from tests.address_count import address_key, address_state
 
 EMAIL = "employee@hds.test"
 PASSWORD = "Dev1234!"
@@ -33,23 +34,17 @@ async def attempt(client: AsyncClient, password: str) -> Response:
 
 
 async def state(db: AsyncSession) -> tuple[int, bool]:
-    """``(consecutive failures, locked)`` as stored."""
-    await db.rollback()
-    row = (
-        await db.execute(
-            text(
-                "SELECT failed_login_attempts, locked_until IS NOT NULL FROM users WHERE email = :e"
-            ),
-            {"e": EMAIL},
-        )
-    ).one()
-    return int(row[0]), bool(row[1])
+    """``(consecutive failures, locked)`` as stored, in the one store every address uses."""
+    return await address_state(db, EMAIL)
 
 
 async def expire_the_lock(db: AsyncSession) -> None:
     await db.execute(
-        text("UPDATE users SET locked_until = now() - interval '1 minute' WHERE email = :e"),
-        {"e": EMAIL},
+        text(
+            "UPDATE login_throttle SET locked_until = now() - interval '1 minute' "
+            "WHERE kind = 'address' AND key_hash = :k"
+        ),
+        {"k": address_key(EMAIL)},
     )
     await db.commit()
 

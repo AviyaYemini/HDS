@@ -9,11 +9,13 @@ Covers: FR-221.
 """
 
 import hashlib
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import SecretStr
 
-from hds.services.throttle import hash_key
+from hds.services.throttle import SignInThrottle, hash_key
 from tests.settings_support import make_settings
 
 ADDRESS = "someone@hds.test"
@@ -64,3 +66,14 @@ def test_a_short_secret_is_refused_outside_development(
     monkeypatch.setenv("THROTTLE_SECRET_KEY", "short")
     with pytest.raises(ValueError, match="THROTTLE_SECRET_KEY"):
         make_settings()
+
+
+async def test_an_address_is_counted_under_its_folded_form() -> None:
+    """Over HTTP the request type folds case already; the throttle must not depend on that."""
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=None)
+    config = MagicMock(throttle_key=b"k" * 32)
+
+    await SignInThrottle(repo, config).address_locked_until(" Someone@HDS.test ", datetime.now(UTC))
+
+    assert repo.get.await_args.args == ("address", hash_key("someone@hds.test", b"k" * 32))

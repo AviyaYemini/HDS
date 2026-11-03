@@ -1,9 +1,9 @@
 """The sign-in lockout rule, the same for a registered and an unregistered address.
 
 Layer: services. May import ``hds.repositories``, ``hds.models`` and ``hds.core``; MUST NOT import
-routers or build HTTP responses (Constitution II). This coordinates two stores, which is service
-work: a registered address keeps its count on the user row, and an unregistered one in
-``login_throttle``. Sign-in sees one rule, so the two give the same answers (FR-221).
+routers or build HTTP responses (Constitution II). Every address is counted in ``login_throttle``
+under one rule, so the answers and the work are the same whether or not the address has an account
+(FR-221). The rule itself, not storage, is why this is service work.
 """
 
 import hashlib
@@ -12,9 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from hds.core.client_address import network_key
-from hds.models.user import User
 from hds.repositories.login_throttle import ADDRESS, NETWORK, LoginThrottleRepository
-from hds.repositories.user import UserRepository
 
 
 def hash_key(value: str, secret: bytes) -> str:
@@ -32,6 +30,22 @@ def hash_key(value: str, secret: bytes) -> str:
         The HMAC-SHA-256 hex digest.
     """
     return hmac.new(secret, value.encode(), hashlib.sha256).hexdigest()
+
+
+def address_key(address: str, secret: bytes) -> str:
+    """Return the stored key of a submitted address: its trimmed, lowercased form, keyed.
+
+    The one place this is computed, so sign-in, a reset request and a completed reset always meet
+    the same row.
+
+    Args:
+        address: The address as submitted.
+        secret: The server secret (``Settings.throttle_key``).
+
+    Returns:
+        The key under which the address is counted.
+    """
+    return hash_key(address.strip().lower(), secret)
 
 
 def live_lock(locked_until: datetime | None, now: datetime) -> datetime | None:
@@ -54,22 +68,19 @@ def live_lock(locked_until: datetime | None, now: datetime) -> datetime | None:
 class SignInThrottle:
     """Reads and writes lock state; it never writes before a password has been verified."""
 
-    def __init__(
-        self,
-        user_repo: UserRepository,
-        throttle_repo: LoginThrottleRepository,
-        config: Any,
-    ) -> None:
+    def __init__(self, throttle_repo: LoginThrottleRepository, config: Any) -> None:
         """Wire the rule.
 
         Args:
-            user_repo: Holds the count and lock of a registered address.
-            throttle_repo: Holds the count and lock of everything else.
+            throttle_repo: Holds the count and lock of every address and network address.
             config: Settings supplying the limits.
         """
-        self._user_repo = user_repo
         self._throttle_repo = throttle_repo
         self._config = config
+
+    def _address(self, address: str) -> str:
+        """Return the stored key of a submitted address."""
+        return address_key(address, self._config.throttle_key)
 
     async def network_locked_until(self, network: str | None, now: datetime) -> datetime | None:
         """Return the end of a live lock on a network address.
@@ -88,52 +99,59 @@ class SignInThrottle:
         )
         return live_lock(row.locked_until, now) if row else None
 
-    async def address_locked_until(
-        self, user: User | None, address: str, now: datetime
-    ) -> datetime | None:
+    async def address_locked_until(self, address: str, now: datetime) -> datetime | None:
         """Return the end of a live lock on an address, registered or not.
 
+        Read fresh, so a re-check after waiting sees a lock set meanwhile.
+
         Args:
-            user: The account holding the address, if any.
             address: The submitted address.
             now: Timezone-aware UTC current time.
 
         Returns:
             The lock end, or ``None``.
         """
-        if user is not None:
-            return live_lock(user.locked_until, now)
-        row = await self._throttle_repo.get(
-            ADDRESS, hash_key(address.strip().lower(), self._config.throttle_key)
-        )
+        row = await self._throttle_repo.get(ADDRESS, self._address(address))
         return live_lock(row.locked_until, now) if row else None
 
-    async def register_failure(
-        self, user: User | None, address: str, network: str | None, now: datetime
-    ) -> None:
-        """Count a failed sign-in, remove stale rows and commit, so the refusal keeps them.
+    async def clear_address(self, address: str, now: datetime) -> datetime | None:
+        """Forget an address's count after a successful sign-in, unless it was locked meanwhile.
+
+        A failing guess can lock the address after the success's re-check, and nothing serialises
+        the two, so the clean-up itself refuses to remove a live lock.
 
         Args:
-            user: The account holding the address, if any.
+            address: The submitted address.
+            now: Timezone-aware UTC current time.
+
+        Returns:
+            The end of a live lock that must refuse this sign-in, or ``None``.
+        """
+        return await self._throttle_repo.clear_unless_locked(ADDRESS, self._address(address), now)
+
+    async def register_failure(self, address: str, network: str | None, now: datetime) -> None:
+        """Count a failed sign-in, remove stale rows and commit, so the refusal keeps them.
+
+        Every address is counted the same way in the same store, so neither the answers nor the
+        work tell a registered address from an unknown one (FR-221).
+
+        Args:
             address: The submitted address.
             network: The client's address, or ``None`` when it is not known.
             now: Timezone-aware UTC current time.
         """
         config = self._config
         lock_until = now + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)
-        if user is not None:
-            await self._user_repo.register_failed_login(
-                user.id, config.LOGIN_MAX_FAILURES, lock_until, now
-            )
-        else:
-            await self._throttle_repo.register_failure(
-                ADDRESS,
-                hash_key(address.strip().lower(), self._config.throttle_key),
-                config.LOGIN_MAX_FAILURES,
-                lock_until,
-                config.LOGIN_LOCKOUT_MINUTES,
-                now,
-            )
+        retention = timedelta(hours=config.LOGIN_THROTTLE_RETENTION_HOURS)
+        await self._throttle_repo.register_failure(
+            ADDRESS,
+            self._address(address),
+            config.LOGIN_MAX_FAILURES,
+            lock_until,
+            config.LOGIN_LOCKOUT_MINUTES,
+            now,
+            restart_before=now - retention,
+        )
         if network is not None and config.LOGIN_RATE_LIMIT_PER_NETWORK > 0:
             await self._throttle_repo.register_failure(
                 NETWORK,
@@ -143,6 +161,5 @@ class SignInThrottle:
                 config.LOGIN_LOCKOUT_MINUTES,
                 now,
             )
-        retention = timedelta(hours=config.LOGIN_THROTTLE_RETENTION_HOURS)
         await self._throttle_repo.purge_stale(now - retention, now)
         await self._throttle_repo.commit()

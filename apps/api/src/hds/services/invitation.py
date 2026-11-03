@@ -22,11 +22,11 @@ from hds.core.security import generate_refresh_token, hash_token
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
-from hds.repositories.login_throttle import RESET, LoginThrottleRepository
+from hds.repositories.login_throttle import ADDRESS, RESET, LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.employee import guard_client_role
-from hds.services.throttle import hash_key, live_lock
+from hds.services.throttle import address_key, hash_key, live_lock
 
 logger = logging.getLogger("hds.invitation")
 
@@ -305,7 +305,7 @@ class InvitationService:
                     "the window ends. Check TRUSTED_PROXY_COUNT if this API is behind a proxy"
                 )
             return False
-        address_hash = hash_key(email.strip().lower(), config.throttle_key)
+        address_hash = address_key(email, config.throttle_key)
         return await self._count_reset(address_hash, address_limit, now) <= address_limit
 
     async def _count_reset(self, key_hash: str, limit: int, now: datetime) -> int:
@@ -411,7 +411,9 @@ class InvitationService:
         # A reset means the old credentials may be compromised: sign out every device.
         await self._refresh_token_repo.revoke_all_for_user(token.user_id, RevocationReason.all)
         await self._token_repo.cancel_for_user(token.user_id)
-        await self._user_repo.reset_failed_attempts(token.user_id)
+        await self._throttle_repo.clear(
+            ADDRESS, address_key(owner.email, self._config.throttle_key)
+        )
 
     async def _token_owner(self, user_id: uuid.UUID) -> User:
         """The token, not a caller's organisation, authorises redemption; look its owner up."""

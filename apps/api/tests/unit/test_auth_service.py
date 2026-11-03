@@ -24,8 +24,6 @@ def _make_user(**kwargs: object) -> User:
     user.role = kwargs.get("role", UserRole.employee)
     user.is_active = kwargs.get("is_active", True)
     user.is_deleted = kwargs.get("is_deleted", False)
-    user.failed_login_attempts = kwargs.get("failed_login_attempts", 0)
-    user.locked_until = kwargs.get("locked_until", None)
     return user
 
 
@@ -34,6 +32,7 @@ def _no_counts() -> AsyncMock:
     store = AsyncMock()
     store.get.return_value = None
     store.register_failure.return_value = (1, None)
+    store.clear_unless_locked.return_value = None
     return store
 
 
@@ -80,20 +79,21 @@ def _wrong_password(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_wrong_password_is_counted_by_the_repository_with_the_configured_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    user = _make_user(failed_login_attempts=3)  # the value from before this failure
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
-    user_repo.register_failed_login.return_value = (4, None)
+    counts = _no_counts()
     _wrong_password(monkeypatch)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), counts)
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "wrong")
 
     assert refused.value.code == "auth.invalid_credentials"
-    user_repo.register_failed_login.assert_awaited_once()
-    args = user_repo.register_failed_login.await_args.args
-    assert args[0] == user.id and args[1] == 5  # LOGIN_MAX_FAILURES
+    counts.register_failure.assert_awaited_once()
+    args = counts.register_failure.await_args
+    assert args.args[0] == "address" and args.args[2] == 5  # LOGIN_MAX_FAILURES
+    assert args.kwargs["restart_before"] is not None  # a day without a failure restarts it
 
 
 @pytest.mark.asyncio
@@ -101,24 +101,24 @@ async def test_wrong_password_is_counted_by_the_repository_with_the_configured_l
 async def test_the_service_does_not_add_one_to_the_count_itself(
     stored_count: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The old code computed ``user.failed_login_attempts + 1`` and locked one failure early."""
-    user = _make_user(failed_login_attempts=stored_count)
+    """The old code computed ``failed_login_attempts + 1`` itself and locked one failure early.
+
+    Whatever the count stored, the only write is the store's single counting statement, and the
+    account row is only read.
+    """
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
-    user_repo.register_failed_login.return_value = (stored_count + 1, None)
+    counts = _no_counts()
+    counts.register_failure.return_value = (stored_count + 1, None)
     _wrong_password(monkeypatch)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), counts)
 
     with pytest.raises(AuthError):
         await service.login("test@hds.test", "wrong")
 
-    # Whatever the stale value on the user object, the only write is the repository's single
-    # statement; nothing else touches the counter or the lock.
-    assert not user_repo.method_calls or {c[0] for c in user_repo.method_calls} <= {
-        "get_by_email",
-        "release_connection",
-        "register_failed_login",
-    }
+    counts.register_failure.assert_awaited_once()
+    assert {c[0] for c in user_repo.method_calls} <= {"get_by_email", "release_connection"}
 
 
 @pytest.mark.asyncio
@@ -127,14 +127,16 @@ async def test_an_expired_lock_no_longer_counts_and_nothing_is_written_before_ve
 ) -> None:
     order: list[str] = []
     expired = datetime.now(UTC) - timedelta(minutes=1)
-    user = _make_user(locked_until=expired, failed_login_attempts=5)
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
+    counts = _no_counts()
+    counts.get.return_value = MagicMock(locked_until=expired, failures=5)
 
     async def release(*_a: object) -> None:
         order.append("release")
 
-    async def register(*_a: object) -> tuple[int, None]:
+    async def register(*_a: object, **_k: object) -> tuple[int, None]:
         order.append("register")
         return 1, None
 
@@ -143,10 +145,10 @@ async def test_an_expired_lock_no_longer_counts_and_nothing_is_written_before_ve
         return False
 
     user_repo.release_connection.side_effect = release
-    user_repo.register_failed_login.side_effect = register
+    counts.register_failure.side_effect = register
 
     monkeypatch.setattr(passwords, "verify_password", verify)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), counts)
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "wrong")
@@ -159,31 +161,35 @@ async def test_an_expired_lock_no_longer_counts_and_nothing_is_written_before_ve
 async def test_a_live_lock_is_not_cleared_by_waiting_and_refuses_before_any_password_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    user = _make_user(locked_until=datetime.now(UTC) + timedelta(minutes=5))
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
+    counts = _no_counts()
+    counts.get.return_value = MagicMock(locked_until=datetime.now(UTC) + timedelta(minutes=5))
 
     verify = AsyncMock()
     monkeypatch.setattr(passwords, "verify_password", verify)
-    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), counts)
 
     with pytest.raises(AuthError) as refused:
         await service.login("test@hds.test", "anything")
 
     assert refused.value.code == "auth.account_locked"
     verify.assert_not_awaited()
-    user_repo.register_failed_login.assert_not_awaited()
+    counts.register_failure.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_login_while_locked_raises_account_locked() -> None:
     future = datetime.now(UTC) + timedelta(minutes=10)
-    user = _make_user(locked_until=future)
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
     token_repo = AsyncMock()
+    counts = _no_counts()
+    counts.get.return_value = MagicMock(locked_until=future)
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), counts)
 
     with pytest.raises(AuthError) as exc_info:
         await service.login("test@hds.test", "any")
@@ -193,19 +199,20 @@ async def test_login_while_locked_raises_account_locked() -> None:
 
 @pytest.mark.asyncio
 async def test_successful_login_resets_counter() -> None:
-    user = _make_user(failed_login_attempts=2)
+    user = _make_user()
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
     user_repo.get_for_auth.return_value = user
-    user_repo.reset_failed_attempts = AsyncMock()
     token_repo = AsyncMock()
     token_repo.create = AsyncMock()
+    counts = _no_counts()
 
-    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
+    service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), counts)
     with patch.object(passwords, "verify_password", AsyncMock(return_value=True)):
         await service.login("test@hds.test", "correct")
 
-        user_repo.reset_failed_attempts.assert_awaited_with(user.id)
+    counts.clear_unless_locked.assert_awaited_once()
+    assert counts.clear_unless_locked.await_args.args[0] == "address"
 
 
 @pytest.mark.asyncio

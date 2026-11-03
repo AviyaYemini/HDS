@@ -979,3 +979,69 @@ get a portal user (`spec.md:576` accepts this); `{"contract_start": null}` is ig
 schemas still use `nullable`, which OpenAPI 3.1 ignores; `promote_to_manager` and `promote_to_admin` have
 no route; `list_by_org` treats `None` as every project.
 
+# After the end-of-sprint report: the owner's answers
+
+## Spec (T428)
+
+FR-221 gains "the count restarts after 24 hours without a failure", FR-232 "wherever the count is kept",
+FR-231 says "valid IANA time-zone names". The plan's Constitution Check records `null`-to-422 on PATCH
+as a one-off exception to Principle V before the first release; the constitution is not amended. Editing
+`contract_start` is noted for the next feature.
+
+## P6 Group F: one failure count for every address (T429 to T432)
+
+Every address, registered or not, is now counted in `login_throttle`. A count restarts when its lock
+ends and after `LOGIN_THROTTLE_RETENTION_HOURS` without a failure, and a success or a completed reset
+removes it. `users.failed_login_attempts` and `users.locked_until` are no longer read or written; no
+migration. A side effect: a registered failure now commits once, like an unknown one.
+
+Found while testing: the old unknown-address rule did not work either. The upsert ran before the
+stale clean-up and refreshed the row, so a count from days ago kept adding up. The restart is now part
+of the upsert, so it does not depend on the clean-up.
+
+On deploy, counts and locks held on account rows are forgotten once. A lock in force ends early.
+
+Failing first: 5 of 8 new tests, including both kinds of address, so neither restarted after a day.
+
+Test changes, and why. These tests read or set the account columns, which the owner's decision retires;
+each now reads or sets the same count in the one store through `tests/address_count.py`, with the same
+assertions. The number of tests in each file is unchanged:
+`test_lockout.py`, `test_failed_login_persists.py`, `test_hash_pool.py`, `test_reset_cancels_links.py`,
+`test_login_throttle.py`, and the unit tests in `test_auth_service.py` and `test_invitation_service.py`.
+One assertion changed meaning: `test_a_recent_failure_keeps_an_old_row_alive` expected a three-day-old
+count to reach 2. Under the new rule it restarts at 1. The test's purpose, that a failure moves
+`updated_at` and the row survives the clean-up, still holds, and a new test pins that a count less than
+a day old still adds up.
+
+`/hds-review`: one stale sentence left in ADR 007 (fixed).
+
+`/code-review high` (read-only, nine findings; nothing lets a caller tell the two kinds of address apart):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | **A race**: the old count was serialised by the user-row lock, the new one is not, so a success could erase a lock that a failing guess set after the success's re-check | Fixed, test first: the clean-up deletes only a row with no live lock, and a kept live lock refuses the sign-in with 423 |
+| 2 | A reset racing a guess checked against the old password can leave a count of 1 | Accepted: anyone can lock any address by failing on purpose (ADR 007), and this adds nothing to that |
+| 3 | Locks and counts on account rows are forgotten once, on deploy | **For the owner.** Carrying them over needs a data step or reading the retired columns, which the decision ruled out. A lock lasts at most `LOGIN_LOCKOUT_MINUTES` |
+| 4 | Python and PostgreSQL lowercase non-ASCII text differently, so one account could have several counts | Not a defect: the request and the lookup both lowercase in Python, so every spelling that reaches one account has one key |
+| 5, 6, 7 | Stale ADR sentence, model and repository docstrings, a garbled module docstring | Fixed |
+| 8 | The address key was computed in three places | Fixed: `address_key` in `services/throttle.py` is the only one |
+| 9 | Unit tests still set up removed methods, so one checked nothing | Fixed: it now checks the throttle store's count and that the account row is only read |
+
+A process slip: one fix script was written to a file and not run, so a test went on failing. The exit
+status I read was the `cat`'s. Found because the race test still failed, and run before anything else.
+
+Mutation results, all caught on `hds_p3_test`, files restored. "Count a registered address on the
+account row again" from T431 cannot be written as a one-line mutation any more, because that code is
+gone; `test_a_registered_address_is_counted_in_the_throttle_table_only` guards it instead:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| V1 | No retention restart (T431) | `test_the_count_restarts_after_a_day_without_a_failure` |
+| V2 | A success does not clear (T431) | `test_a_success_clears_the_count` |
+| V3 | A reset does not clear (T431) | `test_a_completed_reset_clears_the_count_and_the_lock` |
+| V4 | No re-check after the user lock (T431) | `test_a_lock_set_by_a_guess_during_a_success_is_not_erased` |
+| V5 | Restart a day too late | `test_the_count_restarts_after_a_day_without_a_failure` |
+| V6 | Letter case not folded | `test_an_address_is_counted_under_its_folded_form` |
+| V7 | The clean-up deletes a live lock | `test_a_lock_set_by_a_guess_during_a_success_is_not_erased` |
+| V8 | A kept live lock does not refuse | same test |
+

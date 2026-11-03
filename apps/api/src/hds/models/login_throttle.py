@@ -14,11 +14,11 @@ from hds.models.base import Base
 class LoginThrottle(Base):
     """One count per submitted address, network address or reset key.
 
-    It mirrors ``failed_login_attempts`` and ``locked_until`` on ``users``, so an address with no
-    account is treated by the same rule as one with an account (FR-221). It has no organisation
-    and no foreign key, because an unregistered address belongs to nothing. ``key_hash`` is the
-    HMAC-SHA-256 hex digest of the key, never the address itself. ``kind`` is ``address``,
-    ``network`` or ``reset``; the last two count in a fixed window that starts at
+    Every submitted address, registered or not, is counted here, so both follow one rule and the
+    answers cannot tell them apart (FR-221); the account's own lock columns are no longer used. It
+    has no organisation and no foreign key, because an address need not belong to anything.
+    ``key_hash`` is the HMAC-SHA-256 hex digest of the key, never the address itself. ``kind`` is
+    ``address``, ``network`` or ``reset``; the last two count in a fixed window that starts at
     ``window_started_at``. A row is unlocked when ``locked_until`` is empty or in the past.
     """
 

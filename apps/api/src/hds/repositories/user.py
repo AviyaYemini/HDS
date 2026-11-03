@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import and_, case, func, null, or_, select, update
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -242,67 +242,6 @@ class UserRepository(OrgScopedRepository[User]):
         if fields.get("is_active", True) and fields.get("activated_at") is None:
             fields["activated_at"] = datetime.now(UTC)
         return fields
-
-    async def register_failed_login(
-        self, user_id: uuid.UUID, max_failures: int, lock_until: datetime, now: datetime
-    ) -> tuple[int, datetime | None]:
-        """Count one wrong password and lock the account at the limit, then commit it now.
-
-        One ``UPDATE`` adds one to the consecutive-failure count and, when the new count reaches
-        ``max_failures``, sets the lock, so the decision is made on the stored value and is
-        correct when several wrong passwords arrive together. A stored lock that has run out
-        restarts the count at 1 and goes away in the same statement (FR-213), so sign-in writes
-        nothing before the password is verified. The in-memory user is left alone
-        (``synchronize_session`` is off): the caller must use the count returned here, never
-        the object's own, which is the value from before this call.
-
-        The early commit is deliberate: the caller raises a refusal right after, and the request's
-        rollback would otherwise undo the count (see ``BaseRepository.commit``). It also commits
-        anything written earlier in the same request, such as a cleared expired lock.
-
-        Args:
-            user_id: The account that failed to sign in.
-            max_failures: Consecutive failures that lock the account.
-            lock_until: Timezone-aware UTC time at which sign-in is allowed again, used if this
-                failure reaches the limit.
-            now: Timezone-aware UTC current time, to tell whether a stored lock has run out.
-
-        Returns:
-            ``(failures, locked_until)`` as stored after the update; ``locked_until`` is empty
-            while the account is not locked.
-        """
-        expired = and_(User.locked_until.is_not(None), User.locked_until <= now)
-        new_count = case((expired, 1), else_=User.failed_login_attempts + 1)
-        result = await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(
-                failed_login_attempts=new_count,
-                locked_until=case(
-                    (new_count >= max_failures, lock_until),
-                    (expired, null()),
-                    else_=User.locked_until,
-                ),
-            )
-            .returning(User.failed_login_attempts, User.locked_until)
-            .execution_options(synchronize_session=False)
-        )
-        failures, locked_until = result.one()
-        await self.commit()
-        return int(failures), locked_until
-
-    async def reset_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Zero the failure counter and clear any lock (after a good sign-in).
-
-        Args:
-            user_id: The account that signed in.
-        """
-        await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(failed_login_attempts=0, locked_until=None)
-        )
-        await self.session.flush()
 
     async def update(self, user_id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> User:
         """Update columns of a user of the organisation.

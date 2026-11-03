@@ -8,17 +8,15 @@ Covers: FR-006b (lockout counter, feature 001), FR-210.
 """
 
 from httpx import AsyncClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.user import User
+from tests.address_count import address_state
 
 
 async def failed_attempts(db: AsyncSession, email: str) -> int:
-    row = await db.execute(
-        text("SELECT failed_login_attempts FROM users WHERE email = :e"), {"e": email}
-    )
-    return int(row.scalar_one())
+    failures, _ = await address_state(db, email)
+    return failures
 
 
 async def test_failed_sign_in_count_survives_the_refused_request(
