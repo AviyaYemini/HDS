@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user_or_self, require_admin, require_manager
-from hds.core.types import AssignableRole, Email, Money, Name, Password, Phone
+from hds.core.types import AssignableRole, Email, Money, Name, Password, Phone, omittable
 from hds.models.group import Group
 from hds.models.qualification import Qualification
 from hds.models.user import User, UserRole
@@ -70,11 +70,11 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    """Fields a Manager or Admin may change; omitted fields are left as they are."""
+    """Fields a Manager or Admin may change; omitted fields are left as they are, null clears."""
 
-    full_name: Name | None = None
+    full_name: Name = omittable()
     phone: Phone | None = None
-    role: AssignableRole | None = None
+    role: AssignableRole = omittable()
     default_hourly_rate: Money | None = None
 
 
@@ -228,7 +228,9 @@ async def get_employee(
     description=(
         "Manager or Admin. Update name, phone, hourly rate or role. Only an Admin may "
         "change an Admin or assign the Admin role. Changing a role ends the user's "
-        "sessions. Demoting the last active Admin returns 409 (`users.last_admin`)."
+        "sessions. Demoting the last active Admin returns 409 (`users.last_admin`). "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone."
     ),
 )
 async def edit_employee(
@@ -242,9 +244,11 @@ async def edit_employee(
     Manager or Admin. Update name, phone, hourly rate or role. Only an Admin may change an Admin
     or assign the Admin role. Changing a role ends the user's sessions. Demoting the last active
     Admin returns 409 (`users.last_admin`).
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
     """
     svc = _employee_svc(db)
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
     return await svc.edit_employee(actor=current_user, target_id=id, data=data)
 
 

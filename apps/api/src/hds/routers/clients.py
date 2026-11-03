@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager
-from hds.core.types import Email, Name, Password, Phone, StrictDate
+from hds.core.types import Email, Name, Password, Phone, StrictDate, omittable
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -54,14 +54,14 @@ class ClientCreateRequest(BaseModel):
 
 
 class ClientUpdateRequest(BaseModel):
-    """Client fields that may change; omitted fields are left as they are."""
+    """Client fields that may change; omitted fields are left as they are, null clears."""
 
-    name: Name | None = None
+    name: Name = omittable()
     contact_name: Name | None = None
     contact_email: EmailStr | None = None
     contact_phone: Phone | None = None
     contract_end: StrictDate | None = None
-    is_active: StrictBool | None = None
+    is_active: StrictBool = omittable()
 
 
 class ClientListResponse(BaseModel):
@@ -183,7 +183,9 @@ async def get_client(
     description=(
         "Manager or Admin. Update contact details, contract end or active state. "
         "Deactivating an active client also deactivates its portal users and ends their "
-        "sessions; reactivating the client does not reactivate them."
+        "sessions; reactivating the client does not reactivate them. "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone."
     ),
 )
 async def edit_client(
@@ -197,12 +199,14 @@ async def edit_client(
     Manager or Admin. Update contact details, contract end or active state. Deactivating an
     active client also deactivates its portal users and ends their sessions; reactivating the
     client does not reactivate them.
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
     """
     svc = _svc(db)
     return await svc.edit_client(
         actor=current_user,
         id=id,
-        data=body.model_dump(exclude_none=True),
+        data=body.model_dump(exclude_unset=True),
     )
 
 

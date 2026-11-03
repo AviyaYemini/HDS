@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
-from hds.core.types import Name, Phone
+from hds.core.types import Name, Phone, omittable
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
@@ -59,7 +59,7 @@ class ProfileUpdate(BaseModel):
     # instead of the schema silently dropping e.g. ``role``.
     model_config = {"extra": "allow"}
 
-    full_name: Name | None = None
+    full_name: Name = omittable()
     phone: Phone | None = None
 
 
@@ -88,7 +88,9 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
     description=(
         "Change the signed-in user's own full name or phone. Any other field is refused "
         "with 403 (`profile.field_not_allowed`), so role, rate, email and activity "
-        "cannot be changed here."
+        "cannot be changed here. "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone."
     ),
 )
 async def patch_me(
@@ -100,8 +102,10 @@ async def patch_me(
 
     Change the signed-in user's own full name or phone. Any other field is refused with 403
     (`profile.field_not_allowed`), so role, rate, email and activity cannot be changed here.
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
     """
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
     svc = EmployeeService(
         user_repo=UserRepository(db),
         token_repo=RefreshTokenRepository(db),

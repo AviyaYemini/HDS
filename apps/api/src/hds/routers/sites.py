@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
-from hds.core.types import Address, Name, Timezone
+from hds.core.types import Address, Name, Timezone, omittable
 from hds.models.user import User
 from hds.repositories.site import SiteRepository
 from hds.services.site import SiteService
@@ -46,9 +46,9 @@ class SiteCreateRequest(BaseModel):
 class SiteUpdateRequest(BaseModel):
     """Site fields that may change; omitted fields are left as they are."""
 
-    name: Name | None = None
-    address: Address | None = None
-    timezone: Timezone | None = None
+    name: Name = omittable()
+    address: Address = omittable()
+    timezone: Timezone = omittable()
 
 
 class SiteListResponse(BaseModel):
@@ -129,7 +129,9 @@ async def get_site(
     summary="Edit a site",
     description=(
         "Manager or Admin. Update a site's name, address or time zone. A time zone that "
-        "is not an exact IANA name is refused with 422 (`sites.timezone_invalid`)."
+        "is not an exact IANA name is refused with 422 (`sites.timezone_invalid`). "
+        "Every field here is required, so null is refused with 422; an omitted field is "
+        "left alone."
     ),
 )
 async def edit_site(
@@ -142,10 +144,11 @@ async def edit_site(
 
     Manager or Admin. Update a site's name, address or time zone. A time zone that is not a real
     IANA name is refused with 422 (`sites.timezone_invalid`).
+    Every field here is required, so null is refused with 422; an omitted field is left alone.
     """
     svc = SiteService(site_repo=SiteRepository(db))
     return await svc.edit_site(
         actor=current_user,
         id=id,
-        data=body.model_dump(exclude_none=True),
+        data=body.model_dump(exclude_unset=True),
     )

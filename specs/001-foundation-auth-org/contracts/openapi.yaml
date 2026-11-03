@@ -244,25 +244,35 @@ components:
           writeOnly: true
           description: Initial password supplied by the Manager (Proposed; min 12 characters).
 
-    UserUpdateRequest:
+    ProfileUpdate:
       type: object
-      description: >
-        PATCH — all fields optional. Employees may only send full_name and phone.
-        Managers may additionally send role and default_hourly_rate.
-        Admins may send any field.
+      description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         full_name:
           type: string
           minLength: 1
           maxLength: 255
         phone:
+          type: [string, "null"]
+          maxLength: 32
+
+    UserUpdateRequest:
+      type: object
+      description: PATCH — all fields optional; null clears a field that allows it.
+      properties:
+        full_name:
           type: string
+          minLength: 1
+          maxLength: 255
+        phone:
+          type: [string, "null"]
           maxLength: 32
         role:
           $ref: "#/components/schemas/UserRole"
         default_hourly_rate:
-          $ref: "#/components/schemas/MoneyAmount"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/MoneyAmount"
+            - type: "null"
 
     UserListResponse:
       type: object
@@ -419,23 +429,24 @@ components:
 
     ClientUpdateRequest:
       type: object
-      description: PATCH — all fields optional.
+      description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 255
         contact_name:
-          type: string
+          type: [string, "null"]
         contact_email:
-          type: string
+          type: [string, "null"]
           format: email
         contact_phone:
-          type: string
+          type: [string, "null"]
           maxLength: 32
         contract_end:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
         is_active:
           type: boolean
 
@@ -490,7 +501,7 @@ components:
 
     SiteUpdateRequest:
       type: object
-      description: PATCH — all fields optional.
+      description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
           type: string
@@ -564,15 +575,16 @@ components:
 
     ProjectUpdateRequest:
       type: object
-      description: PATCH — all fields optional.
+      description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
           type: string
         billing_rate:
           $ref: "#/components/schemas/MoneyAmount"
         end_date:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
         status:
           $ref: "#/components/schemas/ProjectStatus"
 
@@ -945,15 +957,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                full_name:
-                  type: string
-                  minLength: 1
-                  maxLength: 255
-                phone:
-                  type: string
-                  maxLength: 32
+              $ref: "#/components/schemas/ProfileUpdate"
       responses:
         "200":
           description: Updated profile.

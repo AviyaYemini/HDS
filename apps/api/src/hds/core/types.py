@@ -10,7 +10,7 @@ aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a
 import re
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -32,6 +32,18 @@ _Str = StringConstraints
 def _text(max_length: int) -> object:
     """Build the length-and-no-NUL constraint shared by the text types below."""
     return _Str(max_length=max_length, pattern=_NO_NUL)
+
+
+def omittable() -> Any:
+    """Declare a PATCH field that may be left out but not sent as null.
+
+    Handlers read PATCH bodies with ``exclude_unset``, so the default is never used, and the plain
+    type is what refuses null. FastAPI does not publish a default of ``None``.
+
+    Returns:
+        A pydantic field with a default.
+    """
+    return Field(default=None)
 
 
 # An account address: valid as an email, then trimmed and lowercased as a whole, because

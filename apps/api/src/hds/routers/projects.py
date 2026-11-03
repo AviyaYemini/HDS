@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager, require_manager_or_client
-from hds.core.types import Money, Name, StrictDate
+from hds.core.types import Money, Name, StrictDate, omittable
 from hds.models.project import ProjectStatus, ProjectType
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
@@ -61,12 +61,12 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    """Project fields that may change; omitted fields are left as they are."""
+    """Project fields that may change; omitted fields are left as they are, null clears."""
 
-    name: Name | None = None
-    billing_rate: Money | None = None
+    name: Name = omittable()
+    billing_rate: Money = omittable()
     end_date: StrictDate | None = None
-    status: ProjectStatus | None = None
+    status: ProjectStatus = omittable()
 
 
 class ProjectListResponse(BaseModel):
@@ -174,7 +174,9 @@ async def get_project(
     summary="Edit a project",
     description=(
         "Manager or Admin. Update name, billing rate, end date or status. The same rate "
-        "and date rules as creation apply."
+        "and date rules as creation apply. "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone."
     ),
 )
 async def edit_project(
@@ -187,9 +189,11 @@ async def edit_project(
 
     Manager or Admin. Update name, billing rate, end date or status. The same rate and date
     rules as creation apply.
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
     """
     svc = _svc(db)
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
     new_status = data.pop("status", None)
     project = None
     if data or new_status is None:

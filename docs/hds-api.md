@@ -35,6 +35,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 - *(Proposed)* Operations that hash a password (sign-in, invitation, accepting one, confirming a reset, creating an employee or a client user) answer 503 `service.busy` with `Retry-After` when the hashing queue is full, and change nothing.
 - Every request is one transaction: a change either fully happens or does not, and invitation and reset email is sent only after the change is saved and the response has gone out, so a 202 does not mean the mail was handed over.
 - A reset request only counts and answers 202, for every address. The account is looked at, the link stored and the mail sent after the response; a failure there is logged and never reported, and a crash loses that one mail. Requests are limited per address and per network in a 60-minute window (defaults 5 and 30); over a limit nothing is issued or sent and the answer is still 202.
+- In a `PATCH`, an omitted field is left alone, an explicit `null` clears a field that allows it (a phone, an hourly rate, a contract or project end date, a client's contact details), and `null` on a required field is refused with 422.
 - Timestamps travel as ISO 8601 in UTC; clients render in the site's timezone.
 - Writes that can be retried (job creation, assignment) accept an `Idempotency-Key` header.
 - Breaking changes ship under a new `/api/v2` prefix; additive changes do not.

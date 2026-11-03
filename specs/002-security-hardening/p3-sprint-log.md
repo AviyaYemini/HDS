@@ -796,3 +796,46 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | B4 | Own token no longer revoked | same test |
 | B5 | Revoked check removed | `test_logout_of_an_already_revoked_token_does_nothing` |
 
+## P6 Group C: clearing optional fields (T392 to T395, F17)
+
+Decided here: the required fields of the five PATCH models are `Field(default=None)` with their plain
+type, through `omittable()`. A first version also hid the default from the schema, and mutation N6 showed
+that had no effect: FastAPI does not publish a default of `None`. It was removed.
+
+For the owner: `null` on a required field used to answer 200 and now answers 422. D25 and T393 chose this,
+and record why, but Principle V reserves breaking changes for `/api/v2`. No client exists yet.
+
+Failing first: 27 of 29. T393's checks: the OpenAPI comparison shows only `null` removed from the eleven
+required PATCH fields, the drift check agrees, the contract suite passes, and `contract_cli.sh` exits 0
+with no issues, warnings or 5xx responses.
+
+`/hds-review`: `docs/hds-api.md` and five handler docstrings lagged (fixed), plus the note for the owner.
+
+`/code-review high` (read-only, eight findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | `{"contract_start": null}` answers 200 and changes nothing | Not changed. That field is not on the PATCH model, so it is ignored like any unknown key, and T392 says "as each endpoint has them". D25's list names it; the owner may want `extra=forbid` later |
+| 2 | **`nullable: true` means nothing in OpenAPI 3.1**, and my test accepted it | Fixed, in the five PATCH schemas, and the test no longer accepts it. Other schemas in the contract still use it |
+| 3 | Services do not refuse a null themselves | Not changed: the model does at the edge, and routers are the only callers |
+| 4 | Tests relied on the PATCH response, and sites had no omitted-field case | Fixed: they read back, send a valid sibling, and `/me` with `role: null` is pinned at 403 |
+| 5 | `omittable()` returns `Any`, so a plain `model_dump` could write None | Not changed: only PATCH models use it, and the mutations pin `exclude_unset` |
+| 6 | The site description promised clearing that sites do not have, and none mentioned the 422 | Fixed |
+| 7 | Handler docstrings lagged | Fixed |
+| 8 | Contract descriptions uneven, and one wrong about roles | Fixed |
+
+Process note: the first commit of this group went in incomplete. An edit script stopped part way, and a
+later check passed because the part it covered was fine. Amended before any further work. From here,
+every edit script is run on its own and its status read before anything else.
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| N1 | `exclude_none` back on `/me` (T394) | `test_my_own_phone_can_be_cleared_and_stays_if_omitted` |
+| N2 | On employees | `test_an_employees_optional_field_can_be_cleared` |
+| N3 | On projects | `test_a_projects_end_date_can_be_cleared` |
+| N4 | On clients | `test_a_clients_optional_field_can_be_cleared` |
+| N5 | A required site field nullable | `test_null_for_a_sites_required_field_is_refused` |
+| N7 | A required employee field nullable | `test_null_for_an_employees_required_field_changes_nothing` |
+
