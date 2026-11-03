@@ -85,7 +85,7 @@ HDS 1.0 (FastAPI, SQLite, Jinja2; about 2,300 lines of Python, 2 passing tests) 
 
 - Projects with an hourly rate and per-shift staffing needs (morning, afternoon, night).
 - Default shift templates: morning 06:00-14:00, afternoon 14:00-22:00, night 22:00-06:00 (overnight shifts roll into the next day).
-- Per-employee constraints: allowed or blocked shifts, allowed or blocked dates, preferred or disliked shifts.
+- Per-employee constraints: allowed or blocked shifts, allowed or blocked dates, shifts marked open or close (called preferred and disliked in 1.0).
 - Shift assignment as many-to-many (several employees per shift).
 - Manual shift reporting by employees, cost reports per project and employee, Excel export, and an `.ics` calendar feed.
 - A business overview page (`/admin/overview`), which is the seed of the original's manager overview.
@@ -128,7 +128,7 @@ Every requirement below traces to the original spec (scenarios A to F, its entit
 | ORG-5 | Organisation | Custom shift templates beyond morning, afternoon and night | Proposed | v1 |
 | ORG-6 | Organisation | Employee groups, so reports can be run per group | Original scenario A | v1 |
 | AVL-1 | Availability | Employees submit blocked dates and blocked shift types | Original scenario E, rule 2 | MVP |
-| AVL-2 | Availability | Employees mark shifts as preferred or disliked | Original rule 2 | MVP |
+| AVL-2 | Availability | Employees mark shifts as open (would like to work them) or close (would rather not); both are preferences the scheduler weighs, not blocks | Original rule 2 | MVP |
 | AVL-3 | Availability | Weekly cycle: a new roster each week, with a submission deadline | Original changes over time | v1 |
 | AVL-4 | Availability | Report absences by type: leave, reserve duty, sick | Original users, employee | v1 |
 | AVL-5 | Availability | Recurring weekly availability pattern | Proposed | v1 |
@@ -184,7 +184,7 @@ The defaults for H2 and H3 are placeholders to confirm against Israeli labour ru
 **Soft goals (traded off in the objective)**
 
 - Cover every required slot (highest weight).
-- Honour preferred shifts; avoid disliked shifts.
+- Honour shifts marked open; avoid shifts marked close.
 - Balance total hours across employees.
 - Balance the number of night shifts across employees.
 - Limit consecutive working days.
@@ -226,7 +226,7 @@ The model grows HDS 1.0's six tables to fourteen entities. Every table carries `
 | ShiftRequirement | weekday, template, headcount, required qualification | belongs to project |
 | Shift | project, start and end (UTC), location, hourly pay rate (admin-editable), status (draft, published, locked) | has many assignments |
 | Assignment | shift, user, source (generated, manual, reported), locked, approved by | joins shift and user |
-| Constraint | user, type (blocked, preferred, disliked, absence), absence kind (leave, reserve duty, sick), scope (date, shift type, weekday), valid from and to | belongs to user |
+| Constraint | user, type (blocked, open, close, absence), absence kind (leave, reserve duty, sick), scope (date, shift type, weekday), valid from and to | belongs to user |
 | Qualification | name | many-to-many with users |
 | ClientRequest | client, subject, message, status, answered by | belongs to a client |
 | AuditEvent | actor, action, entity, before, after, timestamp | append-only |
