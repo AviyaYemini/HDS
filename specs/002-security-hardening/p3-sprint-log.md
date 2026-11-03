@@ -936,3 +936,46 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | H5 | Client filter dropped | `test_the_client_list_keeps_its_filter` |
 | H6 | A different hash in `hash_token` | `test_issues_an_invitation_token_for_a_pending_account` |
 
+## P6 checkpoint: the merge gate (T406 not done: it pushes)
+
+All on the final code, without `TEST_DATABASE_URL`, so through the per-run databases:
+
+| Step | Result |
+| --- | --- |
+| ruff, format (src, tests, alembic, scripts), mypy strict, interrogate 100%, import graph, alembic check | Pass |
+| pip-audit | Pass; `hds-api` itself is not on PyPI, so it is not audited |
+| Full suite | 1446 passed, 2 deselected (the timing tests), in 9 min |
+| `tests/concurrency/` three runs in a row | 30 of 30 each time |
+| Timing, login | Ratio 1.095 |
+| Timing, reset request, pooled | Ratio 1.027 |
+| `contract_cli.sh`, fresh database | Exit 0 at the first attempt, no 5xx response |
+| Migrations 013, head, 013, head, then seed | Pass; `alembic check` clean |
+| Drift check, all codes | Agrees on all 46 operations |
+| `hds_run_*` databases left behind | 0 |
+
+That run printed one warning: `POST /clients/{id}/users` mostly met random client ids. The contract hook
+now gives it a real client. Earlier runs had no warnings, so this was chance, as was the original pair.
+
+Commit messages: commitlint's defaults refuse a header over 100 characters, a capitalised subject and a
+body line over 100. The 12 commits not yet on `origin` were rewritten with the same content, and T391's
+required subject was shortened for this. `refs/backup/before-reword` keeps the originals; the tree is
+identical. Commits already on `origin` have the same problem: two long headers (`cad8358`, `704024b`) and
+long body lines in five. Only a force push or a squash merge can fix those.
+
+## Open at the end of the sprint, for the owner
+
+Decisions:
+1. **Push and merge.** T406 and this branch's last 13 commits wait for the owner. `origin` holds `6b07af1`,
+   pushed at 00:13:12 by something other than these sessions' commands.
+2. **commitlint** will likely fail on commits already pushed: force push or squash.
+3. **An unknown address's failure count expires and a registered one's does not** (FR-221, ADR 007).
+4. **The `tzdata` list holds aliases** such as `Israel`, so FR-231's "canonical" is not strictly met.
+5. **`null` on a required PATCH field went from 200 to 422** on `/api/v1` (Principle V).
+6. **ST302 flakes in `contract_cli.sh`**, about one run in four, seen in CI too once pushed.
+7. **`contract_start` cannot be edited**, so a mistyped start blocks a correct end date.
+
+Smaller items, noted and left: no index on `expires_at`; a client deactivated while a hash waits can still
+get a portal user (`spec.md:576` accepts this); `{"contract_start": null}` is ignored; other contract
+schemas still use `nullable`, which OpenAPI 3.1 ignores; `promote_to_manager` and `promote_to_admin` have
+no route; `list_by_org` treats `None` as every project.
+

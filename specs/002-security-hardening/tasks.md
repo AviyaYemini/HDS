@@ -958,7 +958,7 @@ FR-221 to FR-223 share the `[F04]` label; their tasks are T339 to T358 and T407 
 | SC-211 | FR-222 | T343, T344, T348 |
 | SC-212 | FR-228 | T359, T360, T361 |
 
-Part 2 adds 123 tasks (T305 to T427; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 and T420 to T427 in P3); the file now holds 227 tasks. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
+Part 2 adds 123 tasks (T305 to T427; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 and T420 to T427 in P3); the file now holds 227 tasks. All are done except T406, which pushes. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
 
 ## Part 2 dependencies and execution order
 

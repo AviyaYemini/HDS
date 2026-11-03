@@ -9,9 +9,10 @@ those accounts survive and every operation is answered by the code behind it. Ac
 creates itself are still fair game.
 
 It also gives the few operations that need two or more related records something real to work
-on. A random id answers 404, so without this ``DELETE /clients/{id}/users/{user_id}``,
-``PATCH /projects/{id}``, ``PATCH /sites/{id}`` and ``POST /projects`` (whose body names a client
-and a site) never reach their logic, and Schemathesis warns "Missing test data". For those the hook
+on. A random id answers 404, so without this ``POST /clients/{id}/users``,
+``DELETE /clients/{id}/users/{user_id}``, ``PATCH /projects/{id}``, ``PATCH /sites/{id}`` and
+``POST /projects`` (whose body names a client and a site) never reach their logic, and Schemathesis
+warns "Missing test data". For those the hook
 creates the records first and puts their ids into the call; on the site writes it also supplies a
 real time zone on every other call, because an invented one is correctly refused (FR-217) and the
 accepted path would otherwise go unexercised.
@@ -122,6 +123,8 @@ def give_real_records(case: Any) -> None:
     if key == ("DELETE", "/api/v1/clients/{id}/users/{user_id}"):
         client_id = make_client()
         case.path_parameters.update({"id": client_id, "user_id": make_portal_user(client_id)})
+    elif key == ("POST", "/api/v1/clients/{id}/users"):
+        case.path_parameters["id"] = make_client()
     elif key == ("PATCH", "/api/v1/projects/{id}"):
         case.path_parameters["id"] = make_project()
     elif key == ("PATCH", "/api/v1/sites/{id}"):
