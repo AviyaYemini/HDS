@@ -258,6 +258,7 @@ components:
 
     UserUpdateRequest:
       type: object
+      additionalProperties: false
       description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         full_name:
@@ -316,6 +317,16 @@ components:
           minLength: 1
           maxLength: 255
 
+    GroupRenameRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
     GroupListResponse:
       type: object
       required: [items]
@@ -355,6 +366,16 @@ components:
 
     QualificationWriteRequest:
       type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    QualificationRenameRequest:
+      type: object
+      additionalProperties: false
       required: [name]
       properties:
         name:
@@ -429,6 +450,7 @@ components:
 
     ClientUpdateRequest:
       type: object
+      additionalProperties: false
       description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
@@ -507,6 +529,7 @@ components:
 
     SiteUpdateRequest:
       type: object
+      additionalProperties: false
       description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
@@ -581,6 +604,7 @@ components:
 
     ProjectUpdateRequest:
       type: object
+      additionalProperties: false
       description: PATCH — all fields optional; null clears a field that allows it.
       properties:
         name:
@@ -1365,7 +1389,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GroupWriteRequest"
+              $ref: "#/components/schemas/GroupRenameRequest"
       responses:
         "200":
           description: Updated group.
@@ -1466,7 +1490,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QualificationWriteRequest"
+              $ref: "#/components/schemas/QualificationRenameRequest"
       responses:
         "200":
           description: Updated qualification.

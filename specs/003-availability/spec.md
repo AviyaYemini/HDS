@@ -155,7 +155,8 @@ changes only where Stories 1 and 2 say it does.
 
 - Nothing is deployed yet, so removing the retired account fields in the release after the one that
   stopped using them meets the two-step rule for destructive changes (Constitution X).
-- "Change operations" are the partial edits of a profile, an employee, a client, a project and a site.
+- "Change operations" are the partial edits of a profile, an employee, a client, a project and a site,
+  and the renaming of a group and a qualification.
   Requests that create records keep their current handling of unknown fields; they are not in scope.
 - The client date-order error and the request validation error already exist and keep their meaning.
 - Removing unreachable internal operations is judged by the existing tests and the published API

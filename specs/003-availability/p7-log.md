@@ -68,3 +68,55 @@ Tests run on the private database `hds_p3_test`; `hds_test` is never used.
 - Final gates after the fixes: ruff, format, mypy strict (204 files), interrogate 100%, import graph,
   `alembic check`, full suite 1479 passed, concurrency suite 34 passed three times, drift check
   agrees.
+
+## Group B: unknown fields refused (T009 to T014)
+
+- Decision (E2): a `ChangeRequest` base in `core/types.py` with `extra="forbid"`, used by the employee,
+  client, project and site PATCH models. `ProfileUpdate` keeps `extra="allow"`, because its service
+  answers 403 `profile.field_not_allowed`, which names the problem more precisely. Create requests are
+  out of scope (spec Assumptions).
+- Failing first: 14 of 16 new tests failed, with 200 instead of 422 and `additionalProperties`
+  missing from the schemas. The "with a valid field" cases also showed the valid field being applied
+  while the unknown one was dropped, which is the hazard FR-005 names. The two `/me` tests passed
+  before and after, as they should.
+- T011: the unit and integration suites (1411 tests) passed unchanged with the stricter models, so no
+  existing test relied on an unknown field being ignored. No test was changed.
+- Mutations, all caught by a named test: B1 to B4, each model back to `BaseModel`; B5, the base set to
+  `extra="ignore"`; B6, `ProfileUpdate` set to `forbid` (caught by
+  `test_my_profile_keeps_its_own_refusal_of_unknown_fields`, 422 instead of 403).
+- Contract: `additionalProperties: false` on the request schemas. The drift check compares operations,
+  status codes and query parameters only, not component schemas, so
+  `test_the_contract_file_declares_unknown_fields_refused` reads the contract file itself.
+- /hds-review: no violations.
+- /code-review high, six findings:
+  1. **Group and qualification renames still dropped unknown fields (fixed; spec assumption
+     corrected).** FR-005 and SC-002 cover every change operation. The spec's list of five missed
+     these two, which share one model with their create request. Each rename now has its own
+     `GroupRenameRequest` and `QualificationRenameRequest` on `ChangeRequest`, so create requests keep
+     their handling as the spec says. The spec's Assumptions now list the renames. Tests failed first
+     (200, and the schemas did not exist).
+  2. **The API doc stated a rule for every PATCH (fixed):** it names the six operations and says create
+     requests still ignore unknown fields.
+  3. **The create-only test's docstring and values (fixed):** the project case sends a real other
+     client's id.
+  4. **The log claimed the drift check covered schemas (fixed):** the contract-file test above was
+     added and the log corrected.
+  5. **The module docstring (fixed).**
+  6. **Create requests also ignore unknown fields (not changed; out of scope by the spec):** recorded
+     as a Proposed follow-up below.
+  - The reviewer ran the suite itself without `TEST_DATABASE_URL`, so on its own per-run database. It
+    never touched `hds_test`, which was checked to be empty with no connections. My first test run of
+    the fixes collided with my own gate run on `hds_p3_test` (13 errors on user inserts). The gate run
+    was stopped and re-run after the fixes, so no result from the collision is used.
+- More mutations, all caught: B7 and B8, each rename back to `BaseModel`; B9, the group create made
+  strict (caught by `test_create_requests_keep_their_handling_of_unknown_fields`); B10, one
+  declaration removed from the contract file.
+- Final gates: ruff, format, mypy strict (205 files), interrogate 100%, import graph, `alembic check`,
+  full suite 1509 passed, concurrency suite 34 passed three times, drift check agrees.
+
+## Proposed follow-ups (not in Part 1)
+
+- Create requests (`POST` of employees, clients, projects, sites, groups, qualifications) still drop
+  unknown fields, so a misspelt optional field answers 201 without it. `ChangeRequest` could become a
+  general strict request base. This needs the owner's decision, because the spec put create requests
+  out of scope.

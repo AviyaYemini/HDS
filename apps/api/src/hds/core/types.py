@@ -1,6 +1,7 @@
-"""Request field types whose limits mirror the database column sizes.
+"""Request field types whose limits mirror the database column sizes, and the base for PATCH bodies.
 
-Without them an over-long value passes validation and fails in PostgreSQL (a 500).
+Without the types an over-long value passes validation and fails in PostgreSQL (a 500). The
+``ChangeRequest`` base refuses fields a change operation does not accept.
 
 Layer: core. Imports only pydantic and the standard library; schemas in routers use these
 aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a ``float``
@@ -14,7 +15,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
+    BaseModel,
     BeforeValidator,
+    ConfigDict,
     EmailStr,
     Field,
     StringConstraints,
@@ -32,6 +35,17 @@ _Str = StringConstraints
 def _text(max_length: int) -> object:
     """Build the length-and-no-NUL constraint shared by the text types below."""
     return _Str(max_length=max_length, pattern=_NO_NUL)
+
+
+class ChangeRequest(BaseModel):
+    """Base for PATCH bodies: a field the operation does not accept is refused with 422.
+
+    Dropping it silently would answer 200 to a misspelt field or one the caller may not set. The
+    published schema says ``additionalProperties: false``. Self-service profile edits do not use
+    this base, because their service answers an unknown field with its own 403.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 
 def omittable() -> Any:

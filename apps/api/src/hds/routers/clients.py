@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager
-from hds.core.types import Email, Name, Password, Phone, StrictDate, omittable
+from hds.core.types import ChangeRequest, Email, Name, Password, Phone, StrictDate, omittable
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -53,7 +53,7 @@ class ClientCreateRequest(BaseModel):
     contract_end: StrictDate | None = None
 
 
-class ClientUpdateRequest(BaseModel):
+class ClientUpdateRequest(ChangeRequest):
     """Client fields that may change; omitted fields are left as they are, null clears."""
 
     name: Name = omittable()
