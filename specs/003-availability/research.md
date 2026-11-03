@@ -74,7 +74,7 @@ is deployed, so no running code can still read them.
 project, start and end in UTC, headcount), the employee's other shifts nearby, their availability entries
 for those dates, and the organisation's settings (minimum rest, weekly maximum, time zone for weeks). It
 returns warnings with a code, the employee and the shift ids. It covers overlap, rest, weekly hours,
-blocked, absence, close and headcount.
+blocked, absence, close, headcount and an assigned employee who is no longer active.
 
 **Rationale**: the prompt asks for overlap, rest and weekly hours there; Constitution III says no rule
 exists outside the package, so the availability and headcount checks go there too. The future generator
@@ -122,13 +122,15 @@ has not passed, judged in the service at the time of the request. Absences skip 
 
 **Decision**: entries are ranges, so uniqueness cannot be a plain unique key. The service takes the
 employee's row lock (`lock_user_row`, as in 002) and refuses an entry that overlaps an existing one of
-the same employee with the same or no shift type on any shared date and weekday (FR-104).
-`availability.conflict` (409).
+the same employee with the same or no shift type on any shared date and weekday (FR-104, which the
+owner confirmed: an entry without a shift type covers every shift that date). `availability.conflict`
+(409).
 
 ## R7. Employee view of shifts
 
 **Decision**: a separate operation, `GET /me/shifts?from=&to=`, with its own response schema that has
-no assignments, headcount or names. Published only, assigned to the caller only. The staff operation
+no assignments, headcount or names, and carries the site's IANA time zone so the screens can show
+local times (FR-118, FR-123). Published only, assigned to the caller only. The staff operation
 `GET /shifts` refuses Employees and Clients.
 
 **Rationale**: a schema without the fields cannot leak them; filtering fields from a shared schema can.
@@ -140,9 +142,15 @@ no assignments, headcount or names. Published only, assigned to the caller only.
 id, the shift ids and a localised `detail`. Codes and texts sit in the API locale files with the error
 codes.
 
-**Idempotency**: a repeated assignment is refused 409 `assignments.duplicate` by a unique key on
-(shift, employee), so a retry cannot double-assign; the `Idempotency-Key` header named in
-docs/hds-api.md is left for the job and payment writes where a retry would otherwise repeat work.
+**Idempotency (owner decision 2026-11-03)**: `POST /shifts/{id}/assignments` accepts an
+`Idempotency-Key` header, as docs/hds-api.md says for retried writes (FR-115a). The key, the caller, a
+hash of the request (method, path, body) and the stored answer (status and body) are kept in
+`idempotency_keys` for 24 hours. A repeat with the same key and hash returns the stored answer and
+writes nothing; the same key with another hash answers 422 `idempotency.key_reused`; two requests with
+one key at once are serialised by the key's primary key, so exactly one runs. Without the header, the
+unique (shift, employee) key still refuses a second assignment with 409 `assignments.duplicate`. Keys
+are per caller, so one user cannot replay another's answer. Expired keys are removed by the existing
+purge script.
 
 ## R9. The client stack
 

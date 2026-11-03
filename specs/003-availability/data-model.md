@@ -33,8 +33,9 @@ All tables carry `id` (UUID), `created_at`, `updated_at` and `organization_id`, 
 | `availability_entries` | `user_id`, `kind` (`blocked`, `open`, `close`, `absence`), `absence_kind` (`leave`, `reserve_duty`, `sick`; set if and only if kind is absence), `starts_on`, `ends_on` (≥ `starts_on`), `shift_type_id` NULL, `weekday` SMALLINT NULL (0 Sunday to 6 Saturday); absences take no shift type or weekday; index on (`user_id`, `starts_on`) |
 | `shifts` | `project_id`, `shift_type_id`, `starts_at`, `ends_at` TIMESTAMPTZ (end after start), `headcount` SMALLINT ≥ 1, `pay_rate` NUMERIC(12,4) NULL (> 0 when set), `status` (`draft`, `published`) DEFAULT draft, `published_at` NULL; index on (`organization_id`, `starts_at`) and (`project_id`, `starts_at`) |
 | `assignments` | `shift_id` (cascade with the shift), `user_id`, `assigned_by`; unique (`shift_id`, `user_id`); index on (`user_id`) |
+| `idempotency_keys` | `user_id`, `key` VARCHAR(255), `request_hash` CHAR(64), `status_code` SMALLINT, `response_body` JSONB, `created_at`; primary key (`user_id`, `key`); index on `created_at` for the purge; no `organization_id` beyond the user's |
 
-Downgrade drops the six tables and the two organisation columns, and the extension only if 020 created
+Downgrade drops the seven tables and the two organisation columns, and the extension only if 020 created
 it.
 
 ## State
@@ -47,4 +48,7 @@ it.
 
 `ShiftSlot(id, project_id, starts_at, ends_at, headcount, assigned)`, `Entry(kind, starts_on, ends_on,
 shift_type_id, weekday)`, `Settings(min_rest, max_weekly, week_zone)`, `Warning(code, employee_id,
-shift_ids)`. Plain dataclasses with standard-library types only.
+shift_ids)`. Each assigned employee is passed with `is_active`, for `warnings.employee_inactive`.
+
+**Alias**: the stored prompt's "shift templates" and docs/hds-spec.md's `ShiftTemplate` are the
+`shift_types` table here; one name is used from here on. Plain dataclasses with standard-library types only.

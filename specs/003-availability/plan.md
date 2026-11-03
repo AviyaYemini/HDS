@@ -155,7 +155,7 @@ near the one being changed, research R3)
 times stored in UTC and computed in the site's time zone (Constitution VII); Node.js 22 LTS and pnpm
 are needed for the client and are not installed on the development machine yet (research R10)
 
-**Scale/Scope**: about 30 new operations, 6 tables, one pure package, one client app with 3 screens
+**Scale/Scope**: about 30 new operations, 7 tables, one pure package, one client app with 3 screens
 
 ## Constitution Check (Part 2)
 
@@ -164,14 +164,14 @@ are needed for the client and are not installed on the development machine yet (
 | I. Spec as source of truth | Every FR traces to AVL-1 to AVL-4, ORG-4/5, SCH-3/4, EMP-1, FIN-1; SCH-4 and ORG-5 are Proposed in the original list | Pass |
 | II. Layered backend | New routers, services, repositories and models only; services load shifts, the pure package judges them | Pass |
 | III. Pure scheduling package | `hds.scheduling` imports only the standard library (`zoneinfo` included); every warning rule lives there, not only overlap, rest and weekly hours, because "no rule exists outside it" | Pass |
-| IV. Test-first | Each group starts with failing tests; property tests for the rules; mutation checks as in Part 1 | Pass |
+| IV. Test-first | Each group starts with failing tests; property tests for every rule that judges availability or time; mutation checks as in Part 1; one Playwright smoke test per journey, the staff journeys (US5, US6, US8) written now and skipped until their screens exist, as 001 did | Pass, noted |
 | V. API-first | The contract is updated with each group; the client is generated from it into `packages/api-client`, and CI regenerates it and fails on a difference | Pass |
 | VI. Security | Role and organisation checks in services; an allowed and a forbidden test per operation; the employee shift view has no co-worker fields at all (research R7) | Pass |
 | VII. Money and time | Shift pay rate is `Decimal`, positive; shift times `timestamptz` in UTC, local times computed with the site's zone; DST handled by R4 | Pass |
 | VIII. Internationalisation | API messages and warning texts in `en` and `he`, as today; client strings externalised from the start with an ESLint literal-string rule; layout RTL-safe with an RTL smoke test. The prompt asks for English strings: client Hebrew translations are a follow-up, which VIII allows because it requires externalising, not translating | Pass, noted |
 | IX. Quality gates | API gates unchanged; CI gains client jobs: ESLint, `tsc --noEmit`, Jest with coverage, Playwright web with RTL, and the generated-client drift check | Pass |
 | X. Migrations only | Migration 020, reversible; no edit to an applied migration | Pass |
-| XI. Documentation | Docstrings, migration docstring, `docs/hds-api.md`, the README (client setup), and the contract | Pass |
+| XI. Documentation | Docstrings, migration docstring, `docs/hds-api.md`, the README (client setup), the contract, and two ADRs: 009 (rule checks as one pure function; warnings never refuse) and 010 (client stack and where tokens are kept) | Pass |
 
 **Post-design re-check**: the same result.
 

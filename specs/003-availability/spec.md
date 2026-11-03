@@ -192,6 +192,10 @@ Out of scope: automatic schedule generation."
   change or delete shifts or assignments; building the roster by hand stays an Admin permission.
 - Q: May an employee report an absence after the window has closed? → A: Yes, absences (leave, reserve
   duty, sick) can be reported at any time; blocked, open and close follow the window.
+- Q: Do repeated assignment requests need an `Idempotency-Key`, as docs/hds-api.md says for retried
+  writes? → A: Yes; added as FR-115a.
+- Q: Does an entry without a shift type clash with a shift-type entry on the same date? → A: Yes; it
+  covers every shift that date (FR-104).
 
 **Traces to**: AVL-1, AVL-2, AVL-3 (submission window), AVL-4, ORG-4 and ORG-5 (shift types per project),
 SCH-3 (manual roster), SCH-4 (warnings), EMP-1 (personal roster), FIN-1 (shift pay field), and the role
@@ -330,12 +334,13 @@ Admin creates a shift of that type there; another project that does not use it c
 
 - An absence reported after the deadline, or for dates with no window (for example, sick today):
   allowed. Absences do not wait for a window; blocked, open and close entries do.
-- Two entries of the same employee for the same date and shift type that contradict each other (blocked
-  and open, or open and close): refused; one entry per employee, date and shift type.
+- Two entries of the same employee that apply to the same shift on the same date (blocked and open, open
+  and close, or an all-day entry and a shift-type entry): refused; one entry per employee per shift and
+  date.
 - A shift that crosses midnight or a daylight-saving change: its length is the real elapsed time (for
   example 22:00 to 06:00 is 8 hours, 7 or 9 on the nights the clocks change).
-- An employee deactivated with future assignments: the assignments stay; listing the roster warns about
-  them. An inactive employee cannot be newly assigned.
+- An employee deactivated with future assignments: the assignments stay, and listing or changing those
+  shifts warns that the employee is inactive. An inactive employee cannot be newly assigned.
 - Assigning more employees than a shift's headcount: stored with a warning; fewer is a warning on the
   shift too.
 - The same employee assigned twice to one shift: refused.
@@ -356,8 +361,9 @@ Admin creates a shift of that type there; another project that does not use it c
 - **FR-102**: An entry MUST apply to a date or a range of dates, and blocked, open and close entries MAY
   be limited to one shift type or one weekday within that range.
 - **FR-103**: *Open* and *close* MUST be preferences only: they never prevent an assignment.
-- **FR-104**: An employee MUST NOT hold two entries for the same date and shift type; a second one is
-  refused with a reason.
+- **FR-104**: An employee MUST NOT hold two entries that apply to the same shift on the same date; a
+  second one is refused with a reason. An entry without a shift type applies to every shift type that
+  date, so it clashes with any other entry of that employee on that date (and weekday, when limited).
 - **FR-105**: An employee MUST be able to add, change and remove their own blocked, open and close
   entries only for dates in a period whose submission window is open, and only until its deadline.
   Outside that, the change is refused with a reason that names the closed or missing window, and nothing
@@ -390,12 +396,16 @@ Admin creates a shift of that type there; another project that does not use it c
   shift, which removes its assignments.
 - **FR-115**: An Admin MUST be able to assign an active employee to a shift and remove an assignment. An
   employee is assigned to a shift at most once; an inactive employee cannot be assigned.
+- **FR-115a**: Repeating an assignment request (for example after a lost answer) MUST NOT assign twice
+  or change anything: a repeat with the same request key and the same content gets the first answer
+  again; the same key with different content is refused (docs/hds-api.md, retried writes).
 - **FR-116**: Every creation or change of a shift or an assignment MUST answer with the warnings it
   causes and MUST NOT be refused because of them. Warnings cover at least: rest between two of an
   employee's shifts below the organisation's minimum; two of an employee's shifts overlapping; an
   employee's hours in a calendar week above the organisation's maximum; an assignment on a blocked entry
-  or an absence; an assignment on a close entry; more or fewer employees than the headcount. Each
-  warning names its rule, the employee and the shifts involved.
+  or an absence; an assignment on a close entry; more or fewer employees than the headcount; an
+  assigned employee who is no longer active. Each warning names its rule, the employee and the shifts
+  involved.
 - **FR-117**: Warnings MUST consider all of the employee's shifts in the organisation, across projects
   and including drafts.
 - **FR-118**: Shift lengths and rest MUST be measured in real elapsed time, correct across midnight and
@@ -409,8 +419,8 @@ Admin creates a shift of that type there; another project that does not use it c
 - **FR-121**: A Manager or Admin MUST be able to publish the draft shifts of a project for a range of
   dates. A published shift stays published when an Admin changes it, and the change is visible at once.
 - **FR-122**: Draft shifts MUST be visible to Managers and Admins only.
-- **FR-123**: An employee MUST see only published shifts they are assigned to, with date, times, project
-  and site, and MUST NOT see who else is assigned, how many, or any draft.
+- **FR-123**: An employee MUST see only published shifts they are assigned to, with date, times, project,
+  site and the site's time zone, and MUST NOT see who else is assigned, how many, or any draft.
 - **FR-124**: A Client MUST NOT see shifts, assignments or availability.
 - **FR-125**: Every rule above MUST hold however the request is made, not only in the screens, and only
   within the caller's organisation.

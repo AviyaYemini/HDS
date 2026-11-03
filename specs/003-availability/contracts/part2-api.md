@@ -15,12 +15,12 @@ and has an allowed and a forbidden test.
 | `GET /shifts?from=&to=&project=&status=` | M, A | Cursor pagination; drafts and published, with assignments |
 | `POST /shifts`, `PATCH /shifts/{id}`, `DELETE /shifts/{id}` | A | Answers `{shift, warnings}`; `pay_rate` A only |
 | `POST /shifts/publish` | M, A | Body: project, from, to; publishes drafts in the range; answers the count |
-| `POST /shifts/{id}/assignments` | A | Answers `{assignment, warnings}`; 409 `assignments.duplicate`, `assignments.employee_inactive` |
+| `POST /shifts/{id}/assignments` | A | Answers `{assignment, warnings}`; 409 `assignments.duplicate`, `assignments.employee_inactive`. Optional `Idempotency-Key` header (1 to 255 characters): a repeat returns the first answer; another body with the same key 422 `idempotency.key_reused` |
 | `DELETE /assignments/{id}` | A | Answers `{warnings}` (for example under headcount) |
-| `GET /me/shifts?from=&to=` | E, M, A | Own published assignments only; schema has no co-worker fields |
+| `GET /me/shifts?from=&to=` | E, M, A | Own published assignments only; date, start and end (UTC), project, site and the site's IANA time zone; schema has no co-worker fields |
 
 `Warning`: `{code, employee_id, shift_ids, detail}`; codes `warnings.overlap`, `warnings.rest_too_short`,
 `warnings.weekly_hours_exceeded`, `warnings.blocked`, `warnings.absence`, `warnings.close_preference`,
-`warnings.over_headcount`, `warnings.under_headcount`.
+`warnings.over_headcount`, `warnings.under_headcount`, `warnings.employee_inactive`.
 
 Clients get 403 on every operation above.
