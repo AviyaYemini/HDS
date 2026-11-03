@@ -839,3 +839,53 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | N5 | A required site field nullable | `test_null_for_a_sites_required_field_is_refused` |
 | N7 | A required employee field nullable | `test_null_for_an_employees_required_field_changes_nothing` |
 
+## P6 Group D: Client accounts and client dates (T396 to T399, F23, F24)
+
+Failing first: 5 of 9 tests, then 3 more from the review.
+
+Added here beyond the tasks:
+- `POST /clients` and `PATCH /clients/{id}` join `unprovable_operations.json`. A date order across two
+  fields is what that list is for, like the project dates, and `contract_cli.sh` failed with ST202
+  without it. T393's ban on this list applies to F17's nulls, not to this rule.
+- In the same commit, because the fix shares a file: the contract run found a real 500 on
+  `GET /employees?search=` with a NUL. It predates this PR and is not on the fix list. It is the
+  only free-text query parameter.
+
+**A flaky contract check, for the owner.** `contract_cli.sh` fails on about one run in four with ST302,
+"created resource not found", with no code cause found. Two forms appeared: `POST /employees` then `PUT
+/employees/{id}/qualifications`, where the 404 is about a random qualification id in the body, and `POST
+/qualifications` then `DELETE /qualifications/{id}` with an id seen nowhere else in the log. 500 create
+and delete rounds through the application all answered 204, so nothing suggests a lost write. It looks
+like a false alarm from inferred links, but one form is unexplained. The check was left on, because a
+rule of this sprint forbids weakening a test. CI will flake until someone decides.
+
+`/hds-review`: no violations.
+
+`/code-review high` (read-only, eight findings):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | **`POST /auth/invite` could still change a pending Client account's role** | Fixed, test first, with the shared guard. The review also showed my guards on `promote_*` protect methods no route calls |
+| 2 | `contract_start` cannot be edited, so a mistyped start blocks a correct end date | Not changed. No endpoint edits that field, which predates this. Raised in the report |
+| 3 | An unchanged bad pair blocked unrelated edits | Fixed, test first: only a changed end is judged |
+| 4 | `promote_*` not tested through the API | They have no route, so unit tests only. They are unused code; removing them is outside T397 |
+| 5 | `Raises` sections lagged | Fixed |
+| 6 | The date check repeats the project one | Skipped as cosmetic |
+| 7 | Tests asserted only the status | Fixed |
+| 8 | Two new codes not marked Proposed | Fixed |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| R1 | Edit lets a Client's role change (T398) | `test_a_client_accounts_role_cannot_change` |
+| R2 | Promote to manager allowed | `test_a_promotion_of_a_client_account_is_refused` |
+| R3 | Promote to admin allowed | same test |
+| R4 | Create date rule removed (T398) | `test_a_new_client_cannot_end_before_it_starts` |
+| R5 | Edit date rule removed | `test_an_edit_is_checked_against_the_stored_start` |
+| R6 | Equal dates refused | `test_a_contract_may_start_and_end_on_one_day` |
+| R7 | Any change to a Client account refused | `test_a_client_accounts_other_fields_can_still_change` |
+| R8 | Re-invitation changes a Client's role | `test_a_pending_client_account_cannot_be_re_invited_with_a_staff_role` |
+| R9 | An unchanged end is judged again | `test_a_stored_date_pair_that_breaks_the_rule_does_not_block_other_edits` |
+| R10 | NUL search term accepted | `test_a_nul_in_the_search_term_is_refused` |
+

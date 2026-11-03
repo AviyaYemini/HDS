@@ -53,5 +53,7 @@
   "users.client_inactive": "This user's client is inactive or deleted; reactivate the client first.",
   "users.pending_cannot_deactivate": "This account has not accepted its invitation yet, so it cannot be deactivated.",
   "service.busy": "The service is busy; try again shortly.",
-  "auth.rate_limited": "Too many failed sign-ins from this network; try again later."
+  "auth.rate_limited": "Too many failed sign-ins from this network; try again later.",
+  "users.client_role_locked": "The role of a Client account cannot be changed.",
+  "clients.date_range_invalid": "The contract end date must not be before its start date."
 }

@@ -26,6 +26,7 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import RESET, LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.services.employee import guard_client_role
 from hds.services.throttle import hash_key, live_lock
 
 logger = logging.getLogger("hds.invitation")
@@ -171,6 +172,7 @@ class InvitationService:
                     detail="Only an Admin may change an Admin.",
                 )
             if account.role != role:
+                guard_client_role(account)
                 await self._user_repo.update(account.id, account.organization_id, role=role)
             await self._token_repo.cancel_for_user(account.id)
 

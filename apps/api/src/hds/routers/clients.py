@@ -134,7 +134,8 @@ async def list_clients(
     summary="Create a client",
     description=(
         "Manager or Admin. Create a client with its contract start date and optional "
-        "contact details."
+        "contact details. "
+        "A contract end before its start returns 422 (`clients.date_range_invalid`)."
     ),
 )
 async def create_client(
@@ -145,6 +146,7 @@ async def create_client(
     """Create a client.
 
     Manager or Admin. Create a client with its contract start date and optional contact details.
+    A contract end before its start returns 422 (`clients.date_range_invalid`).
     """
     svc = _svc(db)
     return await svc.create_client(
@@ -185,7 +187,9 @@ async def get_client(
         "Deactivating an active client also deactivates its portal users and ends their "
         "sessions; reactivating the client does not reactivate them. "
         "An explicit null clears a field that allows it and is refused with 422 on a "
-        "required one; an omitted field is left alone."
+        "required one; an omitted field is left alone. "
+        "A contract end before the stored contract start returns 422 "
+        "(`clients.date_range_invalid`)."
     ),
 )
 async def edit_client(
@@ -201,6 +205,7 @@ async def edit_client(
     client does not reactivate them.
     An explicit null clears a field that allows it and is refused with 422 on a required one; an
     omitted field is left alone.
+    A contract end before the stored contract start returns 422 (`clients.date_range_invalid`).
     """
     svc = _svc(db)
     return await svc.edit_client(

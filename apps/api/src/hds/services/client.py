@@ -8,11 +8,12 @@ client that is no longer under contract cannot keep signing in.
 """
 
 import uuid
+from datetime import date
 from typing import Any
 
 from hds.core import passwords
 from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
-from hds.core.exceptions import ConflictError, NotFoundError
+from hds.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from hds.models.client import Client
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
@@ -21,6 +22,23 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.employee import validate_initial_password
+
+
+def _validate_contract_dates(start: date | None, end: date | None) -> None:
+    """Refuse a contract that ends before it starts (FR-243).
+
+    Args:
+        start: The contract's first day.
+        end: Its last day, ``None`` when open-ended.
+
+    Raises:
+        DomainValidationError: ``clients.date_range_invalid`` (HTTP 422).
+    """
+    if start is not None and end is not None and end < start:
+        raise DomainValidationError(
+            code="clients.date_range_invalid",
+            detail="contract_end must not be earlier than contract_start.",
+        )
 
 
 class ClientService:
@@ -77,8 +95,10 @@ class ClientService:
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
+            DomainValidationError: ``clients.date_range_invalid`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
+        _validate_contract_dates(data.get("contract_start"), data.get("contract_end"))
         return await self._client_repo.create(actor.organization_id, data)
 
     async def edit_client(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Client:
@@ -98,6 +118,9 @@ class ClientService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: The client is not in the organisation (HTTP 404).
+            DomainValidationError: ``clients.date_range_invalid`` (HTTP 422), judged with the
+                stored value of a field that is not sent. A service rule and not a constraint,
+                because rows stored before it may break it.
 
         Side effects:
             On deactivation, ends the portal users' sessions and cancels their links.
@@ -106,6 +129,8 @@ class ClientService:
         existing = await self._client_repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
+        if "contract_end" in data and data["contract_end"] != existing.contract_end:
+            _validate_contract_dates(existing.contract_start, data["contract_end"])
         if data.get("is_active") is False and existing.is_active:
             await self._deactivate_portal_users(id, actor.organization_id)
         return await self._client_repo.update(id, actor.organization_id, **data)

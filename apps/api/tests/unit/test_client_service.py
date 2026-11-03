@@ -348,3 +348,30 @@ async def test_portal_sessions_end_before_their_links_are_touched() -> None:
     await svc.edit_client(actor, uuid.uuid4(), {"is_active": False})
 
     assert order == ["user", "links"]
+
+
+@pytest.mark.asyncio
+async def test_a_contract_cannot_end_before_it_starts() -> None:
+    svc, repo, _ = _svc()
+
+    with pytest.raises(DomainValidationError) as refused:
+        await svc.create_client(
+            _actor(),
+            {"contract_start": date(2026, 2, 1), "contract_end": date(2026, 1, 31)},
+        )
+
+    assert refused.value.code == "clients.date_range_invalid"
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_edit_is_judged_against_the_stored_start() -> None:
+    svc, repo, _ = _svc()
+    existing = _client()
+    existing.contract_start = date(2026, 2, 1)
+    repo.get_by_id = AsyncMock(return_value=existing)
+
+    with pytest.raises(DomainValidationError):
+        await svc.edit_client(_actor(), existing.id, {"contract_end": date(2026, 1, 31)})
+
+    repo.update.assert_not_awaited()

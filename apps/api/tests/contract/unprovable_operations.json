@@ -35,6 +35,20 @@
       "operation_id": "login_auth_login_post",
       "suites": ["cli"],
       "reason": "the command-line run itself creates users and then guesses their passwords, so the account lockout (423) is the designed answer"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/clients",
+      "operation_id": "create_client_api_v1_clients_post",
+      "suites": ["pytest", "cli"],
+      "reason": "contract_end >= contract_start spans two fields, which OpenAPI cannot state (FR-243); answered 422 clients.date_range_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/clients/{id}",
+      "operation_id": "edit_client_api_v1_clients__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "same date-order rule as the create, judged against the stored start (FR-243)"
     }
   ]
 }

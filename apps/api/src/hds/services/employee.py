@@ -67,6 +67,22 @@ def validate_hourly_rate(rate: Any) -> None:
         )
 
 
+def guard_client_role(target: User) -> None:
+    """Refuse a role change on a Client account, which is tied to one client's data (FR-242).
+
+    Args:
+        target: The account whose role would change.
+
+    Raises:
+        ConflictError: ``users.client_role_locked`` (HTTP 409).
+    """
+    if target.role == UserRole.client:
+        raise ConflictError(
+            code="users.client_role_locked",
+            detail="The role of a Client account cannot be changed.",
+        )
+
+
 class EmployeeService:
     """Profile access for everyone and employee administration for Managers and Admins."""
 
@@ -257,7 +273,7 @@ class EmployeeService:
             ForbiddenError: ``users.manager_required``, or ``users.admin_required`` when a
                 Manager targets an Admin (HTTP 403).
             NotFoundError: The user is not in the organisation (HTTP 404).
-            ConflictError: ``users.last_admin`` (HTTP 409).
+            ConflictError: ``users.last_admin`` or ``users.client_role_locked`` (HTTP 409).
 
         Side effects:
             Revokes the user's refresh tokens so the new role applies at once.
@@ -265,6 +281,7 @@ class EmployeeService:
         ensure_role(actor, *MANAGER_ROLES)
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
+        guard_client_role(target)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
         updated = await self._user_repo.update(
@@ -289,9 +306,10 @@ class EmployeeService:
 
         Side effects:
             Revokes the user's refresh tokens.
+            ConflictError: ``users.client_role_locked`` (HTTP 409).
         """
         ensure_role(actor, *ADMIN_ROLES)
-        await self._get_target(actor, target_id)
+        guard_client_role(await self._get_target(actor, target_id))
         updated = await self._user_repo.update(
             target_id, actor.organization_id, role=UserRole.admin
         )
@@ -314,7 +332,8 @@ class EmployeeService:
             NotFoundError: The user is not in the organisation (HTTP 404).
             DomainValidationError: ``users.role_invalid`` or ``users.hourly_rate_invalid``
                 (HTTP 422).
-            ConflictError: ``users.last_admin`` when demoting the last active Admin (HTTP 409).
+            ConflictError: ``users.last_admin`` when demoting the last active Admin, or
+                ``users.client_role_locked`` for any role change on a Client account (HTTP 409).
 
         Side effects:
             Revokes the user's refresh tokens when the role changes.
@@ -327,6 +346,7 @@ class EmployeeService:
 
         role_changed = False
         if data.get("role") is not None:
+            guard_client_role(target)
             new_role = UserRole(data["role"])
             data["role"] = new_role
             self._check_assignable_role(actor, new_role)

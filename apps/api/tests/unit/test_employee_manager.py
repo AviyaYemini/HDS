@@ -486,3 +486,33 @@ async def test_deactivating_a_pending_account_is_refused() -> None:
     assert refused.value.code == "users.pending_cannot_deactivate"
     user_repo.update.assert_not_awaited()
     token_repo.revoke_all_for_user.assert_not_awaited()
+
+
+@pytest.mark.parametrize("change", ["manager", "admin"])
+@pytest.mark.asyncio
+async def test_a_promotion_of_a_client_account_is_refused(change: str) -> None:
+    actor = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    target = _make_user(role=UserRole.client, org_id=actor.organization_id)
+    user_repo.get_by_id = AsyncMock(return_value=target)
+    promote = svc.promote_to_manager if change == "manager" else svc.promote_to_admin
+
+    with pytest.raises(ConflictError) as refused:
+        await promote(actor, target.id)
+
+    assert refused.value.code == "users.client_role_locked"
+    user_repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_edit_of_a_client_accounts_role_is_refused() -> None:
+    actor = _make_user(role=UserRole.admin)
+    svc, user_repo, _ = _svc()
+    target = _make_user(role=UserRole.client, org_id=actor.organization_id)
+    user_repo.get_by_id = AsyncMock(return_value=target)
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.edit_employee(actor, target.id, {"role": "manager"})
+
+    assert refused.value.code == "users.client_role_locked"
+    user_repo.update.assert_not_awaited()

@@ -137,7 +137,7 @@ async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: Use
     ),
 )
 async def list_employees(
-    search: str | None = Query(default=None, max_length=255),
+    search: Name | None = Query(default=None),
     role: UserRole | None = None,
     is_active: bool | None = None,
     group_id: uuid.UUID | None = None,
@@ -230,7 +230,9 @@ async def get_employee(
         "change an Admin or assign the Admin role. Changing a role ends the user's "
         "sessions. Demoting the last active Admin returns 409 (`users.last_admin`). "
         "An explicit null clears a field that allows it and is refused with 422 on a "
-        "required one; an omitted field is left alone."
+        "required one; an omitted field is left alone. "
+        "Changing the role of a Client account returns 409 "
+        "(`users.client_role_locked`)."
     ),
 )
 async def edit_employee(
@@ -246,6 +248,7 @@ async def edit_employee(
     Admin returns 409 (`users.last_admin`).
     An explicit null clears a field that allows it and is refused with 422 on a required one; an
     omitted field is left alone.
+    Changing the role of a Client account returns 409 (`users.client_role_locked`).
     """
     svc = _employee_svc(db)
     data = body.model_dump(exclude_unset=True)
