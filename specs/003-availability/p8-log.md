@@ -267,3 +267,100 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
 - Mutations on the fixes, all caught: H11 retired types left in a set; H12 equal times accepted;
   H13 the type read without a lock; H14 the project not locked for a set.
 - Gate: 1743 passed, one contract failure: equal times are a cross-field rule, so `POST` and `PATCH /shift-types` joined `unprovable_operations.json`; the contract tests then pass. Concurrency 41 passed three times.
+
+## Group I: shifts and assignments with warnings (T051 to T057)
+
+- Failing first: the 29 integration and concurrency tests failed, and 6 errored, because the routes
+  did not exist.
+  - One test was itself wrong: the weekly-hours test seeded six 8-hour shifts, which is exactly the
+    48-hour limit and so allowed. It now seeds seven (Sunday to Saturday, 56 hours). The rule was
+    right; the test's arithmetic was not.
+- Decisions:
+  - **Times.** A shift's times are its type's local times on the date at the project's site
+    (`local_span`), unless `starts_at` and `ends_at` are both given. Times that do not end after
+    they start, or only one of the two given, are 422 `shifts.times_invalid`.
+  - **Admin only.** Every write is gated by `require_admin`; Managers read the roster (FR-120).
+  - **Warnings** come from `hds.scheduling.validate`. The service loads the employees' shifts in
+    every project, drafts included, from the start of the earliest week touched (or the longest
+    shift plus the minimum rest before) to the end of the latest (R3), with their availability
+    entries and whether each is still active. A warning never refuses (FR-116); removing an
+    assignment answers the warnings the shift has left.
+  - **Locks.** Shift writes and assignments lock the shift (`FOR NO KEY UPDATE`, read fresh).
+  - **Duplicates.** A second assignment of one employee is caught by `uq_assignments_shift_user`,
+    including at the same moment, and answered 409 `assignments.duplicate`.
+  - **Idempotency-Key (FR-115a).**
+    - The key is claimed with an insert on the (user, key) primary key, with `ON CONFLICT DO
+      NOTHING`. A second request with the key waits for the first, then reads its stored answer.
+    - The answer is stored in the same transaction as the assignment, so a refused request leaves
+      no key behind.
+    - The same key with another request is 422 `idempotency.key_reused`.
+    - A key older than 24 hours counts as new, and the purge script removes old ones (a fourth
+      line, `idempotency_keys N`).
+  - **Paging.** `GET /shifts` takes `from` and `to` as dates in the organisation's zone and pages
+    by an opaque cursor of (start, id). Another organisation's `project_id` is 404, as for the
+    projects filter.
+- Changed test, with the reason:
+  `test_purge_expired_records.py::test_it_works_through_more_rows_than_one_batch_and_prints_only_counts`
+  asserts the script's exact output. The new `idempotency_keys 0` line was added to it.
+- Coverage tests extended for the new routes:
+  - The role matrix: 6 operations.
+  - The sweep: 8 cases and 5 Admin-only entries. Both organisations' fixtures gained a shift, and
+    the other one an assignment.
+  - `_CONFLICTS`: 1. `unprovable_operations.json`: 3, for the cursor, the times and the project's
+    types.
+  - The locale texts: 15 codes, including the nine warning texts used for each warning's `detail`.
+  - The contract: 6 operations and 11 schemas. `docs/hds-api.md`.
+- Mutations, all caught by a named test except one equivalent:
+  - I2 a warning turned into a refusal; I3 an inactive employee assigned; I4 a type the project does
+    not use accepted.
+  - I5 the stored answer not returned on a repeat; I6 the body hash ignored.
+  - I9 the site zone ignored; I10 availability not weighed; I11 the duplicate not mapped to 409;
+    I12 a headcount change ignored.
+  - I1b warnings from the same project only; I8b expired keys still counting; I13b a foreign project
+    filter answered empty.
+  - Three first versions did not count: I1 removed every nearby shift; I8 failed on a `NameError`;
+    I13 did not apply, because the formatter had changed the text. Each was redone as the "b"
+    version above.
+  - I7 (the stored key looked up by key alone) cannot be caught. The claim is an insert on the
+    (user, key) primary key, so another user's key never conflicts and the lookup is never reached.
+    Equivalent mutant.
+- /hds-review: no violations once finding 7 below was fixed. Admin-only writes have allowed and
+  forbidden tests; codes are in `en` and `he`; the contract and `docs/hds-api.md` are updated.
+- /code-review high, ten findings:
+  1. **A deleted employee left on a shift made the rules raise `KeyError`, a 500 (fixed).** Deleting
+     an employee keeps their assignments. The judged set now includes deleted users, as no longer
+     active, so the shift answers `warnings.employee_inactive`. Test first.
+  2. **A zero or negative pay rate reached the database constraint (fixed):** 422
+     `shifts.pay_rate_invalid`. Test first: it answered 422 `validation.constraint_violation`
+     before.
+  3. and 4. **Assigning did not lock the employee (fixed).** The employee's row is now locked before
+     `is_active` is read.
+     - A deactivation in progress makes the assignment wait, then refuses it.
+     - Two assignments of one employee run one after the other, so the second's warnings see the
+       first.
+     - Tests first: two clashing assignments at once, where neither answer saw the clash (round 0);
+       and a deterministic test where a second connection holds an uncommitted deactivation and the
+       assignment must wait, then get 409.
+     - Changed test, with the reason: my first version of the deactivation race asserted that an
+       inactive employee is never left assigned. That is not the rule: deactivating someone already
+       assigned is allowed, and they stay with a warning. It was replaced by the deterministic test,
+       which pins the real rule (no assignment on a stale "active" read).
+  5. **Two removals of one assignment both answered 200 (fixed).** The assignment is read again
+     under the shift lock, so the second gets 404. The race test failed in round 0 before the fix.
+  6. **The key's hash used the raw URL path (fixed):** it uses the parsed shift id. Test first: a
+     repeat with the id in capitals got 422.
+  7. **The idempotency logic was in the router (fixed, Constitution II).** It is now
+     `IdempotencyService.run_once` in `services/idempotency.py`; the router only passes the request
+     and the write.
+  8. **Availability was loaded one employee at a time (fixed):** one `for_users` query.
+     - Not changed: views are read again after `_judge`. That is one extra read per write, and
+       cosmetic.
+  9. **The service copied the week arithmetic (fixed):** `hds.scheduling.week_start` is public and
+     used by both.
+  10. **The key lifetime was written twice (fixed):** the purge uses `KEY_LIFETIME` from the service.
+- Mutations on the fixes, all caught: I14 the employee row not locked; I15 a deleted employee counted
+  active; I16 a deleted employee missing from the judged set; I17 the pay rate not checked; I18 the
+  assignment not re-read under the lock.
+  - I18 was not caught by the sequential test, because after one committed removal the second read
+    finds nothing anyway. The race test catches it.
+- Final gates: interrogate first found one missing docstring (`assign.run`, 99.8%), now added (100%); full suite 1825 passed; concurrency 46 passed three times; drift check agrees.

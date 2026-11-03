@@ -7,6 +7,7 @@ known.
 """
 
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any
 
@@ -133,6 +134,22 @@ class UserRepository(OrgScopedRepository[User]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_many(self, ids: Collection[uuid.UUID], org_id: uuid.UUID) -> list[User]:
+        """The organisation's users among ``ids``, deleted and inactive ones included.
+
+        For judging records that still point at them, such as a deleted employee's assignments.
+
+        Args:
+            ids: User ids.
+            org_id: The caller's organisation.
+        """
+        if not ids:
+            return []
+        result = await self.session.execute(
+            select(User).where(User.id.in_(ids), User.organization_id == org_id)
+        )
+        return list(result.scalars().all())
 
     async def lock_user(self, user_id: uuid.UUID) -> None:
         """Lock the user's row until the unit of work ends (see `lock_user_row`).

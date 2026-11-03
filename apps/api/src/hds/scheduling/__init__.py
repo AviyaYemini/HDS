@@ -5,7 +5,16 @@ web framework, a database driver or the network, and MUST NOT be imported by mod
 (Constitution III). Services and, later, the generator call it.
 """
 
-from .rules import local_span, validate
+from .rules import local_span, validate, week_start
 from .types import Employee, Entry, RuleWarning, Settings, ShiftSlot
 
-__all__ = ["Employee", "Entry", "Settings", "ShiftSlot", "RuleWarning", "local_span", "validate"]
+__all__ = [
+    "Employee",
+    "Entry",
+    "Settings",
+    "ShiftSlot",
+    "RuleWarning",
+    "local_span",
+    "validate",
+    "week_start",
+]

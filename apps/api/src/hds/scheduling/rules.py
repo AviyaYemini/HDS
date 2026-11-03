@@ -110,7 +110,7 @@ def validate(
         if entry.kind not in _KINDS:
             raise ValueError(f"unknown availability entry kind {entry.kind!r}")
         entries_by_employee.setdefault(entry.employee_id, []).append(entry)
-    week_of = {slot.id: _week_start(slot.starts_at, settings.week_zone) for slot in all_shifts}
+    week_of = {slot.id: week_start(slot.starts_at, settings.week_zone) for slot in all_shifts}
 
     found: set[RuleWarning] = set()
     for person, theirs in by_employee.items():
@@ -184,7 +184,7 @@ def _sunday_index(day: date) -> int:
     return (day.weekday() + 1) % 7
 
 
-def _week_start(moment: datetime, zone: str) -> date:
+def week_start(moment: datetime, zone: str) -> date:
     """The Sunday that starts the week ``moment`` falls in, in ``zone`` (research R2)."""
     day = moment.astimezone(ZoneInfo(zone)).date()
     return day - timedelta(days=_sunday_index(day))

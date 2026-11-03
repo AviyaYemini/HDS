@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.security import hash_password
@@ -30,6 +30,8 @@ from hds.models.client import Client
 from hds.models.group import Group
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification
+from hds.models.shift import Shift
+from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
 from hds.models.user import User, UserRole
 from tests.integration.conftest import OtherOrg
@@ -48,6 +50,7 @@ class Mine:
     project: Project
     group: Group
     qualification: Qualification
+    shift: Shift | None = None
 
 
 @pytest_asyncio.fixture
@@ -84,8 +87,28 @@ async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
         status=ProjectStatus.active,
     )
     test_db.add(project)
+    await test_db.flush()
+    shift_type = (
+        (await test_db.execute(select(ShiftType).where(ShiftType.organization_id == org_id)))
+        .scalars()
+        .first()
+    )
+    assert shift_type is not None
+    await test_db.execute(
+        insert(project_shift_types).values(project_id=project.id, shift_type_id=shift_type.id)
+    )
+    shift = Shift(
+        id=uuid.uuid4(),
+        organization_id=org_id,
+        project_id=project.id,
+        shift_type_id=shift_type.id,
+        starts_at=datetime(2027, 6, 7, 4, tzinfo=UTC),
+        ends_at=datetime(2027, 6, 7, 12, tzinfo=UTC),
+        headcount=1,
+    )
+    test_db.add(shift)
     await test_db.commit()
-    return Mine(seed_users["employee"], client, site, project, group, qualification)
+    return Mine(seed_users["employee"], client, site, project, group, qualification, shift)
 
 
 @dataclass
@@ -439,6 +462,68 @@ CASES: dict[str, list[Case]] = {
             ),
         ),
     ],
+    "GET /api/v1/shifts": [
+        Case(
+            "foreign project_id", lambda w: req(f"/api/v1/shifts?project_id={w.theirs.project.id}")
+        ),
+    ],
+    "POST /api/v1/shifts": [
+        Case(
+            "foreign project, own shift type",
+            lambda w: req(
+                "/api/v1/shifts",
+                json={
+                    "project_id": str(w.theirs.project.id),
+                    "shift_type_id": str(w.mine.shift.shift_type_id),  # type: ignore[union-attr]
+                    "date": "2027-06-08",
+                    "headcount": 1,
+                },
+            ),
+        ),
+        Case(
+            "own project, foreign shift type",
+            lambda w: req(
+                "/api/v1/shifts",
+                json={
+                    "project_id": str(w.mine.project.id),
+                    "shift_type_id": str(w.theirs.shift_type.id),  # type: ignore[union-attr]
+                    "date": "2027-06-08",
+                    "headcount": 1,
+                },
+            ),
+        ),
+    ],
+    "PATCH /api/v1/shifts/{id}": [
+        Case(
+            "foreign shift id",
+            lambda w: req(f"/api/v1/shifts/{w.theirs.shift.id}", json={"headcount": 2}),  # type: ignore[union-attr]
+        ),
+    ],
+    "DELETE /api/v1/shifts/{id}": [
+        Case("foreign shift id", lambda w: req(f"/api/v1/shifts/{w.theirs.shift.id}")),  # type: ignore[union-attr]
+    ],
+    "POST /api/v1/shifts/{id}/assignments": [
+        Case(
+            "foreign shift id",
+            lambda w: req(
+                f"/api/v1/shifts/{w.theirs.shift.id}/assignments",  # type: ignore[union-attr]
+                json={"user_id": str(w.mine.user.id)},
+            ),
+        ),
+        Case(
+            "own shift, foreign employee",
+            lambda w: req(
+                f"/api/v1/shifts/{w.mine.shift.id}/assignments",  # type: ignore[union-attr]
+                json={"user_id": str(w.theirs.user.id)},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/assignments/{id}": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}"),  # type: ignore[union-attr]
+        ),
+    ],
     "POST /auth/invite": [
         Case(
             "address held by another organisation",
@@ -563,6 +648,11 @@ async def test_foreign_id_or_address_is_refused_and_nothing_changes(
 # Cases a Manager may not perform at all: the role check comes first, so the answer is 403 and
 # says nothing about whether the foreign id exists.
 ADMIN_ONLY = {
+    "POST /api/v1/shifts": "users.admin_required",
+    "PATCH /api/v1/shifts/{id}": "users.admin_required",
+    "DELETE /api/v1/shifts/{id}": "users.admin_required",
+    "POST /api/v1/shifts/{id}/assignments": "users.admin_required",
+    "DELETE /api/v1/assignments/{id}": "users.admin_required",
     "DELETE /api/v1/employees/{id}": "users.admin_required",
     "DELETE /api/v1/clients/{id}": "users.admin_required",
     "DELETE /api/v1/projects/{id}": "users.admin_required",

@@ -12,8 +12,8 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
 | Availability | `GET/POST /availability-windows`, `PATCH/DELETE /availability-windows/{id}`, `GET/POST /employees/{id}/constraints`, `PATCH/DELETE /constraints/{id}` | Managers and Admins open submission windows. Employees edit their own blocked, open and close entries inside an open window and their absences any time; Admins edit anyone's at any time; Managers read everyone's *(003)* |
 | Shift types | `GET/POST /shift-types`, `PATCH /shift-types/{id}`, `GET/PUT /projects/{id}/shift-types` | Every organisation starts with morning, afternoon and night; Managers and Admins add, change and retire types and choose each project's set; everyone who works shifts reads them *(003)* |
-| Shifts | `GET /shifts?from=&to=&project=`, `PATCH /shifts/{id}` | Cursor pagination; admins edit the pay field |
-| Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Returns constraint warnings, not just errors |
+| Shifts | `GET /shifts?from=&to=&project_id=&status=`, `POST /shifts`, `PATCH/DELETE /shifts/{id}` | Cursor pagination; Managers and Admins read the roster, drafts included; only Admins create, change and delete shifts, including the pay field. Every change answers with its rule warnings and is never refused for one *(003)* |
+| Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Admin only. Returns rule warnings (rest, overlap, weekly hours, availability, headcount, inactive employee), never refuses for them. `Idempotency-Key` on the create *(003)* |
 | Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
 | Finance | `GET /me/pay-forecast`, `GET /finance/cash-flow`, `GET /finance/billing` | Pay rates and billing rates; cash flow may be negative |
 | Overview | `GET /overview` | Managers and admins only |
@@ -65,6 +65,13 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `shift_types.duplicate_name` | 409 | Another active shift type has the name, in any letter case *(003)* |
 | `shift_types.retired` | 422 | A retired shift type added to a project *(003)* |
 | `shift_types.times_equal` | 422 | A shift type that starts and ends at the same time *(003)* |
+| `shifts.times_invalid` | 422 | A shift that does not end after it starts, or only one of its two times given *(003)* |
+| `shifts.type_not_in_project` | 422 | A shift of a type the project does not use, or a retired one *(003)* |
+| `shifts.cursor_invalid` | 422 | A roster cursor the API did not return *(003)* |
+| `shifts.pay_rate_invalid` | 422 | A shift pay rate that is not greater than zero *(003)* |
+| `assignments.duplicate` | 409 | The employee is already on the shift *(003)* |
+| `assignments.employee_inactive` | 409 | Assigning an inactive employee *(003)* |
+| `idempotency.key_reused` | 422 | An `Idempotency-Key` sent again with a different request *(003)* |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |

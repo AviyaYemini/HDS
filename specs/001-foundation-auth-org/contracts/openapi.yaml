@@ -860,6 +860,178 @@ components:
           items:
             $ref: "#/components/schemas/UUIDv4"
 
+    # ── Manual roster (003 Part 2) ────────────────────────────────────────────
+
+    Money:
+      type: string
+      pattern: "^(?!0+(\\.0+)?$)\\d{1,8}(\\.\\d{1,4})?$"
+      description: A positive decimal string, never a JSON number.
+      example: "75.0000"
+
+    AssignmentRead:
+      type: object
+      required: [id, shift_id, user_id]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        shift_id:
+          $ref: "#/components/schemas/UUIDv4"
+        user_id:
+          $ref: "#/components/schemas/UUIDv4"
+
+    ShiftRead:
+      type: object
+      required: [id, project_id, shift_type_id, starts_at, ends_at, timezone, headcount, pay_rate, status, published_at, assignments]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        project_id:
+          $ref: "#/components/schemas/UUIDv4"
+        shift_type_id:
+          $ref: "#/components/schemas/UUIDv4"
+        starts_at:
+          $ref: "#/components/schemas/ISODateTime"
+        ends_at:
+          $ref: "#/components/schemas/ISODateTime"
+        timezone:
+          type: string
+          description: The IANA time zone of the project's site.
+        headcount:
+          type: integer
+          minimum: 1
+        pay_rate:
+          anyOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        status:
+          type: string
+          enum: [draft, published]
+        published_at:
+          anyOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignmentRead"
+
+    RuleWarning:
+      type: object
+      required: [code, employee_id, shift_ids, detail]
+      description: A rule a change breaks; the change was stored anyway (003 FR-116).
+      properties:
+        code:
+          type: string
+          enum: [warnings.overlap, warnings.rest_too_short, warnings.weekly_hours_exceeded, warnings.blocked, warnings.absence, warnings.close_preference, warnings.over_headcount, warnings.under_headcount, warnings.employee_inactive]
+        employee_id:
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        shift_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/UUIDv4"
+        detail:
+          type: string
+
+    ShiftAnswer:
+      type: object
+      required: [shift, warnings]
+      properties:
+        shift:
+          $ref: "#/components/schemas/ShiftRead"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleWarning"
+
+    AssignmentAnswer:
+      type: object
+      required: [assignment, warnings]
+      properties:
+        assignment:
+          $ref: "#/components/schemas/AssignmentRead"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleWarning"
+
+    WarningsAnswer:
+      type: object
+      required: [warnings]
+      properties:
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleWarning"
+
+    ShiftPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShiftRead"
+        next_cursor:
+          type: [string, "null"]
+
+    ShiftCreateRequest:
+      type: object
+      required: [project_id, shift_type_id, date]
+      description: >-
+        Times are the shift type's local times on the date at the project's site, unless starts_at
+        and ends_at are both given (422 shifts.times_invalid if only one is, or they do not end after
+        they start). The project must use the type (422 shifts.type_not_in_project).
+      properties:
+        project_id:
+          $ref: "#/components/schemas/UUIDv4"
+        shift_type_id:
+          $ref: "#/components/schemas/UUIDv4"
+        date:
+          $ref: "#/components/schemas/ISODate"
+        headcount:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 1
+        pay_rate:
+          anyOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        starts_at:
+          anyOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+        ends_at:
+          anyOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+
+    ShiftUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        starts_at:
+          $ref: "#/components/schemas/ISODateTime"
+        ends_at:
+          $ref: "#/components/schemas/ISODateTime"
+        headcount:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        pay_rate:
+          anyOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+
+    AssignRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UUIDv4"
+
   # ── Reusable responses ────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -2585,6 +2757,217 @@ paths:
                 $ref: "#/components/schemas/ShiftTypeListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Manual roster (003 Part 2) ────────────────────────────────────────────
+  /shifts:
+
+    get:
+      operationId: shifts_list
+      summary: List the roster (Manager+)
+      tags: [Shifts]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [draft, published]
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: A page of shifts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    post:
+      operationId: shifts_create
+      summary: Create a shift (Admin)
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftCreateRequest"
+      responses:
+        "201":
+          description: The shift and its warnings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /shifts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: shifts_update
+      summary: Change a shift (Admin)
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftUpdateRequest"
+      responses:
+        "200":
+          description: The shift and its warnings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: shifts_delete
+      summary: Delete a shift and its assignments (Admin)
+      tags: [Shifts]
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /shifts/{id}/assignments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: assignments_create
+      summary: Assign an employee (Admin)
+      tags: [Shifts]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: A repeat of the same request within 24 hours gets the first answer.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignRequest"
+      responses:
+        "201":
+          description: The assignment and its warnings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /assignments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    delete:
+      operationId: assignments_delete
+      summary: Remove an assignment (Admin)
+      tags: [Shifts]
+      responses:
+        "200":
+          description: The warnings the shift has left.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarningsAnswer"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

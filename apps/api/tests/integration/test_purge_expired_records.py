@@ -160,6 +160,7 @@ async def test_it_works_through_more_rows_than_one_batch_and_prints_only_counts(
         "refresh_tokens 0",
         "links 5",
         "throttle_rows 0",
+        "idempotency_keys 0",  # added by 003 Group I
     ]
 
 

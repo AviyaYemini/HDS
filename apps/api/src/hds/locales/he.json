@@ -69,5 +69,21 @@
   "availability.shift_type_retired": "סוג המשמרת הזה הוצא משימוש.",
   "shift_types.duplicate_name": "כבר קיים סוג משמרת פעיל בשם הזה.",
   "shift_types.retired": "אי אפשר להוסיף לפרויקט סוג משמרת שהוצא משימוש.",
-  "shift_types.times_equal": "סוג משמרת לא יכול להתחיל ולהסתיים באותה שעה."
+  "shift_types.times_equal": "סוג משמרת לא יכול להתחיל ולהסתיים באותה שעה.",
+  "shifts.times_invalid": "משמרת חייבת להסתיים אחרי שהיא מתחילה.",
+  "shifts.type_not_in_project": "הפרויקט לא משתמש בסוג המשמרת הזה.",
+  "shifts.cursor_invalid": "הסמן אינו סמן שהמערכת החזירה.",
+  "assignments.duplicate": "העובד כבר משובץ במשמרת הזו.",
+  "assignments.employee_inactive": "אי אפשר לשבץ עובד לא פעיל.",
+  "idempotency.key_reused": "מפתח ה-Idempotency-Key הזה כבר שימש לבקשה אחרת.",
+  "warnings.overlap": "לעובד יש משמרת אחרת באותה שעה.",
+  "warnings.rest_too_short": "המנוחה של העובד בין המשמרות האלה קצרה מהמינימום של הארגון.",
+  "warnings.weekly_hours_exceeded": "העובד עובד השבוע יותר מהמקסימום השבועי של הארגון.",
+  "warnings.blocked": "העובד סימן שאינו יכול לעבוד במשמרת הזו.",
+  "warnings.absence": "העובד נעדר בתאריך הזה.",
+  "warnings.close_preference": "העובד מעדיף לא לעבוד במשמרת הזו.",
+  "warnings.over_headcount": "משובצים יותר עובדים ממה שהמשמרת צריכה.",
+  "warnings.under_headcount": "משובצים פחות עובדים ממה שהמשמרת צריכה.",
+  "warnings.employee_inactive": "עובד משובץ כבר אינו פעיל.",
+  "shifts.pay_rate_invalid": "שכר לשעה חייב להיות גדול מאפס."
 }

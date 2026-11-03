@@ -24,9 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hds.core.config import get_settings
 from hds.core.database import AsyncSessionLocal, engine, unit_of_work
+from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
+from hds.services.idempotency import KEY_LIFETIME
 
 #: Rows deleted in one transaction.
 BATCH = 1000
@@ -90,7 +92,16 @@ async def run(factory: async_sessionmaker[AsyncSession]) -> int:
         """Delete one batch of throttle rows."""
         return await LoginThrottleRepository(session).purge_stale(stale, now, BATCH)
 
-    for name, delete in (("refresh_tokens", tokens), ("links", links), ("throttle_rows", rows)):
+    async def keys(session: AsyncSession) -> int:
+        """Delete one batch of idempotency keys past their 24 hours (003 FR-115a)."""
+        return await IdempotencyKeyRepository(session).delete_expired(now - KEY_LIFETIME, BATCH)
+
+    for name, delete in (
+        ("refresh_tokens", tokens),
+        ("links", links),
+        ("throttle_rows", rows),
+        ("idempotency_keys", keys),
+    ):
         print(f"{name} {await _drain(factory, delete)}", flush=True)
     return 0
 

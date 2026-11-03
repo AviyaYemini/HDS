@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.security import hash_password
@@ -19,7 +19,8 @@ from hds.models.group import Group
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification
-from hds.models.shift_type import ShiftType
+from hds.models.shift import Assignment, Shift
+from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
@@ -37,6 +38,8 @@ class OtherOrg:
     window: SubmissionWindow | None = None
     entry: AvailabilityEntry | None = None
     shift_type: ShiftType | None = None
+    shift: Shift | None = None
+    assignment: Assignment | None = None
 
 
 @pytest_asyncio.fixture
@@ -99,7 +102,37 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         .scalars()
         .first()
     )
+    assert shift_type is not None
+    await test_db.execute(
+        insert(project_shift_types).values(project_id=project.id, shift_type_id=shift_type.id)
+    )
+    shift = Shift(
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        project_id=project.id,
+        shift_type_id=shift_type.id,
+        starts_at=datetime(2027, 6, 7, 4, tzinfo=UTC),
+        ends_at=datetime(2027, 6, 7, 12, tzinfo=UTC),
+        headcount=1,
+    )
+    test_db.add(shift)
+    await test_db.flush()
+    assignment = Assignment(
+        id=uuid.uuid4(), organization_id=org.id, shift_id=shift.id, user_id=user.id
+    )
+    test_db.add(assignment)
     await test_db.commit()
     return OtherOrg(
-        org, user, client, site, project, group, qualification, window, entry, shift_type
+        org,
+        user,
+        client,
+        site,
+        project,
+        group,
+        qualification,
+        window,
+        entry,
+        shift_type,
+        shift,
+        assignment,
     )

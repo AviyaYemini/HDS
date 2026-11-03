@@ -85,3 +85,89 @@ async def close_window(db: AsyncSession, window_id: str) -> None:
         {"i": window_id},
     )
     await db.commit()
+
+
+SHIFTS = "/api/v1/shifts"
+ZONE = "Asia/Jerusalem"
+
+
+async def add_project(
+    client: AsyncClient, headers: dict[str, str], name: str = "Night Watch"
+) -> dict[str, Any]:
+    """A project at a site in Israel that uses morning, afternoon and night."""
+    owner = await client.post(
+        "/api/v1/clients",
+        json={"name": f"{name} Ltd", "contract_start": "2027-01-01"},
+        headers=headers,
+    )
+    site = await client.post(
+        "/api/v1/sites",
+        json={"name": f"{name} site", "address": "1 HQ St", "timezone": ZONE},
+        headers=headers,
+    )
+    project = await client.post(
+        "/api/v1/projects",
+        json={
+            "client_id": owner.json()["id"],
+            "site_id": site.json()["id"],
+            "name": name,
+            "type": "security",
+            "billing_rate": "75.0000",
+            "start_date": "2027-01-01",
+        },
+        headers=headers,
+    )
+    assert project.status_code == 201, project.text
+    types = (await client.get("/api/v1/shift-types", headers=headers)).json()["items"]
+    ids = {t["name"]: t["id"] for t in types}
+    used = await client.put(
+        f"/api/v1/projects/{project.json()['id']}/shift-types",
+        json={"ids": list(ids.values())},
+        headers=headers,
+    )
+    assert used.status_code == 200, used.text
+    return {**project.json(), "types": ids}
+
+
+async def add_shift(
+    client: AsyncClient,
+    headers: dict[str, str],
+    project: dict[str, Any],
+    day: date,
+    kind: str = "morning",
+    headcount: int = 1,
+    **extra: Any,
+) -> Any:
+    """Create a draft shift of ``kind`` on ``day`` and return the whole answer."""
+    response = await client.post(
+        SHIFTS,
+        json={
+            "project_id": project["id"],
+            "shift_type_id": project["types"][kind],
+            "date": day.isoformat(),
+            "headcount": headcount,
+            **extra,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def assign(
+    client: AsyncClient,
+    headers: dict[str, str],
+    shift_id: str,
+    user_id: Any,
+    key: str | None = None,
+) -> Any:
+    """Assign an employee to a shift, with an ``Idempotency-Key`` if given; return the answer."""
+    sent = {**headers, "Idempotency-Key": key} if key is not None else headers
+    return await client.post(
+        f"{SHIFTS}/{shift_id}/assignments", json={"user_id": str(user_id)}, headers=sent
+    )
+
+
+def codes(answer: dict[str, Any]) -> list[str]:
+    """The warning codes of an answer, sorted."""
+    return sorted(w["code"] for w in answer["warnings"])

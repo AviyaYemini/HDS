@@ -5,6 +5,7 @@ import services or routers. Every read is scoped to the caller's organisation.
 """
 
 import uuid
+from collections.abc import Collection
 from datetime import date
 from typing import Any
 
@@ -68,6 +69,22 @@ class AvailabilityRepository(OrgScopedRepository[AvailabilityEntry]):
             stmt = stmt.where(AvailabilityEntry.id != exclude)
         result = await self.session.execute(
             stmt.order_by(AvailabilityEntry.starts_on, AvailabilityEntry.id)
+        )
+        return list(result.scalars().all())
+
+    async def for_users(
+        self, org_id: uuid.UUID, user_ids: Collection[uuid.UUID], first: date, last: date
+    ) -> list[AvailabilityEntry]:
+        """The entries of several employees that share a date with ``first`` to ``last``."""
+        if not user_ids:
+            return []
+        result = await self.session.execute(
+            select(AvailabilityEntry).where(
+                AvailabilityEntry.organization_id == org_id,
+                AvailabilityEntry.user_id.in_(user_ids),
+                AvailabilityEntry.ends_on >= first,
+                AvailabilityEntry.starts_on <= last,
+            )
         )
         return list(result.scalars().all())
 
