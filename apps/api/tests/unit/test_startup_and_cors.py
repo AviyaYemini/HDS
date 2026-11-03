@@ -7,23 +7,24 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
-from hds.core.config import PLACEHOLDER_JWT_SECRET, Settings
+from hds.core.config import PUBLISHED_PLACEHOLDER
 from hds.main import create_app
+from tests.settings_support import make_settings
 
 
 def test_default_cors_origins() -> None:
-    assert Settings().CORS_ORIGINS == ["http://localhost:3000", "http://localhost:8081"]
+    assert make_settings().CORS_ORIGINS == ["http://localhost:3000", "http://localhost:8081"]
 
 
 def test_cors_origins_read_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
-    assert Settings().CORS_ORIGINS == ["https://app.example.com"]
+    assert make_settings().CORS_ORIGINS == ["https://app.example.com"]
 
 
 def test_wildcard_origin_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORS_ORIGINS", '["*"]')
     with pytest.raises(ValidationError):
-        Settings()
+        make_settings()
 
 
 def _preflight(origin: str) -> dict[str, str]:
@@ -50,21 +51,23 @@ def test_production_with_placeholder_secret_refuses_to_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("JWT_SECRET_KEY", PLACEHOLDER_JWT_SECRET)
+    monkeypatch.setenv("JWT_SECRET_KEY", PUBLISHED_PLACEHOLDER)
     with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
-        Settings()
+        make_settings()
 
 
-def test_production_with_real_secret_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_with_real_secret_starts(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 48)
-    assert Settings().JWT_SECRET_KEY == SecretStr("x" * 48)
+    assert make_settings().JWT_SECRET_KEY == SecretStr("x" * 48)
 
 
 def test_development_with_placeholder_secret_starts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("JWT_SECRET_KEY", PLACEHOLDER_JWT_SECRET)
-    Settings()
+    monkeypatch.setenv("JWT_SECRET_KEY", PUBLISHED_PLACEHOLDER)
+    make_settings()
 
 
 def test_reserved_email_domains_allowed_outside_production(
@@ -76,12 +79,12 @@ def test_reserved_email_domains_allowed_outside_production(
     from hds.core.config import configure_email_validation
 
     monkeypatch.setattr(email_validator, "TEST_ENVIRONMENT", False)
-    configure_email_validation(Settings(ENVIRONMENT="development"))
+    configure_email_validation(make_settings(ENVIRONMENT="development"))
     assert email_validator.TEST_ENVIRONMENT is True
 
 
 def test_reserved_email_domains_rejected_in_production(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
 ) -> None:
     import email_validator
 
@@ -89,7 +92,7 @@ def test_reserved_email_domains_rejected_in_production(
 
     monkeypatch.setattr(email_validator, "TEST_ENVIRONMENT", False)
     configure_email_validation(
-        Settings(ENVIRONMENT="production", JWT_SECRET_KEY=SecretStr("x" * 48))
+        make_settings(ENVIRONMENT="production", JWT_SECRET_KEY=SecretStr("x" * 48))
     )
     assert email_validator.TEST_ENVIRONMENT is False
 
@@ -101,16 +104,20 @@ def test_production_refuses_a_secret_shorter_than_32_bytes(
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", secret)
     with pytest.raises(ValidationError, match="32"):
-        Settings()
+        make_settings()
 
 
-def test_production_accepts_exactly_32_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_accepts_exactly_32_bytes(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
-    Settings()
+    make_settings()
 
 
-def test_multibyte_secret_is_measured_in_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_multibyte_secret_is_measured_in_bytes(
+    monkeypatch: pytest.MonkeyPatch, real_mail_backend: None
+) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", "ש" * 16)  # 16 characters, 32 UTF-8 bytes
-    Settings()
+    make_settings()

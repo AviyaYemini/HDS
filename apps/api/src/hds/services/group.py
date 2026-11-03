@@ -24,6 +24,21 @@ class GroupService:
         """
         self._repo = group_repo
 
+    async def list_groups(self, actor: User) -> list[Group]:
+        """List the organisation's groups.
+
+        Args:
+            actor: The caller.
+
+        Returns:
+            The groups, ordered by name.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        return await self._repo.list_by_org(actor.organization_id)
+
     async def create_group(self, actor: User, name: str) -> Group:
         """Create a group with a name unique in the organisation.
 

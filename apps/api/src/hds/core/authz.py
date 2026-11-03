@@ -7,6 +7,8 @@ Every service method that is role-restricted calls ``ensure_role`` itself, so th
 holds even if a router forgets its dependency (defence in depth; the UI is never the gate).
 """
 
+import uuid
+
 from hds.core.exceptions import ForbiddenError
 from hds.models.user import User, UserRole
 
@@ -38,3 +40,19 @@ def ensure_role(actor: User, *roles: UserRole) -> None:
     if set(roles) == set(MANAGER_ROLES):
         raise ForbiddenError(code="users.manager_required", detail="Manager or Admin role required")
     raise ForbiddenError(code="users.forbidden", detail="Access to this resource is not allowed")
+
+
+def ensure_self_or_manager(actor: User, user_id: uuid.UUID) -> None:
+    """Raise ``ForbiddenError`` unless the actor is a Manager or Admin, or is that user.
+
+    Args:
+        actor: The authenticated user performing the action.
+        user_id: The user addressed.
+
+    Raises:
+        ForbiddenError: ``users.forbidden`` (HTTP 403).
+    """
+    if actor.role not in MANAGER_ROLES and actor.id != user_id:
+        raise ForbiddenError(
+            code="users.forbidden", detail="Access to this resource is not allowed"
+        )

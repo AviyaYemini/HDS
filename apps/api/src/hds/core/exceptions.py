@@ -87,3 +87,33 @@ class DomainValidationError(Exception):
         self.code = code
         self.detail = detail
         super().__init__(detail)
+
+
+class ServiceBusyError(Exception):
+    """The password-hashing queue is full; try again shortly (HTTP 503)."""
+
+    def __init__(self, retry_after: int = 1) -> None:
+        """Create the error.
+
+        Args:
+            retry_after: Seconds the client should wait, sent as ``Retry-After``.
+        """
+        self.code = "service.busy"
+        self.detail = "The service is busy; try again shortly."
+        self.retry_after = retry_after
+        super().__init__(self.detail)
+
+
+class RateLimitedError(Exception):
+    """Too many failed sign-ins from one network address (HTTP 429)."""
+
+    def __init__(self, retry_after: int) -> None:
+        """Create the error.
+
+        Args:
+            retry_after: Seconds until the window ends, sent as ``Retry-After``.
+        """
+        self.code = "auth.rate_limited"
+        self.detail = "Too many failed sign-ins from this network; try again later."
+        self.retry_after = retry_after
+        super().__init__(self.detail)

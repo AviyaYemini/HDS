@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     String,
+    func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,9 +49,18 @@ class User(TimestampedBase):
     """A person who can sign in.
 
     Rules the schema enforces: ``email`` is unique across all organisations among
-    non-deleted users (partial index ``uq_users_email``); ``default_hourly_rate`` is positive
-    when set; users are soft-deleted (``is_deleted``) so history stays intact and the email
-    can be reused. ``failed_login_attempts`` and ``locked_until`` implement account lockout.
+    non-deleted users, whatever the letter case (partial index ``uq_users_email_ci`` on
+    ``lower(email)``); ``default_hourly_rate`` is positive when set; users are soft-deleted
+    (``is_deleted``) so history stays intact and the email can be reused.
+    ``failed_login_attempts`` and ``locked_until`` are no longer used: every address's sign-in
+    failures are counted in ``login_throttle`` (FR-221). They stay because dropping them needs a
+    migration.
+
+    ``activated_at`` is when the account was first active; it is null only for a *pending* account
+    (invited, never activated). The check constraint ``ck_users_active_has_activated_at`` makes
+    "active without an activation time" impossible, so a deactivated account can never be mistaken
+    for a pending one. An account is pending when it is not deleted, not active and has no
+    activation time; deactivated when it is not active but has one.
 
     ``client_id`` ties a Client-role account to its client's projects. The schema does not
     force it to be set only for that role; the client services guarantee it.
@@ -69,6 +79,7 @@ class User(TimestampedBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     default_hourly_rate: Mapped[Decimal | None] = mapped_column(
         Numeric(precision=12, scale=4, asdecimal=True)
     )
@@ -89,9 +100,13 @@ class User(TimestampedBase):
 
     __table_args__ = (
         CheckConstraint("default_hourly_rate > 0", name="ck_users_hourly_rate_positive"),
+        CheckConstraint(
+            "is_active = false OR activated_at IS NOT NULL",
+            name="ck_users_active_has_activated_at",
+        ),
         Index(
-            "uq_users_email",
-            "email",
+            "uq_users_email_ci",
+            func.lower(email),
             unique=True,
             postgresql_where=text("is_deleted = false"),
         ),

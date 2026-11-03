@@ -13,9 +13,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager, require_manager_or_client
-from hds.core.types import Money, Name, StrictDate
+from hds.core.types import Money, Name, StrictDate, omittable
 from hds.models.project import ProjectStatus, ProjectType
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
@@ -61,12 +61,12 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    """Project fields that may change; omitted fields are left as they are."""
+    """Project fields that may change; omitted fields are left as they are, null clears."""
 
-    name: Name | None = None
-    billing_rate: Money | None = None
+    name: Name = omittable()
+    billing_rate: Money = omittable()
     end_date: StrictDate | None = None
-    status: ProjectStatus | None = None
+    status: ProjectStatus = omittable()
 
 
 class ProjectListResponse(BaseModel):
@@ -90,20 +90,20 @@ def _svc(db: AsyncSession) -> ProjectService:
     description=(
         "Manager or Admin see every project of the organisation, optionally filtered by "
         "status or client. A Client sees only their own client's projects whatever "
-        "filter is sent. Employees receive 403."
+        "filter is sent, and none if the account has no client. Employees receive 403."
     ),
 )
 async def list_projects(
     status: ProjectStatus | None = None,
     client_id: uuid.UUID | None = None,
     current_user: User = Depends(require_manager_or_client),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ProjectListResponse:
     """List projects.
 
     Manager or Admin see every project of the organisation, optionally filtered by status or
-    client. A Client sees only their own client's projects whatever filter is sent. Employees
-    receive 403.
+    client. A Client sees only their own client's projects whatever filter is sent, and none if
+    the account has no client. Employees receive 403.
     """
     svc = _svc(db)
     projects = await svc.list_projects(
@@ -130,7 +130,7 @@ async def list_projects(
 async def create_project(
     body: ProjectCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a project.
 
@@ -148,18 +148,19 @@ async def create_project(
     summary="Get a project",
     description=(
         "Manager or Admin for any project; a Client only for their own client's "
-        "projects (otherwise 403 `projects.access_denied`). Employees receive 403."
+        "projects (otherwise 403 `projects.access_denied`), and 404 if the account has no "
+        "client. Employees receive 403."
     ),
 )
 async def get_project(
     id: uuid.UUID,
     current_user: User = Depends(require_manager_or_client),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Get a project.
 
     Manager or Admin for any project; a Client only for their own client's projects (otherwise
-    403 `projects.access_denied`). Employees receive 403.
+    403 `projects.access_denied`), and 404 if the account has no client. Employees receive 403.
     """
     svc = _svc(db)
     return await svc.get_project(
@@ -173,22 +174,26 @@ async def get_project(
     summary="Edit a project",
     description=(
         "Manager or Admin. Update name, billing rate, end date or status. The same rate "
-        "and date rules as creation apply."
+        "and date rules as creation apply. "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone."
     ),
 )
 async def edit_project(
     id: uuid.UUID,
     body: ProjectUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Edit a project.
 
     Manager or Admin. Update name, billing rate, end date or status. The same rate and date
     rules as creation apply.
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
     """
     svc = _svc(db)
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
     new_status = data.pop("status", None)
     project = None
     if data or new_status is None:
@@ -207,7 +212,7 @@ async def edit_project(
 async def delete_project(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a project.
 

@@ -5,7 +5,7 @@ Covers: none directly; fixtures for the cross-tenant tests (NFR-001).
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest_asyncio
@@ -45,6 +45,7 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         password_hash=hash_password("Dev1234!"),
         full_name="Other Employee",
         role=UserRole.employee,
+        activated_at=datetime.now(UTC),
     )
     client = Client(
         id=uuid.uuid4(), organization_id=org.id, name="Other Client", contract_start=date.today()

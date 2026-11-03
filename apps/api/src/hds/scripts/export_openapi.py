@@ -5,8 +5,8 @@ Usage:
     uv run python -m hds.scripts.export_openapi --check CONTRACT GENERATED
 
 ``--check`` compares the contract's operation surface with the generated document: the set of
-(method, path) pairs, for each the set of documented 2xx status codes, and its query
-parameters (name, type, required). Descriptions, schema prose and operation IDs are not
+(method, path) pairs, for each every documented status code, error responses included, and its
+query parameters (name, type, required). Descriptions, schema prose and operation IDs are not
 compared. Exit code 1 on any difference.
 """
 
@@ -32,8 +32,7 @@ def surface(doc: dict[str, Any]) -> dict[tuple[str, str], frozenset[str]]:
         doc: A parsed OpenAPI document (the contract or the generated one).
 
     Returns:
-        A map of ``(METHOD, path)`` to the set of documented 2xx status codes. Error responses
-        are left out because the generated document does not declare them per route.
+        A map of ``(METHOD, path)`` to the set of documented status codes, errors included.
     """
     ops: dict[tuple[str, str], frozenset[str]] = {}
     for path, item in doc.get("paths", {}).items():
@@ -41,10 +40,9 @@ def surface(doc: dict[str, Any]) -> dict[tuple[str, str], frozenset[str]]:
             op = item.get(method)
             if op is None:
                 continue
-            # Only success codes are compared: error responses are not declared per route
-            # in the generated document.
-            codes = frozenset(str(c) for c in op.get("responses", {}) if str(c).startswith("2"))
-            ops[(method.upper(), _normalise(path))] = codes
+            ops[(method.upper(), _normalise(path))] = frozenset(
+                str(code) for code in op.get("responses", {})
+            )
     return ops
 
 
@@ -104,8 +102,8 @@ def query_params(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, tuple[s
 def diff(contract: dict[str, Any], generated: dict[str, Any]) -> list[str]:
     """Compare the contract with the generated document.
 
-    Checks that both declare the same operations, the same 2xx status codes per operation and
-    the same query parameters (name, type, required). Summaries, descriptions, operation ids
+    Checks that both declare the same operations, the same status codes per operation and the
+    same query parameters (name, type, required). Summaries, descriptions, operation ids
     and schema bodies are intentionally not compared.
 
     Args:

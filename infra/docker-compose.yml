@@ -23,8 +23,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Stated, never defaulted: the settings refuse to start without an explicit environment.
+      ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hds}:${POSTGRES_PASSWORD:-hds_dev}@postgres:5432/${POSTGRES_DB:-hds}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-in-production}
+      # No default on purpose: compose stops when this is unset or empty, so the stack can never
+      # run with a signing key that is published in this repository.
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?set JWT_SECRET_KEY, generate one with: openssl rand -hex 32}"
     ports:
       - "8000:8000"
     volumes:

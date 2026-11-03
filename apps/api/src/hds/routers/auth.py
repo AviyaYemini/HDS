@@ -4,15 +4,18 @@ Layer: routers. Delegates to ``AuthService``; the only public endpoints are logi
 Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the other routers.
 """
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.client_address import client_address
 from hds.core.config import get_settings
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
-from hds.core.types import Password, Token
+from hds.core.types import Email, Password, Token
 from hds.models.user import User
+from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
@@ -23,7 +26,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     """Credentials for ``POST /auth/login``."""
 
-    email: EmailStr
+    email: Email
     password: Password
 
 
@@ -51,6 +54,8 @@ def _make_service(db: AsyncSession) -> AuthService:
         user_repo=UserRepository(db),
         token_repo=RefreshTokenRepository(db),
         config=settings,
+        link_repo=InvitationTokenRepository(db),
+        throttle_repo=LoginThrottleRepository(db),
     )
 
 
@@ -59,25 +64,43 @@ def _make_service(db: AsyncSession) -> AuthService:
     response_model=TokenResponse,
     summary="Sign in",
     description=(
-        "Exchange an email and password for an access token and a refresh token. "
-        "Unknown email, wrong password and inactive account all return the same 401 "
-        "(`auth.invalid_credentials`). After repeated failures the account is locked "
-        "and the call returns 423 (`auth.account_locked`)."
+        "Exchange an email and password for an access token and a refresh token. The "
+        "email is matched without regard to letter case. Unknown email, wrong password "
+        "and inactive account all return the same 401 (`auth.invalid_credentials`), "
+        "after the same amount of work. Any address, registered or not, locks after "
+        "exactly the configured number of consecutive failures (default 5) and the call "
+        "then returns 423 (`auth.account_locked`) until the cooldown ends, even with the "
+        "right password; the count restarts at zero when it does, and a successful "
+        "sign-in also clears it. Too many failures from one network address inside the "
+        "window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; "
+        "a successful sign-in does not clear that count. "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def login(
+    request: Request,
     body: LoginRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> TokenResponse:
     """Sign in.
 
-    Exchange an email and password for an access token and a refresh token. Unknown email, wrong
-    password and inactive account all return the same 401 (`auth.invalid_credentials`). After
-    repeated failures the account is locked and the call returns 423 (`auth.account_locked`).
+    Exchange an email and password for an access token and a refresh token. The email is matched
+    without regard to letter case. Unknown email, wrong password and inactive account all return
+    the same 401 (`auth.invalid_credentials`), after the same amount of work. Any address,
+    registered or not, locks after exactly the configured number of consecutive failures (default
+    5) and the call then returns 423 (`auth.account_locked`) until the cooldown ends, even with the
+    right password; the count restarts at zero when it does, and a successful sign-in also clears
+    it. Too many failures from one network address inside the window return 429
+    (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not
+    clear that count.
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     settings = get_settings()
     svc = _make_service(db)
-    result = await svc.login(str(body.email), body.password)
+    network = client_address(request, settings.TRUSTED_PROXY_COUNT)
+    result = await svc.login(str(body.email), body.password, network)
     return TokenResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
@@ -91,19 +114,24 @@ async def login(
     summary="Refresh tokens",
     description=(
         "Exchange a refresh token for a new access and refresh token. The presented "
-        "refresh token is spent: using it again returns 401 (`auth.token_revoked`). An "
-        "expired token returns `auth.token_expired`."
+        "refresh token is spent and works exactly once, even if sent twice at the same "
+        "moment: using it again returns 401 (`auth.token_revoked`). If it was replaced "
+        "more than the grace window ago (default 10 seconds), every session of the user "
+        "also ends, because it may be a stolen copy. An expired token returns "
+        "`auth.token_expired` and ends no session, even if it was already used."
     ),
 )
 async def refresh_token(
     body: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> TokenResponse:
     """Refresh tokens.
 
     Exchange a refresh token for a new access and refresh token. The presented refresh token is
-    spent: using it again returns 401 (`auth.token_revoked`). An expired token returns
-    `auth.token_expired`.
+    spent and works exactly once, even if sent twice at the same moment: using it again returns
+    401 (`auth.token_revoked`). If it was replaced more than the grace window ago (default 10
+    seconds), every session of the user also ends, because it may be a stolen copy. An expired
+    token returns `auth.token_expired` and ends no session, even if it was already used.
     """
     settings = get_settings()
     svc = _make_service(db)
@@ -120,22 +148,24 @@ async def refresh_token(
     status_code=204,
     summary="Sign out",
     description=(
-        "Revoke one refresh token, ending that session. Requires a valid access token. "
-        "Revoking an unknown or already revoked token still returns 204."
+        "Revoke one of the caller's refresh tokens, ending that session. Requires a valid "
+        "access token. An unknown or already revoked token, or one of another user, changes "
+        "nothing and still returns 204."
     ),
 )
 async def logout(
     body: RefreshRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Sign out.
 
-    Revoke one refresh token, ending that session. Requires a valid access token. Revoking an
-    unknown or already revoked token still returns 204.
+    Revoke one of the caller's refresh tokens, ending that session. Requires a valid access token.
+    An unknown or already revoked token, or one of another user, changes nothing and still returns
+    204.
     """
     svc = _make_service(db)
-    await svc.logout(body.refresh_token)
+    await svc.logout(body.refresh_token, current_user.id)
 
 
 @router.post(
@@ -149,7 +179,7 @@ async def logout(
 )
 async def logout_all(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Sign out everywhere.
 

@@ -7,12 +7,14 @@ Covers: none directly; fixtures only.
 """
 
 import asyncio
+import contextlib
 import os
 import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,26 +24,43 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
+# The settings refuse to load without an explicit environment and secret (specs/002 research D5),
+# so the suite states both before any hds import. `test` is a development environment.
+os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret-0123456789-abcdef")  # >= 32 bytes
+# Many tests fail sign-ins from one address on purpose. An assignment, not ``setdefault``, so a
+# developer's shell cannot change it; test_login_throttle.py turns the limit on for itself.
+os.environ["LOGIN_RATE_LIMIT_PER_NETWORK"] = "0"
+# The same for reset requests; test_reset_request_limit.py turns the limit on for itself.
+os.environ["RESET_REQUEST_LIMIT_PER_ADDRESS"] = "0"
+os.environ["RESET_REQUEST_LIMIT_PER_NETWORK"] = "0"
 
-from hds.core.database import get_db
+from hds.core.database import get_db, get_session_factory
 from hds.core.mail import get_mail_sender
 from hds.core.security import hash_password
 from hds.main import app
 from hds.models.base import Base
 from hds.models.organisation import Organisation
 from hds.models.user import User, UserRole
+from tests.run_database import database_url, process_exists, stale_databases
 
 # Allow the reserved ``.test`` domain used by the seeded fixtures.
 email_validator.TEST_ENVIRONMENT = True
 
-# Integration tests run on PostgreSQL (Constitution); SQLite stays for pure unit tests only.
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
-)
+# Integration tests run on PostgreSQL (Constitution); SQLite stays for pure unit tests only. Each
+# run has its own database unless one is named, so two runs at once cannot disturb each other.
+_NAMED_DATABASE = bool(os.environ.get("TEST_DATABASE_URL"))
+TEST_DATABASE_URL = database_url(os.environ.get("TEST_DATABASE_URL"), os.getpid())
+os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL  # for migration_support and subprocesses
 _API_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -53,34 +72,65 @@ def _assert_safe_test_db(url: str) -> str:
     return name
 
 
-async def _create_database_if_missing(url: str) -> None:
-    name = _assert_safe_test_db(url)
-    admin = create_async_engine(
+def _admin_engine(url: str) -> AsyncEngine:
+    return create_async_engine(
         make_url(url).set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
+
+
+async def _prepare_database(url: str, named: bool) -> None:
+    """Make the run's database ready.
+
+    A named database is kept, and nothing else is touched. A run's own one starts empty, because a
+    leftover with this process id would hand it old rows, and stale ones are removed on the way:
+    without FORCE, so one still in use by a run this machine cannot see survives.
+    """
+    name = _assert_safe_test_db(url)
+    admin = _admin_engine(url)
     try:
         async with admin.connect() as conn:
-            exists = await conn.scalar(
-                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": name}
-            )
-            if not exists:
+            names = [row[0] for row in await conn.execute(text("SELECT datname FROM pg_database"))]
+            if not named:
+                await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+                for stale in stale_databases(names, process_exists):
+                    with contextlib.suppress(DBAPIError):
+                        await conn.execute(text(f'DROP DATABASE IF EXISTS "{stale}"'))
+            if not named or name not in names:
                 await conn.execute(text(f'CREATE DATABASE "{name}"'))
     finally:
         await admin.dispose()
 
 
+async def _drop_database(url: str) -> None:
+    name = _assert_safe_test_db(url)
+    admin = _admin_engine(url)
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    finally:
+        await admin.dispose()
+
+
 @pytest.fixture(scope="session")
-def migrated_test_db() -> str:
-    """Create the test database if missing and run Alembic migrations to head once."""
-    asyncio.run(_create_database_if_missing(TEST_DATABASE_URL))
+def migrated_test_db() -> Generator[str, None, None]:
+    """Create the test database, run Alembic migrations to head once and drop it at the end.
+
+    A database that was named with ``TEST_DATABASE_URL`` is kept. Databases left by killed runs are
+    dropped here, so nothing depends on a run ending cleanly.
+    """
+    asyncio.run(_prepare_database(TEST_DATABASE_URL, _NAMED_DATABASE))
     env = {**os.environ, "DATABASE_URL": TEST_DATABASE_URL}
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=_API_DIR,
-        env=env,
-        check=True,
-    )
-    return TEST_DATABASE_URL
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=_API_DIR,
+            env=env,
+            check=True,
+        )
+        yield TEST_DATABASE_URL
+    finally:
+        if not _NAMED_DATABASE:
+            asyncio.run(_drop_database(TEST_DATABASE_URL))
 
 
 @pytest.fixture(scope="session")
@@ -102,7 +152,17 @@ class OutboxMailSender:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str, str]] = []
 
-    async def send(self, to: str, subject: str, body: str) -> None:
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        secret: str | None = None,
+        purpose: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> None:
+        """Record the message in memory; the options exist so services can pass them."""
         self.messages.append((to, subject, body))
 
     def last_token_for(self, to: str) -> str:
@@ -131,11 +191,13 @@ async def test_db(migrated_test_db: str) -> AsyncGenerator[AsyncSession, None]:
             yield db
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
     try:
         async with session_factory() as session:
             yield session
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_session_factory, None)
         tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
         async with engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
@@ -162,6 +224,7 @@ async def seed_users(test_db: AsyncSession, seed_org: Organisation) -> dict[str,
             password_hash=hash_password("Dev1234!"),
             full_name=f"Test {role.value.title()}",
             role=role,
+            activated_at=datetime.now(UTC),
         )
         test_db.add(u)
         users[role.value] = u
@@ -206,6 +269,7 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
             yield session
 
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_session_factory] = lambda: factory
 
     async def _seed() -> dict[str, str]:
         async with factory() as session:
@@ -220,6 +284,7 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
                         password_hash=hash_password("Dev1234!"),
                         full_name=role.value,
                         role=role,
+                        activated_at=datetime.now(UTC),
                     )
                 )
             await session.commit()
@@ -250,3 +315,4 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
         runner.run(_clean())
         runner.close()
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_session_factory, None)

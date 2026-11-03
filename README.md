@@ -18,32 +18,58 @@ This repository is a monorepo:
 
 ## Quick start
 
-You need Docker, Docker Compose and [uv](https://docs.astral.sh/uv/).
+You need Docker, Docker Compose, `make` and [uv](https://docs.astral.sh/uv/). Run every command from
+the repository root unless a step says otherwise.
 
 ```bash
-# 1. Copy the example settings and replace the placeholders. Never commit real secrets.
-cp .env.example .env
+# 1. Create the .env file in the repository root. ENVIRONMENT and JWT_SECRET_KEY are required and
+#    have no defaults: the API and docker compose both refuse to start without them. The file is
+#    git-ignored; never commit a real secret. (.env.example lists every variable, optional ones too.)
+printf 'JWT_SECRET_KEY=%s\nENVIRONMENT=development\n' "$(openssl rand -hex 32)" > .env
 
-# 2. Start PostgreSQL (the compose file lives in infra/).
-docker compose -f infra/docker-compose.yml up -d postgres
+# 2. Build and start PostgreSQL and the API in containers.
+make up        # docker compose -f infra/docker-compose.yml --env-file .env up -d --build
+make ps        # state of the containers
+make logs      # follow the logs; `make logs S=api` for one service
+make down      # stop and remove the containers (database files in infra/volumes are kept)
 
-# 3. Install the API's dependencies, create the schema and load development data.
+# 3. Create the schema and load development data (the stack from step 2 must be up).
+docker compose -f infra/docker-compose.yml --env-file .env exec api alembic upgrade head
+docker compose -f infra/docker-compose.yml --env-file .env exec api python -m hds.scripts.seed_dev
+```
+
+The API is then at <http://localhost:8000>; the interactive docs are at `/docs` and the OpenAPI
+document at `/api/v1/openapi.json`. `seed_dev` lists the accounts it creates in its module
+docstring. They are for local development only.
+
+**Why `--env-file .env`:** Compose reads its `.env` from the folder of the compose file (`infra/`),
+not from where you run it, so the commands above pass the root file explicitly. Do not swap this for
+`--project-directory .`: the compose file's relative paths (build context, volumes) assume `infra/`.
+The `make` targets already do it. `make down` needs no real secret: it supplies a dummy
+`JWT_SECRET_KEY` when none is set, while `make up` refuses to start without a real one.
+
+**Running the API from source instead** (PostgreSQL still in its container: `make up`, or
+`docker compose -f infra/docker-compose.yml --env-file .env up -d postgres`). The API reads a `.env`
+from the folder it is started in, so copy yours there once:
+
+```bash
+cp .env apps/api/.env
 cd apps/api
 uv sync --extra dev
 uv run alembic upgrade head
 uv run python -m hds.scripts.seed_dev
-
-# 4. Run the API with auto-reload.
 uv run uvicorn hds.main:app --reload
 ```
 
-The API is then at <http://localhost:8000>; the interactive docs are at `/docs` and the
-OpenAPI document at `/api/v1/openapi.json`. `seed_dev` lists the accounts it creates in its
-module docstring. They are for local development only.
+The settings, required and optional, are listed in [`.env.example`](.env.example) and described in
+[`apps/api/README.md`](apps/api/README.md#configuration). Code baked into the image (a migration,
+for example) is only picked up when the image is rebuilt, so run `make up` again after changing it.
 
-To run the whole stack in containers instead, use
-`docker compose -f infra/docker-compose.yml up --build`, then apply the migrations with
-`docker compose -f infra/docker-compose.yml exec api alembic upgrade head`.
+Invitation and password-reset emails are not delivered in development: the development mail
+backend appends a redacted record to `apps/api/.dev-mail/outbox.jsonl` and never stores a usable
+token. To get a working token for a manual test, run
+`uv run python -m hds.scripts.dev_issue_link <email> invite` (or `reset`) from `apps/api`; it
+prints the token once and stores it nowhere.
 
 ## Running the tests
 
@@ -55,7 +81,13 @@ uv run pytest tests/integration tests/contract # needs PostgreSQL; see apps/api/
 uv run pytest                                  # everything
 ```
 
-The integration tests use a separate `*_test` database and refuse to run against any other.
+The sign-in timing comparison (SC-207) is slow and noisy, so it is skipped by default. Run it by
+hand before a release with `uv run pytest -m timing tests/integration/test_login_timing.py -s`
+(about a minute; it needs PostgreSQL and prints the two medians). Its pass mark is a median ratio
+below 1.15; the p-value is printed, not asserted.
+
+Each test run creates its own database and drops it at the end, so several runs can go at once. A
+named `TEST_DATABASE_URL` must end in `_test`, and the tests refuse any other.
 The quality gates that CI also runs are listed in [`apps/api/README.md`](apps/api/README.md).
 
 ## How the project is run

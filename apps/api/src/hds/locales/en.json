@@ -28,6 +28,7 @@
   "portal.project_detail": "Project Details",
   "users.last_admin": "Cannot remove, deactivate or demote the last active administrator.",
   "users.duplicate_email": "This email address is already in use.",
+  "users.pending_cannot_reactivate": "This account has not accepted its invitation yet. It becomes active when the invitation is accepted.",
   "users.admin_required": "Only an administrator can perform this action.",
   "auth.account_inactive": "This account is inactive.",
   "auth.invalid_token": "The token is invalid.",
@@ -37,6 +38,7 @@
   "auth.token_used": "This token has already been used.",
   "auth.user_not_found": "User not found.",
   "groups.duplicate_name": "A group with this name already exists.",
+  "invitations.account_deactivated": "This account was deactivated. An invitation cannot bring it back; ask an administrator to reactivate it.",
   "projects.access_denied": "Access to this project is not allowed.",
   "qualifications.duplicate_name": "A qualification with this name already exists.",
   "resource.not_found": "The requested resource was not found.",
@@ -46,5 +48,12 @@
   "users.role_invalid": "This role cannot be assigned here.",
   "validation.request_invalid": "The request body or parameters are invalid.",
   "http.method_not_allowed": "This method is not allowed for the resource.",
-  "http.bad_request": "The request could not be parsed."
+  "http.bad_request": "The request could not be parsed.",
+  "sites.timezone_invalid": "The time zone must be an IANA name such as Asia/Jerusalem.",
+  "users.client_inactive": "This user's client is inactive or deleted; reactivate the client first.",
+  "users.pending_cannot_deactivate": "This account has not accepted its invitation yet, so it cannot be deactivated.",
+  "service.busy": "The service is busy; try again shortly.",
+  "auth.rate_limited": "Too many failed sign-ins from this network; try again later.",
+  "users.client_role_locked": "The role of a Client account cannot be changed.",
+  "clients.date_range_invalid": "The contract end date must not be before its start date."
 }

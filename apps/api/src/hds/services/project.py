@@ -162,9 +162,9 @@ class ProjectService:
     ) -> list[Project]:
         """List projects visible to the caller.
 
-        A Client always sees only their own client's projects, whatever filter they send; this
-        method, not the router, enforces that data scope. Employees are rejected earlier by the
-        router dependency.
+        A Client always sees only their own client's projects, whatever filter they send, and an
+        account with no client sees none (FR-237); this method, not the router, enforces that data
+        scope. Employees are rejected earlier by the router dependency.
 
         Args:
             org_id: The caller's organisation.
@@ -179,6 +179,8 @@ class ProjectService:
             NotFoundError: ``client_id`` is not in the organisation (HTTP 404).
         """
         if current_user.role == UserRole.client:
+            if current_user.client_id is None:
+                return []  # an empty filter means every project, which must not reach this user
             client_id = current_user.client_id
         elif client_id is not None:
             await self._require_client(client_id, org_id)
@@ -196,10 +198,13 @@ class ProjectService:
             The project.
 
         Raises:
-            NotFoundError: Missing or in another organisation (HTTP 404).
+            NotFoundError: Missing, in another organisation, or the caller is a Client account
+                with no client (HTTP 404).
             ForbiddenError: ``projects.access_denied`` when a Client asks for a project of a
                 different client (HTTP 403).
         """
+        if current_user.role == UserRole.client and current_user.client_id is None:
+            raise NotFoundError(resource="Project", id=id)
         project = await self._repo.get_by_id(id, org_id)
         if project is None:
             raise NotFoundError(resource="Project", id=id)

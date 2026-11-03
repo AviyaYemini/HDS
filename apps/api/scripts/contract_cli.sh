@@ -3,13 +3,12 @@
 #
 #   DATABASE_URL=<scratch db url> scripts/contract_cli.sh [BASE_URL] [MAX_EXAMPLES]
 #
-# Pass A runs every built-in check on every operation except the three below.
-# Pass B runs the same checks on those three, minus "positive_data_acceptance", because a
-# valid request is correctly refused there:
-#   * POST /projects, PATCH /projects/{id}: end_date >= start_date spans two fields, which an
-#     OpenAPI 3.0 schema cannot state (FR-028, answered 422 projects.date_range_invalid);
-#   * POST /auth/login: the run itself creates users and then guesses their passwords, so the
-#     account lockout (423) is the designed answer.
+# Pass A runs every built-in check on every operation except those listed in
+# tests/contract/unprovable_operations.json (suite "cli").
+# Pass B runs the same checks on those, minus "positive_data_acceptance", because a valid request
+# is correctly refused there. The file gives the reason for each (a date order and a time zone,
+# which an OpenAPI 3.0 schema cannot state, and the sign-in lockout). The pytest contract suite
+# reads the same file, so the two lists cannot drift apart.
 set -euo pipefail
 
 # Safety guard: this run creates, edits, locks and deletes data. Run it only against a database
@@ -32,6 +31,7 @@ Point it at a scratch database, start the server with the same URL, then rerun:
   docker run -d --name hds-scratch -e POSTGRES_USER=hds -e POSTGRES_PASSWORD=hds \
     -e POSTGRES_DB=hds_scratch -p 5433:5432 postgres:16-alpine
   export DATABASE_URL=postgresql+asyncpg://hds:hds@localhost:5433/hds_scratch
+  export LOGIN_RATE_LIMIT_PER_NETWORK=0   # the run fails sign-ins from one address on purpose
   uv run alembic upgrade head && uv run python -m hds.scripts.seed_dev
   uv run uvicorn hds.main:app --port 8000 &
   scripts/contract_cli.sh http://localhost:8000
@@ -43,11 +43,29 @@ esac
 BASE_URL="${1:-http://localhost:8000}"
 EXAMPLES="${2:-25}"
 SPEC="$BASE_URL/api/v1/openapi.json"
-SPECIAL=(login_auth_login_post create_project_api_v1_projects_post edit_project_api_v1_projects__id__patch)
+LIST="$(dirname "$0")/../tests/contract/unprovable_operations.json"
+# One operation id per line from the shared list (bash 3 on macOS has no mapfile).
+SPECIAL=()
+while IFS= read -r op; do SPECIAL+=("$op"); done < <(python3 - "$LIST" <<'PY'
+import json
+import sys
+
+for op in json.load(open(sys.argv[1]))["operations"]:
+    if "cli" in op["suites"]:
+        print(op["operation_id"])
+PY
+)
+[ "${#SPECIAL[@]}" -gt 0 ] || { echo "no operations read from $LIST" >&2; exit 4; }
 
 TOKEN=$(curl -sf -X POST "$BASE_URL/auth/login" -H 'Content-Type: application/json' \
   -d '{"email":"admin@hds.test","password":"Dev1234!"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 AUTH="Authorization: Bearer $TOKEN"
+
+# Keep the seeded accounts alive during the run (see scripts/contract_hooks.py): without this the
+# fuzzer deactivates its own admin and later operations are only ever answered 401 or 403.
+export HDS_CONTRACT_BASE_URL="$BASE_URL"
+export SCHEMATHESIS_HOOKS=contract_hooks
+export PYTHONPATH="$(cd "$(dirname "$0")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
 
 exclude=(); include=()
 for op in "${SPECIAL[@]}"; do exclude+=(--exclude-operation-id "$op"); include+=(--include-operation-id "$op"); done

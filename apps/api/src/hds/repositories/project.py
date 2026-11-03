@@ -73,7 +73,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Project:
-        """Insert a project in the organisation and commit.
+        """Insert a project in the organisation.
 
         Args:
             org_id: Organisation that will own the project.
@@ -88,12 +88,12 @@ class ProjectRepository(OrgScopedRepository[Project]):
         """
         project = Project(id=uuid.uuid4(), organization_id=org_id, **data)
         self.session.add(project)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(project)
         return project
 
     async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Project:
-        """Update columns of a project of the organisation and commit.
+        """Update columns of a project of the organisation.
 
         Args:
             id: Project to update.
@@ -109,7 +109,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         return await self._update_scoped(id, org_id, **fields)
 
     async def soft_delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Mark a project deleted and commit.
+        """Mark a project deleted.
 
         Args:
             id: Project to delete.

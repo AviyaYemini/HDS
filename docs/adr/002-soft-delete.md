@@ -9,7 +9,7 @@ HDS needs to hide users, clients, and projects from normal queries without destr
 
 ## Decision
 
-All mutable domain entities use soft delete: `is_deleted BOOL NOT NULL DEFAULT false` + `deleted_at TIMESTAMPTZ`. Queries always include `WHERE is_deleted = false`. Partial unique indexes (`WHERE is_deleted = false`) preserve the uniqueness constraint for active records only (e.g., `uq_users_email`).
+All mutable domain entities use soft delete: `is_deleted BOOL NOT NULL DEFAULT false` + `deleted_at TIMESTAMPTZ`. Queries always include `WHERE is_deleted = false`. Partial unique indexes (`WHERE is_deleted = false`) preserve the uniqueness constraint for active records only (e.g., `uq_users_email_ci`, unique on `lower(email)`).
 
 ## Consequences
 

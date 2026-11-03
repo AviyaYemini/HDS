@@ -7,10 +7,12 @@ known.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.group import user_groups
 from hds.models.qualification import user_qualifications
@@ -21,6 +23,26 @@ from hds.repositories.base import OrgScopedRepository
 def _escape_like(text: str) -> str:
     """Make ``%``, ``_`` and the escape character literal inside a LIKE pattern."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def lock_user_row(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """Take ``SELECT ... FOR UPDATE`` on a user's row, held until the unit of work ends.
+
+    Every path that creates a session or ends all of them takes this lock, so they run one after
+    the other. Without it, a new refresh token is invisible to a concurrent "end every session"
+    until it commits, and it would survive (FR-230).
+
+    The user's row is always the first lock of a path that also touches that user's links or
+    tokens. Otherwise one path holding a link and waiting for the user meets another holding the
+    user and waiting for the link, and PostgreSQL aborts one with a deadlock (FR-246). Inserting a
+    link or token waits here too, through its foreign key. Several users are locked one at a time
+    in ascending id order.
+
+    Args:
+        session: The request's session.
+        user_id: The user whose sessions are being created or ended.
+    """
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
 
 
 class UserRepository(OrgScopedRepository[User]):
@@ -35,13 +57,17 @@ class UserRepository(OrgScopedRepository[User]):
         organisation is learned from the account rather than supplied by the caller.
 
         Args:
-            email: Address exactly as stored; the match is case-sensitive.
+            email: The address in any letter case; it is trimmed and compared in lowercase
+                (FR-215), through the same expression as the unique index.
 
         Returns:
             The user, or ``None``.
         """
         result = await self.session.execute(
-            select(User).where(User.email == email, User.is_deleted.is_(False)).limit(1)
+            select(User)
+            .where(func.lower(User.email) == email.strip().lower(), User.is_deleted.is_(False))
+            .limit(1)
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 
@@ -97,23 +123,6 @@ class UserRepository(OrgScopedRepository[User]):
         result = await self.session.execute(stmt.order_by(User.full_name, User.id))
         return list(result.scalars().all())
 
-    async def get_by_id_for_token(self, user_id: uuid.UUID) -> User | None:
-        """Load the user an invite or reset token belongs to.
-
-        Unscoped by organisation because the redeemer is not signed in; the token itself is the
-        proof of ownership. Never call it with an id taken from a request path or body.
-
-        Args:
-            user_id: The ``user_id`` stored on the validated token.
-
-        Returns:
-            The non-deleted user, or ``None``.
-        """
-        result = await self.session.execute(
-            select(User).where(User.id == user_id, User.is_deleted.is_(False))
-        )
-        return result.scalar_one_or_none()
-
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> User | None:
         """Fetch a non-deleted user of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(
@@ -125,25 +134,41 @@ class UserRepository(OrgScopedRepository[User]):
         )
         return result.scalar_one_or_none()
 
-    async def get_for_auth(self, id: uuid.UUID) -> User | None:
-        """Resolve the owner of a verified credential (access/refresh token).
-
-        Unscoped by organisation because the organisation is not known until the credential's
-        owner is loaded. Never call this with an id taken from a request path or body.
+    async def lock_user(self, user_id: uuid.UUID) -> None:
+        """Lock the user's row until the unit of work ends (see `lock_user_row`).
 
         Args:
-            id: The id taken from a verified token's subject.
+            user_id: The user whose sessions are being created or ended.
+        """
+        await lock_user_row(self.session, user_id)
+
+    async def get_for_auth(self, id: uuid.UUID) -> User | None:
+        """Resolve the owner of a verified credential: a token, or a one-time link.
+
+        Unscoped by organisation because the organisation is not known until the credential's
+        owner is loaded. Never call this with an id taken from a request path or body. The row is
+        always read fresh (``populate_existing``): the session keeps the values it loaded earlier,
+        so a re-read after taking the lock would otherwise return the state from before the lock.
+
+        Args:
+            id: The id taken from a verified token's subject, or from a stored one-time link.
 
         Returns:
             The non-deleted user, or ``None``. Inactive users are returned; the caller decides.
         """
         result = await self.session.execute(
-            select(User).where(User.id == id, User.is_deleted.is_(False))
+            select(User)
+            .where(User.id == id, User.is_deleted.is_(False))
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> User:
-        """Insert a user in the organisation and commit.
+        """Insert a user in the organisation.
+
+        An account created active (the default) is stamped with ``activated_at`` = now, because
+        the database refuses an active account without one. An account created inactive, as an
+        invitation does, keeps ``activated_at`` empty: it is pending until it is activated.
 
         Args:
             org_id: Organisation that will own the user.
@@ -159,55 +184,67 @@ class UserRepository(OrgScopedRepository[User]):
         user = User(
             id=uuid.uuid4(),
             organization_id=org_id,
-            **data,
+            **self._with_activation(data),
         )
         self.session.add(user)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(user)
         return user
 
-    async def increment_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Add one to the failed-sign-in counter in a single atomic UPDATE, then commit.
+    async def create_if_absent(self, org_id: uuid.UUID, data: dict[str, Any]) -> tuple[User, bool]:
+        """Insert a user, or return the account that already holds this email address.
 
-        Done in SQL rather than read-modify-write so concurrent failures are not lost.
-
-        Args:
-            user_id: The account that failed to sign in.
-        """
-        await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(failed_login_attempts=User.failed_login_attempts + 1)
-        )
-        await self.session.commit()
-
-    async def reset_failed_attempts(self, user_id: uuid.UUID) -> None:
-        """Zero the failure counter and clear any lock, then commit (after a good sign-in).
+        The insert runs inside a savepoint. If another request created the same address first,
+        the unique email index rejects this insert, only the savepoint is rolled back (the rest of
+        the request's transaction is untouched), and the winner's account is returned instead.
+        This is what lets two simultaneous invitations for a new address both succeed.
 
         Args:
-            user_id: The account that signed in.
-        """
-        await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(failed_login_attempts=0, locked_until=None)
-        )
-        await self.session.commit()
+            org_id: Organisation that will own a new user.
+            data: Column values for the new user, including ``email``.
 
-    async def set_locked_until(self, user_id: uuid.UUID, until: datetime) -> None:
-        """Lock the account until a UTC instant, then commit.
+        Returns:
+            ``(user, True)`` for a newly created account, ``(user, False)`` for the account that
+            already existed. The caller must still check which organisation it belongs to.
 
-        Args:
-            user_id: The account to lock.
-            until: Timezone-aware UTC time at which sign-in is allowed again.
+        Raises:
+            sqlalchemy.exc.IntegrityError: If the insert failed for a reason other than a
+                duplicate email address (for example a check constraint).
         """
-        await self.session.execute(
-            update(User).where(User.id == user_id).values(locked_until=until)
+        user = User(
+            id=uuid.uuid4(),
+            organization_id=org_id,
+            **self._with_activation(data),
         )
-        await self.session.commit()
+        try:
+            async with self.session.begin_nested():
+                self.session.add(user)
+                await self.session.flush()
+        except IntegrityError:
+            existing = await self.get_by_email(data["email"])
+            if existing is None:
+                raise
+            return existing, False
+        await self.session.refresh(user)
+        return user, True
+
+    @staticmethod
+    def _with_activation(data: dict[str, Any]) -> dict[str, Any]:
+        """Prepare the column values of a new account.
+
+        Stamps ``activated_at`` on an account that is created active, as the database requires,
+        and stores the address trimmed and lowercased (FR-215), so a caller that bypasses the
+        request types still cannot create a second spelling of an address.
+        """
+        fields = dict(data)
+        if isinstance(fields.get("email"), str):
+            fields["email"] = fields["email"].strip().lower()
+        if fields.get("is_active", True) and fields.get("activated_at") is None:
+            fields["activated_at"] = datetime.now(UTC)
+        return fields
 
     async def update(self, user_id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> User:
-        """Update columns of a user of the organisation and commit.
+        """Update columns of a user of the organisation.
 
         Args:
             user_id: User to update.
@@ -223,7 +260,7 @@ class UserRepository(OrgScopedRepository[User]):
         return await self._update_scoped(user_id, org_id, **fields)
 
     async def soft_delete(self, user_id: uuid.UUID, org_id: uuid.UUID) -> None:
-        """Mark a user deleted so the email can be reused; history is kept. Commits.
+        """Mark a user deleted so the email can be reused; history is kept.
 
         Args:
             user_id: User to delete.
@@ -231,21 +268,34 @@ class UserRepository(OrgScopedRepository[User]):
         """
         await self._soft_delete_scoped(user_id, org_id)
 
-    async def count_active_admins(self, org_id: uuid.UUID) -> int:
-        """Count active, non-deleted admins; used to refuse removing the last one.
+    async def lock_active_admins(self, org_id: uuid.UUID) -> list[uuid.UUID]:
+        """Lock the organisation's active Admins and return their ids, to guard the last one.
+
+        ``SELECT ... FOR UPDATE`` makes a second request that wants the same rows wait until the
+        first one commits or rolls back, and then look again. Two Admins removing each other at
+        the same moment therefore run one after the other, and the second sees only one Admin
+        left. The rows are ordered by id so two requests always lock them in the same order and
+        cannot wait on each other.
+
+        The lock lasts until the request's unit of work ends (commit or rollback), not until this
+        method returns, so call it just before the change it protects.
 
         Args:
-            org_id: The organisation to count in.
+            org_id: The organisation to look in.
 
         Returns:
-            The number of admins who can still sign in.
+            The ids of the Admins who can still sign in, as they are after any concurrent
+            change has committed.
         """
         result = await self.session.execute(
-            select(func.count()).where(
+            select(User.id)
+            .where(
                 User.organization_id == org_id,
                 User.role == UserRole.admin,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),
             )
+            .order_by(User.id)
+            .with_for_update()
         )
-        return result.scalar_one()
+        return list(result.scalars().all())

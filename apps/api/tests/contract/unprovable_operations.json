@@ -1,0 +1,54 @@
+{
+  "_about": "Operations on which a schema-valid request is correctly refused, so the single check positive_data_acceptance (valid data must be accepted) is skipped for them; every other check still runs. This file is the only list: tests/contract/test_openapi_contract.py and scripts/contract_cli.sh both read it, and a test fails if an entry does not match the OpenAPI document. 'suites' says which runner skips the check.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/projects",
+      "operation_id": "create_project_api_v1_projects_post",
+      "suites": ["pytest", "cli"],
+      "reason": "end_date >= start_date spans two fields, which OpenAPI 3.0 cannot state (FR-028); answered 422 projects.date_range_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/projects/{id}",
+      "operation_id": "edit_project_api_v1_projects__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "same date-order rule as the create (FR-028)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sites",
+      "operation_id": "create_site_api_v1_sites_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a time zone must be an exact name on the IANA list that loads (FR-217, FR-231), which no schema can state; any short string is schema-valid and a made-up one is answered 422 sites.timezone_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sites/{id}",
+      "operation_id": "edit_site_api_v1_sites__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "same time zone rule as the create (FR-217)"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "operation_id": "login_auth_login_post",
+      "suites": ["cli"],
+      "reason": "the command-line run itself creates users and then guesses their passwords, so the account lockout (423) is the designed answer"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/clients",
+      "operation_id": "create_client_api_v1_clients_post",
+      "suites": ["pytest", "cli"],
+      "reason": "contract_end >= contract_start spans two fields, which OpenAPI cannot state (FR-243); answered 422 clients.date_range_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/clients/{id}",
+      "operation_id": "edit_client_api_v1_clients__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "same date-order rule as the create, judged against the stored start (FR-243)"
+    }
+  ]
+}

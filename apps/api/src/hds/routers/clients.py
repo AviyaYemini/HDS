@@ -11,11 +11,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager
-from hds.core.types import Name, Password, Phone, StrictDate
+from hds.core.types import Email, Name, Password, Phone, StrictDate, omittable
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
+from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.client import ClientService
 
@@ -52,14 +54,14 @@ class ClientCreateRequest(BaseModel):
 
 
 class ClientUpdateRequest(BaseModel):
-    """Client fields that may change; omitted fields are left as they are."""
+    """Client fields that may change; omitted fields are left as they are, null clears."""
 
-    name: Name | None = None
+    name: Name = omittable()
     contact_name: Name | None = None
     contact_email: EmailStr | None = None
     contact_phone: Phone | None = None
     contract_end: StrictDate | None = None
-    is_active: StrictBool | None = None
+    is_active: StrictBool = omittable()
 
 
 class ClientListResponse(BaseModel):
@@ -87,14 +89,19 @@ class ClientUserRead(BaseModel):
 class ClientUserCreateRequest(BaseModel):
     """New portal account; the initial password needs at least 12 characters."""
 
-    email: EmailStr
+    email: Email
     full_name: Name
     phone: Phone | None = None
     initial_password: Password = Field(min_length=12)
 
 
 def _svc(db: AsyncSession) -> ClientService:
-    return ClientService(client_repo=ClientRepository(db), user_repo=UserRepository(db))
+    return ClientService(
+        client_repo=ClientRepository(db),
+        user_repo=UserRepository(db),
+        link_repo=InvitationTokenRepository(db),
+        token_repo=RefreshTokenRepository(db),
+    )
 
 
 @router.get(
@@ -109,14 +116,14 @@ def _svc(db: AsyncSession) -> ClientService:
 async def list_clients(
     is_active: bool | None = None,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ClientListResponse:
     """List clients.
 
     Manager or Admin. Return the organisation's non-deleted clients, optionally only active or
     only inactive ones.
     """
-    clients = await ClientRepository(db).list_by_org(current_user.organization_id, is_active)
+    clients = await _svc(db).list_clients(current_user, is_active)
     return ClientListResponse(items=clients)  # type: ignore[arg-type]
 
 
@@ -127,17 +134,19 @@ async def list_clients(
     summary="Create a client",
     description=(
         "Manager or Admin. Create a client with its contract start date and optional "
-        "contact details."
+        "contact details. "
+        "A contract end before its start returns 422 (`clients.date_range_invalid`)."
     ),
 )
 async def create_client(
     body: ClientCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a client.
 
     Manager or Admin. Create a client with its contract start date and optional contact details.
+    A contract end before its start returns 422 (`clients.date_range_invalid`).
     """
     svc = _svc(db)
     return await svc.create_client(
@@ -155,18 +164,13 @@ async def create_client(
 async def get_client(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Get a client.
 
     Manager or Admin. Return one client of the organisation.
     """
-    from hds.core.exceptions import NotFoundError
-
-    client = await ClientRepository(db).get_by_id(id, current_user.organization_id)
-    if client is None:
-        raise NotFoundError(resource="Client", id=id)
-    return client
+    return await _svc(db).get_client(current_user, id)
 
 
 @router.patch(
@@ -175,27 +179,34 @@ async def get_client(
     summary="Edit a client",
     description=(
         "Manager or Admin. Update contact details, contract end or active state. "
-        "Deactivating an active client also deactivates its portal users; reactivating "
-        "the client does not reactivate them."
+        "Deactivating an active client also deactivates its portal users and ends their "
+        "sessions; reactivating the client does not reactivate them. "
+        "An explicit null clears a field that allows it and is refused with 422 on a "
+        "required one; an omitted field is left alone. "
+        "A contract end before the stored contract start returns 422 "
+        "(`clients.date_range_invalid`)."
     ),
 )
 async def edit_client(
     id: uuid.UUID,
     body: ClientUpdateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Edit a client.
 
     Manager or Admin. Update contact details, contract end or active state. Deactivating an
-    active client also deactivates its portal users; reactivating the client does not reactivate
-    them.
+    active client also deactivates its portal users and ends their sessions; reactivating the
+    client does not reactivate them.
+    An explicit null clears a field that allows it and is refused with 422 on a required one; an
+    omitted field is left alone.
+    A contract end before the stored contract start returns 422 (`clients.date_range_invalid`).
     """
     svc = _svc(db)
     return await svc.edit_client(
         actor=current_user,
         id=id,
-        data=body.model_dump(exclude_none=True),
+        data=body.model_dump(exclude_unset=True),
     )
 
 
@@ -204,19 +215,20 @@ async def edit_client(
     status_code=204,
     summary="Delete a client",
     description=(
-        "Admin only. Soft-delete a client and deactivate its portal users. Refused with "
-        "409 (`clients.has_projects`) while the client still has projects."
+        "Admin only. Soft-delete a client, deactivate its portal users and end their "
+        "sessions. Refused with 409 (`clients.has_projects`) while the client still has "
+        "projects."
     ),
 )
 async def delete_client(
     id: uuid.UUID,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Delete a client.
 
-    Admin only. Soft-delete a client and deactivate its portal users. Refused with 409
-    (`clients.has_projects`) while the client still has projects.
+    Admin only. Soft-delete a client, deactivate its portal users and end their sessions. Refused
+    with 409 (`clients.has_projects`) while the client still has projects.
     """
     svc = _svc(db)
     await svc.soft_delete(actor=current_user, id=id)
@@ -231,18 +243,13 @@ async def delete_client(
 async def list_client_users(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> list[User]:
     """List a client's users.
 
     Manager or Admin. Return the portal accounts attached to the client.
     """
-    from hds.core.exceptions import NotFoundError
-
-    repo = ClientRepository(db)
-    if await repo.get_by_id(id, current_user.organization_id) is None:
-        raise NotFoundError(resource="Client", id=id)
-    return await repo.list_users(id, current_user.organization_id)
+    return await _svc(db).list_client_users(current_user, id)
 
 
 @router.post(
@@ -253,20 +260,25 @@ async def list_client_users(
     description=(
         "Manager or Admin. Create a portal account with the Client role for this "
         "client, with an initial password of at least 12 characters. A duplicate email "
-        "returns 409 (`users.duplicate_email`)."
+        "returns 409 (`users.duplicate_email`); an inactive client returns 409 "
+        "(`users.client_inactive`). "
+        "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
+        "is full; nothing is changed."
     ),
 )
 async def create_client_user(
     id: uuid.UUID,
     body: ClientUserCreateRequest,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:
     """Create a client user.
 
     Manager or Admin. Create a portal account with the Client role for this client, with an
     initial password of at least 12 characters. A duplicate email returns 409
-    (`users.duplicate_email`).
+    (`users.duplicate_email`); an inactive client returns 409 (`users.client_inactive`).
+    Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
+    nothing is changed.
     """
     svc = _svc(db)
     return await svc.create_client_user(
@@ -281,20 +293,21 @@ async def create_client_user(
     status_code=204,
     summary="Remove a client user",
     description=(
-        "Manager or Admin. Soft-delete a portal account of this client. Staff accounts "
-        "cannot be removed here and return 404."
+        "Manager or Admin. Soft-delete a portal account of this client, ending its "
+        "sessions and cancelling its links. Staff accounts cannot be removed here and "
+        "return 404."
     ),
 )
 async def remove_client_user(
     id: uuid.UUID,
     user_id: uuid.UUID,
     current_user: User = Depends(require_manager),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> None:
     """Remove a client user.
 
-    Manager or Admin. Soft-delete a portal account of this client. Staff accounts cannot be
-    removed here and return 404.
+    Manager or Admin. Soft-delete a portal account of this client, ending its sessions and
+    cancelling its links. Staff accounts cannot be removed here and return 404.
     """
     svc = _svc(db)
     await svc.remove_client_user(actor=current_user, client_id=id, user_id=user_id)

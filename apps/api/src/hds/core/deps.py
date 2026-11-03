@@ -11,8 +11,9 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.authz import ensure_self_or_manager
 from hds.core.config import get_settings
-from hds.core.database import get_db
+from hds.core.database import get_unit_of_work
 from hds.core.exceptions import AuthError, ForbiddenError
 from hds.core.security import decode_access_token
 from hds.models.user import User, UserRole
@@ -23,7 +24,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
     """Resolve the bearer token to an active user.
 
@@ -160,11 +161,5 @@ async def get_current_user_or_self(
         ForbiddenError: ``users.forbidden`` (HTTP 403) when a non-manager addresses another
             user.
     """
-    if user.role in {UserRole.manager, UserRole.admin}:
-        return user
-    if user.id != id:
-        raise ForbiddenError(
-            code="users.forbidden",
-            detail="Access to this resource is not allowed",
-        )
+    ensure_self_or_manager(user, id)
     return user

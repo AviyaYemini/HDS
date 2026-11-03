@@ -58,13 +58,14 @@ async def test_soft_delete_and_delete_with_wrong_org_change_nothing(
     await GroupRepository(test_db).delete(other_org.group.id, mine)
     await QualificationRepository(test_db).delete(other_org.qualification.id, mine)
     theirs = other_org.org.id
-    for repo, row_id in [
+    cases: list[tuple[Any, uuid.UUID]] = [
         (UserRepository(test_db), other_org.user.id),
         (ClientRepository(test_db), other_org.client.id),
         (ProjectRepository(test_db), other_org.project.id),
         (GroupRepository(test_db), other_org.group.id),
         (QualificationRepository(test_db), other_org.qualification.id),
-    ]:
+    ]
+    for repo, row_id in cases:
         assert await repo.get_by_id(row_id, theirs) is not None, type(repo).__name__
 
 

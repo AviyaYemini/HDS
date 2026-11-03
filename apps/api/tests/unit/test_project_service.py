@@ -1,6 +1,6 @@
 """Unit tests for ProjectService manager scope (T076).
 
-Covers: FR-025, FR-026, FR-027, FR-028.
+Covers: FR-025, FR-026, FR-027, FR-028, FR-237.
 """
 
 import uuid
@@ -203,3 +203,25 @@ async def test_non_manager_cannot_mutate(role: UserRole) -> None:
 
     repo.create.assert_not_awaited()
     repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sent", [None, uuid.uuid4()], ids=["no filter", "a client's id"])
+async def test_a_client_account_with_no_client_lists_nothing(sent: uuid.UUID | None) -> None:
+    repo = AsyncMock()
+    actor = _actor(UserRole.client)
+    actor.client_id = None
+
+    assert await _svc(repo).list_projects(actor.organization_id, actor, client_id=sent) == []
+    repo.list_by_org.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_client_account_with_no_client_is_told_a_project_does_not_exist() -> None:
+    repo = AsyncMock()
+    actor = _actor(UserRole.client)
+    actor.client_id = None
+
+    with pytest.raises(NotFoundError):
+        await _svc(repo).get_project(uuid.uuid4(), actor.organization_id, actor)
+    repo.get_by_id.assert_not_awaited()

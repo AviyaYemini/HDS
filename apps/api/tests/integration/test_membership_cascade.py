@@ -33,7 +33,7 @@ async def _assign(
             {"u": user.id, "r": row.id},
         )
     await session.commit()
-    return row.id
+    return uuid.UUID(str(row.id))
 
 
 async def _memberships(session: AsyncSession, table: str) -> int:

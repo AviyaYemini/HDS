@@ -66,4 +66,7 @@ packages/api-client/src/
 .schemathesis/
 
 # Claude
-.claude/settings.local.json.claude/settings.local.json
+.claude/settings.local.json
+
+# Development mail outbox: redacted records written by the development mail sender
+apps/api/.dev-mail/
