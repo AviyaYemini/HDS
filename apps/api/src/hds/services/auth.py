@@ -7,7 +7,6 @@ Policy implemented here: Argon2id password check, lockout after repeated failure
 access tokens and rotating single-use refresh tokens (Constitution VI).
 """
 
-import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -16,17 +15,13 @@ from typing import Any, NoReturn
 
 from hds.core import passwords
 from hds.core.exceptions import AuthError, RateLimitedError
-from hds.core.security import create_access_token, generate_refresh_token
+from hds.core.security import create_access_token, generate_refresh_token, hash_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.services.throttle import SignInThrottle, live_lock
-
-
-async def _verify_password(plain: str, hashed: str) -> bool:
-    return await passwords.verify_password(plain, hashed)
 
 
 def _locked(locked_until: datetime) -> AuthError:
@@ -130,7 +125,7 @@ class AuthService:
             await self._throttle.register_failure(None, email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
-        if not await _verify_password(password, user.password_hash):
+        if not await passwords.verify_password(password, user.password_hash):
             await self._throttle.register_failure(user, email, network, datetime.now(UTC))
             raise AuthError(code="auth.invalid_credentials", detail="Invalid credentials")
 
@@ -195,7 +190,7 @@ class AuthService:
             longer ago than ``REFRESH_REUSE_GRACE_SECONDS`` also revokes every other token of the
             user and commits that before refusing.
         """
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        token_hash = hash_token(raw_token)
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None:
             raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
@@ -249,7 +244,7 @@ class AuthService:
             raw_token: The refresh token to revoke.
             user_id: The caller.
         """
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        token_hash = hash_token(raw_token)
         stored = await self._token_repo.get_by_hash(token_hash)
         if stored is None or stored.revoked_at is not None or stored.user_id != user_id:
             return

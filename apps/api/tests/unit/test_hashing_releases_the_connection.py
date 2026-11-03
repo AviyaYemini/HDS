@@ -10,7 +10,7 @@ import ast
 from pathlib import Path
 
 SERVICES = Path(__file__).resolve().parents[2] / "src" / "hds" / "services"
-HASHING = {"hash_password", "verify_password", "verify_against_dummy", "_verify_password"}
+HASHING = {"hash_password", "verify_password", "verify_against_dummy"}
 EXPECTED = {
     ("auth.py", "login"): 2,
     ("invitation.py", "create_invitation"): 1,
@@ -29,8 +29,8 @@ def test_every_hash_follows_a_release() -> None:
     found: dict[tuple[str, str], int] = {}
     for path in SERVICES.glob("*.py"):
         for function in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(function, ast.AsyncFunctionDef) or function.name in HASHING:
-                continue  # the thin wrapper around the check is not a path
+            if not isinstance(function, ast.AsyncFunctionDef):
+                continue
             calls = sorted(
                 (n for n in ast.walk(function) if isinstance(n, ast.Call)),
                 key=lambda n: (n.lineno, n.col_offset),

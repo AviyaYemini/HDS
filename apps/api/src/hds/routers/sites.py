@@ -71,7 +71,7 @@ async def list_sites(
 
     Manager or Admin. Return the organisation's sites ordered by name.
     """
-    sites = await SiteRepository(db).list_by_org(current_user.organization_id)
+    sites = await SiteService(site_repo=SiteRepository(db)).list_sites(current_user)
     return SiteListResponse(items=sites)  # type: ignore[arg-type]
 
 
@@ -115,12 +115,7 @@ async def get_site(
 
     Manager or Admin. Return one site of the organisation.
     """
-    from hds.core.exceptions import NotFoundError
-
-    site = await SiteRepository(db).get_by_id(id, current_user.organization_id)
-    if site is None:
-        raise NotFoundError(resource="Site", id=id)
-    return site
+    return await SiteService(site_repo=SiteRepository(db)).get_site(current_user, id)
 
 
 @router.patch(

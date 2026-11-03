@@ -13,13 +13,15 @@ from decimal import Decimal
 from typing import Any
 
 from hds.core import passwords
-from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
+from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role, ensure_self_or_manager
 from hds.core.exceptions import (
     ConflictError,
     DomainValidationError,
     ForbiddenError,
     NotFoundError,
 )
+from hds.models.group import Group
+from hds.models.qualification import Qualification
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
@@ -206,6 +208,75 @@ class EmployeeService:
         return await self._user_repo.update(
             current_user.id, current_user.organization_id, **changes
         )
+
+    # ── Reads ────────────────────────────────────────────────────────────────
+
+    async def get_employee(self, actor: User, id: uuid.UUID) -> User:
+        """Return a user of the organisation; anyone but a manager may read only themselves.
+
+        Args:
+            actor: The caller.
+            id: User to load.
+
+        Returns:
+            The user.
+
+        Raises:
+            ForbiddenError: ``users.forbidden`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+        """
+        ensure_self_or_manager(actor, id)
+        return await self._get_target(actor, id)
+
+    async def ensure_manageable(self, actor: User, id: uuid.UUID) -> None:
+        """Refuse a change to a user the actor may not change, the role before the id.
+
+        The role comes first, so a caller without it cannot learn which ids exist.
+
+        Args:
+            actor: The caller.
+            id: The user.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        await self._get_target(actor, id)
+
+    async def list_groups_of(self, actor: User, id: uuid.UUID) -> list[Group]:
+        """List a user's groups, under the same rule as `get_employee`.
+
+        Args:
+            actor: The caller.
+            id: The user.
+
+        Returns:
+            The groups.
+
+        Raises:
+            ForbiddenError: ``users.forbidden`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+        """
+        await self.get_employee(actor, id)
+        return await self._group_repo.get_groups_for_user(id, actor.organization_id)
+
+    async def list_qualifications_of(self, actor: User, id: uuid.UUID) -> list[Qualification]:
+        """List a user's qualifications, under the same rule as `get_employee`.
+
+        Args:
+            actor: The caller.
+            id: The user.
+
+        Returns:
+            The qualifications.
+
+        Raises:
+            ForbiddenError: ``users.forbidden`` (HTTP 403).
+            NotFoundError: The user is not in the organisation (HTTP 404).
+        """
+        await self.get_employee(actor, id)
+        return await self._qualification_repo.get_qualifications_for_user(id, actor.organization_id)
 
     # ── Manager operations ───────────────────────────────────────────────────
 

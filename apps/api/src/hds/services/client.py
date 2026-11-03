@@ -83,6 +83,59 @@ class ClientService:
         await self._link_repo.cancel_for_users([u.id for u in portal_users])
         await self._client_repo.deactivate_client_users(client_id)
 
+    async def list_clients(self, actor: User, is_active: bool | None = None) -> list[Client]:
+        """List the organisation's clients (Manager or Admin).
+
+        Args:
+            actor: The caller.
+            is_active: Keep only active or only inactive clients.
+
+        Returns:
+            The clients.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        return await self._client_repo.list_by_org(actor.organization_id, is_active)
+
+    async def get_client(self, actor: User, id: uuid.UUID) -> Client:
+        """Return one client of the organisation (Manager or Admin).
+
+        Args:
+            actor: The caller.
+            id: Client to load.
+
+        Returns:
+            The client.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The client is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        client = await self._client_repo.get_by_id(id, actor.organization_id)
+        if client is None:
+            raise NotFoundError(resource="Client", id=id)
+        return client
+
+    async def list_client_users(self, actor: User, id: uuid.UUID) -> list[User]:
+        """List the portal accounts of a client (Manager or Admin).
+
+        Args:
+            actor: The caller.
+            id: The client.
+
+        Returns:
+            Its portal accounts.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The client is not in the organisation (HTTP 404).
+        """
+        await self.get_client(actor, id)
+        return await self._client_repo.list_users(id, actor.organization_id)
+
     async def create_client(self, actor: User, data: dict[str, Any]) -> Client:
         """Create a client in the actor's organisation (Manager or Admin).
 

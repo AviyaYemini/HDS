@@ -123,7 +123,7 @@ async def list_clients(
     Manager or Admin. Return the organisation's non-deleted clients, optionally only active or
     only inactive ones.
     """
-    clients = await ClientRepository(db).list_by_org(current_user.organization_id, is_active)
+    clients = await _svc(db).list_clients(current_user, is_active)
     return ClientListResponse(items=clients)  # type: ignore[arg-type]
 
 
@@ -170,12 +170,7 @@ async def get_client(
 
     Manager or Admin. Return one client of the organisation.
     """
-    from hds.core.exceptions import NotFoundError
-
-    client = await ClientRepository(db).get_by_id(id, current_user.organization_id)
-    if client is None:
-        raise NotFoundError(resource="Client", id=id)
-    return client
+    return await _svc(db).get_client(current_user, id)
 
 
 @router.patch(
@@ -254,12 +249,7 @@ async def list_client_users(
 
     Manager or Admin. Return the portal accounts attached to the client.
     """
-    from hds.core.exceptions import NotFoundError
-
-    repo = ClientRepository(db)
-    if await repo.get_by_id(id, current_user.organization_id) is None:
-        raise NotFoundError(resource="Client", id=id)
-    return await repo.list_users(id, current_user.organization_id)
+    return await _svc(db).list_client_users(current_user, id)
 
 
 @router.post(

@@ -58,8 +58,8 @@ async def list_qualifications(
 
     Manager or Admin. Return the organisation's qualifications ordered by name.
     """
-    repo = QualificationRepository(db)
-    quals = await repo.list_by_org(current_user.organization_id)
+    svc = QualificationService(qual_repo=QualificationRepository(db))
+    quals = await svc.list_qualifications(current_user)
     return QualificationListResponse(items=quals)  # type: ignore[arg-type]
 
 

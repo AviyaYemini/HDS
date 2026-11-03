@@ -5,10 +5,11 @@ Covers: FR-001, FR-002, FR-003, FR-005, FR-006b, FR-015, NFR-005.
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from hds.core import passwords
 from hds.core.exceptions import AuthError
 from hds.models.user import User, UserRole
 from hds.services.auth import AuthService, TokenResponse
@@ -62,25 +63,17 @@ async def test_login_correct_credentials_returns_token_response() -> None:
     token_repo.create = AsyncMock()
 
     service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
-    # patch verify at module level
-    import hds.services.auth as auth_module
+    with patch.object(passwords, "verify_password", AsyncMock(return_value=True)):
+        result = await service.login("test@hds.test", "password")
 
-    orig = auth_module._verify_password
-    auth_module._verify_password = AsyncMock(return_value=True)
-
-    result = await service.login("test@hds.test", "password")
-
-    assert isinstance(result, TokenResponse)
-    assert result.access_token
-    assert result.refresh_token
-
-    auth_module._verify_password = orig
+        assert isinstance(result, TokenResponse)
+        assert result.access_token
+        assert result.refresh_token
 
 
 def _wrong_password(monkeypatch: pytest.MonkeyPatch) -> None:
-    import hds.services.auth as auth_module
 
-    monkeypatch.setattr(auth_module, "_verify_password", AsyncMock(return_value=False))
+    monkeypatch.setattr(passwords, "verify_password", AsyncMock(return_value=False))
 
 
 @pytest.mark.asyncio
@@ -151,9 +144,8 @@ async def test_an_expired_lock_no_longer_counts_and_nothing_is_written_before_ve
 
     user_repo.release_connection.side_effect = release
     user_repo.register_failed_login.side_effect = register
-    import hds.services.auth as auth_module
 
-    monkeypatch.setattr(auth_module, "_verify_password", verify)
+    monkeypatch.setattr(passwords, "verify_password", verify)
     service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
@@ -170,10 +162,9 @@ async def test_a_live_lock_is_not_cleared_by_waiting_and_refuses_before_any_pass
     user = _make_user(locked_until=datetime.now(UTC) + timedelta(minutes=5))
     user_repo = AsyncMock()
     user_repo.get_by_email.return_value = user
-    import hds.services.auth as auth_module
 
     verify = AsyncMock()
-    monkeypatch.setattr(auth_module, "_verify_password", verify)
+    monkeypatch.setattr(passwords, "verify_password", verify)
     service = AuthService(user_repo, AsyncMock(), _make_config(), AsyncMock(), _no_counts())
 
     with pytest.raises(AuthError) as refused:
@@ -211,15 +202,10 @@ async def test_successful_login_resets_counter() -> None:
     token_repo.create = AsyncMock()
 
     service = AuthService(user_repo, token_repo, _make_config(), AsyncMock(), _no_counts())
-    import hds.services.auth as auth_module
+    with patch.object(passwords, "verify_password", AsyncMock(return_value=True)):
+        await service.login("test@hds.test", "correct")
 
-    orig = auth_module._verify_password
-    auth_module._verify_password = AsyncMock(return_value=True)
-
-    await service.login("test@hds.test", "correct")
-
-    user_repo.reset_failed_attempts.assert_awaited_with(user.id)
-    auth_module._verify_password = orig
+        user_repo.reset_failed_attempts.assert_awaited_with(user.id)
 
 
 @pytest.mark.asyncio

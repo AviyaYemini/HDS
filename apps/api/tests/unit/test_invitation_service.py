@@ -144,7 +144,7 @@ async def test_accept_invitation_within_window_activates_user() -> None:
     user = _make_user(is_active=False)
     token = _make_token(user_id=user.id)
     token_repo.get_by_hash = AsyncMock(return_value=token)
-    user_repo.get_by_id_for_token = AsyncMock(return_value=user)
+    user_repo.get_for_auth = AsyncMock(return_value=user)
     user_repo.update = AsyncMock(return_value=_make_user(is_active=True))
 
     await svc.accept_invitation("valid-raw-token", "NewPass123456!")
@@ -234,7 +234,7 @@ async def test_reset_password_valid_token_succeeds() -> None:
     user = _make_user(is_active=True)
     token = _make_token(user_id=user.id, purpose="reset")
     token_repo.get_by_hash = AsyncMock(return_value=token)
-    user_repo.get_by_id_for_token = AsyncMock(return_value=user)
+    user_repo.get_for_auth = AsyncMock(return_value=user)
     user_repo.update = AsyncMock(return_value=user)
 
     await svc.reset_password("valid", "NewPass123456!")
@@ -456,7 +456,7 @@ async def test_accepting_for_an_account_that_is_not_pending_is_refused_as_used(s
     owner = _make_user(is_active=(state == "active"), activated_at=datetime.now(UTC))
     token = _make_token(user_id=owner.id)
     token_repo.get_by_hash = AsyncMock(return_value=token)
-    user_repo.get_by_id_for_token = AsyncMock(return_value=owner)
+    user_repo.get_for_auth = AsyncMock(return_value=owner)
 
     with pytest.raises(AuthError) as exc_info:
         await svc.accept_invitation("leftover", "Pass123456789!")
@@ -472,7 +472,7 @@ async def test_a_reset_link_is_refused_for_an_account_that_is_not_active() -> No
     owner = _make_user(is_active=False, activated_at=datetime.now(UTC))  # deactivated
     token = _make_token(user_id=owner.id, purpose="reset")
     token_repo.get_by_hash = AsyncMock(return_value=token)
-    user_repo.get_by_id_for_token = AsyncMock(return_value=owner)
+    user_repo.get_for_auth = AsyncMock(return_value=owner)
 
     with pytest.raises(AuthError) as exc_info:
         await svc.reset_password("leftover", "Pass123456789!")

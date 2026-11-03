@@ -6,11 +6,9 @@ caller's organisation, because the services take that user id as already verifie
 """
 
 import uuid
-from datetime import datetime
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
@@ -25,33 +23,12 @@ from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.routers.user_schemas import UserRead
 from hds.services.employee import EmployeeService
 from hds.services.group import GroupService
 from hds.services.qualification import QualificationService
 
 router = APIRouter(prefix="/api/v1/employees", tags=["employees"])
-
-
-class UserRead(BaseModel):
-    """A user account as returned by the API.
-
-    ``default_hourly_rate`` is a decimal string and is view-only for the user it belongs to
-    (FR-017). Keep this docstring identical in ``me.py`` and ``employees.py``: the two classes
-    share one OpenAPI component only while their schemas, descriptions included, are equal.
-    """
-
-    id: uuid.UUID
-    organization_id: uuid.UUID
-    email: EmailStr
-    full_name: str
-    phone: str | None = None
-    role: UserRole
-    is_active: bool
-    default_hourly_rate: Decimal | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class UserCreateRequest(BaseModel):
@@ -116,13 +93,6 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
         qualification_repo=QualificationRepository(db),
         client_repo=ClientRepository(db),
     )
-
-
-async def _require_user_in_org(db: AsyncSession, user_id: uuid.UUID, caller: User) -> None:
-    from hds.core.exceptions import NotFoundError
-
-    if await UserRepository(db).get_by_id(user_id, caller.organization_id) is None:
-        raise NotFoundError(resource="User", id=user_id)
 
 
 @router.get(
@@ -213,12 +183,7 @@ async def get_employee(
     Manager or Admin for any user in the organisation; every other role only for their own id
     (otherwise 403 `users.forbidden`).
     """
-    from hds.core.exceptions import NotFoundError
-
-    user = await UserRepository(db).get_by_id(id, current_user.organization_id)
-    if user is None:
-        raise NotFoundError(resource="User", id=id)
-    return user
+    return await _employee_svc(db).get_employee(current_user, id)
 
 
 @router.patch(
@@ -352,8 +317,7 @@ async def get_employee_groups(
 
     Manager or Admin for any user in the organisation; every other role only for their own id.
     """
-    await _require_user_in_org(db, id, current_user)
-    return await GroupRepository(db).get_groups_for_user(id, current_user.organization_id)
+    return await _employee_svc(db).list_groups_of(current_user, id)
 
 
 @router.put(
@@ -377,7 +341,7 @@ async def replace_employee_groups(
     Manager or Admin. Set the user's groups to exactly the given ids (an empty list removes
     all). Every id must belong to the organisation, otherwise 404 and nothing changes.
     """
-    await _require_user_in_org(db, id, current_user)
+    await _employee_svc(db).ensure_manageable(current_user, id)
     svc = GroupService(group_repo=GroupRepository(db))
     await svc.replace_employee_groups(actor=current_user, user_id=id, group_ids=body.ids)
 
@@ -399,10 +363,7 @@ async def get_employee_qualifications(
 
     Manager or Admin for any user in the organisation; every other role only for their own id.
     """
-    await _require_user_in_org(db, id, current_user)
-    return await QualificationRepository(db).get_qualifications_for_user(
-        id, current_user.organization_id
-    )
+    return await _employee_svc(db).list_qualifications_of(current_user, id)
 
 
 @router.put(
@@ -426,6 +387,6 @@ async def replace_employee_qualifications(
     Manager or Admin. Set the user's qualifications to exactly the given ids (an empty list
     removes all). Every id must belong to the organisation, otherwise 404 and nothing changes.
     """
-    await _require_user_in_org(db, id, current_user)
+    await _employee_svc(db).ensure_manageable(current_user, id)
     svc = QualificationService(qual_repo=QualificationRepository(db))
     await svc.replace_employee_qualifications(actor=current_user, user_id=id, qual_ids=body.ids)

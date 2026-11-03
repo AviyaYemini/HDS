@@ -3,49 +3,24 @@
 Layer: routers. Open to every authenticated role; it only ever touches the caller's own row.
 """
 
-import uuid
-from datetime import datetime
-from decimal import Decimal
-
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Name, Phone, omittable
-from hds.models.user import User, UserRole
+from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.routers.user_schemas import UserRead
 from hds.services.employee import EmployeeService
 
 router = APIRouter(prefix="/me", tags=["me"])
-
-
-class UserRead(BaseModel):
-    """A user account as returned by the API.
-
-    ``default_hourly_rate`` is a decimal string and is view-only for the user it belongs to
-    (FR-017). Keep this docstring identical in ``me.py`` and ``employees.py``: the two classes
-    share one OpenAPI component only while their schemas, descriptions included, are equal.
-    """
-
-    id: uuid.UUID
-    organization_id: uuid.UUID
-    email: EmailStr
-    full_name: str
-    phone: str | None = None
-    role: UserRole
-    is_active: bool
-    default_hourly_rate: Decimal | None = None  # FR-017: viewable by employee, not editable
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class ProfileUpdate(BaseModel):

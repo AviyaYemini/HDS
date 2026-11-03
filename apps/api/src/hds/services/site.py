@@ -61,6 +61,41 @@ class SiteService:
         """
         self._repo = site_repo
 
+    async def list_sites(self, actor: User) -> list[Site]:
+        """List the sites of the actor's organisation.
+
+        Args:
+            actor: The caller.
+
+        Returns:
+            The sites, ordered by name.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        return await self._repo.list_by_org(actor.organization_id)
+
+    async def get_site(self, actor: User, id: uuid.UUID) -> Site:
+        """Return one site of the actor's organisation.
+
+        Args:
+            actor: The caller.
+            id: Site to load.
+
+        Returns:
+            The site.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The site is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        site = await self._repo.get_by_id(id, actor.organization_id)
+        if site is None:
+            raise NotFoundError(resource="Site", id=id)
+        return site
+
     async def create_site(self, actor: User, data: dict[str, Any]) -> Site:
         """Create a site in the actor's organisation.
 

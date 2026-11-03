@@ -24,6 +24,21 @@ class QualificationService:
         """
         self._repo = qual_repo
 
+    async def list_qualifications(self, actor: User) -> list[Qualification]:
+        """List the organisation's qualifications.
+
+        Args:
+            actor: The caller.
+
+        Returns:
+            The qualifications, ordered by name.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        return await self._repo.list_by_org(actor.organization_id)
+
     async def create_qualification(self, actor: User, name: str) -> Qualification:
         """Create a qualification with a name unique in the organisation.
 

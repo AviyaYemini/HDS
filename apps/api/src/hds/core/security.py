@@ -132,6 +132,18 @@ def decode_access_token(token: str, secret: str, algorithm: str = "HS256") -> di
         raise ValueError(f"Invalid token: {exc}") from exc
 
 
+def hash_token(raw: str) -> str:
+    """Return the SHA-256 hex hash stored for a refresh token or a one-time link.
+
+    Args:
+        raw: The token as the client holds it.
+
+    Returns:
+        Its hash.
+    """
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 def generate_refresh_token() -> tuple[str, str]:
     """Create a refresh token and the hash to store for it.
 
@@ -141,5 +153,4 @@ def generate_refresh_token() -> tuple[str, str]:
         ``(raw_token, sha256_hex_hash)``; the raw value is shown to the client once.
     """
     raw = str(uuid.uuid4())
-    hash_ = hashlib.sha256(raw.encode()).hexdigest()
-    return raw, hash_
+    return raw, hash_token(raw)

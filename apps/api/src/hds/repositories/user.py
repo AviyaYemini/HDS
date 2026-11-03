@@ -123,23 +123,6 @@ class UserRepository(OrgScopedRepository[User]):
         result = await self.session.execute(stmt.order_by(User.full_name, User.id))
         return list(result.scalars().all())
 
-    async def get_by_id_for_token(self, user_id: uuid.UUID) -> User | None:
-        """Load the user an invite or reset token belongs to.
-
-        Unscoped by organisation because the redeemer is not signed in; the token itself is the
-        proof of ownership. Never call it with an id taken from a request path or body.
-
-        Args:
-            user_id: The ``user_id`` stored on the validated token.
-
-        Returns:
-            The non-deleted user, or ``None``.
-        """
-        result = await self.session.execute(
-            select(User).where(User.id == user_id, User.is_deleted.is_(False))
-        )
-        return result.scalar_one_or_none()
-
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> User | None:
         """Fetch a non-deleted user of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(
@@ -160,7 +143,7 @@ class UserRepository(OrgScopedRepository[User]):
         await lock_user_row(self.session, user_id)
 
     async def get_for_auth(self, id: uuid.UUID) -> User | None:
-        """Resolve the owner of a verified credential (access/refresh token).
+        """Resolve the owner of a verified credential: a token, or a one-time link.
 
         Unscoped by organisation because the organisation is not known until the credential's
         owner is loaded. Never call this with an id taken from a request path or body. The row is
@@ -168,7 +151,7 @@ class UserRepository(OrgScopedRepository[User]):
         so a re-read after taking the lock would otherwise return the state from before the lock.
 
         Args:
-            id: The id taken from a verified token's subject.
+            id: The id taken from a verified token's subject, or from a stored one-time link.
 
         Returns:
             The non-deleted user, or ``None``. Inactive users are returned; the caller decides.

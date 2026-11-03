@@ -7,7 +7,6 @@ Tokens are random, single-use and stored only as SHA-256 hashes; the raw value l
 system once, through ``MailSender``. Invitations last 7 days and resets 60 minutes.
 """
 
-import hashlib
 import logging
 import uuid
 from collections.abc import Callable
@@ -19,7 +18,7 @@ from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.client_address import network_key
 from hds.core.exceptions import AuthError, ConflictError, ForbiddenError
 from hds.core.mail import MailSender
-from hds.core.security import generate_refresh_token
+from hds.core.security import generate_refresh_token, hash_token
 from hds.models.refresh_token import RevocationReason
 from hds.models.user import User, UserRole
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -37,10 +36,6 @@ INVITE_TTL_DAYS = 7
 RESET_TTL_MINUTES = 60
 #: Starts a network's reset count. No address can start like this, so the two never meet.
 RESET_NETWORK_PREFIX = "network:"
-
-
-def _hash_token(raw: str) -> str:
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 class InvitationService:
@@ -420,13 +415,13 @@ class InvitationService:
 
     async def _token_owner(self, user_id: uuid.UUID) -> User:
         """The token, not a caller's organisation, authorises redemption; look its owner up."""
-        owner = await self._user_repo.get_by_id_for_token(user_id)
+        owner = await self._user_repo.get_for_auth(user_id)
         if owner is None:
             raise AuthError(code="auth.token_expired", detail="Invalid or expired token.")
         return owner
 
     async def _valid_token(self, raw_token: str, purpose: str) -> Any:
-        token = await self._token_repo.get_by_hash(_hash_token(raw_token))
+        token = await self._token_repo.get_by_hash(hash_token(raw_token))
         if token is None or getattr(token, "purpose", purpose) != purpose:
             raise AuthError(code="auth.token_expired", detail="Invalid or expired token.")
         if token.used_at is not None:

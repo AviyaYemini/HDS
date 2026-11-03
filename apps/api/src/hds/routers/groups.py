@@ -58,8 +58,7 @@ async def list_groups(
 
     Manager or Admin. Return the organisation's groups ordered by name.
     """
-    repo = GroupRepository(db)
-    groups = await repo.list_by_org(current_user.organization_id)
+    groups = await GroupService(group_repo=GroupRepository(db)).list_groups(current_user)
     return GroupListResponse(items=groups)  # type: ignore[arg-type]
 
 

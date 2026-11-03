@@ -889,3 +889,50 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | R9 | An unchanged end is judged again | `test_a_stored_date_pair_that_breaks_the_rule_does_not_block_other_edits` |
 | R10 | NUL search term accepted | `test_a_nul_in_the_search_term_is_refused` |
 
+## P6 Group E: refactors with behaviour already pinned (T400 to T405, F20, F21, F22)
+
+Baseline, before any change: 1396 passed, and the generated OpenAPI document saved.
+
+Differs from the tasks:
+- **The OpenAPI document changed in one place**, against T405's "identical": the description of
+  `UserRead`. T403 asks to remove the "keep identical" text, and it sat in the docstring, which FastAPI
+  publishes. Removing a maintenance note from public documentation is right, and the comparison over the
+  whole document shows that one line and nothing else.
+- T401's tests are in `tests/unit/test_service_reads.py`, not in three existing files, because one
+  table covers every read.
+- `core/authz.py` gains `ensure_self_or_manager`, shared with the route dependency, so the rule is in
+  one place.
+
+**A mistake of mine, caught before commit.** A greedy regex in an edit script deleted about 425 lines of
+`test_auth_service.py`, the tests between the first and last match. The diff stat showed it. The file was
+restored from `HEAD` and the edit redone with a check that the number of tests stayed at 20. Nothing was
+committed. This is why the last step of each group now compares test counts.
+
+Failing first: 35 of 35 in `test_service_reads.py`.
+
+`/hds-review`: no violations.
+
+`/code-review high` (read-only, seven findings; no behaviour change found, and it confirmed role codes,
+detail text and scoping match, and that the lookup merge cannot change a read):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | The document changed | Recorded above |
+| 2 | `ensure_in_organisation` ran before any role check on two writes | Fixed, test first: `ensure_manageable` checks the role first |
+| 3 | The self-or-manager rule existed twice | Fixed |
+| 4 | A third copy of the lookup | Fixed: `_get_target` |
+| 5 | Read tests asserted nothing about the data | Fixed: organisation, filter and both staff roles |
+| 6 | `_verify_password` still listed in a scan | Fixed |
+| 7 | A docstring lagged | Fixed |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| H1 | No role check on a site read | `test_a_read_requires_a_manager` |
+| H2 | No role check on a client read | same test |
+| H3 | Self-or-manager rule removed | `test_an_employee_may_not_read_someone_elses_record` |
+| H4 | Id checked before the role | `test_a_change_checks_the_role_first_so_no_id_is_confirmed` |
+| H5 | Client filter dropped | `test_the_client_list_keeps_its_filter` |
+| H6 | A different hash in `hash_token` | `test_issues_an_invitation_token_for_a_pending_account` |
+
