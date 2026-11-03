@@ -11,3 +11,21 @@ Prerequisites as for 002: PostgreSQL running, `uv sync --extra dev` in `apps/api
 | FR-008 | `EXPLAIN` the clean-up's delete on a table with many unexpired rows | Uses the `expires_at` index |
 | FR-009 | Migrate a seeded database 018 → 019 → 018 → 019 | Columns gone after 019, back and empty after the downgrade, users kept |
 | Checkpoint | The 002 merge gate: all gates, full suite, concurrency three times, timing, `contract_cli.sh`, drift check, migration round trip | Green |
+
+---
+
+# Quickstart: validating Part 2
+
+Prerequisites: as Part 1, plus Node.js 22 LTS and pnpm for the client (research R10).
+
+| Item | How to prove it | Expected |
+| --- | --- | --- |
+| Rules (R1) | Property tests on `hds.scheduling.validate` with random shifts | Every overlap, short rest and weekly excess in the input is reported; nothing else is |
+| US4, FR-101 to FR-105a | As an Employee with a window open: add blocked, open, close and absence entries; after the deadline repeat | Stored; then refused with `availability.window_closed`, except the absence |
+| US5, FR-106 to FR-109 | Manager opens a window, lists all entries, tries to edit one; Admin edits after the deadline | Window stored; list complete; Manager 403; Admin stored |
+| US6, FR-113 to FR-118 | Admin creates a week of shifts and assigns with short rest, overlap and a blocked date | Every change stored with the matching warnings |
+| US7, FR-121 to FR-124 | Employee lists `/me/shifts` before and after publish; Client lists shifts | Empty, then own shifts without co-workers; Client 403 |
+| SC-104 | The role sweep over every read | No leak |
+| SC-106 | A 22:00 to 06:00 shift on a normal night and on both DST nights | 8, 7 and 9 hours |
+| Client | `pnpm -C apps/client test`, `lint`, `typecheck`, Playwright web with RTL; the generated-client drift check | All pass; no literal strings; RTL layout mirrors |
+| Checkpoint | The Part 1 merge gate plus the client gates | Green |
