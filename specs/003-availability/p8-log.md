@@ -52,3 +52,67 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
 - /hds-review: no violations. The package imports only the standard library (checked by two tests and
   the hook). No endpoint or API change yet.
 - Final gates: all green; full suite 1564 passed; concurrency 36 passed three times.
+
+## Group F: migration 020 and the models (T037 to T040)
+
+- Failing first: `test_migration_020.py` failed because the revision did not exist. After the first
+  draft, 25 tests passed once the test bound dates as `date` values (asyncpg refuses strings).
+- Decisions:
+  - Kinds and statuses are text with check constraints, as `login_throttle` does, not PostgreSQL
+    enums.
+  - The three default shift types come from a database trigger on `organisations`, so every path
+    that creates an organisation gets them (FR-110). No application code creates organisations
+    today; only the seed and the test fixtures do.
+  - `btree_gist` is created only if absent and marked with a comment; the downgrade removes it only
+    when marked.
+- Mutations on the first draft, all caught (12): only identical windows excluded; absence without its
+  kind; zero pay rate; crossing rule missing; names unique in exact case only; no trigger for new
+  organisations; downgrade leaving a table; downgrade always or never removing the extension;
+  assignments kept with their shift; existing organisations not seeded; weekday 7.
+- /code-review high, ten findings:
+  1. **An organisation created after 020 could not be deleted (fixed).** The trigger's shift types
+     blocked it, and `test_hash_pool.py::TestReleaseConnection::test_it_refuses_after_any_write[delete]`
+     failed. `shift_types.organization_id` now cascades. Test first:
+     `test_an_organisation_with_only_its_default_shift_types_can_be_deleted`.
+  2. **`alembic upgrade --sql` crashed (fixed).** The migration queried the database for the
+     extension. In offline mode the upgrade uses `CREATE EXTENSION IF NOT EXISTS` without the mark,
+     and the downgrade keeps it. Test first: `test_the_migration_can_be_written_out_as_sql`.
+  3. **T039's wording asked for application-side defaults (fixed in tasks.md):** they would clash
+     with the trigger.
+  4. and 5. **The new tables' `id` had no database default, and the seed toggled one (fixed):** `id`
+     defaults to `gen_random_uuid()` as in 001 to 011, and the toggle is gone.
+  6. **Cross-organisation references are not prevented by the schema (not changed).** Every table
+     since 001 leaves organisation scoping to the services and repositories (Constitution VI). The
+     Part 2 services check each referenced row's organisation, and Group J's sweep tests it.
+  7. **`status` and `published_at` could disagree (fixed):** `ck_shifts_published_at`.
+  8. **The trigger depended on the session's `search_path` (fixed):** the function has a fixed
+     `search_path` and names `public.shift_types`. Test first: the trigger seeds with
+     `search_path` set to `pg_catalog`.
+  9. **Foreign keys used in lookups were not indexed (fixed):** `idx_shift_types_org`,
+     `idx_project_shift_types_type`, `idx_availability_entries_shift_type`.
+  10. **T039's file names (fixed in tasks.md).**
+- **Incident: the dev database `hds` was migrated by mistake (owner informed, restored).**
+  - Several Alembic commands were written as `E="... DATABASE_URL=...hds_p3_test"; env $E uv run
+    alembic ...`. The shell is zsh, which does not split an unquoted `$E`, so `DATABASE_URL` was never
+    set and Alembic used `alembic.ini`'s default, the dev database `hds`.
+  - Those commands upgraded `hds` from 019 to drafts of 020, ran a downgrade and an upgrade, and ran
+    `alembic check` against it. The running API container does not migrate and was unaffected.
+    Existing data in `hds` was not changed; only the new tables, the two columns and the default
+    shift types were added.
+  - The owner chose to restore it. `hds` was downgraded to 019 through Alembic with the URL written
+    out: none of the seven tables, no new columns, and the extension removed (020 had created it).
+  - It also explained a stale `hds_p3_test`: it still held the first 020 draft, whose downgrade no
+    longer matched. It was repaired through Alembic with a temporary `if_exists` on three index
+    removals, reverted at once (the file was copied before and restored after).
+  - From now on every Alembic command names its database inline. A memory note records the rule.
+- Mutations on the fixes, all caught: F13 shift types blocking an organisation's removal; F14 and F15
+  offline upgrade and downgrade asking the database; F16 status and time disagreeing; F18 no database
+  id default; F19 the organisation index missing. F17, the trigger's fixed `search_path` removed
+  alone, was not caught: the fully qualified `public.shift_types` keeps it working. Both defences are
+  kept; removing both (F17b) is caught by the `search_path` test.
+- Gate finding: the SQLite unit tests (`tests/unit/test_dev_issue_link.py`, 14 errors) build the
+  schema with `create_all`, which cannot compile the PostgreSQL exclusion constraint. The constraint
+  is now `ddl_if(dialect="postgresql")`, and `idempotency_keys.response_body` is JSON with a JSONB
+  variant on PostgreSQL. `alembic check` is still clean, and the unit suite passes (821).
+- Final gates: all green; full suite 1612 passed; concurrency 36 passed three times; `alembic check` clean.
+- /hds-review: no violations; migration 020 is new and reversible, and no applied migration was edited.
