@@ -1045,3 +1045,23 @@ gone; `test_a_registered_address_is_counted_in_the_throttle_table_only` guards i
 | V7 | The clean-up deletes a live lock | `test_a_lock_set_by_a_guess_during_a_success_is_not_erased` |
 | V8 | A kept live lock does not refuse | same test |
 
+## Merge gate, run again after Group F
+
+| Step | Result |
+| --- | --- |
+| Gates | Pass |
+| Full suite | 1456 passed, 2 deselected |
+| `tests/concurrency/` three runs | 30 of 30 each time |
+| Timing, login | **Ratio 1.002**, down from 1.095: both kinds of address now do the same work |
+| Timing, reset request, pooled | Ratio 1.024 |
+| `contract_cli.sh` | Exit 0 at the first attempt, no 5xx |
+| Migrations 013, head, 013, head, seed | Pass |
+| Drift check | Agrees on all 46 operations |
+
+The contract run warned once that `POST /employees/{id}/deactivate` mostly met random ids. The hook
+replaces account ids on that operation so the seeded admin survives the run. A warning, not a failure;
+which operation warns varies from run to run.
+
+Still open for the owner: the push (T406), commitlint on commits already pushed, the ST302 flake, and
+locks held on account rows being forgotten once on deploy.
+
