@@ -106,12 +106,12 @@ changes only where Stories 1 and 2 say it does.
 
 - **FR-001**: A Manager or Admin MUST be able to change a client's contract start date in the same
   change operation as the client's other fields.
-- **FR-002**: When a change sets the start date, the end date or both, the contract end MUST NOT be
-  earlier than the start, judged on the pair as it will be after the change (using the stored value of
-  any date not sent); otherwise the change is refused with `clients.date_range_invalid` and nothing is
-  stored.
-- **FR-003**: A change that sets neither date MUST NOT be refused because of the stored pair, even if
-  that pair already breaks the rule.
+- **FR-002**: When a change sets the start date, the end date or both to a value other than the
+  stored one, the contract end MUST NOT be earlier than the start, judged on the pair as it will be
+  after the change (using the stored value of any date not sent); otherwise the change is refused with
+  `clients.date_range_invalid` and nothing is stored.
+- **FR-003**: A change that sets neither date, or sends both back as stored, MUST NOT be refused
+  because of the stored pair, even if that pair already breaks the rule.
 - **FR-004**: The contract start date MUST NOT be clearable; a request to clear it is refused with the
   request validation error.
 - **FR-005**: A change that names a field the operation does not accept MUST be refused with the

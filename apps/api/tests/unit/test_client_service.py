@@ -29,6 +29,8 @@ def _client(**kw: object) -> MagicMock:
     c.name = kw.get("name", "Acme Security")
     c.is_active = kw.get("is_active", True)
     c.is_deleted = kw.get("is_deleted", False)
+    c.contract_start = kw.get("contract_start", date(2026, 1, 1))
+    c.contract_end = kw.get("contract_end")
     return c
 
 
@@ -375,3 +377,110 @@ async def test_an_edit_is_judged_against_the_stored_start() -> None:
         await svc.edit_client(_actor(), existing.id, {"contract_end": date(2026, 1, 31)})
 
     repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_new_start_is_judged_against_the_stored_end() -> None:
+    svc, repo, _ = _svc()
+    existing = _client(contract_start=date(2026, 2, 1), contract_end=date(2026, 3, 1))
+    repo.get_by_id = AsyncMock(return_value=existing)
+
+    with pytest.raises(DomainValidationError) as refused:
+        await svc.edit_client(_actor(), existing.id, {"contract_start": date(2026, 3, 2)})
+
+    assert refused.value.code == "clients.date_range_invalid"
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_both_dates_are_judged_as_the_pair_sent() -> None:
+    svc, repo, _ = _svc()
+    existing = _client(contract_start=date(2026, 2, 1), contract_end=date(2026, 3, 1))
+    repo.get_by_id = AsyncMock(return_value=existing)
+    data = {"contract_start": date(2026, 4, 1), "contract_end": date(2026, 5, 1)}
+
+    await svc.edit_client(_actor(), existing.id, data)
+
+    repo.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_new_end_is_judged_against_the_start_sent_with_it() -> None:
+    svc, repo, _ = _svc()
+    existing = _client(contract_start=date(2026, 2, 1), contract_end=None)
+    repo.get_by_id = AsyncMock(return_value=existing)
+
+    with pytest.raises(DomainValidationError):
+        await svc.edit_client(
+            _actor(),
+            existing.id,
+            {"contract_start": date(2026, 3, 1), "contract_end": date(2026, 2, 15)},
+        )
+
+    repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"name": "Renamed"},
+        {"name": "Renamed", "contract_start": date(2026, 2, 1)},
+        {"name": "Renamed", "contract_start": date(2026, 2, 1), "contract_end": date(2026, 1, 1)},
+    ],
+    ids=["no-dates", "start-unchanged", "pair-unchanged"],
+)
+async def test_an_unchanged_pair_is_not_judged(data: dict[str, Any]) -> None:
+    svc, repo, _ = _svc()
+    existing = _client(
+        contract_start=date(2026, 2, 1), contract_end=date(2026, 1, 1)
+    )  # stored before the rule existed
+    repo.get_by_id = AsyncMock(return_value=existing)
+
+    await svc.edit_client(_actor(), existing.id, data)
+
+    repo.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "data"),
+    [
+        ("edit", {"is_active": False}),
+        ("edit", {"contract_end": date(2026, 12, 31), "is_active": False}),
+        ("edit", {"contract_start": date(2026, 1, 2)}),
+        ("delete", None),
+    ],
+    ids=["deactivate", "dates-and-deactivate", "start", "delete"],
+)
+async def test_the_client_row_is_locked_before_any_portal_user(
+    action: str, data: dict[str, Any] | None
+) -> None:
+    """One order on every path (client, then its users), so the locks cannot deadlock (FR-225)."""
+    svc, repo, _ = _svc()
+    existing = _client()
+    repo.get_by_id = AsyncMock(return_value=existing)
+    repo.count_non_deleted_projects = AsyncMock(return_value=0)
+    repo.list_users = AsyncMock(return_value=[])
+
+    if action == "edit":
+        assert data is not None
+        await svc.edit_client(_actor(), existing.id, data)
+    else:
+        await svc.soft_delete(_actor(UserRole.admin), existing.id)
+
+    assert repo.get_by_id.await_args.kwargs.get("for_update") is True
+    if "list_users" in [c[0] for c in repo.mock_calls]:
+        names = [c[0] for c in repo.mock_calls]
+        assert names.index("get_by_id") < names.index("list_users")
+
+
+@pytest.mark.asyncio
+async def test_an_edit_that_touches_neither_dates_nor_users_takes_no_lock() -> None:
+    svc, repo, _ = _svc()
+    existing = _client()
+    repo.get_by_id = AsyncMock(return_value=existing)
+
+    await svc.edit_client(_actor(), existing.id, {"name": "Renamed", "is_active": True})
+
+    assert repo.get_by_id.await_args.kwargs.get("for_update") is False

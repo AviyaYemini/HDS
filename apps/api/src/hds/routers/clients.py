@@ -60,6 +60,7 @@ class ClientUpdateRequest(BaseModel):
     contact_name: Name | None = None
     contact_email: EmailStr | None = None
     contact_phone: Phone | None = None
+    contract_start: StrictDate = omittable()
     contract_end: StrictDate | None = None
     is_active: StrictBool = omittable()
 
@@ -178,13 +179,14 @@ async def get_client(
     response_model=ClientRead,
     summary="Edit a client",
     description=(
-        "Manager or Admin. Update contact details, contract end or active state. "
+        "Manager or Admin. Update contact details, contract dates or active state. "
         "Deactivating an active client also deactivates its portal users and ends their "
         "sessions; reactivating the client does not reactivate them. "
         "An explicit null clears a field that allows it and is refused with 422 on a "
         "required one; an omitted field is left alone. "
-        "A contract end before the stored contract start returns 422 "
-        "(`clients.date_range_invalid`)."
+        "If either date changes, the pair as it will be after the change (a date not sent "
+        "keeps its stored value) must not end before it starts, else 422 "
+        "(`clients.date_range_invalid`); a pair sent back unchanged is not judged."
     ),
 )
 async def edit_client(
@@ -195,12 +197,13 @@ async def edit_client(
 ) -> object:
     """Edit a client.
 
-    Manager or Admin. Update contact details, contract end or active state. Deactivating an
+    Manager or Admin. Update contact details, contract dates or active state. Deactivating an
     active client also deactivates its portal users and ends their sessions; reactivating the
     client does not reactivate them.
     An explicit null clears a field that allows it and is refused with 422 on a required one; an
     omitted field is left alone.
-    A contract end before the stored contract start returns 422 (`clients.date_range_invalid`).
+    If either date changes, the resulting pair must not end before it starts, else 422
+    (`clients.date_range_invalid`); a pair sent back unchanged is not judged.
     """
     svc = _svc(db)
     return await svc.edit_client(

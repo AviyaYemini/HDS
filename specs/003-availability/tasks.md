@@ -21,7 +21,7 @@ All source paths are under `apps/api/`. Tests use the private database `hds_p3_t
 
 ## Phase 1: Setup
 
-- [ ] T001 Start the decision log `specs/003-availability/p7-log.md` (decisions, findings, mutation results, deviations) and confirm `hds_p3_test` exists and no other session uses it (`pg_stat_activity`)
+- [X] T001 Start the decision log `specs/003-availability/p7-log.md` (decisions, findings, mutation results, deviations) and confirm `hds_p3_test` exists and no other session uses it (`pg_stat_activity`)
 
 ## Phase 2: Foundational
 
@@ -33,13 +33,13 @@ None. Each group stands alone.
 
 **Independent test**: PATCH `/api/v1/clients/{id}` with `contract_start` alone, with both dates, with a pair out of order, with `null`, and a rename on a stored pair that is out of order.
 
-- [ ] T002 [US1] Failing integration tests in `tests/integration/test_client_rules.py`: a Manager and an Admin change `contract_start` (stored; an Employee gets 403); a start after the stored end gives 422 `clients.date_range_invalid` and stores nothing; start and end sent together are judged as a pair (a valid pair that the stored end alone would refuse is stored; an invalid pair is refused); `contract_start: null` gives 422 `validation.request_invalid`; a rename on a client whose stored pair is out of order (set by SQL) is stored
-- [ ] T003 [P] [US1] Failing unit tests in `tests/unit/test_client_service.py` for `edit_client`: the rule runs on the resulting pair when either date is sent and differs; not when neither is sent; sending the stored values unchanged is not judged
-- [ ] T004 [US1] Add `contract_start: date = omittable()` ("required date, now editable; never empty") to `ClientUpdateRequest` in `src/hds/routers/clients.py`
-- [ ] T005 [US1] In `ClientService.edit_client` (`src/hds/services/client.py`) judge the resulting pair (sent value, else stored) with `_validate_contract_dates` when `contract_start` or `contract_end` is sent and the pair differs from the stored pair (research E1)
-- [ ] T006 [US1] Contract: `ClientUpdateRequest.contract_start` (format date, not nullable) in `specs/001-foundation-auth-org/contracts/openapi.yaml`; `docs/hds-api.md` clients section; regenerate and pass the drift check (`uv run python -m hds.scripts.export_openapi --check`)
-- [ ] T007 [US1] Mutation checks: judge only the end against the stored start; judge the stored pair on unrelated edits; allow null start. Each must be caught by a named test from T002 or T003
-- [ ] T008 [US1] Gates (ruff, format, `mypy --strict src/ tests/`, interrogate, `uv run python -m hds.tools.check_imports`, `alembic check`, full suite on `hds_p3_test`), /hds-review and /code-review high, fixes with failing tests first, log; commit `feat(api): let managers correct a client's contract start (003 Group A)`
+- [X] T002 [US1] Failing integration tests in `tests/integration/test_client_rules.py`: a Manager and an Admin change `contract_start` (stored; an Employee gets 403); a start after the stored end gives 422 `clients.date_range_invalid` and stores nothing; start and end sent together are judged as a pair (a valid pair that the stored end alone would refuse is stored; an invalid pair is refused); `contract_start: null` gives 422 `validation.request_invalid`; a rename on a client whose stored pair is out of order (set by SQL) is stored
+- [X] T003 [P] [US1] Failing unit tests in `tests/unit/test_client_service.py` for `edit_client`: the rule runs on the resulting pair when either date is sent and differs; not when neither is sent; sending the stored values unchanged is not judged
+- [X] T004 [US1] Add `contract_start: date = omittable()` ("required date, now editable; never empty") to `ClientUpdateRequest` in `src/hds/routers/clients.py`
+- [X] T005 [US1] In `ClientService.edit_client` (`src/hds/services/client.py`) judge the resulting pair (sent value, else stored) with `_validate_contract_dates` when `contract_start` or `contract_end` is sent and the pair differs from the stored pair (research E1)
+- [X] T006 [US1] Contract: `ClientUpdateRequest.contract_start` (format date, not nullable) in `specs/001-foundation-auth-org/contracts/openapi.yaml`; `docs/hds-api.md` clients section; regenerate and pass the drift check (`uv run python -m hds.scripts.export_openapi --check`)
+- [X] T007 [US1] Mutation checks: judge only the end against the stored start; judge the stored pair on unrelated edits; allow null start. Each must be caught by a named test from T002 or T003
+- [X] T008 [US1] Gates (ruff, format, `mypy --strict src/ tests/`, interrogate, `uv run python -m hds.tools.check_imports`, `alembic check`, full suite on `hds_p3_test`), /hds-review and /code-review high, fixes with failing tests first, log; commit `feat(api): let managers correct a client's contract start (003 Group A)`
 
 **Checkpoint**: US1 is complete and shippable alone.
 

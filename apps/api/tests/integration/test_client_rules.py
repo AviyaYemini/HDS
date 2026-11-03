@@ -2,9 +2,10 @@
 
 A Client-role account is tied to one client's data, so changing its role would leave a staff account
 with a client link, or a portal account with staff access. A contract that ends before it starts
-makes no sense, and it would be read as already over.
+makes no sense, and it would be read as already over. A wrong start date can be corrected, and the
+order is judged on the pair as it will be after the change (003 Group A).
 
-Covers: FR-242, FR-243.
+Covers: FR-242, FR-243, 003 FR-001 to FR-004.
 """
 
 from typing import Any
@@ -145,6 +146,120 @@ async def test_a_stored_date_pair_that_breaks_the_rule_does_not_block_other_edit
     edited = await async_client.patch(
         f"/api/v1/clients/{created['id']}",
         json={"name": "Renamed", "contract_end": "2026-01-01"},
+        headers=admin,
+    )
+
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["name"] == "Renamed"
+
+
+@pytest.mark.parametrize("role", ["manager", "admin"])
+async def test_a_manager_or_admin_corrects_the_contract_start(
+    role: str, async_client: AsyncClient, seed_users: dict[str, User], admin: dict[str, str]
+) -> None:
+    created = await add_client(async_client, admin, "2026-02-01")
+    url = f"/api/v1/clients/{created['id']}"
+    headers = await headers_for(async_client, f"{role}@hds.test")
+
+    edited = await async_client.patch(url, json={"contract_start": "2026-01-15"}, headers=headers)
+
+    assert edited.status_code == 200, edited.text
+    assert (await async_client.get(url, headers=admin)).json()["contract_start"] == "2026-01-15"
+
+
+async def test_an_employee_cannot_change_the_contract_start(
+    async_client: AsyncClient, seed_users: dict[str, User], admin: dict[str, str]
+) -> None:
+    created = await add_client(async_client, admin, "2026-02-01")
+    url = f"/api/v1/clients/{created['id']}"
+    employee = await headers_for(async_client, "employee@hds.test")
+
+    refused = await async_client.patch(url, json={"contract_start": "2026-01-15"}, headers=employee)
+
+    assert refused.status_code == 403
+    assert (await async_client.get(url, headers=admin)).json()["contract_start"] == "2026-02-01"
+
+
+async def test_a_start_after_the_stored_end_is_refused_and_nothing_is_stored(
+    async_client: AsyncClient, admin: dict[str, str]
+) -> None:
+    created = await add_client(async_client, admin, "2026-02-01", "2026-03-01")
+    url = f"/api/v1/clients/{created['id']}"
+
+    refused = await async_client.patch(
+        url, json={"contract_start": "2026-03-02", "name": "Renamed"}, headers=admin
+    )
+
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "clients.date_range_invalid"
+    stored = (await async_client.get(url, headers=admin)).json()
+    assert (stored["contract_start"], stored["name"]) == ("2026-02-01", "Acme")
+
+
+async def test_both_dates_sent_together_are_judged_as_the_new_pair(
+    async_client: AsyncClient, admin: dict[str, str]
+) -> None:
+    """SC-001: the new start alone would be refused against the stored end; the pair passes."""
+    created = await add_client(async_client, admin, "2026-02-01", "2026-03-01")
+    url = f"/api/v1/clients/{created['id']}"
+
+    moved = await async_client.patch(
+        url, json={"contract_start": "2026-04-01", "contract_end": "2026-05-01"}, headers=admin
+    )
+    refused = await async_client.patch(
+        url, json={"contract_start": "2026-06-01", "contract_end": "2026-05-31"}, headers=admin
+    )
+
+    assert moved.status_code == 200, moved.text
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "clients.date_range_invalid"
+    stored = (await async_client.get(url, headers=admin)).json()
+    assert (stored["contract_start"], stored["contract_end"]) == ("2026-04-01", "2026-05-01")
+
+
+async def test_a_new_end_is_judged_against_a_new_start_sent_with_it(
+    async_client: AsyncClient, admin: dict[str, str]
+) -> None:
+    """The stored start would allow this end; the start sent with it does not."""
+    created = await add_client(async_client, admin, "2026-02-01")
+    url = f"/api/v1/clients/{created['id']}"
+
+    refused = await async_client.patch(
+        url, json={"contract_start": "2026-03-01", "contract_end": "2026-02-15"}, headers=admin
+    )
+
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "clients.date_range_invalid"
+
+
+async def test_the_contract_start_cannot_be_cleared(
+    async_client: AsyncClient, admin: dict[str, str]
+) -> None:
+    created = await add_client(async_client, admin, "2026-02-01")
+    url = f"/api/v1/clients/{created['id']}"
+
+    refused = await async_client.patch(url, json={"contract_start": None}, headers=admin)
+
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "validation.request_invalid"
+    assert (await async_client.get(url, headers=admin)).json()["contract_start"] == "2026-02-01"
+
+
+async def test_a_broken_stored_pair_sent_back_unchanged_does_not_block_an_edit(
+    async_client: AsyncClient,
+    test_db: AsyncSession,
+    admin: dict[str, str],
+) -> None:
+    """A form sends both dates back as they were; only the name changes."""
+    created = await add_client(async_client, admin, "2026-02-01")
+    await test_db.execute(
+        text("UPDATE clients SET contract_end = '2026-01-01' WHERE id = :i"), {"i": created["id"]}
+    )
+    await test_db.commit()
+
+    edited = await async_client.patch(
+        f"/api/v1/clients/{created['id']}",
+        json={"name": "Renamed", "contract_start": "2026-02-01", "contract_end": "2026-01-01"},
         headers=admin,
     )
 

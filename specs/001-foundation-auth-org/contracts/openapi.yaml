@@ -443,6 +443,12 @@ components:
         contact_phone:
           type: [string, "null"]
           maxLength: 32
+        contract_start:
+          $ref: "#/components/schemas/ISODate"
+          description: >-
+            Cannot be cleared. If either date changes, the end may not precede the start, judged
+            on the pair after the change with the stored value of a date not sent (422
+            clients.date_range_invalid). A pair sent back unchanged is not judged.
         contract_end:
           anyOf:
             - $ref: "#/components/schemas/ISODate"
