@@ -90,7 +90,7 @@ def _svc(db: AsyncSession) -> ProjectService:
     description=(
         "Manager or Admin see every project of the organisation, optionally filtered by "
         "status or client. A Client sees only their own client's projects whatever "
-        "filter is sent. Employees receive 403."
+        "filter is sent, and none if the account has no client. Employees receive 403."
     ),
 )
 async def list_projects(
@@ -102,8 +102,8 @@ async def list_projects(
     """List projects.
 
     Manager or Admin see every project of the organisation, optionally filtered by status or
-    client. A Client sees only their own client's projects whatever filter is sent. Employees
-    receive 403.
+    client. A Client sees only their own client's projects whatever filter is sent, and none if
+    the account has no client. Employees receive 403.
     """
     svc = _svc(db)
     projects = await svc.list_projects(
@@ -148,7 +148,8 @@ async def create_project(
     summary="Get a project",
     description=(
         "Manager or Admin for any project; a Client only for their own client's "
-        "projects (otherwise 403 `projects.access_denied`). Employees receive 403."
+        "projects (otherwise 403 `projects.access_denied`), and 404 if the account has no "
+        "client. Employees receive 403."
     ),
 )
 async def get_project(
@@ -159,7 +160,7 @@ async def get_project(
     """Get a project.
 
     Manager or Admin for any project; a Client only for their own client's projects (otherwise
-    403 `projects.access_denied`). Employees receive 403.
+    403 `projects.access_denied`), and 404 if the account has no client. Employees receive 403.
     """
     svc = _svc(db)
     return await svc.get_project(

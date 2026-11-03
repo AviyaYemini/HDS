@@ -760,3 +760,39 @@ Mutation results, all caught, files restored:
 | G6 | Overflow not handled | `test_a_number_too_large_to_be_a_process_is_not_one` |
 | G7 | Scratch name without the run | `test_a_scratch_database_belongs_to_its_run` |
 
+## P6 Group B: small service fixes (T388 to T391, F18, F19, F25)
+
+F18 was worse than the fix list says: an empty `client_id` is the "no filter" value, so a Client-role
+account with no client saw every project in the organisation. F19 let any signed-in user revoke
+someone else's session.
+
+Failing first: the list leak, the 403 where 404 is required, and the revoked session. F25 was fixed in
+Group D, so its failing-first evidence is there: parallel creates did not answer 201 and 409. T388's
+test is `tests/concurrency/test_duplicate_create.py`, which is the Group D test widened to 50 rounds on
+both operations.
+
+`/hds-review`: the F18 rule had no unit test with a fake repository (fixed), and one docstring lagged.
+
+`/code-review high` (read-only, ten findings; no production bug):
+
+| # | Finding | Action |
+| --- | --- | --- |
+| 1 | The ownership check masked the revoked-token test | Fixed: same id on both sides, plus a separate unit test for the other user's token |
+| 2 | F25 has no failing-first evidence here, and nothing proves the race branch ran | Evidence is in Group D. A unit test now covers the lost-race branch for employees; the client one exists. D8 and D9 cover it by mutation |
+| 3, 4 | Stale docstrings | Fixed |
+| 5 | My test's docstring claimed a path that cannot exist: `Project.client_id` is required | Fixed |
+| 6 | `?client_id=` not tested for a no-client account | Fixed, in both suites |
+| 7 | `list_by_org` still treats `None` as every project | Not changed. A new Client caller could repeat this, but `list_by_client` has no status filter, and this is a refactor. Noted |
+| 8 | `get_project` read the project before refusing | Fixed: refused first |
+| 9, 10 | Repeated test helpers | Skipped as cosmetic |
+
+Mutation results, all caught on `hds_p3_test`, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| B1 | Empty-list rule removed (T390) | `test_a_client_account_with_no_client_lists_nothing` |
+| B2 | No 404 for a project | `test_a_client_account_with_no_client_is_told_a_project_does_not_exist` |
+| B3 | Ownership check removed (T390) | `test_signing_out_with_someone_elses_token_answers_204_and_revokes_nothing` |
+| B4 | Own token no longer revoked | same test |
+| B5 | Revoked check removed | `test_logout_of_an_already_revoked_token_does_nothing` |
+

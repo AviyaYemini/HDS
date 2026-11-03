@@ -105,6 +105,19 @@ async def test_create_employee_short_initial_password_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_employee_that_loses_the_address_during_the_hash_is_a_duplicate() -> None:
+    actor = _make_user(role=UserRole.manager)
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.create_if_absent = AsyncMock(return_value=(_make_user(), False))
+
+    with pytest.raises(ConflictError) as refused:
+        await svc.create_employee(actor, dict(_VALID))
+
+    assert refused.value.code == "users.duplicate_email"
+
+
+@pytest.mark.asyncio
 async def test_create_employee_password_of_exactly_12_chars_accepted() -> None:
     svc, user_repo, _ = _svc()
     user_repo.get_by_email = AsyncMock(return_value=None)

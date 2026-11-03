@@ -225,12 +225,13 @@ async def test_successful_login_resets_counter() -> None:
 @pytest.mark.asyncio
 async def test_logout_revokes_token() -> None:
     token_repo = AsyncMock()
-    stored = MagicMock(id=uuid.uuid4(), revoked_at=None)
+    user_id = uuid.uuid4()
+    stored = MagicMock(id=uuid.uuid4(), revoked_at=None, user_id=user_id)
     token_repo.get_by_hash = AsyncMock(return_value=stored)
     token_repo.revoke_if_live = AsyncMock(return_value=True)
 
     service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
-    await service.logout("raw-token-value")
+    await service.logout("raw-token-value", user_id)
 
     token_repo.revoke_if_live.assert_awaited_once_with(stored.id, "logout")
 
@@ -441,14 +442,28 @@ async def test_the_grace_window_comes_from_the_configuration() -> None:
 
 
 @pytest.mark.asyncio
-async def test_logout_of_an_already_revoked_token_does_nothing() -> None:
+async def test_logout_with_another_users_token_does_nothing() -> None:
     token_repo = AsyncMock()
     token_repo.get_by_hash = AsyncMock(
-        return_value=_stored_token(reason="rotated", revoked_ago=1, user_id=uuid.uuid4())
+        return_value=MagicMock(id=uuid.uuid4(), revoked_at=None, user_id=uuid.uuid4())
     )
     service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
 
-    await service.logout("raw-token")
+    await service.logout("raw-token", uuid.uuid4())
+
+    token_repo.revoke_if_live.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_logout_of_an_already_revoked_token_does_nothing() -> None:
+    token_repo = AsyncMock()
+    user_id = uuid.uuid4()
+    token_repo.get_by_hash = AsyncMock(
+        return_value=_stored_token(reason="rotated", revoked_ago=1, user_id=user_id)
+    )
+    service = AuthService(AsyncMock(), token_repo, _make_config(), AsyncMock(), _no_counts())
+
+    await service.logout("raw-token", user_id)
 
     token_repo.revoke_if_live.assert_not_awaited()
     token_repo.revoke_all_for_user.assert_not_awaited()

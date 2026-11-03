@@ -3,7 +3,7 @@
 Deactivating, deleting or changing the role of a user revokes their refresh tokens, and
 refresh refuses inactive or soft-deleted users even if a token somehow survived.
 
-Covers: FR-015, FR-016, NFR-005.
+Covers: FR-015, FR-016, FR-238, NFR-005.
 """
 
 import pytest
@@ -145,3 +145,34 @@ async def test_deactivated_user_cannot_sign_in_or_use_old_access_token(
         "/auth/login", json={"email": "employee@hds.test", "password": PASSWORD}
     )
     assert login.status_code in (401, 403)
+
+
+# ── sign-out touches only the caller's own token ────────────────────────────────────────
+
+
+async def test_signing_out_with_someone_elses_token_answers_204_and_revokes_nothing(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    caller = await _login(async_client, "employee@hds.test")
+    victim = await _login(async_client, "manager@hds.test")
+
+    response = await async_client.post(
+        "/auth/logout", json={"refresh_token": victim["refresh"]}, headers=_auth(caller)
+    )
+
+    assert response.status_code == 204
+    assert await _unrevoked(test_db, seed_users["manager"].id) == 1
+    assert await _refresh_status(async_client, victim["refresh"]) == 200
+
+
+async def test_signing_out_with_your_own_token_still_revokes_it(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    tokens = await _login(async_client, "employee@hds.test")
+
+    response = await async_client.post(
+        "/auth/logout", json={"refresh_token": tokens["refresh"]}, headers=_auth(tokens)
+    )
+
+    assert response.status_code == 204
+    assert await _unrevoked(test_db, seed_users["employee"].id) == 0

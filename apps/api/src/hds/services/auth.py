@@ -238,18 +238,20 @@ class AuthService:
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
-    async def logout(self, raw_token: str) -> None:
-        """Revoke one refresh token, ending that session.
+    async def logout(self, raw_token: str, user_id: uuid.UUID) -> None:
+        """Revoke the caller's refresh token, ending that session.
 
         Idempotent and silent: an unknown or already-revoked token is ignored, so signing out
-        twice, or with a stale token, is not an error.
+        twice, or with a stale token, is not an error. A token of another user is ignored the same
+        way, so the answer does not say whether it is real (FR-238).
 
         Args:
             raw_token: The refresh token to revoke.
+            user_id: The caller.
         """
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         stored = await self._token_repo.get_by_hash(token_hash)
-        if stored is None or stored.revoked_at is not None:
+        if stored is None or stored.revoked_at is not None or stored.user_id != user_id:
             return
         await self._token_repo.revoke_if_live(stored.id, RevocationReason.logout)
 

@@ -148,8 +148,9 @@ async def refresh_token(
     status_code=204,
     summary="Sign out",
     description=(
-        "Revoke one refresh token, ending that session. Requires a valid access token. "
-        "Revoking an unknown or already revoked token still returns 204."
+        "Revoke one of the caller's refresh tokens, ending that session. Requires a valid "
+        "access token. An unknown or already revoked token, or one of another user, changes "
+        "nothing and still returns 204."
     ),
 )
 async def logout(
@@ -159,11 +160,12 @@ async def logout(
 ) -> None:
     """Sign out.
 
-    Revoke one refresh token, ending that session. Requires a valid access token. Revoking an
-    unknown or already revoked token still returns 204.
+    Revoke one of the caller's refresh tokens, ending that session. Requires a valid access token.
+    An unknown or already revoked token, or one of another user, changes nothing and still returns
+    204.
     """
     svc = _make_service(db)
-    await svc.logout(body.refresh_token)
+    await svc.logout(body.refresh_token, current_user.id)
 
 
 @router.post(
