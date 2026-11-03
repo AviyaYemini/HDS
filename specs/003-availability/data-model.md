@@ -46,9 +46,12 @@ it.
 
 ## Pure inputs (`hds.scheduling`)
 
-`ShiftSlot(id, project_id, starts_at, ends_at, headcount, assigned)`, `Entry(kind, starts_on, ends_on,
-shift_type_id, weekday)`, `Settings(min_rest, max_weekly, week_zone)`, `Warning(code, employee_id,
-shift_ids)`. Each assigned employee is passed with `is_active`, for `warnings.employee_inactive`.
+`ShiftSlot(id, project_id, shift_type_id, starts_at, ends_at, zone, headcount, assigned)`,
+`Employee(id, is_active)`, `Entry(employee_id, kind, starts_on, ends_on, shift_type_id, weekday)` with
+`kind` one of `blocked`, `open`, `close`, `absence`, `Settings(min_rest, max_weekly, week_zone)`, and
+the output `RuleWarning(code, employee_id, shift_ids)` (not `Warning`, which would shadow Python's
+built-in). `validate` refuses a shift id given twice, an unknown entry kind and an assigned employee
+missing from its input, and `local_span` refuses a span that would not end after it starts. Each assigned employee is passed with `is_active`, for `warnings.employee_inactive`.
 
 **Alias**: the stored prompt's "shift templates" and docs/hds-spec.md's `ShiftTemplate` are the
 `shift_types` table here; one name is used from here on. Plain dataclasses with standard-library types only.
