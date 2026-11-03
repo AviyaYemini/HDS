@@ -114,6 +114,74 @@ Tests run on the private database `hds_p3_test`; `hds_test` is never used.
 - Final gates: ruff, format, mypy strict (205 files), interrogate 100%, import graph, `alembic check`,
   full suite 1509 passed, concurrency suite 34 passed three times, drift check agrees.
 
+## Group C: the Client project path and the unreachable promotes (T015 to T020)
+
+- Decision (E3): a Client account's listing returns from `ProjectRepository.list_by_client`, which
+  gained the status filter. The no-client guard in the service stays. (Revised after review: see
+  finding 6 below.)
+- Failing first: 3 unit tests (the Client branch did not call `list_by_client`) and 1 repository test
+  (`list_by_client` took no `status`).
+- Changed tests, with the reason: `test_list_projects_client_scoped_to_own_client` and
+  `test_list_projects_client_ignores_external_client_id_filter` asserted the `list_by_org` call that
+  FR-006 replaces. They now assert `list_by_client` with the caller's own client, and that
+  `list_by_org` is never awaited. Their rule, own client whatever the filter, is unchanged.
+- Decision (E4), the promote methods. Before removal, each rule their tests pinned was matched to a
+  test on `edit_employee`, the only path a request reaches:
+  - `test_promote_to_manager_by_manager_revokes_sessions` is now covered by the new
+    `test_a_manager_promoting_to_manager_by_edit_ends_the_sessions`.
+  - `test_promote_to_admin_by_manager_forbidden` is covered by
+    `test_manager_cannot_set_role_admin_via_edit`, which now also asserts the code and that nothing
+    was written, and by integration `test_non_admin_promoting_to_admin_returns_403`.
+  - `test_promote_to_admin_by_admin_succeeds` is now covered by the new
+    `test_an_admin_making_an_admin_by_edit_ends_the_sessions`.
+  - `test_manager_cannot_demote_admin_via_promote_to_manager` is covered by
+    `test_manager_cannot_edit_admin`, now parametrised over a name and a role change, with the code
+    asserted.
+  - `test_a_promotion_of_a_client_account_is_refused[manager, admin]` is now covered by
+    `test_an_edit_of_a_client_accounts_role_is_refused`, parametrised over employee, manager and
+    admin, and integration `test_a_client_accounts_role_cannot_change`.
+  - The new tests passed on the existing code, as coverage tests should. Mutations of `edit_employee`
+    showed they bite: C1 no session revocation on a role change; C2 no Admin-target guard (caught
+    then by a separate test that review finding 8 folded into `test_manager_cannot_edit_admin[role]`);
+    C3 Client role unlocked. All caught.
+  - Then `promote_to_manager` and `promote_to_admin` and the 5 test functions (6 collected cases)
+    were removed. Nothing else named them, apart from 001's historical tasks.md.
+- Mutations on the Client path, all caught: C4 back to `list_by_org`; C5 status not passed in the
+  service; C6 status filter dropped in the repository; C7 no-client guard removed. C7 is caught by
+  the unit test only. The integration test still passes because `projects.client_id` is NOT NULL, so
+  `client_id IS NULL` matches nothing. That safety comes from the column, not from the query.
+- /hds-review: no violations.
+- /code-review high: no correctness bug found; nine findings:
+  1. **The Manager-assigns-Admin unit test asserted only the exception type (fixed):** it now asserts
+     `users.admin_required` and that nothing was written.
+  2. **Tasks not ticked (done at commit, as in A and B).**
+  3. **The new test file instead of an existing one (skipped, cosmetic).**
+  4. **The log said `list_by_client` was safe "by construction, because its filter is equality"
+     (fixed):** SQLAlchemy writes `== None` as `IS NULL`, so the safety comes from the NOT NULL
+     column. Corrected above.
+  5. **`list_by_client` repeats `list_by_org`'s query (skipped, cosmetic).**
+  6. **The root cause remained (fixed).** `list_by_org(client_id=None)` still meant "every client", so
+     any future Client-facing caller could repeat 002's hazard, which FR-006's "through every
+     internal path" forbids.
+     - `list_by_org` no longer takes a client, so it always means the whole organisation (staff only).
+       A staff listing filtered by client goes through `list_by_client`, whose client is required.
+     - Tests failed first: the staff filter did not use `list_by_client`; `list_by_org` was called
+       with `client_id=None`; and `test_no_project_read_takes_an_optional_client` pins both
+       signatures.
+     - Mutations: C8, staff filter dropped (caught by
+       `test_a_staff_listing_filtered_by_client_uses_the_per_client_read`); C9, unknown-client 404
+       skipped (caught by the existing `test_list_projects_filtered_by_foreign_client_returns_404`).
+       C9's first run did not include that test file and showed "not caught"; re-run with it.
+  7. **Duplicate no-client test (fixed):** the new copy was dropped. The existing parametrised
+     `test_a_client_account_with_no_client_lists_nothing` now also asserts `list_by_client` is never
+     awaited.
+  8. **Redundant role-edit refusal test (fixed):** folded into `test_manager_cannot_edit_admin`.
+  9. **JSON strings passed where `uuid.UUID` is typed (fixed).**
+  - The first Group C gate run was stopped when these fixes started, because it was testing older
+    code. Only the re-run counts.
+- Final gates: ruff, format, mypy strict (206 files), interrogate 100%, import graph, `alembic check`,
+  full suite 1514 passed, concurrency suite 34 passed three times.
+
 ## Proposed follow-ups (not in Part 1)
 
 - Create requests (`POST` of employees, clients, projects, sites, groups, qualifications) still drop

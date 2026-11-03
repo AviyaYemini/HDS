@@ -64,12 +64,12 @@ None. Each group stands alone.
 
 ### Group C: the Client project path and the unreachable methods
 
-- [ ] T015 [US3] Failing unit test in `tests/unit/test_project_client_scope.py`: the Client branch of `ProjectService.list_projects` reads through `ProjectRepository.list_by_client` with the status filter passed through, and never calls `list_by_org`; a repository test in `tests/integration/test_client_portal.py` (or the existing Client project test file) shows `list_by_client` honours the status filter
-- [ ] T016 [US3] Add the status filter to `ProjectRepository.list_by_client` (`src/hds/repositories/project.py`) and use it in the Client branch of `ProjectService.list_projects` (`src/hds/services/project.py`); the early refusal of an account with no client stays (research E3)
-- [ ] T017 [US3] For each rule pinned by the `promote_to_manager` / `promote_to_admin` unit tests in `tests/unit/test_employee_manager.py` (lines near 166, 179, 189, 225, 498), confirm a test of `edit_employee` pins the same rule; add any missing one first and see it fail under a mutation
-- [ ] T018 [US3] Remove `EmployeeService.promote_to_manager` and `promote_to_admin` from `src/hds/services/employee.py` and their unit tests; log each removed test with the test that now covers its rule (research E4)
-- [ ] T019 [US3] Mutation checks: the Client branch back to `list_by_org(client_id=...)` without the guard; the status filter dropped from `list_by_client`
-- [ ] T020 [US3] Gates, both reviews, fixes, log; commit `refactor(api): narrow the client project read and drop unreachable promotes (003 Group C)`
+- [X] T015 [US3] Failing unit test in `tests/unit/test_project_client_scope.py`: the Client branch of `ProjectService.list_projects` reads through `ProjectRepository.list_by_client` with the status filter passed through, and never calls `list_by_org`; a repository test in `tests/integration/test_client_portal.py` (or the existing Client project test file) shows `list_by_client` honours the status filter
+- [X] T016 [US3] Add the status filter to `ProjectRepository.list_by_client` (`src/hds/repositories/project.py`) and use it in the Client branch of `ProjectService.list_projects` (`src/hds/services/project.py`); the early refusal of an account with no client stays (research E3)
+- [X] T017 [US3] For each rule pinned by the `promote_to_manager` / `promote_to_admin` unit tests in `tests/unit/test_employee_manager.py` (lines near 166, 179, 189, 225, 498), confirm a test of `edit_employee` pins the same rule; add any missing one first and see it fail under a mutation
+- [X] T018 [US3] Remove `EmployeeService.promote_to_manager` and `promote_to_admin` from `src/hds/services/employee.py` and their unit tests; log each removed test with the test that now covers its rule (research E4)
+- [X] T019 [US3] Mutation checks: the Client branch back to `list_by_org(client_id=...)` without the guard; the status filter dropped from `list_by_client`
+- [X] T020 [US3] Gates, both reviews, fixes, log; commit `refactor(api): narrow the client project read and drop unreachable promotes (003 Group C)`
 
 ### Group D: migration 019
 

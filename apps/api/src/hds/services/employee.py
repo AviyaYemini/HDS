@@ -327,66 +327,6 @@ class EmployeeService:
             )
         return user
 
-    async def promote_to_manager(self, actor: User, target_id: uuid.UUID) -> User:
-        """Set a user's role to Manager (Manager or Admin).
-
-        Applied to an Admin it is a demotion, so it needs an Admin actor and is refused for the
-        last active Admin.
-
-        Args:
-            actor: The caller.
-            target_id: User to change.
-
-        Returns:
-            The updated user.
-
-        Raises:
-            ForbiddenError: ``users.manager_required``, or ``users.admin_required`` when a
-                Manager targets an Admin (HTTP 403).
-            NotFoundError: The user is not in the organisation (HTTP 404).
-            ConflictError: ``users.last_admin`` or ``users.client_role_locked`` (HTTP 409).
-
-        Side effects:
-            Revokes the user's refresh tokens so the new role applies at once.
-        """
-        ensure_role(actor, *MANAGER_ROLES)
-        target = await self._get_target(actor, target_id)
-        self._guard_admin_target(actor, target)
-        guard_client_role(target)
-        if target.role == UserRole.admin:
-            await self._guard_last_admin(target)
-        updated = await self._user_repo.update(
-            target_id, actor.organization_id, role=UserRole.manager
-        )
-        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
-        return updated
-
-    async def promote_to_admin(self, actor: User, target_id: uuid.UUID) -> User:
-        """Set a user's role to Admin (Admin only).
-
-        Args:
-            actor: The caller.
-            target_id: User to change.
-
-        Returns:
-            The updated user.
-
-        Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
-            NotFoundError: The user is not in the organisation (HTTP 404).
-
-        Side effects:
-            Revokes the user's refresh tokens.
-            ConflictError: ``users.client_role_locked`` (HTTP 409).
-        """
-        ensure_role(actor, *ADMIN_ROLES)
-        guard_client_role(await self._get_target(actor, target_id))
-        updated = await self._user_repo.update(
-            target_id, actor.organization_id, role=UserRole.admin
-        )
-        await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
-        return updated
-
     async def edit_employee(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> User:
         """Update an employee's details, and optionally their role (Manager or Admin).
 

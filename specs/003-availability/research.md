@@ -25,13 +25,14 @@ projects and sites. `/me` keeps `extra="allow"`, because its service already ans
 
 ## E3. The Client project path (FR-006)
 
-**Decision**: the Client branch of `ProjectService.list_projects` calls `ProjectRepository.list_by_client`,
-which gains the status filter; `list_by_org` keeps `client_id=None` meaning "every client" for staff
-only. The service still refuses an account with no client first (002), so `list_by_client` is never
-called with an empty id; it also returns nothing for one, by construction, because its filter is
-equality.
+**Decision**: `ProjectRepository.list_by_client` gains the status filter and serves every listing of
+one client: a Client account's, and a staff listing filtered by client. `list_by_org` loses its optional
+client, so it always means the whole organisation (staff only), and no read can mean "every client"
+because an empty client was passed by mistake. The service still refuses an account with no client
+first (002). If that guard were lost, `list_by_client` with no client would still match nothing, but only
+because `projects.client_id` is NOT NULL.
 
-**Alternatives**: a guard inside `list_by_org` (keeps the ambiguous parameter).
+**Alternatives**: a guard inside `list_by_org`, or only routing the Client caller elsewhere (both keep the ambiguous parameter for the next caller).
 
 ## E4. The unreachable promote methods (FR-007)
 

@@ -19,17 +19,17 @@ class ProjectRepository(OrgScopedRepository[Project]):
     model = Project
 
     async def list_by_org(
-        self,
-        org_id: uuid.UUID,
-        status: ProjectStatus | None = None,
-        client_id: uuid.UUID | None = None,
+        self, org_id: uuid.UUID, status: ProjectStatus | None = None
     ) -> list[Project]:
-        """List the organisation's non-deleted projects.
+        """List every client's non-deleted projects in the organisation (staff only).
+
+        It takes no client on purpose: an optional client that means "every client" when empty
+        let a Client account with no client see all projects (003 FR-006). One client's projects
+        come from ``list_by_client``.
 
         Args:
             org_id: The caller's organisation.
             status: Keep only projects in this lifecycle state.
-            client_id: Keep only this client's projects.
 
         Returns:
             Matching projects in unspecified order.
@@ -40,25 +40,32 @@ class ProjectRepository(OrgScopedRepository[Project]):
         )
         if status is not None:
             stmt = stmt.where(Project.status == status)
-        if client_id is not None:
-            stmt = stmt.where(Project.client_id == client_id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_by_client(self, client_id: uuid.UUID, org_id: uuid.UUID) -> list[Project]:
+    async def list_by_client(
+        self, client_id: uuid.UUID, org_id: uuid.UUID, status: ProjectStatus | None = None
+    ) -> list[Project]:
         """List a client's non-deleted projects; the data scope for the Client role.
+
+        The client is required, so this read cannot mean "every client" (003 FR-006).
 
         Args:
             client_id: The client whose projects to return.
             org_id: The caller's organisation.
+            status: Keep only projects in this lifecycle state.
+
+        Returns:
+            Matching projects in unspecified order.
         """
-        result = await self.session.execute(
-            select(Project).where(
-                Project.client_id == client_id,
-                Project.organization_id == org_id,
-                Project.is_deleted.is_(False),
-            )
+        stmt = select(Project).where(
+            Project.client_id == client_id,
+            Project.organization_id == org_id,
+            Project.is_deleted.is_(False),
         )
+        if status is not None:
+            stmt = stmt.where(Project.status == status)
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
