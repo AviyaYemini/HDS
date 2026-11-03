@@ -218,3 +218,52 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
       403 `availability.admin_required`, because the entry is another employee's.
     - No existing expectation was weakened; the new cases are stated, not exempted.
 - Final gates: all green; full suite 1707 passed; concurrency 39 passed three times; drift check agrees.
+
+## Group H: shift types per project (T049, T050)
+
+- Failing first: the 12 tests in `test_shift_types.py` failed, because the routes did not exist.
+- Decisions:
+  - **Crossing midnight is computed**, never sent: true exactly when the end is not after the start.
+    So T049's "a non-crossing type ending before it starts is refused" cannot arise; the database
+    check `ck_shift_types_crossing` still guards it.
+  - **Names are unique only through the database index** (`uq_shift_types_org_name`, active names,
+    any letter case), mapped to 409 `shift_types.duplicate_name`. The service's own name check was
+    removed: mutations H3 and H8 showed it changed nothing over the index, which also covers two
+    requests at once.
+  - **Retiring** is `is_active` false. A retired type frees its name and keeps its shifts; it cannot
+    be added to a project (422 `shift_types.retired`) or used by an availability entry.
+  - **A project's set is replaced whole** (`PUT /projects/{id}/shift-types`).
+    `GET /projects/{id}/shift-types` was added to read it back (not in the plan's contract table, but
+    needed to show the set).
+  - **Local times are text only.** `IsoTime` (requests) and `LocalTimeOut` (responses) are published
+    as a string pattern with valid hours and minutes, not `format: time`: that format requires a UTC
+    offset, and these times are local to a site. Schemathesis showed both problems.
+- Coverage tests extended for the new routes: the role matrix (5), the sweep (4 cases), `_CONFLICTS`
+  (2), the locale texts (2 codes), the contract (5 operations, 6 schemas), and `docs/hds-api.md`.
+- Mutations, all caught (H1, H2, H4 to H7, H9, H10): crossing inverted; crossing not recomputed on a
+  change; a retired or a foreign type allowed in a project; retired names still taken; a project's
+  set appended rather than replaced; the unique-name violation not mapped to 409, on add or on
+  rename.
+- /hds-review: no violations. Every new operation has allowed and forbidden tests; codes are in `en`
+  and `he`; the contract and `docs/hds-api.md` are updated.
+- /code-review high, nine findings:
+  1. **A retired type stayed in a project's set, so sending the set back failed (fixed).** A
+     project's set now holds active types only. Test first.
+  2. **Crossing midnight was computed from a row read without a lock (fixed).** The type is read
+     `FOR UPDATE` with `populate_existing`. The new race test, two changes each moving one time,
+     failed in round 1 before the fix.
+  3. **Replacing a project's set had no lock (fixed).** The project row is locked (`FOR NO KEY
+     UPDATE`) and the listed types `FOR SHARE`, so a concurrent retirement waits. The race test,
+     two identical replacements, failed in round 1 before the fix.
+  4. **Equal start and end times were accepted as a 24-hour shift (fixed):** 422
+     `shift_types.times_equal`.
+  5. **`project_uses` ignored retirement (fixed):** it requires an active type. It is for Group I,
+     whose tests cover it.
+  6. **One query per id when replacing a set (fixed):** one locking query for all of them.
+  7. **The savepoints around the unique-name writes (not changed):** the user repository uses the
+     same pattern for the same reason.
+  8. **`STAFF_ROLES` imported from another service (fixed):** it moved to `core/authz.py`.
+  9. **The id-list request model duplicates `IDListRequest` (not changed, cosmetic).**
+- Mutations on the fixes, all caught: H11 retired types left in a set; H12 equal times accepted;
+  H13 the type read without a lock; H14 the project not locked for a set.
+- Gate: 1743 passed, one contract failure: equal times are a cross-field rule, so `POST` and `PATCH /shift-types` joined `unprovable_operations.json`; the contract tests then pass. Concurrency 41 passed three times.

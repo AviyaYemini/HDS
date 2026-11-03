@@ -783,6 +783,83 @@ components:
           minimum: 0
           maximum: 6
 
+    # ── Shift types (003 Part 2) ──────────────────────────────────────────────
+
+    LocalTime:
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$"
+      description: A time of day, HH:MM or HH:MM:SS, local to the site a shift is at; no UTC offset.
+      example: "07:00"
+
+    ShiftTypeRead:
+      type: object
+      required: [id, name, starts_at_local, ends_at_local, crosses_midnight, is_active, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+        starts_at_local:
+          $ref: "#/components/schemas/LocalTime"
+        ends_at_local:
+          $ref: "#/components/schemas/LocalTime"
+        crosses_midnight:
+          type: boolean
+          description: True exactly when the end is not after the start; computed, never sent.
+        is_active:
+          type: boolean
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    ShiftTypeListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShiftTypeRead"
+
+    ShiftTypeCreateRequest:
+      type: object
+      required: [name, starts_at_local, ends_at_local]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        starts_at_local:
+          $ref: "#/components/schemas/LocalTime"
+        ends_at_local:
+          $ref: "#/components/schemas/LocalTime"
+
+    ShiftTypeUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        starts_at_local:
+          $ref: "#/components/schemas/LocalTime"
+        ends_at_local:
+          $ref: "#/components/schemas/LocalTime"
+        is_active:
+          type: boolean
+          description: False retires the type; shifts already made from it stay.
+
+    ShiftTypeIdsRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/UUIDv4"
+
   # ── Reusable responses ────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -2375,5 +2452,144 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Shift types (003 Part 2) ──────────────────────────────────────────────
+  /shift-types:
+
+    get:
+      operationId: shift_types_list
+      summary: List shift types (Employee, Manager, Admin)
+      tags: [ShiftTypes]
+      responses:
+        "200":
+          description: Shift types.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftTypeListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: shift_types_create
+      summary: Add a shift type (Manager+)
+      tags: [ShiftTypes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftTypeCreateRequest"
+      responses:
+        "201":
+          description: The shift type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftTypeRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /shift-types/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: shift_types_update
+      summary: Change or retire a shift type (Manager+)
+      tags: [ShiftTypes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftTypeUpdateRequest"
+      responses:
+        "200":
+          description: The shift type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftTypeRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /projects/{id}/shift-types:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: project_shift_types_list
+      summary: List a project's shift types (Manager+)
+      tags: [ShiftTypes]
+      responses:
+        "200":
+          description: The project's shift types.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftTypeListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    put:
+      operationId: project_shift_types_set
+      summary: Set a project's shift types (Manager+)
+      tags: [ShiftTypes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftTypeIdsRequest"
+      responses:
+        "200":
+          description: The project's shift types.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftTypeListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"

@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     from hds.routers.me import router as me_router
     from hds.routers.projects import router as projects_router
     from hds.routers.qualifications import router as qualifications_router
+    from hds.routers.shift_types import router as shift_types_router
     from hds.routers.sites import router as sites_router
 
     application.include_router(auth_router)
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     application.include_router(sites_router)
     application.include_router(projects_router)
     application.include_router(availability_router)
+    application.include_router(shift_types_router)
 
     return application
 

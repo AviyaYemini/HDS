@@ -93,6 +93,12 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("POST", E + "/constraints"): STAFF,
     ("PATCH", "/api/v1/constraints/{id}"): STAFF,
     ("DELETE", "/api/v1/constraints/{id}"): STAFF,
+    # shift types (003 FR-110, FR-111)
+    ("GET", "/api/v1/shift-types"): STAFF,
+    ("POST", "/api/v1/shift-types"): MGR,
+    ("PATCH", "/api/v1/shift-types/{id}"): MGR,
+    ("GET", P + "/shift-types"): MGR,
+    ("PUT", P + "/shift-types"): MGR,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}

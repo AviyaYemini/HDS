@@ -411,6 +411,34 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/constraints/{w.theirs.entry.id}"),  # type: ignore[union-attr]
         ),
     ],
+    "PATCH /api/v1/shift-types/{id}": [
+        Case(
+            "foreign shift type id",
+            lambda w: req(
+                f"/api/v1/shift-types/{w.theirs.shift_type.id}",  # type: ignore[union-attr]
+                json={"name": "Renamed"},
+            ),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/shift-types": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/shift-types"),
+        ),
+    ],
+    "PUT /api/v1/projects/{id}/shift-types": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/shift-types", json={"ids": []}),
+        ),
+        Case(
+            "own project, foreign shift type",
+            lambda w: req(
+                f"/api/v1/projects/{w.mine.project.id}/shift-types",
+                json={"ids": [str(w.theirs.shift_type.id)]},  # type: ignore[union-attr]
+            ),
+        ),
+    ],
     "POST /auth/invite": [
         Case(
             "address held by another organisation",

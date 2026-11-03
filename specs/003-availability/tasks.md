@@ -159,8 +159,8 @@ its project's shift types (FR-111). US4 and US5 share the availability modules a
 
 **Goal**: FR-110 to FR-112. **Independent test**: US8 independent test in spec.md.
 
-- [ ] T049 [P] [US8] Failing integration tests in `tests/integration/test_shift_types.py`: a new organisation lists morning, afternoon and night; Manager and Admin add, edit and retire a type; Employee may list, not change (403); Client 403; a non-crossing type ending before it starts refused 422; a duplicate active name refused 409 `shift_types.duplicate_name`; `PUT /projects/{id}/shift-types` sets the complete set and refuses another organisation's type with 404; changing a type's times leaves existing shifts unchanged (FR-112, checked after Group I creates shifts, so add that case in T053)
-- [ ] T050 [US8] Repository, service and router for shift types and project shift types (`src/hds/{repositories,services,routers}/shift_type*.py`), codes and locale texts; contract and `docs/hds-api.md`; mutation checks (crossing rule inverted, retire deleting, project set not scoped). Gates, reviews, log; commit `feat(api): shift types per project (003 Group H)`
+- [X] T049 [P] [US8] Failing integration tests in `tests/integration/test_shift_types.py`: a new organisation lists morning, afternoon and night; Manager and Admin add, edit and retire a type; Employee may list, not change (403); Client 403; a non-crossing type ending before it starts refused 422; a duplicate active name refused 409 `shift_types.duplicate_name`; `PUT /projects/{id}/shift-types` sets the complete set and refuses another organisation's type with 404; changing a type's times leaves existing shifts unchanged (FR-112, checked after Group I creates shifts, so add that case in T053)
+- [X] T050 [US8] Repository, service and router for shift types and project shift types (`src/hds/{repositories,services,routers}/shift_type*.py`), codes and locale texts; contract and `docs/hds-api.md`; mutation checks (crossing rule inverted, retire deleting, project set not scoped). Gates, reviews, log; commit `feat(api): shift types per project (003 Group H)`
 
 ### Group I: shifts and assignments with warnings (US6)
 

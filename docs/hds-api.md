@@ -11,6 +11,7 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
 | Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
 | Availability | `GET/POST /availability-windows`, `PATCH/DELETE /availability-windows/{id}`, `GET/POST /employees/{id}/constraints`, `PATCH/DELETE /constraints/{id}` | Managers and Admins open submission windows. Employees edit their own blocked, open and close entries inside an open window and their absences any time; Admins edit anyone's at any time; Managers read everyone's *(003)* |
+| Shift types | `GET/POST /shift-types`, `PATCH /shift-types/{id}`, `GET/PUT /projects/{id}/shift-types` | Every organisation starts with morning, afternoon and night; Managers and Admins add, change and retire types and choose each project's set; everyone who works shifts reads them *(003)* |
 | Shifts | `GET /shifts?from=&to=&project=`, `PATCH /shifts/{id}` | Cursor pagination; admins edit the pay field |
 | Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Returns constraint warnings, not just errors |
 | Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
@@ -61,6 +62,9 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `availability.date_range_invalid` | 422 | An entry ends before it starts *(003)* |
 | `availability.no_matching_day` | 422 | An entry's weekday never falls between its first and last date *(003)* |
 | `availability.shift_type_retired` | 422 | An entry limited to a retired shift type *(003)* |
+| `shift_types.duplicate_name` | 409 | Another active shift type has the name, in any letter case *(003)* |
+| `shift_types.retired` | 422 | A retired shift type added to a project *(003)* |
+| `shift_types.times_equal` | 422 | A shift type that starts and ends at the same time *(003)* |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |

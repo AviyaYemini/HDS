@@ -68,6 +68,26 @@ class ProjectRepository(OrgScopedRepository[Project]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def lock(self, id: uuid.UUID, org_id: uuid.UUID) -> bool:
+        """Lock a non-deleted project of the organisation until the transaction ends.
+
+        ``FOR NO KEY UPDATE``, so foreign-key checks of rows that point at the project do not
+        wait for it. Two replacements of the project's shift types then run one after the other.
+
+        Returns:
+            Whether the project exists in the organisation.
+        """
+        result = await self.session.execute(
+            select(Project.id)
+            .where(
+                Project.id == id,
+                Project.organization_id == org_id,
+                Project.is_deleted.is_(False),
+            )
+            .with_for_update(key_share=True)
+        )
+        return result.first() is not None
+
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
         """Fetch a non-deleted project of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(

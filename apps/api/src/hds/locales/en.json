@@ -66,5 +66,8 @@
   "availability.absence_whole_days": "An absence covers whole days, so it takes no shift type or weekday.",
   "availability.date_range_invalid": "The entry must not end before it starts.",
   "availability.no_matching_day": "The weekday never falls between the entry's first and last date.",
-  "availability.shift_type_retired": "That shift type has been retired."
+  "availability.shift_type_retired": "That shift type has been retired.",
+  "shift_types.duplicate_name": "Another active shift type has this name.",
+  "shift_types.retired": "A retired shift type cannot be added to a project.",
+  "shift_types.times_equal": "A shift type must not start and end at the same time."
 }

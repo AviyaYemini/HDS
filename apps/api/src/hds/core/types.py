@@ -9,7 +9,7 @@ aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a
 """
 
 import re
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -21,6 +21,7 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    PlainSerializer,
     StringConstraints,
     WithJsonSchema,
 )
@@ -132,6 +133,33 @@ IsoDate = StrictDate
 
 IsoDateTime = Annotated[AwareDatetime, BeforeValidator(_iso_datetime_text)]
 """An instant given as ISO-8601 text with a time zone; numbers are refused."""
+
+_LOCAL_TIME = r"^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$"
+_ISO_TIME = re.compile(_LOCAL_TIME)
+
+
+def _iso_time_text(value: object) -> object:
+    """Accept only ``HH:MM`` or ``HH:MM:SS`` text, refusing numbers read as seconds."""
+    if isinstance(value, time) or (isinstance(value, str) and _ISO_TIME.match(value)):
+        return value
+    raise ValueError("Input should be a time of day such as 07:00")
+
+
+_LOCAL_TIME_SCHEMA = {"type": "string", "pattern": _LOCAL_TIME, "example": "07:00"}
+
+IsoTime = Annotated[time, BeforeValidator(_iso_time_text), WithJsonSchema(_LOCAL_TIME_SCHEMA)]
+"""A local time of day given as ``HH:MM`` or ``HH:MM:SS`` text only, with no UTC offset.
+
+Published as a string pattern, not ``format: time``, which requires an offset: these times are
+local to a site and get their offset only when a shift on a date is made from them.
+"""
+
+LocalTimeOut = Annotated[
+    time,
+    PlainSerializer(lambda value: value.strftime("%H:%M:%S"), return_type=str),
+    WithJsonSchema(_LOCAL_TIME_SCHEMA),
+]
+"""A local time of day in a response, written ``HH:MM:SS`` with no UTC offset."""
 
 # Roles that may be assigned through the employee endpoints (clients have their own).
 AssignableRole = Literal["employee", "manager", "admin"]

@@ -70,6 +70,20 @@
       "operation_id": "change_entry_api_v1_constraints__id__patch",
       "suites": ["pytest", "cli"],
       "reason": "the same rules as adding an entry (003 FR-104, FR-105)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-types",
+      "operation_id": "add_type_api_v1_shift_types_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a type may not start and end at the same time, which spans two fields (003 FR-110); answered 422 shift_types.times_equal"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/shift-types/{id}",
+      "operation_id": "change_type_api_v1_shift_types__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same rule as adding a type, judged with the stored time of the field not sent"
     }
   ]
 }

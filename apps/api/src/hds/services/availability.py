@@ -17,7 +17,7 @@ from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from hds.core.authz import MANAGER_ROLES, ensure_role
+from hds.core.authz import MANAGER_ROLES, STAFF_ROLES, ensure_role
 from hds.core.exceptions import (
     ConflictError,
     DomainValidationError,
@@ -31,9 +31,6 @@ from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
-
-STAFF_ROLES = (UserRole.employee, UserRole.manager, UserRole.admin)
-"""Everyone who works shifts and so has availability: every role but Client."""
 
 _ENTRY_FIELDS = ("kind", "absence_kind", "starts_on", "ends_on", "shift_type_id", "weekday")
 
