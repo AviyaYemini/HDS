@@ -222,11 +222,16 @@ client create and edit (date order), employee edit (Client role locked).
 | IV. Test-first | Every item has a failing-first test; security items add mutation checks | Pass |
 | V. API-first | New response codes `429` and `503` and new problem codes are declared; drift check stays green | Pass |
 | VI. Security | Strengthens it (F01, F02, F03, F05, F08, F09, F04). The throttle table stores an HMAC of each address, not the address | Pass |
-| VII. Money and time | F10 makes time-zone names canonical; no money change | Pass |
+| VII. Money and time | F10 accepts only valid IANA time-zone names; no money change | Pass |
 | VIII. Internationalisation | New codes need `en` and `he`; `test_i18n` enforces parity | Pass |
 | IX. Quality gates | `mypy --strict src tests`, ruff, interrogate, import graph, `alembic check` stay required | Pass |
 | X. Migrations only | 017 and 018 are new and reversible (017's data change is documented as not reversible) | Pass, one noted limit (D18) |
 | XI. Documentation | ADR 007 (sign-in abuse controls) and ADR 008 (delivery after the response), amendments to ADR 005 and 006, README and `docs/hds-api.md` | Pass |
+
+**One-off exception to Principle V (decided 2026-11-03)**: F17 makes `null` on a required PATCH
+field answer 422 where it answered 200, on `/api/v1`. That is a breaking change, which Principle V
+reserves for a new version. It is accepted once because the API has not been released and no client
+uses it; Principle V applies from the first release. The constitution itself is not amended.
 
 **Post-design re-check**: same result. The cross-cutting risk is F04 and F06 together touching the
 sign-in and request lifecycle; they are sequenced after the schema work and each ships with the

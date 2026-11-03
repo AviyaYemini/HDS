@@ -764,6 +764,14 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 **Checkpoint P6 (merge gate): ruff, format (src, tests, alembic, scripts), interrogate 100%, `mypy --strict src/ tests/`, import graph, `alembic check`; the full suite on PostgreSQL; `tests/concurrency/` three runs in a row; the Schemathesis script against a scratch database until it exits 0; `uv run pytest -m timing` for login and reset request; the OpenAPI comparison; the round trip of migrations 013 to head and back; update the coverage table below; push and report the PR 4 head commit**
 
+### Group F: one failure count for every address (FR-221, FR-232; the owner's answer of 2026-11-03)
+
+- [X] T428 [F04] Record the owner's four answers in `spec.md` (clarifications, FR-221, FR-231, FR-232, the next-feature note), the plan's Constitution Check (the one-off Principle V exception), `research.md` D16 and `data-model.md`
+- [ ] T429 [F04] Tests first, on PostgreSQL: a registered address's failures are counted in `login_throttle` and not in `users`; for a registered and an unknown address alike, the count restarts after `LOGIN_THROTTLE_RETENTION_HOURS` without a failure (move `updated_at` back), and the answers stay identical at every step; a success clears the row; a completed reset clears it (FR-232). Adapt the tests that read or set the account columns, and say why in the log. Show them failing
+- [ ] T430 [F04] In `services/throttle.py` count every address in `login_throttle`; in `LoginThrottleRepository.register_failure` restart an `address` count whose `updated_at` is older than the retention; add `clear`; sign-in reads, re-checks after the user lock, and clears through the throttle; `reset_password` clears it; remove `register_failed_login` and `reset_failed_attempts`. Update ADR 007, `docs/hds-api.md` and the docstrings
+- [ ] T431 [F04] Mutation checks: count a registered address on the account row again; no retention restart; success does not clear; reset does not clear; the re-check after the lock reads the account row. Each must fail a test; restore files; record results
+- [ ] T432 [F04] Commit as `fix(api): count every address's sign-in failures in one place, under one rule`
+
 ---
 
 - [ ] T406 Run the merge gate of Checkpoint P6 once more on the final head, push `002-security-hardening`, and report the PR number, the CI result and anything that could not be run
@@ -958,7 +966,7 @@ FR-221 to FR-223 share the `[F04]` label; their tasks are T339 to T358 and T407 
 | SC-211 | FR-222 | T343, T344, T348 |
 | SC-212 | FR-228 | T359, T360, T361 |
 
-Part 2 adds 123 tasks (T305 to T427; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 and T420 to T427 in P3); the file now holds 227 tasks. All are done except T406, which pushes. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
+Part 2 adds 128 tasks (T305 to T432; T407 to T412 sit in P3, T413 to T416 in P1, T417 to T419 and T420 to T427 in P3, T428 to T432 in P6); the file now holds 232 tasks. Every item F01 to F28 has at least one test task and one implementation task; every security item has a mutation-check task. Task numbers were kept stable when tasks were added.
 
 ## Part 2 dependencies and execution order
 

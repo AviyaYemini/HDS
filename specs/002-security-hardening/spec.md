@@ -63,6 +63,22 @@ they cannot be confused with the ids of feature 001, which tests already cite.
   clears the lockout (F11), a Client account's role cannot change (F23), a client's contract end
   may not precede its start (F24).
 
+### Session 2026-11-03 (the owner's answers to the end-of-sprint report)
+
+- Q: An unknown address's failure count expires after `LOGIN_THROTTLE_RETENTION_HOURS` without a
+  failure and a registered one's never does, so a patient caller can tell them apart. How is this
+  closed? → A: Both counts live in the throttle table under the same rule: the count restarts after
+  24 hours without a failure. The account columns go unused, so no migration is needed. A completed
+  reset clears that count too (FR-232).
+- Q: `null` on a required PATCH field now answers 422 instead of 200 on `/api/v1`. → A: Keep it, as a
+  one-off exception recorded in the plan's Constitution Check: no client uses the API yet, and
+  Principle V applies from the first release. The constitution itself is not amended.
+- Q: The time-zone list holds aliases such as `Israel`. → A: Change the wording, not the code: valid
+  IANA names. An alias follows exactly the rules of the zone it points to, so it gives no wrong time.
+- Q: `contract_start` cannot be edited, so a mistyped start blocks a correct end date. → A: Not in
+  this PR: the gap is older and not on the fix list. The next feature adds `contract_start` to the
+  client PATCH, with the same start-before-end check on the changed pair.
+
 ### Session 2026-11-03 (after the reset timing test failed at Group C)
 
 - Q: The reset request's timing test failed at a ratio of about 1.7 with a connection pool, because a
@@ -417,7 +433,8 @@ valid one is accepted.
   rule. After `LOGIN_MAX_FAILURES` consecutive failures for an address (compared without regard to
   letter case) that address is locked for `LOGIN_LOCKOUT_MINUTES`: sign-in answers 423
   `auth.account_locked`, in the same form and with the same lock-end time rule, whether or not an
-  account exists. The count restarts when the lock ends and is cleared by a successful sign-in. A
+  account exists. The count restarts when the lock ends, and after
+  `LOGIN_THROTTLE_RETENTION_HOURS` (24) without a failure, and is cleared by a successful sign-in. A
   correct password is refused while the address is locked and is not verified, exactly as for the
   existing account lock; this is stated openly, not hidden. Failures per network address are counted
   too, in a **fixed window** of `LOGIN_LOCKOUT_MINUTES`: failures older than the window do not
@@ -467,9 +484,10 @@ change no behaviour, so they need no requirement.
 - **FR-230** (F09): Once "end every session" completes, no credential issued before or during it
   may remain usable, including from a refresh in flight or a sign-in that verified the old
   password.
-- **FR-231** (F10): Only canonical IANA zone names are accepted, matched case-sensitively, with the
+- **FR-231** (F10): Only valid IANA time-zone names are accepted, matched case-sensitively, with the
   same result on every platform; `check_site_timezones` reports stored values that fail.
-- **FR-232** (F11): A completed password reset MUST clear that account's lock and failure count.
+- **FR-232** (F11): A completed password reset MUST clear that account's lock and failure count,
+  wherever the count is kept.
 - **FR-233** (F12): If a rollback fails, the request's original error MUST propagate, and the
   rollback failure MUST be logged by exception type only.
 - **FR-234** (F13): The duplicate-address test MUST prove that `uq_users_email_ci` refused the
@@ -567,9 +585,11 @@ change no behaviour, so they need no requirement.
 - **Managers cannot withdraw a pending invitation (consequence of the 2026-11-03 clarification Q2).**
   Refusing to deactivate a pending account leaves staff without a way to cancel it; only an Admin's
   soft-delete removes one. Accepted.
-- **Known limitation, equal work is not equal time to the last millisecond:** a known account's
-  wrong password also writes and commits its failure count, about 3 ms on top of about 55 ms for
-  the password check (a ratio of about 1.05 in the opt-in timing test, SC-207).
+- **Known limitation, equal work is not equal time to the last millisecond:** the two kinds of
+  address now do the same writes, but a known account's sign-in still reads a little more, which the
+  opt-in timing test measures (SC-207).
+- **Next feature:** `contract_start` cannot be edited. Add it to the client PATCH there, with the same
+  start-before-end check applied to the changed pair.
 - Out of scope: real email provider integration and multi-factor sign-in. (Rate limiting on
   sign-in was out of scope until the 2026-11-03 clarification; it is now in scope, see FR-221.)
 - Creating or reactivating a portal user while its client is being deactivated is check-then-write,

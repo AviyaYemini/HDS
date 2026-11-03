@@ -366,6 +366,13 @@ unbounded wait queue (moves the outage to latency and, with held connections, to
 
 ## D16. Sign-in lockout for every address, and a network limit (FR-221; F04)
 
+**Amended 2026-11-03, after the end-of-sprint report**: every address, registered or not, is now
+counted in `login_throttle`, and an `address` count restarts after `LOGIN_THROTTLE_RETENTION_HOURS`
+without a failure. The account columns are no longer used. Before this, an unknown address's row was
+removed after 24 hours while a registered account's count never expired, so a caller who waited could
+tell them apart. A successful sign-in and a completed reset delete the row. The text below describes
+the first design where it says registered addresses use the account columns.
+
 **Decision (revised 2026-11-03; supersedes the 429-for-both choice of the first draft)**:
 
 - New table `login_throttle` (migration 018), one row per key: `kind` (`address` or `network`),

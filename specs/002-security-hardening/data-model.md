@@ -95,10 +95,11 @@ Only a reuse of a token revoked as `rotated` can trigger the revoke-everything r
 
 ## New table: `login_throttle` (migration 018, FR-221, research D16)
 
-Failure count and lock for an address or a network address that has no account row to hold them. It
-mirrors the `failed_login_attempts` and `locked_until` columns of `users`, so an unregistered address
-is locked by the same rule as a registered one. Registered addresses keep using the `users`
-columns; a network address always uses this table.
+Failure count and lock for every submitted address, registered or not, and for network addresses.
+**Since 2026-11-03 a registered address is counted here too**, not in the `failed_login_attempts` and
+`locked_until` columns of `users`, which are no longer read or written. One store and one rule, so the
+answers cannot tell the two apart. An `address` count restarts after `LOGIN_THROTTLE_RETENTION_HOURS`
+without a failure. The unused columns stay, because dropping them needs a migration.
 
 | Column | Type | Rule |
 | --- | --- | --- |
