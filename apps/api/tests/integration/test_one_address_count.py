@@ -58,18 +58,25 @@ async def age_the_count(db: AsyncSession, email: str, hours: int) -> None:
     await db.commit()
 
 
+async def account_row(db: AsyncSession, email: str) -> dict[str, Any]:
+    """Every column of the account row, as stored."""
+    await db.rollback()  # read what is committed, not what this session saw earlier
+    row = await db.execute(text("SELECT * FROM users WHERE email = :e"), {"e": email})
+    return dict(row.mappings().one())
+
+
 async def test_a_registered_address_is_counted_in_the_throttle_table_only(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
+    before = await account_row(test_db, KNOWN)
+
     await attempt(async_client, KNOWN)
     await attempt(async_client, KNOWN)
 
     assert await address_state(test_db, KNOWN) == (2, False)
-    account = await test_db.execute(
-        text("SELECT failed_login_attempts, locked_until FROM users WHERE email = :e"),
-        {"e": KNOWN},
-    )
-    assert tuple(account.one()) == (0, None)
+    # Failed sign-ins write nothing to the account row; migration 019 dropped its old count and
+    # lock columns, so the throttle table is the only place a count can live.
+    assert await account_row(test_db, KNOWN) == before
 
 
 @pytest.mark.parametrize("email", [KNOWN, UNKNOWN], ids=["registered", "unknown"])

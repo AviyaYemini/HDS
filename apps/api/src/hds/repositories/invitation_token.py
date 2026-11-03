@@ -6,8 +6,9 @@ Layer: repositories. Depends on ``hds.models`` only; it MUST NOT import services
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import Select, any_, delete, func, literal_column, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.models.invitation_token import InvitationToken
@@ -136,14 +137,21 @@ class InvitationTokenRepository:
         Returns:
             How many rows were deleted.
         """
-        expired = (
-            select(InvitationToken.id)
+        # The batch's physical row addresses, found through the expiry index and locked, then
+        # deleted by address (a TID scan). Matching ids, or repeating the expiry on the delete,
+        # let the planner read the whole table or the whole expired backlog for each batch
+        # (003 FR-008). A locked row keeps its address until this transaction ends; a row an
+        # update moved while the batch ran is skipped, and the next batch takes it.
+        expired: Select[tuple[Any]] = (
+            select(literal_column("ctid"))
+            .select_from(InvitationToken)
             .where(InvitationToken.expires_at <= now)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
+        batch = func.array(expired.scalar_subquery())
         result = await self.session.execute(
-            delete(InvitationToken).where(InvitationToken.id.in_(expired))
+            delete(InvitationToken).where(literal_column("ctid") == any_(batch))
         )
         return int(result.rowcount)  # type: ignore[attr-defined]
 

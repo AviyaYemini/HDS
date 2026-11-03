@@ -1,6 +1,6 @@
 # Data Model: Availability, Part 1 (leftovers from 002)
 
-## Migration 019 (`019_expiry_indexes_retire_lock_columns`)
+## Migration 019 (`019_expiry_index_retire_locks`)
 
 | Table | Change | Downgrade |
 | --- | --- | --- |

@@ -182,7 +182,129 @@ Tests run on the private database `hds_p3_test`; `hds_test` is never used.
 - Final gates: ruff, format, mypy strict (206 files), interrogate 100%, import graph, `alembic check`,
   full suite 1514 passed, concurrency suite 34 passed three times.
 
+## Group D: migration 019 (T021 to T027)
+
+- Failing first:
+  - `test_migration_019.py`: 3 tests failed because the revision did not exist.
+  - `test_the_clean_up_reads_only_the_expired_rows`, at SC-003's volumes (100,000 unexpired, 1,000
+    expired): both tables were read by sequential scan.
+- Deviation, the revision id. `019_expiry_indexes_retire_lock_columns` is 38 characters, and
+  `alembic_version.version_num` is VARCHAR(32). The upgrade failed at its last step; PostgreSQL
+  rolled the whole migration back, and `hds_p3_test` stayed at 018 with its columns (checked).
+  Renamed `019_expiry_index_retire_locks`. A name containing the SQL keyword for removing a column
+  was avoided, because the project hook reads it next to the database client as a manual schema
+  change. The new `test_every_revision_id_fits_the_version_table` keeps any future id within 32
+  characters.
+- Deviation, the clean-up query (plan said indexes only).
+  - With the index, the plan still read 101,000 rows. The inner locking select used the new index,
+    but the outer delete by `id IN (subquery)` hash-joined it against a sequential scan of the whole
+    table.
+  - Tried first: two statements (lock the ids, then delete by primary key). At this size the planner
+    still chose a sequential scan for 1,000 key lookups, since it is cheaper there. Reverted.
+  - Kept: the delete repeats `expires_at <= now` next to `id IN (subquery)`, so the planner drives
+    the delete from the expiry index too. It now reads 3,000 rows (index and join) instead of
+    101,000, with no sequential scan. The repeated condition also re-checks expiry on the deleted
+    rows. Same in both repositories.
+  - The test replays every statement the clean-up runs (captured with a cursor event) under
+    `EXPLAIN (ANALYZE, FORMAT JSON)` in a rolled-back transaction. It asserts no sequential scan and
+    at most 5,000 rows read (SC-003, "a few times" the 1,000 expired).
+- Changed test, with the reason: `test_a_registered_address_is_counted_in_the_throttle_table_only`
+  read the two retired columns and asserted (0, None). Its intent, that the count lives only in the
+  throttle table, now compares the committed account row before and after the failed sign-ins (after
+  review; see the first review, finding 7). The other sign-in, lockout
+  and reset tests are unchanged (SC-004). `test_me.py:82` still sends `failed_login_attempts` to
+  PATCH /me and still gets 403. It never depended on the column.
+- Docstrings: the `User` and `LoginThrottle` models no longer describe the columns as kept.
+- Mutations, all caught by a named test:
+  - D1, the downgrade does not restore `failed_login_attempts`.
+  - D2, `locked_until` restored without a time zone.
+  - D3, one index missing.
+  - D4, one retired column kept.
+  - D5 and D6, the delete without the repeated expiry condition, for each table. D6's first run did
+    not apply, because the formatter had wrapped the line; it was re-run on the wrapped text.
+  - These two were superseded by the review fix below.
+- /hds-review: no violations. The migration is new, reversible and documented, and no applied
+  migration was edited.
+- /code-review high, eight findings:
+  1. and 2. **The repeated expiry condition made each batch read the whole expired backlog
+     (fixed).** The planner drove the delete from the expiry index over every expired row and then
+     joined the batch's ids, so draining a large backlog was quadratic. My test had seeded exactly
+     one batch, so it could not see this.
+     - Fix: the batch's physical row addresses (`ctid`) are selected through the expiry index and
+       locked with `SKIP LOCKED`, and the delete removes exactly those addresses
+       (`ctid = ANY(ARRAY(subquery))`, a TID scan). The subquery runs once, as an InitPlan. A row
+       locked `FOR UPDATE` cannot move until the transaction ends, so its address is stable.
+     - An `ORDER BY expires_at` was added at first, because without it a plan showed a bitmap scan
+       reading every expired index entry. The second review showed that plan was an artefact (see
+       the second review, finding 1), and no test could show the order is needed, so it was removed.
+  3. **The test could not tell a batch from the backlog (fixed):** it now also seeds five batches'
+     worth (5,000) and asserts at most 3x the deleted count read per call. Before the fix, the
+     backlog cases failed.
+  4. **The row counter ignored loops and index rechecks (fixed):** each node's rows are multiplied by
+     its loops, and rechecked rows count. With the stricter counter the old query failed even the
+     one-batch case.
+  5. **Index build not `CONCURRENTLY` (not changed):** a plain build blocks writes to the two tables
+     while it runs. Nothing is deployed, so there is no table worth waiting for. Recorded as a
+     follow-up below.
+  6. **`test_me.py` names and 002's data model (not changed).** The `test_me` cases still guard that
+     those names are never writable. 002's spec is a record of that feature, so it is left as it was.
+  7. **The lockout test lost its behaviour check (fixed):** it now compares the whole account row,
+     committed, before and after two failed sign-ins, so it again ties failures to the throttle
+     table only.
+  8. **The revision-length guard parsed text (fixed):** it reads every revision through Alembic's
+     `ScriptDirectory`.
+- More mutations, all caught by a named test:
+  - D5 (both tables), the old `id IN (subquery)` delete restored: caught by the volume test. A first
+    version of this mutation only swapped the selected column and failed on a type error, which
+    does not count; it was re-run as a full revert.
+  - D7 (both tables), `SKIP LOCKED` removed: not caught by any existing test. This was a gap from
+    002. The new `tests/concurrency/test_expired_cleanup_skips_locked.py` holds one expired row in
+    another transaction and requires the clean-up to finish within 5 s, delete the rest and leave
+    that row. With the mutation, the clean-up waits and the timeout fails the test.
+- Second /code-review high, of the rewritten delete, ten findings:
+  1. **`ANALYZE` was rolled back with the test (fixed).** Statistics are transactional, and the
+     seed's `ANALYZE` ran in the transaction the test rolled back, so the replayed plans had no
+     column statistics. It is committed now.
+     - With real statistics, the no-`ORDER BY` mutation (D6) was not caught for either table, even
+       on a backlog that was not yet analyzed (a third case added for this). So the earlier
+       "bitmap scan reads the backlog" plan was an artefact, and the order was removed.
+     - The old delete (D5) is still caught with real statistics.
+  2. **A row moved by a concurrent update is skipped, and a short batch ended the drain (fixed).**
+     A delete by `ctid` skips a row that an update moved while the batch ran. The purge's `_drain`
+     stopped at the first batch shorter than `BATCH`. That also happened before 003, when
+     `SKIP LOCKED` skipped a row, so part of a backlog could wait for the next run.
+     - `_drain` now stops only when a batch removes nothing. A skipped row is taken by a later
+       batch.
+     - Test first: `test_a_short_batch_does_not_end_the_drain` (3 == 5 before the fix). D8, the old
+       stop condition restored, is caught.
+  3. **`login_throttle.purge_stale` has the same `IN (subquery)` shape (not changed).** It is outside
+     FR-008, which names sign-in tokens and one-time links. Recorded as a follow-up.
+  4. **The ctid block is duplicated in two repositories (skipped, cosmetic).**
+  5. **Each batch steps over the dead index entries of earlier batches until vacuum (not
+     changed).** This is a cost of any batched delete in index order before vacuum. It is bounded by
+     one drain, and recorded with 3.
+  6. **The T025 wording and the log said the lockout test asserts the columns are gone (fixed in the
+     log).** The test compares the whole account row before and after (first review, finding 7),
+     and `test_migration_019` asserts the columns are gone. Deviation from T025's wording, by review.
+  7. **`test_me.py` names and a stale e2e comment (comment fixed).** The skipped Playwright test in
+     `apps/client/tests/e2e/test_us1_signin.spec.ts` now says to seed a `login_throttle` row.
+     `test_me.py` is unchanged, as before.
+  8. **The downgrade default check was `"0" in ...` (fixed):** it is exact now. D9, default `10`, is
+     caught.
+  9. and 10. **Test helper duplication and the volume test's cost (skipped).**
+- `hds_p3_test` was left with rows by a killed run (my test started while a gate run was using
+  the database, a second time). It was emptied with the fixtures' own truncate of every table, and
+  from then on no test ran while a gate run was going.
+- Final gates: ruff, format, mypy strict (208 files), interrogate 100%, import graph, `alembic check`,
+  full suite 1526 passed, concurrency suite 36 passed three times.
+
 ## Proposed follow-ups (not in Part 1)
+
+- Build the expiry indexes `CONCURRENTLY` in any later migration that indexes a large live table.
+  019 builds them plainly, which is fine before the first deployment.
+- `LoginThrottleRepository.purge_stale` deletes with `IN (subquery)`, which the 019 work showed can
+  read the whole table per batch. A shared batched delete by `ctid` for all three clean-ups would fix
+  it in one place.
 
 - Create requests (`POST` of employees, clients, projects, sites, groups, qualifications) still drop
   unknown fields, so a misspelt optional field answers 201 without it. `ChangeRequest` could become a

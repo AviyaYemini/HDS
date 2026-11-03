@@ -47,6 +47,12 @@ have a test on `edit_employee`; any missing one is added there first.
 `idx_invitation_tokens_expires_at`, matching the existing `idx_*_user` names. The models declare them
 too, so `alembic check` stays clean.
 
+The index alone was not enough (found in implementation): `DELETE ... WHERE id IN (subquery)` joined
+the batch against every row. Each batch now selects its rows' physical addresses through the index,
+locked with `SKIP LOCKED`, then deletes exactly those addresses (a TID scan), so one batch reads about
+its own rows whatever the size of the table or the expired backlog. The purge's drain stops only when a
+batch removes nothing, because skipped rows make a batch short.
+
 ## E6. Dropping the retired columns (FR-009)
 
 **Decision**: migration 019 drops `users.failed_login_attempts` and `users.locked_until`. Downgrade adds

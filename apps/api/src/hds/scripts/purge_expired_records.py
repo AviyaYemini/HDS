@@ -49,13 +49,17 @@ async def _drain(
     factory: async_sessionmaker[AsyncSession],
     delete: Callable[[AsyncSession], Awaitable[int]],
 ) -> int:
-    """Repeat one delete, each batch in its own transaction, until a batch comes back short."""
+    """Repeat one delete, each batch in its own transaction, until a batch removes nothing.
+
+    A short batch is not the end: rows held by a request, or moved by an update while the batch
+    ran, are skipped and taken by a later batch. A backlog is finite, so the loop ends.
+    """
     total = 0
     while True:
         async with factory() as session, unit_of_work(session):
             removed = await delete(session)
         total += removed
-        if removed < BATCH:
+        if removed == 0:
             return total
 
 

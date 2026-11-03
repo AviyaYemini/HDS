@@ -58,7 +58,7 @@ test.skip("Sign out invalidates session", async ({ page }) => {
 });
 
 test.skip("Locked account shows locked message (LTR)", async ({ page }) => {
-  // Requires a locked account seeded with locked_until in the future
+  // Requires a locked address: seed a login_throttle row (kind address) with locked_until in the future
   await page.goto(`${BASE}/sign-in`);
   await page.fill('[data-testid="email"]', "locked@hds.test");
   await page.fill('[data-testid="password"]', "wrong");

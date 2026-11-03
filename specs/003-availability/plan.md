@@ -74,7 +74,7 @@ specs/003-availability/
 
 ```text
 apps/api/
-├── alembic/versions/019_expiry_indexes_retire_lock_columns.py   # new
+├── alembic/versions/019_expiry_index_retire_locks.py   # new
 ├── src/hds/
 │   ├── core/types.py                 # a shared "refuse unknown fields" base for PATCH models
 │   ├── models/{user,refresh_token,invitation_token}.py

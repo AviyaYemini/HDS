@@ -181,3 +181,20 @@ async def test_a_failure_part_way_still_reports_what_was_already_removed(
         await script.run(factory)
 
     assert capsys.readouterr().out.splitlines() == ["refresh_tokens 1"]
+
+
+async def test_a_short_batch_does_not_end_the_drain(factory: Factory) -> None:
+    """Skipped rows (held by a request, or moved by an update) make a batch short (003 Group D).
+
+    Stopping at the first short batch left the rest of a backlog for the next run.
+    """
+    batches = iter([3, 2, 0, 7])
+    calls = 0
+
+    async def delete(session: AsyncSession) -> int:
+        nonlocal calls
+        calls += 1
+        return next(batches)
+
+    assert await script._drain(factory, delete) == 5
+    assert calls == 3

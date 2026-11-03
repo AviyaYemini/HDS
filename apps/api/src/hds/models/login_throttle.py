@@ -15,7 +15,7 @@ class LoginThrottle(Base):
     """One count per submitted address, network address or reset key.
 
     Every submitted address, registered or not, is counted here, so both follow one rule and the
-    answers cannot tell them apart (FR-221); the account's own lock columns are no longer used. It
+    answers cannot tell them apart (FR-221); the account row has no count or lock of its own. It
     has no organisation and no foreign key, because an address need not belong to anything.
     ``key_hash`` is the HMAC-SHA-256 hex digest of the key, never the address itself. ``kind`` is
     ``address``, ``network`` or ``reset``; the last two count in a fixed window that starts at
