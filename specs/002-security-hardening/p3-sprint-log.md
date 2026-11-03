@@ -715,3 +715,48 @@ Mutation results, all caught on `hds_p3_test`, files restored:
 | V2 | The role missing again | same test |
 | V3 | A deactivated account gets a token | `test_an_invitation_is_refused_for_an_account_that_is_not_pending` |
 
+## P5 checkpoint
+
+Gates pass. Full suite: 1329 passed, 2 deselected, in 7 min 37 s. No production behaviour changed, so
+there is no OpenAPI difference beyond `dev_issue_link`, which is not an API.
+
+## P6 Group A: each test run uses its own database (T385 to T387, F26)
+
+Failing first: on one shared database (`hds_p3_test`, unset rules aside), six concurrent runs of
+`test_me.py` all failed. The task expected failures "at random"; all six failed.
+
+Differs from the tasks, all from the code review:
+- The name is `hds_run_<process id>_test`, not `hds_<process id>_test`. The plain form also matches a
+  database somebody named, such as `hds_20240101_test`, which would be force-dropped as stale. D24 is
+  updated.
+- Migration tests' scratch databases carry the run's id, although T386 said to leave them. They had
+  fixed names, so two full runs would still have dropped each other's. FR-245 outranks the task. The one
+  change is inside `scratch_database`, so no migration test changed.
+- Stale databases are dropped without FORCE, and named runs touch nothing else. A process id means
+  nothing on a shared server, so a live run elsewhere must survive. A run's own leftover is always
+  rebuilt, because a reused process id would otherwise inherit old rows.
+
+`/hds-review`: no violations. T386's root `README.md` was missing (fixed).
+
+`/code-review high` (read-only, ten findings): the three above; `OverflowError` on a long digit run
+(fixed, test first); a failed migration left the database behind (fixed: `try`/`finally`); the script
+compared whole snapshots unsorted, so another run could fail it (fixed: only what it added counts);
+`.env.example` still set the shared database (fixed: commented out, which makes per-run the default
+for anyone copying it); the root README (fixed); an unused helper and a third copy of the pattern (fixed:
+the script imports it, and writes logs instead of discarding them).
+
+Known limit: on a shared server, a run on another machine looks stale. Without FORCE its database
+survives while connected, but it could be dropped between connections. No such setup exists today.
+
+Mutation results, all caught, files restored:
+
+| Id | Mutation | Caught by |
+| --- | --- | --- |
+| G1 | Explicit URL ignored | `test_an_explicit_url_wins` |
+| G2 | Any `hds_` name can be stale | `test_a_database_somebody_named_is_never_stale` |
+| G3 | Partial match | same test |
+| G4 | A live process counts as stale | `test_a_database_whose_process_is_gone_is_stale` |
+| G5 | No process id in the name | `test_the_name_holds_the_process_id_and_ends_in_test` |
+| G6 | Overflow not handled | `test_a_number_too_large_to_be_a_process_is_not_one` |
+| G7 | Scratch name without the run | `test_a_scratch_database_belongs_to_its_run` |
+

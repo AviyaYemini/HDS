@@ -21,6 +21,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from tests.run_database import scratch_name
+
 API_DIR = Path(__file__).resolve().parents[2]
 BASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
@@ -75,6 +77,7 @@ async def scratch_database(name: str, revision: str) -> AsyncIterator[tuple[str,
         ``(url, engine)`` for the scratch database.
     """
     assert name.endswith("_test"), "a scratch database is dropped, so its name must end in _test"
+    name = scratch_name(name, os.getpid())
     await admin_execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
     await admin_execute(f'CREATE DATABASE "{name}"')
     url = make_url(BASE_URL).set(database=name).render_as_string(hide_password=False)

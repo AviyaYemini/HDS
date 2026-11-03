@@ -86,7 +86,8 @@ hand before a release with `uv run pytest -m timing tests/integration/test_login
 (about a minute; it needs PostgreSQL and prints the two medians). Its pass mark is a median ratio
 below 1.15; the p-value is printed, not asserted.
 
-The integration tests use a separate `*_test` database and refuse to run against any other.
+Each test run creates its own database and drops it at the end, so several runs can go at once. A
+named `TEST_DATABASE_URL` must end in `_test`, and the tests refuse any other.
 The quality gates that CI also runs are listed in [`apps/api/README.md`](apps/api/README.md).
 
 ## How the project is run

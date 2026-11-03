@@ -52,7 +52,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `RESET_JOB_TIMEOUT_SECONDS` | How long one reset job may run before it is stopped, so a stalled mail provider cannot hold every place. Its link stays stored, and its email is lost | `30` |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limits set to `0`: otherwise every user shares the proxy's address, so one bad window locks everyone out of sign-in and silently stops reset mail for everyone, with only a warning in the log. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
-| `TEST_DATABASE_URL` | Tests only; the database name must end in `_test` | local `hds_test` |
+| `TEST_DATABASE_URL` | Tests only; a database to use and keep, whose name must end in `_test`. Unset, each run creates its own `hds_run_<process id>_test` and drops it at the end | a database per run |
 
 ## Common tasks
 
@@ -82,8 +82,12 @@ and stores it nowhere; the mail outbox never holds a usable token.
 | Sign-in timing (opt-in, skipped by default) | `uv run pytest -m timing tests/integration/test_login_timing.py -s` | PostgreSQL, about a minute |
 
 Start PostgreSQL with `docker compose -f ../../infra/docker-compose.yml up -d postgres`. The
-tests create the `*_test` database and apply the migrations themselves. Every test module's
-docstring lists the requirement ids it covers.
+tests create their own database, `hds_run_<process id>_test`, apply the migrations and drop it at
+the end, so several runs can go at once, and migration tests' scratch databases carry the same id.
+One left by a killed run is dropped by the next run. Set
+`TEST_DATABASE_URL` to use a named database instead, as CI does. `scripts/two_runs_at_once.sh`
+proves two runs can share a server. Every test module's docstring lists the requirement ids it
+covers.
 
 The timing test (SC-207) sends 500 wrong-password sign-ins each for an unknown and a known address
 and passes when the medians differ by less than 15%; it prints both medians and the p-value. Run

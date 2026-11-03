@@ -728,9 +728,9 @@ Notes on Group A as built: the users-table half of T354 moved here, because `rel
 
 ### Group A: each test run uses its own database (F26; research D24)
 
-- [ ] T385 [P] [F26] Write `apps/api/tests/unit/test_run_database.py` (pure functions): the per-run database name is `hds_<process id>_test`, always ends in `_test`, an explicit `TEST_DATABASE_URL` wins, and a database named `hds_<pid>_test` whose process id no longer exists is recognised as stale (and one whose process exists is not). Add a scripted check (not collected by default) in `apps/api/scripts/two_runs_at_once.sh` that starts two `pytest tests/integration/test_me.py` runs at the same time and requires both to pass and no `hds_*_test` database to be left behind. Show the two runs failing at random before the change
-- [ ] T386 [F26] In `apps/api/tests/conftest.py` derive the database name from the run, create and migrate it in `migrated_test_db`, drop it at the end of the session, and drop stale `hds_<pid>_test` databases at start; keep the `_assert_safe_test_db` guard; keep `apps/api/tests/integration/migration_support.py` scratch databases as they are. Update `apps/api/README.md` (Tests) and `README.md`
-- [ ] T387 [F26] Commit as `test(api): give each test run its own database`
+- [X] T385 [P] [F26] Write `apps/api/tests/unit/test_run_database.py` (pure functions): the per-run database name is `hds_<process id>_test`, always ends in `_test`, an explicit `TEST_DATABASE_URL` wins, and a database named `hds_<pid>_test` whose process id no longer exists is recognised as stale (and one whose process exists is not). Add a scripted check (not collected by default) in `apps/api/scripts/two_runs_at_once.sh` that starts two `pytest tests/integration/test_me.py` runs at the same time and requires both to pass and no `hds_*_test` database to be left behind. Show the two runs failing at random before the change
+- [X] T386 [F26] In `apps/api/tests/conftest.py` derive the database name from the run, create and migrate it in `migrated_test_db`, drop it at the end of the session, and drop stale `hds_<pid>_test` databases at start; keep the `_assert_safe_test_db` guard; keep `apps/api/tests/integration/migration_support.py` scratch databases as they are. Update `apps/api/README.md` (Tests) and `README.md`
+- [X] T387 [F26] Commit as `test(api): give each test run its own database`
 
 ### Group B: small service fixes (F18, F19, F25)
 

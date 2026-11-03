@@ -7,6 +7,7 @@ Covers: none directly; fixtures only.
 """
 
 import asyncio
+import contextlib
 import os
 import subprocess
 import sys
@@ -23,7 +24,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 # The settings refuse to load without an explicit environment and secret (specs/002 research D5),
@@ -44,14 +51,16 @@ from hds.main import app
 from hds.models.base import Base
 from hds.models.organisation import Organisation
 from hds.models.user import User, UserRole
+from tests.run_database import database_url, process_exists, stale_databases
 
 # Allow the reserved ``.test`` domain used by the seeded fixtures.
 email_validator.TEST_ENVIRONMENT = True
 
-# Integration tests run on PostgreSQL (Constitution); SQLite stays for pure unit tests only.
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
-)
+# Integration tests run on PostgreSQL (Constitution); SQLite stays for pure unit tests only. Each
+# run has its own database unless one is named, so two runs at once cannot disturb each other.
+_NAMED_DATABASE = bool(os.environ.get("TEST_DATABASE_URL"))
+TEST_DATABASE_URL = database_url(os.environ.get("TEST_DATABASE_URL"), os.getpid())
+os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL  # for migration_support and subprocesses
 _API_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -63,34 +72,65 @@ def _assert_safe_test_db(url: str) -> str:
     return name
 
 
-async def _create_database_if_missing(url: str) -> None:
-    name = _assert_safe_test_db(url)
-    admin = create_async_engine(
+def _admin_engine(url: str) -> AsyncEngine:
+    return create_async_engine(
         make_url(url).set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
+
+
+async def _prepare_database(url: str, named: bool) -> None:
+    """Make the run's database ready.
+
+    A named database is kept, and nothing else is touched. A run's own one starts empty, because a
+    leftover with this process id would hand it old rows, and stale ones are removed on the way:
+    without FORCE, so one still in use by a run this machine cannot see survives.
+    """
+    name = _assert_safe_test_db(url)
+    admin = _admin_engine(url)
     try:
         async with admin.connect() as conn:
-            exists = await conn.scalar(
-                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": name}
-            )
-            if not exists:
+            names = [row[0] for row in await conn.execute(text("SELECT datname FROM pg_database"))]
+            if not named:
+                await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+                for stale in stale_databases(names, process_exists):
+                    with contextlib.suppress(DBAPIError):
+                        await conn.execute(text(f'DROP DATABASE IF EXISTS "{stale}"'))
+            if not named or name not in names:
                 await conn.execute(text(f'CREATE DATABASE "{name}"'))
     finally:
         await admin.dispose()
 
 
+async def _drop_database(url: str) -> None:
+    name = _assert_safe_test_db(url)
+    admin = _admin_engine(url)
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    finally:
+        await admin.dispose()
+
+
 @pytest.fixture(scope="session")
-def migrated_test_db() -> str:
-    """Create the test database if missing and run Alembic migrations to head once."""
-    asyncio.run(_create_database_if_missing(TEST_DATABASE_URL))
+def migrated_test_db() -> Generator[str, None, None]:
+    """Create the test database, run Alembic migrations to head once and drop it at the end.
+
+    A database that was named with ``TEST_DATABASE_URL`` is kept. Databases left by killed runs are
+    dropped here, so nothing depends on a run ending cleanly.
+    """
+    asyncio.run(_prepare_database(TEST_DATABASE_URL, _NAMED_DATABASE))
     env = {**os.environ, "DATABASE_URL": TEST_DATABASE_URL}
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=_API_DIR,
-        env=env,
-        check=True,
-    )
-    return TEST_DATABASE_URL
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=_API_DIR,
+            env=env,
+            check=True,
+        )
+        yield TEST_DATABASE_URL
+    finally:
+        if not _NAMED_DATABASE:
+            asyncio.run(_drop_database(TEST_DATABASE_URL))
 
 
 @pytest.fixture(scope="session")

@@ -622,7 +622,8 @@ re-raised unchanged.
 
 ## D24. Per-run test database (F26)
 
-**Decision**: the suite derives its database name from the run (`hds_<process id>_test`), creates
+**Decision**: the suite derives its database name from the run (`hds_run_<process id>_test`, the
+`run` marker added on review so a database somebody named can never be dropped as stale), creates
 it, migrates it and drops it at the end; an explicit `TEST_DATABASE_URL` still wins. A database left
 behind by a killed run matches the name pattern and its process no longer exists, so the next start
 drops it. The `*_test` safety guard is kept.
