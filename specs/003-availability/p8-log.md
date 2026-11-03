@@ -116,3 +116,105 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
   variant on PostgreSQL. `alembic check` is still clean, and the unit suite passes (821).
 - Final gates: all green; full suite 1612 passed; concurrency 36 passed three times; `alembic check` clean.
 - /hds-review: no violations; migration 020 is new and reversible, and no applied migration was edited.
+
+## Group G: availability entries and submission windows (T041 to T048)
+
+- Failing first: the new integration and concurrency tests (45) failed, because the routes did not
+  exist (11 failures, 33 setup errors). One test passed before, as it should: an unknown window id
+  answers 404 either way.
+- Decisions:
+  - **Role gate as a dependency.** `require_staff` (new) and `require_manager` run before the body is
+    validated, so a forbidden role gets 403 whatever it sends, as the role matrix requires. Whose
+    records the caller may read or change is decided in the service.
+  - **Window rule.** It applies to blocked, open and close entries of every non-Admin caller,
+    Managers editing their own included. Every date must lie in a window (else
+    `availability.no_window`), and every such window must be open (else `availability.window_closed`).
+    A change is judged on the dates the entry has and the dates it gets.
+  - **Who sees what.**
+    - An Employee addressing another employee's entries gets 404, so existence does not leak.
+    - A Manager changing another employee's gets 403 `availability.admin_required`.
+    - A Client account gets 403 from the gate, and no entries can be kept for one (404).
+  - **Clashes (FR-104).** They are judged day by day over the shared dates: an entry without a shift
+    type or weekday covers every one. The employee's row is locked first (R6).
+  - **Strict date and time inputs.** `IsoDate` (query parameters) and `IsoDateTime` (the deadline)
+    are new types in `core/types.py` that accept only ISO text. Schemathesis showed lax parsing
+    taking `to=0` and `deadline: 0` as 1970. Existing fields keep `StrictDate`, so nothing outside
+    this feature changes.
+- **Deadlock found by the race test.** Two overlapping windows created at once deadlocked inside the
+  exclusion constraint (round 0). Window creation now locks the organisation's row first, so the
+  second waits, meets the constraint and answers 409 `windows.overlap`.
+- Coverage tests extended for the new routes:
+  - The role matrix: 8 operations; `STAFF` is a new allowed set.
+  - The cross-organisation sweep: 7 cases. The second organisation's fixture gained a window, an
+    entry and a shift type.
+  - `unprovable_operations.json`: three operations, for their cross-field rules and the window
+    rule.
+  - The contract: 8 operations and 8 schemas, in the 001 file.
+  - The locale texts: 9 codes in `en` and `he`.
+  - `docs/hds-api.md`: the Availability row and the codes.
+- Mutations, all caught by a named test (12): deadline counted as open; absences bound to the window;
+  Manager editing anyone's; clash ignoring weekdays; window rule on the first date only; Employee
+  seeing others' entries; old dates of a change not checked; no row lock; window creation not
+  serialised; Client account accepted as a target; shift types not scoped; clash ignoring shift
+  types.
+  - G7 (old dates not checked) was not caught at first: no test moved an entry from a closed window
+    into an open one. `test_an_entry_in_a_closed_window_cannot_be_moved_into_an_open_one` was added,
+    and G7 is now caught.
+- /hds-review: no violations. Each new operation has allowed and forbidden tests; codes are in `en` and
+  `he`; the contract and `docs/hds-api.md` are updated.
+- /code-review high, ten findings:
+  1. **A change judged a stale copy of the entry (fixed).** It read the entry before taking the
+     employee's lock. It now locks, then reads again with `populate_existing`; remove does the same.
+     Test first: a unit test fails unless the fresh read follows the lock and the clash check uses
+     the fresh dates.
+  2. **An absence could not be reported over an entry in a closed window (owner decision, fixed).**
+     The employee could not remove the old entry, so they needed an Admin. The owner chose: an
+     absence may overlap blocked, open and close entries, and only two absences may not overlap.
+     - FR-104, the Clarifications and research R6 say so.
+     - Changed test, with the reason: the conflict case "absence then open night" became "absence
+       then absence", because the owner's decision makes the first allowed. It moved to the
+       no-conflict cases, with "close over an absence" added beside it.
+     - New test: an absence reported over an open entry after the deadline.
+  3. **Window creation took a plain `FOR UPDATE` on the organisation (fixed):** it now takes
+     `FOR NO KEY UPDATE`. The plain lock conflicts with the `FOR KEY SHARE` that every foreign key to
+     the organisation takes, so a window and an entry made at once deadlocked. The new race test
+     reproduced it in round 0 before the fix.
+  4. **The clash and window checks walked every day of a range (fixed).**
+     - A clash returns at once when the weekdays differ, and otherwise looks at most a week ahead.
+     - The window rule walks the windows, not the days.
+     - Test: a clash check over centuries takes under 50 ms.
+  5. **Body dates accepted numeric strings (fixed):** `StrictDate` now accepts only `YYYY-MM-DD` with
+     ASCII digits, and `IsoDate` is the same type. This tightens the existing date fields too: a
+     numeric string or a date without leading zeros is now 422. That is a deliberate change for any
+     client sending them, and the existing suite still passes.
+  6. **A retired shift type was accepted (fixed):** 422 `availability.shift_type_retired`.
+  7. **The window rule judged days a weekday entry does not cover, and an entry covering no day was
+     stored (fixed).** Only the matching days need a window, and only the windows holding one must be
+     open. An entry whose weekday never occurs in its range is refused with 422
+     `availability.no_matching_day`.
+  8. **Research R5 said "one window" while adjacent windows together may cover a range (fixed in
+     research):** the behaviour is kept and R5 now says so.
+  9. **`unprovable_operations.json` was reformatted (fixed):** the file is restored with only the new
+     entries added.
+  10. **Sentinel dates for an open-ended window range (fixed):** `covering` takes optional bounds.
+- Mutations on the fixes, all caught except one equivalent: G13 an absence clashing with other kinds;
+  G14 a change judged on the stale read; G15 a retired shift type accepted; G16 a weekday entry
+  needing a window on every date; G17 an entry covering no date; G19 a plain `FOR UPDATE`; G20 a
+  numeric date string.
+  - G16 was not caught at first. `test_a_closed_window_on_days_the_entry_does_not_cover_does_not_block_it`
+    was added, and G16 is now caught.
+  - G18 (the week cap removed) cannot be caught. The early return for differing weekdays, and `any`
+    stopping at the first match within a week, give the same result without it. It is an
+    equivalent mutant, and the cap stays as a bound.
+- Gate findings, nine failures, all fixed:
+  - **Two tests and one sweep case failed on `MissingGreenlet`.** The sweep fixture read the default
+    shift type after its commit, which opened a transaction. The tests' digest then rolled it back,
+    which expired the fixture's objects. The read now comes before the commit.
+  - **The sweep expected Employees to be refused by role on every case.** Availability is the
+    employee's own, so an Employee passes the gate, and another organisation's id gets 404 like a
+    missing one.
+    - `EMPLOYEE_OPEN` lists the four operations, with that expectation.
+    - A case can now state what a Manager gets: on "own user id, foreign shift type" a Manager gets
+      403 `availability.admin_required`, because the entry is another employee's.
+    - No existing expectation was weakened; the new cases are stated, not exempted.
+- Final gates: all green; full suite 1707 passed; concurrency 39 passed three times; drift check agrees.

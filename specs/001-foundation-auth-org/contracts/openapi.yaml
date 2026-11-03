@@ -643,6 +643,146 @@ components:
         format: uuid
       description: Optional UUID for safe retries on POST endpoints.
 
+    # ── Availability (003 Part 2) ─────────────────────────────────────────────
+
+    WindowRead:
+      type: object
+      required: [id, starts_on, ends_on, deadline, is_open]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        starts_on:
+          $ref: "#/components/schemas/ISODate"
+        ends_on:
+          $ref: "#/components/schemas/ISODate"
+        deadline:
+          $ref: "#/components/schemas/ISODateTime"
+        is_open:
+          type: boolean
+          description: True while now is before the deadline.
+
+    WindowListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WindowRead"
+
+    WindowCreateRequest:
+      type: object
+      required: [starts_on, ends_on, deadline]
+      description: >-
+        A period of dates (inclusive) and its deadline. It may not end before it starts (422
+        windows.date_range_invalid) or share a date with another window (409 windows.overlap).
+      properties:
+        starts_on:
+          $ref: "#/components/schemas/ISODate"
+        ends_on:
+          $ref: "#/components/schemas/ISODate"
+        deadline:
+          $ref: "#/components/schemas/ISODateTime"
+
+    WindowUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        deadline:
+          $ref: "#/components/schemas/ISODateTime"
+
+    EntryRead:
+      type: object
+      required: [id, user_id, kind, absence_kind, starts_on, ends_on, shift_type_id, weekday, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        user_id:
+          $ref: "#/components/schemas/UUIDv4"
+        kind:
+          type: string
+          enum: [blocked, open, close, absence]
+        absence_kind:
+          type: [string, "null"]
+          enum: [leave, reserve_duty, sick, null]
+        starts_on:
+          $ref: "#/components/schemas/ISODate"
+        ends_on:
+          $ref: "#/components/schemas/ISODate"
+        shift_type_id:
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        weekday:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 6
+          description: 0 Sunday to 6 Saturday.
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+        updated_at:
+          $ref: "#/components/schemas/ISODateTime"
+
+    EntryListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntryRead"
+
+    EntryCreateRequest:
+      type: object
+      required: [kind, starts_on, ends_on]
+      description: >-
+        An absence has an absence_kind and no shift type or weekday; other kinds have no
+        absence_kind and may be limited to one shift type and one weekday. An employee may add one
+        only for dates in an open window, except an absence; an Admin at any time.
+      properties:
+        kind:
+          type: string
+          enum: [blocked, open, close, absence]
+        absence_kind:
+          type: [string, "null"]
+          enum: [leave, reserve_duty, sick, null]
+        starts_on:
+          $ref: "#/components/schemas/ISODate"
+        ends_on:
+          $ref: "#/components/schemas/ISODate"
+        shift_type_id:
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        weekday:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 6
+
+    EntryUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: PATCH; null clears absence_kind, shift_type_id or weekday.
+      properties:
+        kind:
+          type: string
+          enum: [blocked, open, close, absence]
+        absence_kind:
+          type: [string, "null"]
+          enum: [leave, reserve_duty, sick, null]
+        starts_on:
+          $ref: "#/components/schemas/ISODate"
+        ends_on:
+          $ref: "#/components/schemas/ISODate"
+        shift_type_id:
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        weekday:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 6
+
   # ── Reusable responses ────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -2001,5 +2141,239 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Availability (003 Part 2) ─────────────────────────────────────────────
+  /availability-windows:
+
+    get:
+      operationId: availability_windows_list
+      summary: List submission windows (Employee, Manager, Admin)
+      tags: [Availability]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+      responses:
+        "200":
+          description: Windows in date order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    post:
+      operationId: availability_windows_create
+      summary: Open a submission window (Manager+)
+      tags: [Availability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowCreateRequest"
+      responses:
+        "201":
+          description: The window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /availability-windows/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: availability_windows_update
+      summary: Change a window's deadline (Manager+)
+      tags: [Availability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowUpdateRequest"
+      responses:
+        "200":
+          description: The window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: availability_windows_delete
+      summary: Remove a window (Manager+)
+      tags: [Availability]
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /employees/{id}/constraints:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: constraints_list
+      summary: List an employee's availability (self, Manager, Admin)
+      tags: [Availability]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+      responses:
+        "200":
+          description: Entries in date order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntryListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    post:
+      operationId: constraints_create
+      summary: Add an availability entry (self in an open window, Admin always)
+      tags: [Availability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntryCreateRequest"
+      responses:
+        "201":
+          description: The entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntryRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /constraints/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: constraints_update
+      summary: Change an availability entry
+      tags: [Availability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntryUpdateRequest"
+      responses:
+        "200":
+          description: The entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntryRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: constraints_delete
+      summary: Remove an availability entry
+      tags: [Availability]
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"

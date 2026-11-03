@@ -108,6 +108,8 @@ class Case:
     build: Callable[[World], tuple[str, dict[str, Any]]]  # (path, request kwargs)
     status: int = 404
     code: str = "resource.not_found"
+    # What a Manager gets instead, where it differs from an Admin, as (status, code).
+    manager: tuple[int, str] | None = None
 
 
 def req(path: str, **kwargs: Any) -> tuple[str, dict[str, Any]]:
@@ -354,6 +356,61 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/sites/{w.theirs.site.id}", json={"name": "Renamed"}),
         ),
     ],
+    "PATCH /api/v1/availability-windows/{id}": [
+        Case(
+            "foreign window id",
+            lambda w: req(
+                f"/api/v1/availability-windows/{w.theirs.window.id}",  # type: ignore[union-attr]
+                json={"deadline": "2030-01-01T00:00:00Z"},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/availability-windows/{id}": [
+        Case(
+            "foreign window id",
+            lambda w: req(f"/api/v1/availability-windows/{w.theirs.window.id}"),  # type: ignore[union-attr]
+        ),
+    ],
+    "GET /api/v1/employees/{id}/constraints": [
+        Case("foreign user id", lambda w: req(f"/api/v1/employees/{w.theirs.user.id}/constraints")),
+    ],
+    "POST /api/v1/employees/{id}/constraints": [
+        Case(
+            "foreign user id",
+            lambda w: req(
+                f"/api/v1/employees/{w.theirs.user.id}/constraints",
+                json={"kind": "blocked", "starts_on": "2027-06-06", "ends_on": "2027-06-06"},
+            ),
+        ),
+        Case(
+            "own user id, foreign shift type",
+            manager=(403, "availability.admin_required"),  # another employee's: Admin only
+            build=lambda w: req(
+                f"/api/v1/employees/{w.mine.user.id}/constraints",
+                json={
+                    "kind": "blocked",
+                    "starts_on": "2027-06-06",
+                    "ends_on": "2027-06-06",
+                    "shift_type_id": str(w.theirs.shift_type.id),  # type: ignore[union-attr]
+                },
+            ),
+        ),
+    ],
+    "PATCH /api/v1/constraints/{id}": [
+        Case(
+            "foreign entry id",
+            lambda w: req(
+                f"/api/v1/constraints/{w.theirs.entry.id}",  # type: ignore[union-attr]
+                json={"kind": "open"},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/constraints/{id}": [
+        Case(
+            "foreign entry id",
+            lambda w: req(f"/api/v1/constraints/{w.theirs.entry.id}"),  # type: ignore[union-attr]
+        ),
+    ],
     "POST /auth/invite": [
         Case(
             "address held by another organisation",
@@ -495,6 +552,15 @@ PORTAL_READS = {
 # missing one.
 NOT_STAFF = ("employee", "client")
 
+# Availability is the employee's own (003 FR-105): an Employee passes the role gate, so another
+# organisation's id gets 404, exactly as a missing one would.
+EMPLOYEE_OPEN = {
+    "GET /api/v1/employees/{id}/constraints",
+    "POST /api/v1/employees/{id}/constraints",
+    "PATCH /api/v1/constraints/{id}",
+    "DELETE /api/v1/constraints/{id}",
+}
+
 
 async def headers_for(client: AsyncClient, role: str) -> dict[str, str]:
     response = await client.post(
@@ -524,6 +590,8 @@ async def test_a_manager_gets_the_same_refusals(
     if key in ADMIN_ONLY:
         assert response.status_code == 403, response.text
         assert response.json()["code"] == ADMIN_ONLY[key]
+    elif case.manager is not None:
+        assert (response.status_code, response.json()["code"]) == case.manager, response.text
     else:
         assert response.status_code == case.status, response.text
         assert response.json().get("code") == case.code, response.text
@@ -554,6 +622,9 @@ async def test_employees_and_client_users_are_refused_by_role_before_any_lookup(
         assert response.status_code == 200, response.text
         assert str(other_org.project.id) not in response.text, "another organisation's project"
     elif role == "client" and key in PORTAL_READS:
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "resource.not_found"
+    elif role == "employee" and key in EMPLOYEE_OPEN:
         assert response.status_code == 404, response.text
         assert response.json()["code"] == "resource.not_found"
     else:

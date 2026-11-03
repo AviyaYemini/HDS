@@ -49,6 +49,27 @@
       "operation_id": "edit_client_api_v1_clients__id__patch",
       "suites": ["pytest", "cli"],
       "reason": "same date-order rule as the create, judged against the stored start (FR-243)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/availability-windows",
+      "operation_id": "open_window_api_v1_availability_windows_post",
+      "suites": ["pytest", "cli"],
+      "reason": "ends_on >= starts_on spans two fields (003 FR-106), answered 422 windows.date_range_invalid; a period that shares a date with another window is answered 409 windows.overlap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/{id}/constraints",
+      "operation_id": "add_entry_api_v1_employees__id__constraints_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the date order, the weekday and the absence fields span several fields (003 FR-101, FR-102), and the window rule depends on stored windows (FR-105); answered 422 or 409 with availability.* codes"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/constraints/{id}",
+      "operation_id": "change_entry_api_v1_constraints__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same rules as adding an entry (003 FR-104, FR-105)"
     }
   ]
 }

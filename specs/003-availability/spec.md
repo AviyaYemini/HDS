@@ -196,6 +196,9 @@ Out of scope: automatic schedule generation."
   writes? → A: Yes; added as FR-115a.
 - Q: Does an entry without a shift type clash with a shift-type entry on the same date? → A: Yes; it
   covers every shift that date (FR-104).
+- Q: An absence reported after the window closed clashes with an open or close entry the employee can
+  no longer remove. How do they relate? → A: An absence may overlap blocked, open and close entries;
+  only two absences may not overlap (FR-104).
 
 **Traces to**: AVL-1, AVL-2, AVL-3 (submission window), AVL-4, ORG-4 and ORG-5 (shift types per project),
 SCH-3 (manual roster), SCH-4 (warnings), EMP-1 (personal roster), FIN-1 (shift pay field), and the role
@@ -364,6 +367,8 @@ Admin creates a shift of that type there; another project that does not use it c
 - **FR-104**: An employee MUST NOT hold two entries that apply to the same shift on the same date; a
   second one is refused with a reason. An entry without a shift type applies to every shift type that
   date, so it clashes with any other entry of that employee on that date (and weekday, when limited).
+  The exception is an absence: it may overlap the employee's blocked, open and close entries, which
+  stay, and only two absences may not overlap.
 - **FR-105**: An employee MUST be able to add, change and remove their own blocked, open and close
   entries only for dates in a period whose submission window is open, and only until its deadline.
   Outside that, the change is refused with a reason that names the closed or missing window, and nothing

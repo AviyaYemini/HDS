@@ -55,5 +55,16 @@
   "service.busy": "השירות עמוס; נסו שוב בעוד רגע.",
   "auth.rate_limited": "יותר מדי ניסיונות כניסה כושלים מרשת זו; נסו שוב מאוחר יותר.",
   "users.client_role_locked": "לא ניתן לשנות את התפקיד של חשבון לקוח.",
-  "clients.date_range_invalid": "תאריך סיום החוזה אינו יכול להיות לפני תאריך ההתחלה."
+  "clients.date_range_invalid": "תאריך סיום החוזה אינו יכול להיות לפני תאריך ההתחלה.",
+  "windows.overlap": "חלון ההגשה חופף בתאריכים לחלון אחר.",
+  "windows.date_range_invalid": "חלון ההגשה לא יכול להסתיים לפני שהוא מתחיל.",
+  "availability.no_window": "אפשר להגיש זמינות רק לתאריכים שבחלון הגשה פתוח.",
+  "availability.window_closed": "חלון ההגשה לתאריכים האלה נסגר.",
+  "availability.conflict": "כבר קיימת רשומה אחרת לאחת מהמשמרות והתאריכים האלה.",
+  "availability.admin_required": "רק מנהל מערכת יכול לשנות זמינות של עובד אחר.",
+  "availability.absence_kind_invalid": "להיעדרות צריך סוג (חופשה, מילואים או מחלה); לרשומות אחרות אין סוג.",
+  "availability.absence_whole_days": "היעדרות חלה על ימים שלמים, ולכן אין לה סוג משמרת או יום בשבוע.",
+  "availability.date_range_invalid": "הרשומה לא יכולה להסתיים לפני שהיא מתחילה.",
+  "availability.no_matching_day": "היום בשבוע לא חל אף פעם בין התאריך הראשון לאחרון של הרשומה.",
+  "availability.shift_type_retired": "סוג המשמרת הזה הוצא משימוש."
 }

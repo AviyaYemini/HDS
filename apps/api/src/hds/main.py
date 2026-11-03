@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     from hds.routers.auth import router as auth_router
+    from hds.routers.availability import router as availability_router
     from hds.routers.clients import router as clients_router
     from hds.routers.employees import router as employees_router
     from hds.routers.groups import router as groups_router
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     application.include_router(clients_router)
     application.include_router(sites_router)
     application.include_router(projects_router)
+    application.include_router(availability_router)
 
     return application
 

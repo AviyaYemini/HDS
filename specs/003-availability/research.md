@@ -112,9 +112,10 @@ occurrence. Lengths and rest are differences of UTC instants (FR-118, SC-106).
 
 **Decision**: a window has a first and a last date (inclusive) and a deadline (UTC instant). Windows of
 one organisation cannot overlap: an exclusion constraint on `(organization_id, daterange)` with
-`btree_gist`. An employee change is allowed when every date it touches lies in one window whose deadline
-has not passed, judged in the service at the time of the request. Absences skip the window rule
-(FR-105a).
+`btree_gist`. An employee change is allowed when every date it applies to lies in a window whose
+deadline has not passed (adjacent windows may together cover a range; each must be open), judged in
+the service at the time of the request. For a weekday-limited entry only the dates of that weekday
+count. Absences skip the window rule (FR-105a).
 
 **Alternatives**: a service check only (racy between two Managers).
 
@@ -123,7 +124,8 @@ has not passed, judged in the service at the time of the request. Absences skip 
 **Decision**: entries are ranges, so uniqueness cannot be a plain unique key. The service takes the
 employee's row lock (`lock_user_row`, as in 002) and refuses an entry that overlaps an existing one of
 the same employee with the same or no shift type on any shared date and weekday (FR-104, which the
-owner confirmed: an entry without a shift type covers every shift that date). `availability.conflict`
+owner confirmed: an entry without a shift type covers every shift that date). An absence never clashes
+with a blocked, open or close entry, only with another absence (owner decision). `availability.conflict`
 (409).
 
 ## R7. Employee view of shifts

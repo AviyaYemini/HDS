@@ -10,7 +10,7 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | People | `GET/POST /employees`, `PATCH /employees/{id}`, `GET/POST /groups` | Managers create and edit; only admins delete |
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
 | Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
-| Availability | `GET/POST /employees/{id}/constraints` | Employees edit their own; admins edit any |
+| Availability | `GET/POST /availability-windows`, `PATCH/DELETE /availability-windows/{id}`, `GET/POST /employees/{id}/constraints`, `PATCH/DELETE /constraints/{id}` | Managers and Admins open submission windows. Employees edit their own blocked, open and close entries inside an open window and their absences any time; Admins edit anyone's at any time; Managers read everyone's *(003)* |
 | Shifts | `GET /shifts?from=&to=&project=`, `PATCH /shifts/{id}` | Cursor pagination; admins edit the pay field |
 | Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Returns constraint warnings, not just errors |
 | Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
@@ -50,6 +50,17 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted, or creating one under an inactive client |
 | `users.client_role_locked` | 409 | A role change on a Client account *(Proposed)* |
 | `clients.date_range_invalid` | 422 | A client's contract end is before its start, judged on the pair after a create or change; a Manager or Admin may correct either date *(Proposed)* |
+| `windows.overlap` | 409 | A submission window shares a date with another *(003)* |
+| `windows.date_range_invalid` | 422 | A submission window ends before it starts *(003)* |
+| `availability.no_window` | 409 | An employee's blocked, open or close entry has a date outside every submission window *(003)* |
+| `availability.window_closed` | 409 | The deadline of the window for those dates has passed *(003)* |
+| `availability.conflict` | 409 | Another entry of the employee already applies to one of those shifts and dates *(003)* |
+| `availability.admin_required` | 403 | A Manager changing another employee's availability *(003)* |
+| `availability.absence_kind_invalid` | 422 | An absence without its kind, or a kind on another entry *(003)* |
+| `availability.absence_whole_days` | 422 | An absence limited to a shift type or weekday *(003)* |
+| `availability.date_range_invalid` | 422 | An entry ends before it starts *(003)* |
+| `availability.no_matching_day` | 422 | An entry's weekday never falls between its first and last date *(003)* |
+| `availability.shift_type_retired` | 422 | An entry limited to a retired shift type *(003)* |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |

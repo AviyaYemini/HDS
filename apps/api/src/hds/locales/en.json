@@ -55,5 +55,16 @@
   "service.busy": "The service is busy; try again shortly.",
   "auth.rate_limited": "Too many failed sign-ins from this network; try again later.",
   "users.client_role_locked": "The role of a Client account cannot be changed.",
-  "clients.date_range_invalid": "The contract end date must not be before its start date."
+  "clients.date_range_invalid": "The contract end date must not be before its start date.",
+  "windows.overlap": "This window shares dates with another submission window.",
+  "windows.date_range_invalid": "The window must not end before it starts.",
+  "availability.no_window": "Availability can only be submitted for dates in an open submission window.",
+  "availability.window_closed": "The submission window for these dates has closed.",
+  "availability.conflict": "Another entry already applies to one of these shifts and dates.",
+  "availability.admin_required": "Only an Admin may change another employee's availability.",
+  "availability.absence_kind_invalid": "An absence needs its kind (leave, reserve duty or sick); other entries have none.",
+  "availability.absence_whole_days": "An absence covers whole days, so it takes no shift type or weekday.",
+  "availability.date_range_invalid": "The entry must not end before it starts.",
+  "availability.no_matching_day": "The weekday never falls between the entry's first and last date.",
+  "availability.shift_type_retired": "That shift type has been retired."
 }

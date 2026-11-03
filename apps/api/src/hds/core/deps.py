@@ -122,6 +122,30 @@ async def require_manager_or_client(
     return user
 
 
+async def require_staff(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Allow everyone who works shifts (Employee, Manager, Admin); reject a Client account.
+
+    Used for availability. The service still decides whose records the caller may read or
+    change; this gate only keeps Client accounts out, before the body is validated.
+
+    Args:
+        user: The authenticated caller.
+
+    Returns:
+        The same user, so routes can use it as the actor.
+
+    Raises:
+        ForbiddenError: ``users.forbidden`` (HTTP 403) for a Client account.
+    """
+    if user.role == UserRole.client:
+        raise ForbiddenError(
+            code="users.forbidden", detail="Access to this resource is not allowed"
+        )
+    return user
+
+
 async def require_admin(
     user: User = Depends(get_current_user),
 ) -> User:

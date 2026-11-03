@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -100,14 +101,37 @@ Money = Annotated[
 ]
 
 
+_ISO_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
 def _iso_string_only(value: object) -> object:
-    """Reject numbers, which pydantic would otherwise coerce to dates (0 -> 1970-01-01)."""
-    if not isinstance(value, str | date):
-        raise ValueError("Input should be an ISO-8601 date string")
-    return value
+    """Accept only ``YYYY-MM-DD`` text (ASCII digits) or a date.
+
+    Pydantic would otherwise read a number, or a numeric string, as a timestamp
+    (``0`` -> 1970-01-01), so a typo would silently mean 1970.
+    """
+    if isinstance(value, date) or (isinstance(value, str) and _ISO_DATE.match(value)):
+        return value
+    raise ValueError("Input should be an ISO-8601 date such as 2027-06-06")
 
 
 StrictDate = Annotated[date, BeforeValidator(_iso_string_only)]
+
+_ISO_DATETIME = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}")
+
+
+def _iso_datetime_text(value: object) -> object:
+    """Accept only ISO-8601 date-time text, refusing numbers that lax parsing reads as epochs."""
+    if isinstance(value, str) and _ISO_DATETIME.match(value):
+        return value
+    raise ValueError("Input should be an ISO-8601 date-time with a time zone")
+
+
+IsoDate = StrictDate
+"""A date given as ``YYYY-MM-DD`` text only; the name used for query parameters."""
+
+IsoDateTime = Annotated[AwareDatetime, BeforeValidator(_iso_datetime_text)]
+"""An instant given as ISO-8601 text with a time zone; numbers are refused."""
 
 # Roles that may be assigned through the employee endpoints (clients have their own).
 AssignableRole = Literal["employee", "manager", "admin"]
