@@ -14,7 +14,7 @@ and has an allowed and a forbidden test.
 | `PUT /projects/{id}/shift-types` | M, A | The complete set of ids |
 | `GET /shifts?from=&to=&project=&status=` | M, A | Cursor pagination; drafts and published, with assignments |
 | `POST /shifts`, `PATCH /shifts/{id}`, `DELETE /shifts/{id}` | A | Answers `{shift, warnings}`; `pay_rate` A only |
-| `POST /shifts/publish` | M, A | Body: project, from, to; publishes drafts in the range; answers the count |
+| `POST /projects/{id}/publish` | M, A | Body: from, to (dates at the project's site); publishes the project's drafts in the range; answers the count. A path under `/shifts` would collide with `/shifts/{id}` |
 | `POST /shifts/{id}/assignments` | A | Answers `{assignment, warnings}`; 409 `assignments.duplicate`, `assignments.employee_inactive`. Optional `Idempotency-Key` header (1 to 255 characters): a repeat returns the first answer; another body with the same key 422 `idempotency.key_reused` |
 | `DELETE /assignments/{id}` | A | Answers `{warnings}` (for example under headcount) |
 | `GET /me/shifts?from=&to=` | E, M, A | Own published assignments only; date, start and end (UTC), project, site and the site's IANA time zone; schema has no co-worker fields |

@@ -180,11 +180,11 @@ its project's shift types (FR-111). US4 and US5 share the availability modules a
 
 **Goal**: FR-121 to FR-125, SC-104. **Independent test**: US7 independent test in spec.md.
 
-- [ ] T058 [P] [US7] Failing integration tests in `tests/integration/test_publish.py`: Manager and Admin publish a project's drafts for a date range (answers the count); Employee and Client 403; published shifts stay published when an Admin changes them and the change shows at once
-- [ ] T059 [P] [US7] Failing integration tests in `tests/integration/test_my_shifts.py`: `GET /me/shifts` returns only published shifts the caller is assigned to, with date, times (UTC), project, site and the site's IANA time zone; no draft; the response schema has no field naming another employee, an assignment list or a headcount (checked on the generated schema and on the body)
-- [ ] T060 [P] [US7] Failing sweep `tests/integration/test_roster_visibility_sweep.py`, in the style of `test_cross_organisation_sweep.py`: every Part 2 read, for every role and a second organisation, never returns another employee's entries or assignments to an Employee, any draft to an Employee, or anything to a Client (SC-104), and lists every Part 2 operation so a new one fails until it is added
-- [ ] T061 [US7] Publish operation in `src/hds/services/roster.py` and `src/hds/routers/shifts.py`; `src/hds/routers/me_shifts.py` with its own schema (R7); contract and `docs/hds-api.md`; drift check
-- [ ] T062 [US7] Mutation checks: drafts included in `/me/shifts`; co-workers' shifts included; publish allowed to an Employee; another organisation's project publishable. Gates, both reviews, log; commit `feat(api): publish shifts and show employees their own (003 Group J)`
+- [X] T058 [P] [US7] Failing integration tests in `tests/integration/test_publish.py`: Manager and Admin publish a project's drafts for a date range (answers the count); Employee and Client 403; published shifts stay published when an Admin changes them and the change shows at once
+- [X] T059 [P] [US7] Failing integration tests in `tests/integration/test_my_shifts.py`: `GET /me/shifts` returns only published shifts the caller is assigned to, with date, times (UTC), project, site and the site's IANA time zone; no draft; the response schema has no field naming another employee, an assignment list or a headcount (checked on the generated schema and on the body)
+- [X] T060 [P] [US7] Failing sweep `tests/integration/test_roster_visibility_sweep.py`, in the style of `test_cross_organisation_sweep.py`: every Part 2 read, for every role and a second organisation, never returns another employee's entries or assignments to an Employee, any draft to an Employee, or anything to a Client (SC-104), and lists every Part 2 operation so a new one fails until it is added
+- [X] T061 [US7] Publish operation in `src/hds/services/roster.py` and `src/hds/routers/shifts.py`; `src/hds/routers/me_shifts.py` with its own schema (R7); contract and `docs/hds-api.md`; drift check
+- [X] T062 [US7] Mutation checks: drafts included in `/me/shifts`; co-workers' shifts included; publish allowed to an Employee; another organisation's project publishable. Gates, both reviews, log; commit `feat(api): publish shifts and show employees their own (003 Group J)`
 
 ## Phase 12: client, employee screens first (US4, US7), Group K, P12
 

@@ -106,6 +106,8 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("DELETE", "/api/v1/shifts/{id}"): ADMIN,
     ("POST", "/api/v1/shifts/{id}/assignments"): ADMIN,
     ("DELETE", "/api/v1/assignments/{id}"): ADMIN,
+    ("POST", P + "/publish"): MGR,
+    ("GET", "/me/shifts"): STAFF,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}

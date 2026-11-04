@@ -11,12 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.core.exceptions import ConflictError
 from hds.models.project import Project
 from hds.models.shift import Assignment, Shift
+from hds.models.shift_type import ShiftType
 from hds.models.site import Site
 from hds.repositories.base import OrgScopedRepository
 
@@ -30,6 +31,21 @@ class ShiftView:
     shift: Shift
     timezone: str
     assignments: list[Assignment]
+
+
+@dataclass(frozen=True)
+class OwnShift:
+    """A published shift of one employee, with only what they may see of it (research R7)."""
+
+    id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    timezone: str
+    shift_type: str
+    project_id: uuid.UUID
+    project_name: str
+    site_id: uuid.UUID
+    site_name: str
 
 
 class ShiftRepository(OrgScopedRepository[Shift]):
@@ -148,6 +164,70 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             )
         result = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id).limit(limit))
         return list(result.scalars().all())
+
+    async def publish(
+        self,
+        org_id: uuid.UUID,
+        project_id: uuid.UUID,
+        starts_from: datetime | None,
+        starts_before: datetime | None,
+        now: datetime,
+    ) -> int:
+        """Publish a project's drafts that start in a period; published ones are left as they are.
+
+        Returns:
+            How many shifts were published.
+        """
+        stmt = update(Shift).where(
+            Shift.organization_id == org_id,
+            Shift.project_id == project_id,
+            Shift.status == "draft",
+        )
+        if starts_from is not None:
+            stmt = stmt.where(Shift.starts_at >= starts_from)
+        if starts_before is not None:
+            stmt = stmt.where(Shift.starts_at < starts_before)
+        result = await self.session.execute(stmt.values(status="published", published_at=now))
+        await self.session.flush()
+        return int(result.rowcount)  # type: ignore[attr-defined]
+
+    async def own_published(
+        self,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+        starts_from: datetime | None,
+        starts_before: datetime | None,
+    ) -> list[OwnShift]:
+        """The published shifts an employee is on, by start time, and nothing about anyone else."""
+        stmt = (
+            select(
+                Shift.id,
+                Shift.starts_at,
+                Shift.ends_at,
+                Site.timezone,
+                ShiftType.name,
+                Project.id,
+                Project.name,
+                Site.id,
+                Site.name,
+            )
+            .join(Assignment, Assignment.shift_id == Shift.id)
+            .join(Project, Project.id == Shift.project_id)
+            .join(Site, Site.id == Project.site_id)
+            .join(ShiftType, ShiftType.id == Shift.shift_type_id)
+            .where(
+                Shift.organization_id == org_id,
+                Shift.status == "published",
+                Assignment.user_id == user_id,
+                Project.is_deleted.is_(False),
+            )
+        )
+        if starts_from is not None:
+            stmt = stmt.where(Shift.starts_at >= starts_from)
+        if starts_before is not None:
+            stmt = stmt.where(Shift.starts_at < starts_before)
+        rows = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id))
+        return [OwnShift(*row) for row in rows.all()]
 
     async def of_employees(
         self,

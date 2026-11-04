@@ -105,6 +105,20 @@
       "operation_id": "change_shift_api_v1_shifts__id__patch",
       "suites": ["pytest", "cli"],
       "reason": "the new times are judged with the stored time of the field not sent (003 FR-114); answered 422 shifts.times_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/publish",
+      "operation_id": "publish_api_v1_projects__id__publish_post",
+      "suites": ["pytest", "cli"],
+      "reason": "to >= from spans two fields (003 FR-121), answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "GET",
+      "path": "/me/shifts",
+      "operation_id": "my_shifts_me_shifts_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to >= from spans two parameters, answered 422 shifts.date_range_invalid"
     }
   ]
 }

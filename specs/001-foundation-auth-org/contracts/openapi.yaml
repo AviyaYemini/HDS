@@ -1032,6 +1032,65 @@ components:
         user_id:
           $ref: "#/components/schemas/UUIDv4"
 
+    # ── Publishing and my shifts (003 Part 2) ─────────────────────────────────
+
+    PublishRequest:
+      type: object
+      required: [from, to]
+      description: Dates at the project's site; to may not be before from (422 shifts.date_range_invalid).
+      properties:
+        from:
+          $ref: "#/components/schemas/ISODate"
+        to:
+          $ref: "#/components/schemas/ISODate"
+
+    PublishAnswer:
+      type: object
+      required: [published]
+      properties:
+        published:
+          type: integer
+          description: How many drafts were published.
+
+    NamedRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        name:
+          type: string
+
+    MyShift:
+      type: object
+      required: [id, starts_at, ends_at, timezone, shift_type, project, site]
+      description: One of the caller's own published shifts; nothing about anyone else on it.
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        starts_at:
+          $ref: "#/components/schemas/ISODateTime"
+        ends_at:
+          $ref: "#/components/schemas/ISODateTime"
+        timezone:
+          type: string
+          description: The IANA time zone of the site.
+        shift_type:
+          type: string
+        project:
+          $ref: "#/components/schemas/NamedRef"
+        site:
+          $ref: "#/components/schemas/NamedRef"
+
+    MyShiftList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyShift"
+
   # ── Reusable responses ────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -2974,5 +3033,72 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Publishing and my shifts (003 Part 2) ─────────────────────────────────
+  /projects/{id}/publish:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: projects_publish
+      summary: Publish a project's drafts in a date range (Manager+)
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+      responses:
+        "200":
+          description: How many drafts were published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /me/shifts:
+    get:
+      operationId: me_shifts
+      summary: List my own published shifts (Employee, Manager, Admin)
+      tags: [Me]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ISODate"
+      responses:
+        "200":
+          description: The caller's published shifts, by start time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyShiftList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"

@@ -85,5 +85,6 @@
   "warnings.over_headcount": "משובצים יותר עובדים ממה שהמשמרת צריכה.",
   "warnings.under_headcount": "משובצים פחות עובדים ממה שהמשמרת צריכה.",
   "warnings.employee_inactive": "עובד משובץ כבר אינו פעיל.",
-  "shifts.pay_rate_invalid": "שכר לשעה חייב להיות גדול מאפס."
+  "shifts.pay_rate_invalid": "שכר לשעה חייב להיות גדול מאפס.",
+  "shifts.date_range_invalid": "הטווח לא יכול להסתיים לפני שהוא מתחיל."
 }

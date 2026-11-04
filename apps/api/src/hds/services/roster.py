@@ -18,7 +18,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, ensure_role
+from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, STAFF_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from hds.core.i18n import message
 from hds.models.shift import Assignment, Shift
@@ -26,7 +26,7 @@ from hds.models.user import User, UserRole
 from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
-from hds.repositories.shift import AssignmentRepository, ShiftRepository, ShiftView
+from hds.repositories.shift import AssignmentRepository, OwnShift, ShiftRepository, ShiftView
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling import (
@@ -58,6 +58,36 @@ def _refuse_bad_pay_rate(rate: Any) -> None:
         raise DomainValidationError(
             code="shifts.pay_rate_invalid", detail="The pay rate must be greater than zero."
         )
+
+
+def _bounds(
+    zone_name: str, first: date | None, last: date | None
+) -> tuple[datetime | None, datetime | None]:
+    """The instants that begin ``first`` and end ``last`` in a time zone; ``None`` is an open end.
+
+    The first and last calendar days are open ends too, as no instant lies outside them and their
+    neighbours cannot be computed.
+
+    Raises:
+        DomainValidationError: ``shifts.date_range_invalid`` when ``last`` is before ``first``
+            (HTTP 422).
+    """
+    if first is not None and last is not None and last < first:
+        raise DomainValidationError(
+            code="shifts.date_range_invalid", detail="The range must not end before it starts."
+        )
+    zone = ZoneInfo(zone_name)
+    starts_from = (
+        None
+        if first is None or first <= date.min + timedelta(days=1)
+        else datetime.combine(first, time(), zone)
+    )
+    starts_before = (
+        None
+        if last is None or last >= date.max - timedelta(days=1)
+        else datetime.combine(last + timedelta(days=1), time(), zone)
+    )
+    return starts_from, starts_before
 
 
 def _times_invalid() -> DomainValidationError:
@@ -131,6 +161,7 @@ class RosterService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: ``project_id`` is not in the organisation (HTTP 404).
+            DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
         if (
@@ -138,11 +169,7 @@ class RosterService:
             and await self._projects.get_by_id(project_id, actor.organization_id) is None
         ):
             raise NotFoundError(resource="Project", id=project_id)
-        zone = ZoneInfo((await self._org(actor)).timezone)
-        starts_from = None if first is None else datetime.combine(first, time(), zone)
-        starts_before = (
-            None if last is None else datetime.combine(last + timedelta(days=1), time(), zone)
-        )
+        starts_from, starts_before = _bounds((await self._org(actor)).timezone, first, last)
         shifts = await self._shifts.page(
             actor.organization_id,
             starts_from=starts_from,
@@ -156,6 +183,44 @@ class RosterService:
         shifts = shifts[:limit]
         following = (shifts[-1].starts_at, shifts[-1].id) if more else None
         return await self._shifts.views(shifts), following
+
+    async def my_shifts(self, actor: User, first: date | None, last: date | None) -> list[OwnShift]:
+        """The caller's own published shifts that start on ``first`` to ``last`` (FR-123).
+
+        Never a draft, never another employee's, never a deleted project's, and nothing about
+        who else is on them.
+
+        Raises:
+            ForbiddenError: For a Client account (HTTP 403).
+            DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
+        """
+        ensure_role(actor, *STAFF_ROLES)
+        starts_from, starts_before = _bounds((await self._org(actor)).timezone, first, last)
+        return await self._shifts.own_published(
+            actor.organization_id, actor.id, starts_from, starts_before
+        )
+
+    async def publish(self, actor: User, project_id: uuid.UUID, first: date, last: date) -> int:
+        """Publish a project's drafts that start on ``first`` to ``last`` (Manager or Admin).
+
+        Dates are at the project's site, as its shifts' dates are. Published shifts are left as
+        they are, so publishing again counts only new drafts.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The project is not in the organisation (HTTP 404).
+            DomainValidationError: ``shifts.date_range_invalid`` when ``last`` is before
+                ``first`` (HTTP 422).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+            raise NotFoundError(resource="Project", id=project_id)
+        # The dates at the project's site, where its shifts were made from local times.
+        zone = await self._shifts.site_timezone(project_id)
+        starts_from, starts_before = _bounds(zone, first, last)
+        return await self._shifts.publish(
+            actor.organization_id, project_id, starts_from, starts_before, datetime.now(UTC)
+        )
 
     # ------------------------------------------------------------------ shifts
 

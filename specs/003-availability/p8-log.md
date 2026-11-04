@@ -364,3 +364,74 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
   - I18 was not caught by the sequential test, because after one committed removal the second read
     finds nothing anyway. The race test catches it.
 - Final gates: interrogate first found one missing docstring (`assign.run`, 99.8%), now added (100%); full suite 1825 passed; concurrency 46 passed three times; drift check agrees.
+
+## Group J: publishing and what employees see (T058 to T062)
+
+- Failing first: 13 of the 14 publish and my-shifts tests failed, because the routes did not exist.
+  The one that passed was the Client refusal: the missing route answered 404.
+- Decisions:
+  - **Publishing** (`POST /api/v1/shifts/publish`, Manager or Admin): a project's drafts that start
+    on `from` to `to`, dates in the organisation's zone. It answers how many were published.
+    Published shifts are left alone, so publishing again counts only new drafts. A range that ends
+    before it starts is 422 `shifts.date_range_invalid`.
+  - **`GET /me/shifts`** sits beside `/me`, outside `/api/v1`, as `/me` already does. It has its own
+    schema (`MyShift`): id, start, end, the site's zone, the shift type's name, the project and the
+    site. It has no assignments, headcount or pay field, so it cannot name a co-worker (R7). Only
+    published shifts the caller is on.
+  - **The leak sweep** (`test_roster_visibility_sweep.py`) lists every Part 2 read from the
+    document; a new one fails until it is added. Each read is called as an Employee, a Client and
+    another organisation's employee, and checked for the other employee's id, their shift, the
+    draft and their entry. An id the caller sent in the path is excluded, because a 404 repeats it,
+    which is not a leak.
+- Coverage tests extended: the role matrix (2 operations), the sweep (1 case), the locale texts (1
+  code), `unprovable_operations.json` (1, the publish range), the contract (2 operations, 5
+  schemas), and `docs/hds-api.md`.
+- Mutations, all caught except one equivalent:
+  - J1 drafts in my shifts; J2 co-workers' shifts in mine.
+  - J4 another organisation's project publishable; J5 published shifts published again; J6 publish
+    ignoring the project.
+  - J7 `published_at` not set, caught by `ck_shifts_published_at`; J8 the range order not checked.
+  - J3, the publish route's gate loosened to all staff, cannot be caught: the service's own
+    `ensure_role` still refuses Employees. Defence in depth, and an equivalent mutant.
+- /hds-review: no violations. Publishing has allowed (Manager, Admin) and forbidden (Employee, Client)
+  tests, and `/me/shifts` allowed (staff) and forbidden (Client) tests. Codes are in `en` and `he`.
+- /code-review high, ten findings:
+  1. **An employee still saw a deleted project's shifts (fixed):** `own_published` filters out
+     deleted projects. Test first.
+  2. **The first or last calendar day crashed with `OverflowError`, a 500 (fixed):** they count as
+     open ends. Test first, on both reads.
+  3. **Publishing used the organisation's dates, while shifts are made on site dates (fixed).**
+     Publishing now uses the project's site zone. Test first: a site 14 hours ahead
+     (`Pacific/Kiritimati`) published nothing before the fix. The roster list (`GET /shifts`) spans
+     projects and keeps the organisation's zone.
+  4. **`/me/shifts` has no paging (not changed; logged as a follow-up).** It is bounded by the
+     caller's own shifts, so it is a performance item, not a correctness one.
+  5. **A backwards range was accepted on the reads (fixed):** `/me/shifts` and `/shifts` answer 422
+     `shifts.date_range_invalid`, like publishing. `/me/shifts` joined
+     `unprovable_operations.json`.
+  6. and 10. **The bounds code was copied, and publishing narrowed it with an `assert` (fixed):** one
+     pure `_bounds` helper, with no `assert`.
+  7. **`/me/shifts` imported the factory from another router (fixed):** both use
+     `routers/roster_wiring.py`, which only builds the service.
+  8. **Routers import the session type (not changed):** every router does, for the unit-of-work
+     dependency. The hook allows it and the import graph is clean.
+  9. **The sweep matched `/me/shifts` by path, so a new `/me` read would escape it (fixed):** the
+     router is tagged `my roster`, and the sweep finds reads by tag only. Test first: the inventory
+     check failed until the tag was added.
+- Mutations on the fixes, all caught: J9 deleted projects' shifts shown; J10 publishing by the
+  organisation's zone; J11 read ranges not checked for order; J12 the last day not an open end
+  (caught by the `OverflowError` itself, which is the crash the finding described).
+
+## Proposed follow-ups (Part 2)
+
+- Page `GET /me/shifts`, as `GET /shifts` is paged, if employees' histories grow large.
+- **Gate finding: a route collision (fixed by moving the operation).** Schemathesis sent
+  `PATCH /api/v1/shifts/publish`. It matched `PATCH /shifts/{id}` with the id "publish" and answered
+  422 instead of 405.
+  - A `uuid` path converter was tried first and reverted: an id that is not a UUID then reached the
+    framework's plain 404, which is not problem+json, so the contract test failed another way.
+  - Publishing is now `POST /api/v1/projects/{id}/publish` with `{from, to}`. It acts on one
+    project's drafts, so the path names the project.
+  - Updated to match: the tests, the role matrix, the sweep, `unprovable_operations.json`, the
+    contract, `docs/hds-api.md` and `contracts/part2-api.md`.
+- Final gates: all green; full suite 1870 passed; concurrency 46 passed three times; drift check agrees.

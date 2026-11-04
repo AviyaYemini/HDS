@@ -524,6 +524,15 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}"),  # type: ignore[union-attr]
         ),
     ],
+    "POST /api/v1/projects/{id}/publish": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/publish",
+                json={"from": "2027-06-01", "to": "2027-06-30"},
+            ),
+        ),
+    ],
     "POST /auth/invite": [
         Case(
             "address held by another organisation",

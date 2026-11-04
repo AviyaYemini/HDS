@@ -20,31 +20,14 @@ from hds.core.deps import require_admin, require_manager
 from hds.core.exceptions import DomainValidationError
 from hds.core.types import ChangeRequest, IsoDate, IsoDateTime, Money, StrictDate, omittable
 from hds.models.user import User
-from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
-from hds.repositories.organisation import OrganisationRepository
-from hds.repositories.project import ProjectRepository
-from hds.repositories.shift import AssignmentRepository, ShiftRepository, ShiftView
-from hds.repositories.shift_type import ShiftTypeRepository
-from hds.repositories.user import UserRepository
+from hds.repositories.shift import ShiftView
+from hds.routers.roster_wiring import roster_service
 from hds.services.idempotency import IdempotencyService
-from hds.services.roster import RosterService
 
 router = APIRouter(prefix="/api/v1", tags=["shifts"])
 
 Headcount = Field(ge=1, le=1000, description="How many employees the shift needs.")
-
-
-def _svc(db: AsyncSession) -> RosterService:
-    return RosterService(
-        shift_repo=ShiftRepository(db),
-        assignment_repo=AssignmentRepository(db),
-        shift_type_repo=ShiftTypeRepository(db),
-        project_repo=ProjectRepository(db),
-        user_repo=UserRepository(db),
-        entry_repo=AvailabilityRepository(db),
-        organisation_repo=OrganisationRepository(db),
-    )
 
 
 class AssignmentRead(BaseModel):
@@ -204,7 +187,7 @@ async def list_shifts(
     Manager or Admin. Shifts that start on `from` to `to`, drafts and published, with who is on
     each, ordered by start and paged with `cursor`.
     """
-    views, following = await _svc(db).list_shifts(
+    views, following = await roster_service(db).list_shifts(
         current_user,
         first=first,
         last=last,
@@ -214,6 +197,45 @@ async def list_shifts(
         limit=limit,
     )
     return ShiftPage(items=[_shift(v) for v in views], next_cursor=_cursor(following))
+
+
+class PublishRequest(BaseModel):
+    """The dates, at the project's site, whose drafts to publish."""
+
+    first: StrictDate = Field(alias="from")
+    last: StrictDate = Field(alias="to")
+
+    model_config = {"populate_by_name": True}
+
+
+class PublishAnswer(BaseModel):
+    """How many drafts were published."""
+
+    published: int
+
+
+@router.post(
+    "/projects/{id}/publish",
+    response_model=PublishAnswer,
+    summary="Publish drafts",
+    description=(
+        "Manager or Admin. Publish the project's draft shifts that start on `from` to `to` "
+        "(dates at the project's site); published ones are left as they are. A range "
+        "that ends before it starts is refused with 422 (`shifts.date_range_invalid`)."
+    ),
+)
+async def publish(
+    id: uuid.UUID,
+    body: PublishRequest,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> PublishAnswer:
+    """Publish drafts.
+
+    Manager or Admin. Publish the project's drafts in the range; answers how many.
+    """
+    count = await roster_service(db).publish(current_user, id, body.first, body.last)
+    return PublishAnswer(published=count)
 
 
 @router.post(
@@ -238,7 +260,7 @@ async def create_shift(
 
     Admin only. The answer lists the warnings the shift causes; none refuses it.
     """
-    svc = _svc(db)
+    svc = roster_service(db)
     judged = await svc.create_shift(current_user, body.model_dump())
     [view] = await svc.views([judged.record])
     return ShiftAnswer(shift=_shift(view), warnings=judged.warnings)  # type: ignore[arg-type]
@@ -264,7 +286,7 @@ async def change_shift(
 
     Admin only. The answer lists the warnings the change causes; none refuses it.
     """
-    svc = _svc(db)
+    svc = roster_service(db)
     judged = await svc.change_shift(current_user, id, body.model_dump(exclude_unset=True))
     [view] = await svc.views([judged.record])
     return ShiftAnswer(shift=_shift(view), warnings=judged.warnings)  # type: ignore[arg-type]
@@ -285,7 +307,7 @@ async def delete_shift(
 
     Admin only. Its assignments go with it.
     """
-    await _svc(db).delete_shift(current_user, id)
+    await roster_service(db).delete_shift(current_user, id)
     return Response(status_code=204)
 
 
@@ -318,7 +340,7 @@ async def assign(
 
     async def run() -> tuple[int, Any]:
         """Make the assignment and build the answer to store and send."""
-        judged = await _svc(db).assign(current_user, id, body.user_id)
+        judged = await roster_service(db).assign(current_user, id, body.user_id)
         a = judged.record
         answer = AssignmentAnswer(
             assignment=AssignmentRead(id=a.id, shift_id=a.shift_id, user_id=a.user_id),
@@ -353,5 +375,5 @@ async def unassign(
 
     Admin only. The answer lists the warnings the shift has left.
     """
-    warnings = await _svc(db).unassign(current_user, id)
+    warnings = await roster_service(db).unassign(current_user, id)
     return WarningsAnswer(warnings=warnings)  # type: ignore[arg-type]

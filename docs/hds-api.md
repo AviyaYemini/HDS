@@ -14,6 +14,7 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Shift types | `GET/POST /shift-types`, `PATCH /shift-types/{id}`, `GET/PUT /projects/{id}/shift-types` | Every organisation starts with morning, afternoon and night; Managers and Admins add, change and retire types and choose each project's set; everyone who works shifts reads them *(003)* |
 | Shifts | `GET /shifts?from=&to=&project_id=&status=`, `POST /shifts`, `PATCH/DELETE /shifts/{id}` | Cursor pagination; Managers and Admins read the roster, drafts included; only Admins create, change and delete shifts, including the pay field. Every change answers with its rule warnings and is never refused for one *(003)* |
 | Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Admin only. Returns rule warnings (rest, overlap, weekly hours, availability, headcount, inactive employee), never refuses for them. `Idempotency-Key` on the create *(003)* |
+| Publishing and my shifts | `POST /projects/{id}/publish`, `GET /me/shifts` | Managers and Admins publish a project's drafts for a date range at the project's site; drafts are seen by Managers and Admins only. Each employee sees only their own published shifts, with the project, the site and its time zone, and never who else is on them *(003)* |
 | Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
 | Finance | `GET /me/pay-forecast`, `GET /finance/cash-flow`, `GET /finance/billing` | Pay rates and billing rates; cash flow may be negative |
 | Overview | `GET /overview` | Managers and admins only |
@@ -69,6 +70,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `shifts.type_not_in_project` | 422 | A shift of a type the project does not use, or a retired one *(003)* |
 | `shifts.cursor_invalid` | 422 | A roster cursor the API did not return *(003)* |
 | `shifts.pay_rate_invalid` | 422 | A shift pay rate that is not greater than zero *(003)* |
+| `shifts.date_range_invalid` | 422 | A publish range that ends before it starts *(003)* |
 | `assignments.duplicate` | 409 | The employee is already on the shift *(003)* |
 | `assignments.employee_inactive` | 409 | Assigning an inactive employee *(003)* |
 | `idempotency.key_reused` | 422 | An `Idempotency-Key` sent again with a different request *(003)* |

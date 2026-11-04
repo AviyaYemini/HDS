@@ -85,5 +85,6 @@
   "warnings.over_headcount": "More employees are assigned than the shift needs.",
   "warnings.under_headcount": "Fewer employees are assigned than the shift needs.",
   "warnings.employee_inactive": "An assigned employee is no longer active.",
-  "shifts.pay_rate_invalid": "The pay rate must be greater than zero."
+  "shifts.pay_rate_invalid": "The pay rate must be greater than zero.",
+  "shifts.date_range_invalid": "The range must not end before it starts."
 }
