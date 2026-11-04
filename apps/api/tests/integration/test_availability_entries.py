@@ -479,3 +479,19 @@ async def test_a_closed_window_on_days_the_entry_does_not_cover_does_not_block_i
     )
 
     assert stored.status_code == 201, stored.text
+
+
+async def test_an_absence_on_the_last_days_of_the_calendar_is_stored(
+    async_client: AsyncClient, seed_users: dict[str, User], employee: dict[str, str]
+) -> None:
+    """The last dates there are are judged like any other, not answered with a 500 (FR-104)."""
+    url = constraints(seed_users["employee"].id)
+    late = {
+        **body("absence", absence_kind="sick"),
+        "starts_on": "9999-12-30",
+        "ends_on": "9999-12-31",
+    }
+
+    answer = await async_client.post(url, json=late, headers=employee)
+
+    assert answer.status_code == 201, answer.text

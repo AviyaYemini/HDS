@@ -12,7 +12,7 @@ and has an allowed and a forbidden test.
 | `POST /employees/{id}/constraints`, `PATCH /constraints/{id}`, `DELETE /constraints/{id}` | self (window rule), A (always) | 409 `availability.window_closed`, `availability.no_window`, `availability.conflict`; M on another's: 403 `availability.admin_required` |
 | `GET /shift-types`, `POST /shift-types`, `PATCH /shift-types/{id}` | M, A (read also E) | Retire with `is_active: false` |
 | `PUT /projects/{id}/shift-types` | M, A | The complete set of ids |
-| `GET /shifts?from=&to=&project=&status=` | M, A | Cursor pagination; drafts and published, with assignments |
+| `GET /shifts?from=&to=&project_id=&status=` | M, A | Cursor pagination; drafts and published, with assignments |
 | `POST /shifts`, `PATCH /shifts/{id}`, `DELETE /shifts/{id}` | A | Answers `{shift, warnings}`; `pay_rate` A only |
 | `POST /projects/{id}/publish` | M, A | Body: from, to (dates at the project's site); publishes the project's drafts in the range; answers the count. A path under `/shifts` would collide with `/shifts/{id}` |
 | `POST /shifts/{id}/assignments` | A | Answers `{assignment, warnings}`; 409 `assignments.duplicate`, `assignments.employee_inactive`. Optional `Idempotency-Key` header (1 to 255 characters): a repeat returns the first answer; another body with the same key 422 `idempotency.key_reused` |

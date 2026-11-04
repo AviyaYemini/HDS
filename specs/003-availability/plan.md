@@ -45,7 +45,7 @@ Hypothesis where useful, Schemathesis through `tests/contract` and `scripts/cont
 | II. Layered backend | Date rule in the client service; the Client project read in a repository; routers unchanged in role | Pass |
 | III. Pure scheduling package | Not touched | Pass |
 | IV. Test-first | Each item gets a failing test first; removals keep their rules covered on the reachable path | Pass |
-| V. API-first | Contract updated in the same change: `contract_start` on the client PATCH, `additionalProperties: false` on four PATCH schemas. Refusing unknown fields is stricter on `/api/v1`; the one-off exception recorded in 002's plan (no release, no client yet) covers it | Pass, noted |
+| V. API-first | Contract updated in the same change: `contract_start` on the client PATCH, `additionalProperties: false` on six PATCH schemas (employees, clients, projects, sites, group and qualification renames). Refusing unknown fields is stricter on `/api/v1`; the one-off exception recorded in 002's plan (no release, no client yet) covers it | Pass, noted |
 | VI. Security | Unchanged; closes a "no filter" hazard on the Client path | Pass |
 | VII. Money and time | Dates stay dates; no money change | Pass |
 | VIII. Internationalisation | No new error codes; existing ones keep `en` and `he` text | Pass |
@@ -182,10 +182,10 @@ apps/api/
 ├── alembic/versions/020_availability_shifts.py
 ├── src/hds/
 │   ├── scheduling/                 # new, pure: rules.py (validate), types.py (inputs, warnings)
-│   ├── models/{availability,submission_window,shift_type,shift,assignment}.py
-│   ├── repositories/{availability,submission_window,shift_type,shift,assignment}.py
-│   ├── services/{availability,shift_type,roster}.py
-│   ├── routers/{availability,shift_types,shifts,me_shifts}.py
+│   ├── models/{availability,submission_window,shift_type,shift,idempotency_key}.py  # shift.py holds Assignment
+│   ├── repositories/{availability,submission_window,shift_type,shift,idempotency_key}.py  # shift.py holds AssignmentRepository
+│   ├── services/{availability,shift_type,roster,idempotency}.py
+│   ├── routers/{availability,shift_types,shifts,me_shifts,roster_wiring}.py
 │   └── locales/{en,he}.json        # new error and warning codes
 └── tests/{unit,integration,concurrency,property}/...
 packages/api-client/                # generated TypeScript types and client

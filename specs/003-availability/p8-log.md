@@ -572,6 +572,39 @@ test in its file to render a screen.
   - Jest's cache lives in `apps/client/.jest-cache` (ignored by git), and the CI job keeps it between
     runs.
 
+## After the close: the CodeRabbit review of PR #5
+
+Fixed six findings, all checked against the code first:
+
+1. **An entry dated in the last days of the calendar crashed the API with a 500 (fixed).** Reproduced:
+   `_applies_between(9999-12-30, 9999-12-31, …)` raised `OverflowError`, and every create or change of
+   an entry runs it. It now counts the days instead of building a bound past `last`. The window walk
+   in `_require_window` stops at the window that reaches `last`, so it no longer adds a day after
+   9999-12-31. Tests came first: a unit test for each place, and an API test storing an absence on
+   9999-12-30 to 9999-12-31 (201 rather than 500). `_days` was then unused and is removed.
+2. **The "clash check over centuries is quick" test never reached the walk it timed (test
+   corrected).** Its two entries were on different weekdays, so `_clash` returned early. Both are now
+   on Sundays and the test asserts a clash. Mutation L3, removing the 7-day cap, is equivalent:
+   `any()` stops at the first matching day, and seven days or more always contain every weekday. So
+   the cap changes neither the answer nor the cost, and the test guards against a walk that
+   regresses into a full scan.
+3. **`contracts/part2-api.md` said `GET /shifts?project=`; the API takes `project_id`.**
+   Corrected.
+4. **The plan's file tree named `assignment.py` files that do not exist.** It now shows that
+   `shift.py` holds `Assignment` and `AssignmentRepository`, and it lists the idempotency files and
+   `roster_wiring.py`.
+5. **R1 still showed `validate(change, context) -> list[Warning]`.** It now shows the keyword-only
+   arguments, the input types and `RuleWarning`.
+6. **E2 named four strict PATCH models; the code and its tests have six.** E2, the plan, the
+   quickstart row and the T009 wording now name the group and qualification renames too.
+
+Mutations on fix 1: L1, building the bound past `last`, and L2, the walk not stopped at `last`, are
+both caught.
+
+Not changed, awaiting the owner, because each would change a requirement in `spec.md`: FR-010
+against FR-006, the stored-end scenario, one-time links in the FR-008 scenario, and the SC-003
+wording. Also left: the FR-007 checklist check and the portal race postcondition (Trivial).
+
 ## Proposed follow-ups (Part 2)
 
 - Page `GET /me/shifts`, as `GET /shifts` is paged, if employees' histories grow large.

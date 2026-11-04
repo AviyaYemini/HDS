@@ -14,8 +14,8 @@ breaks the rule does not block an unrelated edit (002 Group D kept the same rule
 
 ## E2. Refusing unknown fields (FR-005)
 
-**Decision**: a base model with `extra="forbid"` for the PATCH request models of employees, clients,
-projects and sites. `/me` keeps `extra="allow"`, because its service already answers unknown fields with
+**Decision**: a base model with `extra="forbid"` (`ChangeRequest`) for the PATCH request models of
+employees, clients, projects and sites, and of the group and qualification renames. `/me` keeps `extra="allow"`, because its service already answers unknown fields with
 403 `profile.field_not_allowed` and that stays. Pydantic answers 422, which the error handler maps to
 `validation.request_invalid`; the generated schema gains `additionalProperties: false`.
 
@@ -70,10 +70,14 @@ is deployed, so no running code can still read them.
 ## R1. Where the rules live
 
 **Decision**: a new package `apps/api/src/hds/scheduling/` with one entry point,
-`validate(change, context) -> list[Warning]`. It takes plain dataclasses: the shifts involved (id,
-project, start and end in UTC, headcount), the employee's other shifts nearby, their availability entries
-for those dates, and the organisation's settings (minimum rest, weekly maximum, time zone for weeks). It
-returns warnings with a code, the employee and the shift ids. It covers overlap, rest, weekly hours,
+`validate(*, focus, shifts, entries, employees, settings) -> list[RuleWarning]`, all arguments
+keyword-only. It takes plain dataclasses: `focus`, the ids of the shifts being changed; `shifts`, those
+shifts and the employees' other shifts nearby (`ShiftSlot`: id, project, shift type, start and end in
+UTC, the site's zone, headcount, assigned employees); `entries`, their availability entries for those dates (`Entry`);
+`employees`, by id (`Employee`, with whether they are active); and `settings`, the organisation's
+limits (`Settings`: minimum rest, weekly maximum, time zone for weeks). It returns `RuleWarning`s
+(renamed from `Warning` after review, p8-log.md), each with a stable code, the employee and every shift
+involved; only warnings that involve a shift in `focus` are reported. It covers overlap, rest, weekly hours,
 blocked, absence, close, headcount and an assigned employee who is no longer active.
 
 **Rationale**: the prompt asks for overlap, rest and weekly hours there; Constitution III says no rule

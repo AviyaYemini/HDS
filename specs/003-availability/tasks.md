@@ -47,9 +47,9 @@ None. Each group stands alone.
 
 **Goal**: FR-005.
 
-**Independent test**: PATCH each of employees, clients, projects and sites with one unknown field; PATCH `/me` with `role`.
+**Independent test**: PATCH each of employees, clients, projects and sites, and the group and qualification renames, with one unknown field; PATCH `/me` with `role`.
 
-- [X] T009 [US2] Failing tests in new `tests/integration/test_patch_unknown_fields.py`, parametrised over the four PATCH operations: an unknown field alone and with a valid field gives 422 `validation.request_invalid` and the stored row is unchanged; `/me` with an unknown field still gives 403 `profile.field_not_allowed` (`tests/integration/test_me.py:82` stays as is)
+- [X] T009 [US2] Failing tests in new `tests/integration/test_patch_unknown_fields.py`, parametrised over the six PATCH operations (four at first; the group and qualification renames were added after review, p7-log.md): an unknown field alone and with a valid field gives 422 `validation.request_invalid` and the stored row is unchanged; `/me` with an unknown field still gives 403 `profile.field_not_allowed` (`tests/integration/test_me.py:82` stays as is)
 - [X] T010 [US2] Add a shared request base with `extra="forbid"` in `src/hds/core/types.py` and use it for `UserUpdateRequest` (`src/hds/routers/employees.py`), `ClientUpdateRequest` (`src/hds/routers/clients.py`), `ProjectUpdateRequest` (`src/hds/routers/projects.py`) and `SiteUpdateRequest` (`src/hds/routers/sites.py`); `ProfileUpdate` in `src/hds/routers/me.py` keeps `extra="allow"` (research E2)
 - [X] T011 [US2] Fix any existing test that sent an unknown field to these four operations and relied on it being ignored; record each in the log with the reason
 - [X] T012 [US2] Contract: `additionalProperties: false` on the four request schemas in `specs/001-foundation-auth-org/contracts/openapi.yaml`; regenerate; drift check; `docs/hds-api.md` notes the refusal

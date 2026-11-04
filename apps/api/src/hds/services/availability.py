@@ -13,7 +13,7 @@ shift on the same date (FR-104).
 """
 
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -40,21 +40,15 @@ def _sunday_index(day: date) -> int:
     return (day.weekday() + 1) % 7
 
 
-def _days(first: date, last: date) -> Iterable[date]:
-    """Every date from ``first`` to ``last`` inclusive."""
-    for n in range((last - first).days + 1):
-        yield first + timedelta(days=n)
-
-
 def _applies_between(first: date, last: date, weekday: int | None) -> bool:
     """Whether an entry limited to ``weekday`` (or to none) applies to some date in the range.
 
     Weekdays repeat every seven days, so at most a week is looked at, however long the range.
+    The days are counted rather than added up to a bound, so no date past ``last`` is built and
+    the calendar's last days (up to 9999-12-31) are judged like any other.
     """
-    return any(
-        weekday in (None, _sunday_index(day))
-        for day in _days(first, min(last, first + timedelta(days=6)))
-    )
+    span = min((last - first).days, 6)
+    return any(weekday in (None, _sunday_index(first + timedelta(days=n))) for n in range(span + 1))
 
 
 def _clash(a: dict[str, Any], b: AvailabilityEntry) -> bool:
@@ -343,6 +337,7 @@ class AvailabilityService:
         first, last, weekday = entry["starts_on"], entry["ends_on"], entry["weekday"]
         used: list[SubmissionWindow] = []
         cursor = first
+        reached_last = False
         for window in await self._windows.covering(actor.organization_id, first, last):
             if window.starts_on > cursor and _applies_between(
                 cursor, window.starts_on - timedelta(days=1), weekday
@@ -351,8 +346,13 @@ class AvailabilityService:
             start, end = max(first, window.starts_on), min(last, window.ends_on)
             if _applies_between(start, end, weekday):
                 used.append(window)
+            if window.ends_on >= last:
+                # The windows are in date order and share no date, so none comes after this one;
+                # stopping here also avoids the day after a window ending on 9999-12-31.
+                reached_last = True
+                break
             cursor = max(cursor, window.ends_on + timedelta(days=1))
-        if cursor <= last and _applies_between(cursor, last, weekday):
+        if not reached_last and cursor <= last and _applies_between(cursor, last, weekday):
             raise _no_window()
         if not all(self.is_open(window) for window in used):
             raise ConflictError(
