@@ -232,6 +232,11 @@ jobs:
       - run: uv sync --extra dev
         working-directory: apps/api
       - run: pnpm install --frozen-lockfile
+      # Jest's compiled files; a warm cache keeps the first render of each test file fast.
+      - uses: actions/cache@v4
+        with:
+          path: apps/client/.jest-cache
+          key: jest-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'apps/client/jest.config.js') }}
       - run: pnpm client:lint
       - run: pnpm client:typecheck
       - run: pnpm client:test

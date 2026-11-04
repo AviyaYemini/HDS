@@ -555,6 +555,23 @@ Open items, none of them blocking:
   runnable.
 - Expo's static web export, which fails with the pinned packages.
 
+## After the close: the client job timed out in CI
+
+The first CI run of the `client` job failed: three tests hit Jest's 5-second limit. Each was the first
+test in its file to render a screen.
+- **Cause:** React Native loads each component (`ScrollView`, `Pressable`, `TextInput`) the first time
+  it is read. On a cold cache that load, and Babel compiling it with coverage, happened inside the
+  first render and counted against the test.
+- **Measured** on an M3 with a cold cache, 2 workers and coverage: 1,555 ms and 1,473 ms for the
+  first render, a few milliseconds for the tests after it. A 2-core runner took the same tests past
+  5 seconds.
+- **Fixed, with no test changed:**
+  - `tests/unit/setup.ts` reads those components before any test starts. A cold first render now takes
+    68 ms at most.
+  - `testTimeout` is 15 s, a margin for slow runners.
+  - Jest's cache lives in `apps/client/.jest-cache` (ignored by git), and the CI job keeps it between
+    runs.
+
 ## Proposed follow-ups (Part 2)
 
 - Page `GET /me/shifts`, as `GET /shifts` is paged, if employees' histories grow large.

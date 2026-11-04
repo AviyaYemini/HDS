@@ -1,5 +1,12 @@
 // Jest setup: English strings, a fake secure store, and a router whose calls the tests can read.
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+
 import { setupI18n } from "../../src/i18n";
+
+// React Native loads each component the first time it is read. Read the ones the screens use here,
+// before any test starts, so that loading and compiling them on a cold CI runner does not count
+// against the first test's timeout.
+void [Pressable, ScrollView, StyleSheet, Text, TextInput, View];
 
 jest.mock("expo-secure-store", () => {
   const items = new Map<string, string>();
