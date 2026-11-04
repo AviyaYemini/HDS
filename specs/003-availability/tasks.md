@@ -206,8 +206,8 @@ in English, with the layout mirrored when RTL is forced.
 
 ## Phase 13: Checkpoint P13
 
-- [ ] T072 The Part 1 merge gate (all API gates, full suite, concurrency three times, timing, contract, drift, migration round trips 019 ↔ 020 on a seeded database) plus the client gates; every quickstart.md Part 2 row checked
-- [ ] T073 Close `p8-log.md` with the results and open items; commit `docs(spec): close 003 Part 2`. Do not push.
+- [X] T072 The Part 1 merge gate (all API gates, full suite, concurrency three times, timing, contract, drift, migration round trips 019 ↔ 020 on a seeded database) plus the client gates; every quickstart.md Part 2 row checked
+- [X] T073 Close `p8-log.md` with the results and open items; commit `docs(spec): close 003 Part 2`. Do not push.
 
 ## Dependencies (Part 2)
 

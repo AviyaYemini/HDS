@@ -502,6 +502,59 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
 - Follow-up: Hebrew strings for the new client keys (Constitution VIII asks for externalising, which
   is done); an httpOnly refresh cookie for the web, if a reload sign-in proves a burden (ADR 010).
 
+## Checkpoint P13: the merge gate (T072)
+
+Run on the committed tree after Group K (`41b2d9a`):
+
+| Gate | Result |
+| --- | --- |
+| ruff, format, `mypy --strict` (252 files), interrogate 100%, import graph, pip-audit | All pass |
+| Full suite | 1870 passed, 2 deselected (the timing tests, run below) |
+| Concurrency, three runs | 46 passed each time |
+| Timing (SC-207 and the reset request) | Ratios 1.002 and 1.012; both pass |
+| Schemathesis against a seeded server | 3345 cases passed on the first attempt, no 5xx. The only warnings are "missing test data" (random ids answer 404) |
+| Migrations, scratch database | 013 → head → 013 → head; `alembic check` clean |
+| Migrations, seeded | `seed_dev` (with the default shift types from 020's trigger), then head → 019 → head; `alembic check` clean |
+| OpenAPI drift | The contract and the implementation agree |
+| Client | ESLint clean; `tsc --noEmit` clean; Jest 60 passed (95.5% of lines); the generated client is up to date; Playwright 8 passed and 23 skipped with reasons, including the RTL smoke test |
+
+Quickstart Part 2, row by row:
+
+- **Rules (R1):** `tests/property/test_rules_properties.py`, which checks overlap and rest, weekly
+  hours, and blocked or absence coverage.
+- **US4:** `test_availability_entries.py` covers storing each kind,
+  `test_after_the_deadline_changes_are_refused_and_nothing_changes` and
+  `test_an_absence_is_accepted_at_any_time`. In the app, the Jest availability tests and the
+  Playwright availability spec.
+- **US5:** `test_windows.py`, and in `test_availability_roles.py`
+  `test_a_manager_or_admin_sees_an_employees_entries`,
+  `test_a_manager_cannot_edit_another_employees_entries` and
+  `test_an_admin_edits_anyones_entries_after_the_deadline`.
+- **US6:** `test_assignments.py` covers rest, overlap across projects and drafts, weekly hours, entries
+  and headcount, each stored with its warning.
+- **US7:** `test_my_shifts.py` covers own published shifts only, no co-worker and the Client refused;
+  `test_publish.py` covers before and after publishing. In the app, the My shifts spec.
+- **SC-104:** `test_roster_visibility_sweep.py`.
+- **SC-106:** `tests/unit/scheduling/test_local_span.py` gives 8, 7 and 9 hours; the client's
+  `time.test.ts` shows the same nights at the site's times.
+- **Client, and the checkpoint:** the table above.
+
+## Part 2 closed (T073)
+
+All of Part 2 (T030 to T073) is done and committed on `003-availability`; nothing is pushed.
+
+Open items, none of them blocking:
+
+- Page `GET /me/shifts`. The app now asks from today on, which bounds it in practice.
+- `CONCURRENTLY` for later index builds on large tables.
+- Refusing unknown fields in create requests, as the PATCH requests do.
+- The query shape of the `login_throttle` purge.
+- Hebrew strings for the new client keys.
+- An httpOnly refresh cookie for the web (ADR 010).
+- The staff screens, which make the skipped US5, US6 and US8 specs and the 001 dashboard specs
+  runnable.
+- Expo's static web export, which fails with the pinned packages.
+
 ## Proposed follow-ups (Part 2)
 
 - Page `GET /me/shifts`, as `GET /shifts` is paged, if employees' histories grow large.
