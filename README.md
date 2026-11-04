@@ -3,15 +3,16 @@
 HDS is a workforce, client and project administration system for an organisation that
 staffs sites with employees. Managers and Admins manage employees, groups, qualifications,
 clients, sites and projects; Employees maintain their own profile; Clients see only their own
-projects. Scheduling is planned and will live in a separate pure package.
+projects. Employees submit their availability and see their published shifts; Admins build
+the roster by hand, with rule warnings from the pure `hds.scheduling` package.
 
 This repository is a monorepo:
 
 | Path | What it holds |
 | --- | --- |
 | [`apps/api`](apps/api/README.md) | The Python (FastAPI) backend: the only part with working features today |
-| `apps/client` | Web client scaffold; waits for the client feature |
-| `packages/api-client` | TypeScript API client, generated from the OpenAPI document |
+| `apps/client` | The Expo app (iOS, Android, web): sign-in, My availability, My shifts |
+| `packages/api-client` | TypeScript API client, generated from the OpenAPI document; never edited by hand |
 | [`infra`](infra/README.md) | Docker Compose and the API image |
 | [`docs`](docs/README.md) | Product spec, API reference, architecture guide and ADRs |
 | [`specs`](specs/001-foundation-auth-org/spec.md) | One folder per feature: spec, plan, tasks, contract |
@@ -70,6 +71,34 @@ backend appends a redacted record to `apps/api/.dev-mail/outbox.jsonl` and never
 token. To get a working token for a manual test, run
 `uv run python -m hds.scripts.dev_issue_link <email> invite` (or `reset`) from `apps/api`; it
 prints the token once and stores it nowhere.
+
+## The client app
+
+You need Node.js 22 and pnpm (the version is pinned in the root `package.json`; `corepack enable`
+picks it up). From the repository root:
+
+```bash
+pnpm install
+pnpm --filter hds-client start   # Expo dev server; press w for the web, or open it on a phone
+```
+
+The app talks to `EXPO_PUBLIC_API_URL`, `http://localhost:8000` by default, so start the API first.
+On a phone the session is kept in the secure store; on the web it is kept in memory only, so a reload
+signs in again ([ADR 010](docs/adr/010-client-stack.md)).
+
+| Command (repository root) | What it does |
+| --- | --- |
+| `pnpm client:lint` | ESLint, including the rule that refuses literal text in JSX |
+| `pnpm client:typecheck` | `tsc --noEmit`, strict |
+| `pnpm client:test` | Jest with coverage (70% of lines at least) |
+| `pnpm client:e2e` | Builds the web app and runs Playwright against a real API (below) |
+| `pnpm api-client:generate` | Regenerates `packages/api-client` from the API's OpenAPI document |
+| `pnpm api-client:check` | Fails when the committed client differs from the API; CI runs it |
+
+`pnpm client:e2e` starts its own API on port 8100 and serves the web build on port 3000. It uses
+`E2E_DATABASE_URL`, which must name a database ending in `_test`, migrates it and runs `seed_dev`;
+the specs set up the rest through the API. Install the browser once with
+`pnpm --filter hds-client exec playwright install chromium`.
 
 ## Running the tests
 

@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "HDS",
+    "slug": "hds",
+    "scheme": "hds",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "app.hds.client" },
+    "android": { "package": "app.hds.client" },
+    "web": { "bundler": "metro", "output": "single" },
+    "extra": { "supportsRTL": true },
+    "plugins": ["expo-router", "expo-secure-store", "expo-localization"]
+  }
+}

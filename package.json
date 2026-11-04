@@ -1,0 +1,17 @@
+{
+  "name": "hds",
+  "private": true,
+  "description": "HDS 2.0 monorepo: the Expo client and the generated API client (the API lives in apps/api, built with uv).",
+  "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "client:lint": "pnpm --filter hds-client lint",
+    "client:typecheck": "pnpm --filter hds-client typecheck",
+    "client:test": "pnpm --filter hds-client test",
+    "api-client:generate": "pnpm --filter @hds/api-client generate",
+    "api-client:check": "pnpm --filter @hds/api-client check",
+    "client:e2e": "pnpm --filter hds-client e2e"
+  }
+}

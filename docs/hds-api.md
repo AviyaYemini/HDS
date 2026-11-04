@@ -1,7 +1,7 @@
 
 ## 8. API surface
 
-A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI generates. The web and mobile clients are the only consumers; the generated TypeScript client keeps both in sync with it.
+A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI generates. The web and mobile clients are the only consumers; the generated TypeScript client keeps both in sync with it: `packages/api-client` is generated from this document (`pnpm api-client:generate`), and CI fails when the committed copy differs (`pnpm api-client:check`).
 
 | Resource group | Example endpoints | Notes |
 | --- | --- | --- |

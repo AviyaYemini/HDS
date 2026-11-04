@@ -422,6 +422,86 @@ Spec quality checklist: 32 of 32 items pass. `hds_p3_test` had no connections at
   organisation's zone; J11 read ranges not checked for order; J12 the last day not an open end
   (caught by the `OverflowError` itself, which is the crash the finding described).
 
+## Group K: the employee app (T063 to T071)
+
+- **Tooling (T063, R10).** Node.js 22.23.4, installed from nodejs.org into `~/.local/share/hds-tools/node`
+  with its SHA-256 checked, and pnpm 12.15.0, pinned in the root `package.json` (`packageManager`).
+  Playwright's Chromium (headless shell, build 1248) went to the user's Playwright cache. Every
+  package version is exact and was published on or before 2026-10-21. Two were added beyond the plan's
+  list: `test-renderer` 1.3.1, a peer of Testing Library 14, and `@types/node` 22.20.5 for the tests'
+  file checks. CI gains the `client` job (ESLint, `tsc --noEmit`, Jest with coverage, the
+  generated-client drift check) and the `client-e2e` job (Playwright on the web build, with the RTL
+  smoke test), replacing the T147 placeholder.
+- **The generated client (T065).** `packages/api-client/scripts/generate.mjs` exports the document
+  from the API (`hds.scripts.export_openapi`), runs `openapi-typescript` and writes `src/schema.d.ts`;
+  `--check` compares instead and fails on a difference. `createApiClient` takes `{baseUrl, fetch,
+  middleware}`, so the session supplies the transport and tests a fake API.
+- **/hds-review finding: `.gitignore` hid `packages/api-client/src/` (fixed).** A line from the 001
+  scaffold ignored the generated client, so it could never be committed or checked. Removed.
+- **Decisions:**
+  - **Read-only after the deadline, but absences any time.** T068 says the screen stays read-only
+    after the deadline, and the owner decided (2026-11-03) that absences may be reported at any time.
+    So blocked, open and close entries lose their edit and remove buttons once a date falls outside
+    an open window, absences keep them, and with no open window only "Absence" can be added. The
+    screen's window check only decides which buttons show; the API decides, and its refusal is shown
+    translated.
+  - **Tokens (R9).** `expo-secure-store` on phones, memory only on the web. A 401 refreshes once,
+    shared by requests refused together, and sends the request again; a refused refresh ends the
+    session. An unreachable server during refresh does not end it.
+  - **The e2e API runs on port 8100.** Port 8000 belongs to the Docker dev API, which these tests must
+    not touch, so `pnpm e2e` exports the web build against 8100 and Playwright starts its own API there
+    (`reuseExistingServer: false`). Locally it ran on `hds_p3_test`, emptied afterwards; in CI it runs
+    on `hds_e2e_test`. The config refuses a database whose name does not end in `_test`.
+    `LOGIN_RATE_LIMIT_PER_NETWORK=0` there, as the contract job does, because the lockout specs fail
+    sign-ins on purpose.
+  - **Single-page web export.** Expo's static export failed inside expo-router
+    (`getRouteInfoForMatchedRoute is not a function`, a mismatch in the pinned packages), so the web
+    build is a single page, served by `tests/e2e/serve.mjs` with a fallback to `index.html`.
+  - **The 001 sign-in specs.** Three became runnable: signing out, and the locked-account message in
+    English and Hebrew. Their assertions are unchanged. The lockout specs gained a `beforeAll` that
+    locks `locked@hds.test` with five failed sign-ins through the API (the lock is the same for an
+    unknown address, FR-221). The four role-dashboard specs stay skipped, now with the reason in
+    `test.skip(true, ...)`, because no dashboard exists yet.
+  - **Staff journey specs (T070a)** for windows (US5), the roster (US6) and shift types (US8) are
+    written against the planned screens and skipped "pending the staff screens".
+- **Tests:**
+  - Jest: 52 tests in 7 files; coverage 95.6% of lines (the gate is 70%).
+  - Playwright: 8 passed and 23 skipped (all with reasons), twice in a row.
+  - The literal-string rule refused a planted text and a planted label.
+- **Mutations, all 11 caught:**
+  - K1 no retry after the refresh; K2 the refresh not shared; K3 web tokens in the secure store;
+  - K4 closed entries editable; K5 absences not exempt; K6 the site's zone ignored;
+  - K7 the direction fixed left to right; K8 an unknown code shown raw; K9 an absence keeping its
+    shift type;
+  - K10 a span over two windows judged by the first only; K11 a refused refresh keeping the session.
+- /code-review high: ten findings and two extra, all real and all fixed (each test first, except the
+  last three, which are clean-ups):
+  1. **Starting a phone offline signed the user out for good:** `restore` now keeps the stored tokens
+     when the API cannot be reached.
+  2. **Signing out with an expired access token revoked the old refresh token, not the one it had
+     been rotated to:** the logout is sent again after the refresh with the new tokens.
+  3. **The sign-out e2e spec could not fail:** it now takes the refresh token the page sent to
+     `/auth/logout` and checks that the API refuses it. A sign-out that skips the call fails the spec.
+     The assertions it had are kept.
+  4. **A phone kept the previous run's right-to-left direction for English:** the direction follows
+     the language only.
+  5. **Weekday entries read as every day:** the entry shows "Sundays only" and the like.
+  6. **With no window open, an absence could be changed into a blocked entry that the API was sure
+     to refuse:** it can now only become another absence.
+  7. **A failed reload after a change was hidden behind the old list:** the error and a retry are
+     shown above it.
+  8. **The screens read the whole history:** windows, entries and `/me/shifts` are read from today.
+  9. **A date formatter was built per call:** formatters are cached.
+  10. **`.gitignore` repeated the Playwright folders:** the duplicates were removed.
+  11. **The skipped staff specs named "Dana Employee":** the seeded name is "Employee User".
+  12. **A failed start left a blank app:** the root layout shows the routes either way.
+- Mutations on the fixes, all 7 caught (K12 to K18): offline restore clearing the tokens, the logout
+  not retried, the direction taken from `I18nManager`, absences turning into any kind, the reload
+  error hidden, the weekday not shown, and `/me/shifts` reading the whole history. Jest is at 60
+  tests (95.5% of lines); Playwright is unchanged at 8 passed and 23 skipped.
+- Follow-up: Hebrew strings for the new client keys (Constitution VIII asks for externalising, which
+  is done); an httpOnly refresh cookie for the web, if a reload sign-in proves a burden (ADR 010).
+
 ## Proposed follow-ups (Part 2)
 
 - Page `GET /me/shifts`, as `GET /shifts` is paged, if employees' histories grow large.

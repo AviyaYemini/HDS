@@ -218,6 +218,63 @@ jobs:
         run: scripts/contract_cli.sh http://localhost:8000 50
         working-directory: apps/api
 
-  # TODO(T147): enable ts-client-check job in the apps/client feature (Constitution Principle V)
-  # This job regenerates the TypeScript client from the OpenAPI spec and runs its tests.
-  # It is SKIPPED until packages/api-client has a real generator configured.
+  client:
+    name: Client (ESLint, tsc, Jest with coverage, generated-client drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+        working-directory: apps/api
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm client:lint
+      - run: pnpm client:typecheck
+      - run: pnpm client:test
+      # Regenerates packages/api-client from the API's OpenAPI document and fails on any
+      # difference from the committed copy (Constitution V).
+      - run: pnpm api-client:check
+
+  client-e2e:
+    name: Client e2e (Playwright on the web build, with the RTL smoke test)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hds_e2e_test
+          POSTGRES_USER: hds
+          POSTGRES_PASSWORD: hds_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      E2E_DATABASE_URL: postgresql+asyncpg://hds:hds_e2e@localhost:5432/hds_e2e_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+        working-directory: apps/api
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: apps/client
+      - run: pnpm e2e
+        working-directory: apps/client
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/client/playwright-report/

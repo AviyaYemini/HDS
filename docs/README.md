@@ -21,6 +21,7 @@
 | [007](adr/007-sign-in-abuse-controls.md) | Sign-in abuse controls: bounded hashing, one lockout rule, network limits |
 | [008](adr/008-delivery-after-the-response.md) | Work on a reset request's address runs after the response |
 | [009](adr/009-rule-checks-and-warnings.md) | Roster rules live in one pure function, and manual changes only warn |
+| [010](adr/010-client-stack.md) | One Expo app with a generated API client; web tokens stay in memory |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 

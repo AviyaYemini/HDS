@@ -2,5 +2,18 @@
   "name": "@hds/api-client",
   "version": "0.1.0",
   "private": true,
-  "description": "Generated TypeScript API client — deferred until apps/client feature"
+  "description": "TypeScript types and a typed fetch client generated from the HDS OpenAPI document; never edited by hand (Constitution V).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/generate.mjs --check"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "6.0.3"
+  }
 }

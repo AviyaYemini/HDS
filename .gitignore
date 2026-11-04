@@ -60,7 +60,6 @@ apps/client/playwright-report/
 # Build output
 apps/client/dist/
 packages/api-client/dist/
-packages/api-client/src/
 
 # Schemathesis cache
 .schemathesis/
@@ -70,3 +69,7 @@ packages/api-client/src/
 
 # Development mail outbox: redacted records written by the development mail sender
 apps/api/.dev-mail/
+
+# Expo and Playwright output (003 Group K)
+.expo/
+apps/client/coverage/
