@@ -61,9 +61,9 @@ reason before the code exists. Each group ends with mutation checks, the gates (
 
 ## Phase 7: Polish and checkpoint, P7, Group G
 
-- [ ] T024 [P] Benchmark `apps/api/benchmarks/compare_solvers.py` and `tests/benchmark/test_solver_benchmark.py` (marker `benchmark`, deselected by default): coverage, hours and nights spread and runtime at 10, 30 and 100 employees; SC-001 asserted for 30 employees and one week
-- [ ] T025 [P] ADR `docs/adr/011-solvers-and-job-queue.md`, listed in `docs/README.md`; the README (the worker, the benchmark); `infra/docker-compose.yml` worker service; skipped staff journey specs `apps/client/tests/e2e/test_us_generate.spec.ts` and `test_us_requirements.spec.ts` "pending the staff screens"
-- [ ] T026 Regenerate `packages/api-client`; client gates green; commit `docs(api): document schedule generation and the worker (004 Group G)`
+- [X] T024 [P] Benchmark `apps/api/benchmarks/compare_solvers.py` and `tests/benchmark/test_solver_benchmark.py` (marker `benchmark`, deselected by default): coverage, hours and nights spread and runtime at 10, 30 and 100 employees; SC-001 asserted for 30 employees and one week
+- [X] T025 [P] ADR `docs/adr/011-solvers-and-job-queue.md`, listed in `docs/README.md`; the README (the worker, the benchmark); `infra/docker-compose.yml` worker service; skipped staff journey specs `apps/client/tests/e2e/test_us_generate.spec.ts` and `test_us_requirements.spec.ts` "pending the staff screens"
+- [X] T026 Regenerate `packages/api-client`; client gates green; commit `docs(api): document schedule generation and the worker (004 Group G)`
 - [ ] T027 The merge gate (all API gates, full suite, concurrency three times, timing, contract, drift, migration round trips 020 ↔ 021 on a seeded database, the property tests at the CI profile, the benchmark) plus the client gates; every quickstart row checked; close `p1-log.md`; commit `docs(spec): close 004`. Do not push.
 
 ## Dependencies

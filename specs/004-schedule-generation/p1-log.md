@@ -313,3 +313,22 @@ requirement, a security regression, an unplanned migration, a push or anything d
   the API README's configuration table; `SCHEDULE_TIME_LIMIT_SECONDS` was missing and is added. The
   gates found one missing docstring (`draft_slot`); fixed. Everything else is green: ruff, format,
   `mypy --strict` (290 files), the import graph, `alembic check`.
+
+## Group G: benchmark, docs, worker service, generated client (T024 to T026)
+
+- Benchmark `benchmarks/compare_solvers.py`, plus the `benchmark` marker (deselected by default):
+
+  | Employees | Greedy fills | CP-SAT fills | CP-SAT optimal | CP-SAT time |
+  |---|---|---|---|---|
+  | 10 | 59 of 63 | 60 of 63 | yes | 1 s |
+  | 30 | 126 of 126 | 126 of 126 | yes | 1 s |
+  | 100 | 504 of 504 | 504 of 504 | no (time limit) | 13 s |
+
+  CP-SAT also spreads nights more evenly, and at 10 employees its hours spread is 0 against
+  greedy's 8. SC-001 (30 employees, a week, under 30 seconds) passes; `-m benchmark`: 3 passed.
+- ADR 011, listed in `docs/README.md`. The root README covers the worker and the benchmark.
+- A `worker` service in `infra/docker-compose.yml`, from the API's image.
+- Skipped staff journey specs `test_us_generate.spec.ts` and `test_us_requirements.spec.ts`, "pending
+  the staff screens".
+- `packages/api-client` regenerated; the drift check is green; client lint, type check and Jest (60)
+  pass.

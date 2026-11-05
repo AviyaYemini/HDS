@@ -3,8 +3,9 @@
 HDS is a workforce, client and project administration system for an organisation that
 staffs sites with employees. Managers and Admins manage employees, groups, qualifications,
 clients, sites and projects; Employees maintain their own profile; Clients see only their own
-projects. Employees submit their availability and see their published shifts; Admins build
-the roster by hand, with rule warnings from the pure `hds.scheduling` package.
+projects. Employees submit their availability and see their published shifts; Managers generate a
+roster across every active project and accept it as drafts, and Admins adjust it by hand with rule
+warnings, all judged by the pure `hds.scheduling` package.
 
 This repository is a monorepo:
 
@@ -62,6 +63,18 @@ uv run python -m hds.scripts.seed_dev
 uv run uvicorn hds.main:app --reload
 ```
 
+**The schedule worker.** Roster generation runs outside the API, in a worker that claims the jobs the
+API queues ([ADR 011](docs/adr/011-solvers-and-job-queue.md)). `make up` starts one (the `worker`
+service). From source, run it beside the API, on the same database:
+
+```bash
+cd apps/api
+uv run python -m hds.worker
+```
+
+Without a worker, jobs stay queued and nothing else is affected. `SCHEDULE_TIME_LIMIT_SECONDS` (1 to
+60, default 20) caps each solve.
+
 The settings, required and optional, are listed in [`.env.example`](.env.example) and described in
 [`apps/api/README.md`](apps/api/README.md#configuration). Code baked into the image (a migration,
 for example) is only picked up when the image is rebuilt, so run `make up` again after changing it.
@@ -109,6 +122,11 @@ uv run pytest tests/unit                       # fast, no database
 uv run pytest tests/integration tests/contract # needs PostgreSQL; see apps/api/README.md
 uv run pytest                                  # everything
 ```
+
+The solver benchmark compares the greedy and CP-SAT solvers at 10, 30 and 100 employees and checks
+that 30 employees get a week within 30 seconds (004 SC-001). It takes about a minute and is skipped
+by default: run `uv run pytest -m benchmark`, or `uv run python -m benchmarks.compare_solvers` for the
+table.
 
 The sign-in timing comparison (SC-207) is slow and noisy, so it is skipped by default. Run it by
 hand before a release with `uv run pytest -m timing tests/integration/test_login_timing.py -s`
