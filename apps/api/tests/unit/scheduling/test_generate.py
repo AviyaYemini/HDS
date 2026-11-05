@@ -5,6 +5,7 @@ section 3).
 """
 
 from collections import Counter
+from dataclasses import replace
 from datetime import timedelta
 from itertools import pairwise
 
@@ -21,7 +22,6 @@ from hds.scheduling.problem import (
     Problem,
     Reason,
     Result,
-    Slot,
 )
 from tests.unit.scheduling.factory import (
     OTHER_PROJECT,
@@ -145,7 +145,7 @@ def test_hours_not_shift_counts_are_balanced() -> None:
         [ANN, BEN, CAL],
         fixed_shifts=[fixed(day(n), "afternoon", [ANN]) for n in range(3)],
     )
-    made = Problem(**{**made.__dict__, "first_day": day(0)})
+    made = replace(made, first_day=day(0))
     result = run(made)
     assert hours(result) == {ANN.id: 24, BEN.id: 24, CAL.id: 24}
 
@@ -241,7 +241,7 @@ def test_with_no_time_to_search_the_repair_pass_still_fills_and_nothing_is_optim
 
 def test_fixed_nights_in_the_range_count_in_the_summary() -> None:
     made = problem([slot(day(3))], [ANN, BEN], fixed_shifts=[fixed(day(1), "night", [ANN])])
-    made = Problem(**{**made.__dict__, "first_day": day(0)})
+    made = replace(made, first_day=day(0))
     summary = {s.user_id: s for s in run(made).summary}
     assert summary[ANN.id].nights == 1
     assert summary[ANN.id].minutes >= 8 * 60
@@ -296,7 +296,7 @@ def test_people_kept_on_a_draft_take_their_places(solver: str) -> None:
     """Review finding: a draft's non-candidates were outside the slot, so it was over-filled."""
     manager = person(50)
     kept = slot(day(1), headcount=2)
-    kept = Slot(**{**kept.__dict__, "kept": (manager.id,)})
+    kept = replace(kept, kept=(manager.id,))
     result = run(problem([kept], [ANN, BEN]), solver)
     assert len(result.assigned[kept.key]) == 1
     assert result.unfilled == ()
@@ -321,7 +321,7 @@ def test_a_slots_day_is_the_local_date_it_starts() -> None:
 def test_a_part_minute_rounds_up_so_the_weekly_limit_is_never_crossed() -> None:
     """Review finding: minutes were rounded down, so seconds over the limit went unnoticed."""
     morning = slot(day(1))
-    odd = Slot(**{**morning.__dict__, "ends_at": morning.ends_at + timedelta(seconds=30)})
+    odd = replace(morning, ends_at=morning.ends_at + timedelta(seconds=30))
     assert odd.minutes == 8 * 60 + 1
 
 
@@ -329,6 +329,75 @@ def test_the_last_check_counts_kept_people_against_the_headcount() -> None:
     from hds.scheduling.engine import _check
     from hds.scheduling.problem import SolverError
 
-    full = Slot(**{**slot(day(1), headcount=2).__dict__, "kept": (person(50).id,)})
+    full = replace(slot(day(1), headcount=2), kept=(person(50).id,))
     with pytest.raises(SolverError):
         _check(problem([full], [ANN, BEN]), {full.key: (ANN.id, BEN.id)})
+
+
+def test_a_kept_person_who_already_breaks_a_rule_does_not_fail_the_run() -> None:
+    """Review finding: a draft an Admin overfilled by hand (003 allows it) failed every run."""
+    crowded = replace(slot(day(1), headcount=1), kept=(person(50).id, person(51).id))
+    tired = person(52)
+    rested = replace(slot(day(3)), kept=(tired.id,))
+    night_before = fixed(day(2), "night", [tired])  # the kept person has too little rest
+    result = run(problem([crowded, rested], [ANN], fixed_shifts=[night_before]))
+    assert result.assigned[crowded.key] == ()
+    assert result.assigned[rested.key] == ()
+
+
+def test_a_slots_own_draft_in_the_fixed_shifts_is_refused() -> None:
+    """Review finding: a draft in both ``fixed`` and a slot counted its people twice."""
+    from hds.scheduling.engine import slot_id
+
+    draft = fixed(day(1), "morning", [person(50)])
+    own = replace(slot(day(1)), shift_id=draft.id, kept=(person(50).id,))
+    with pytest.raises(ValueError):
+        run(problem([own], [ANN], fixed_shifts=[draft]))
+    assert slot_id(own.key) != draft.id
+
+
+def test_kept_people_are_never_reported_as_removed() -> None:
+    """Review finding: kept people in ``current`` came out as removed."""
+    manager = person(50)
+    held = replace(slot(day(1), headcount=2), kept=(manager.id,))
+    result = run(problem([held], [ANN], current={held.key: (manager.id, ANN.id)}))
+    assert result.changes.removed == ()
+
+
+def test_a_place_left_when_everyone_is_already_on_the_slot_still_has_a_reason() -> None:
+    """Review finding: with every candidate on the slot, the empty place had no reason at all."""
+    pair = slot(day(1), headcount=2)
+    result = run(problem([pair], [ANN]))
+    (empty,) = result.unfilled
+    assert empty.places == 1
+    assert empty.reasons == (Reason(NO_ACTIVE_EMPLOYEE, 0),)
+
+
+def test_someone_who_cannot_work_does_not_pin_the_balance() -> None:
+    """Review finding: an absent candidate held the minimum at 0, so balance ignored the rest.
+
+    Ann already works 40 hours; Ben and Dan share two shifts; Cal is away all week. Only a balance
+    among those who can work gives Ben and Dan one each.
+    """
+    dan, away = person(4), person(5)
+    shifts = [slot(day(1)), slot(day(3))]
+    made = problem(
+        shifts,
+        [ANN, BEN, dan, away],
+        entries=[entry(away, "absence", day(0), day(6))],
+        fixed_shifts=[fixed(day(n), "afternoon", [ANN]) for n in (0, 2, 4, 5, 6)],
+    )
+    made = replace(made, first_day=day(0), last_day=day(6))
+    result = run(made)
+    assert sorted(p for s in shifts for p in result.assigned[s.key]) == sorted([BEN.id, dan.id])
+
+
+def test_seconds_do_not_make_the_weekly_limit_stricter_than_the_rule() -> None:
+    """Review finding: CP-SAT rounded fixed shifts up to minutes, refusing what the rule allows."""
+    week = [fixed(day(n), "morning", [ANN]) for n in range(5)]  # 40 hours
+    week[0] = replace(week[0], ends_at=week[0].ends_at + timedelta(seconds=20))
+    week[1] = replace(week[1], ends_at=week[1].ends_at - timedelta(seconds=20))
+    saturday = slot(day(6))
+    result = run(problem([saturday], [ANN], fixed_shifts=week))
+    assert result.assigned[saturday.key] == (ANN.id,)
+    assert result.optimal is True

@@ -184,9 +184,14 @@ def _sunday_index(day: date) -> int:
     return (day.weekday() + 1) % 7
 
 
+def local_day(moment: datetime, zone: str) -> date:
+    """The local date of ``moment`` in ``zone``: the one reading of "which day a shift is on"."""
+    return moment.astimezone(ZoneInfo(zone)).date()
+
+
 def week_start(moment: datetime, zone: str) -> date:
     """The Sunday that starts the week ``moment`` falls in, in ``zone`` (research R2)."""
-    day = moment.astimezone(ZoneInfo(zone)).date()
+    day = local_day(moment, zone)
     return day - timedelta(days=_sunday_index(day))
 
 
@@ -215,7 +220,7 @@ def _entries(slot: ShiftSlot, person: uuid.UUID, theirs: Iterable[Entry]) -> set
     An entry covers a shift when the shift's local start date is in its range, and its shift type
     and weekday, when set, match the shift's.
     """
-    day = slot.starts_at.astimezone(ZoneInfo(slot.zone)).date()
+    day = local_day(slot.starts_at, slot.zone)
     found: set[RuleWarning] = set()
     for entry in theirs:
         code = _ENTRY_CODES.get(entry.kind)

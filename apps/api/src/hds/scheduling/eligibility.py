@@ -18,9 +18,8 @@ from .problem import (
     WEEKLY_MAXIMUM,
     Problem,
     Slot,
-    local_day,
 )
-from .rules import entry_covers, week_start
+from .rules import entry_covers, local_day, week_start
 from .types import Entry
 
 _BLOCKING = frozenset(("blocked", "absence"))
@@ -77,6 +76,7 @@ class Roster:
         for entry in problem.entries:
             self._entries.setdefault(entry.employee_id, []).append(entry)
         self._booked: dict[uuid.UUID, dict[str, Booking]] = {}
+        self._weeks: dict[str, date] = {}
         zone = problem.settings.week_zone
         for shift in problem.fixed:
             booking = Booking(
@@ -93,9 +93,15 @@ class Roster:
             for person in slot.kept:
                 self._booked.setdefault(person, {})[slot.key] = self._booking(slot, fixed=True)
 
+    def _week(self, slot: Slot) -> date:
+        """The Sunday of ``slot``'s week, worked out once per slot (refusal runs in hot loops)."""
+        week = self._weeks.get(slot.key)
+        if week is None:
+            week = self._weeks[slot.key] = week_start(slot.starts_at, self._settings.week_zone)
+        return week
+
     def _booking(self, slot: Slot, fixed: bool = False) -> Booking:
-        week = week_start(slot.starts_at, self._settings.week_zone)
-        return Booking(slot.key, slot.starts_at, slot.ends_at, slot.day, week, fixed)
+        return Booking(slot.key, slot.starts_at, slot.ends_at, slot.day, self._week(slot), fixed)
 
     def book(self, person: uuid.UUID, slot: Slot) -> None:
         """Put ``person`` on ``slot``."""
@@ -138,7 +144,7 @@ class Roster:
         if self.unavailable(person, slot):
             return UNAVAILABLE
         settings = self._settings
-        week = week_start(slot.starts_at, settings.week_zone)
+        week = self._week(slot)
         fixed_clashes: set[str] = set()
         chosen_clash = False
         fixed_week = chosen_week = timedelta()

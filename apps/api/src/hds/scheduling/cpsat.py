@@ -10,6 +10,7 @@ best value of the ones before as a constraint and starts from their solution, so
 strict. The result is optimal only when every stage was proven optimal.
 """
 
+import math
 import time
 import uuid
 from collections.abc import Mapping, Sequence
@@ -19,8 +20,13 @@ from ortools.sat.python import cp_model
 
 from .eligibility import Roster, clash
 from .problem import Problem, Slot
-from .problem import minutes as to_minutes
 from .rules import week_start
+
+
+def _seconds(length: timedelta) -> int:
+    """``length`` in whole seconds, rounded up; shift times are whole minutes in practice."""
+    return math.ceil(length.total_seconds())
+
 
 # How the time budget is shared between the stages: filling places matters most.
 _SHARES = (4, 2, 1, 1, 1, 1)
@@ -82,16 +88,19 @@ def solve(
                     break
                 if clash(a.starts_at, a.ends_at, b.starts_at, b.ends_at, settings.min_rest):
                     model.add(x[p, a.key] + x[p, b.key] <= 1)
+        # Seconds, as the rule itself counts (``Roster.refusal``, ``validate``), so the model is
+        # never stricter than the rule.
         fixed_week: dict[date, int] = {}
         for booking in roster.bookings(p):
-            fixed_week[booking.week] = fixed_week.get(booking.week, 0) + to_minutes(booking.length)
+            fixed_week[booking.week] = fixed_week.get(booking.week, 0) + _seconds(booking.length)
         weeks: dict[date, list[Slot]] = {}
         for s in slots:
             weeks.setdefault(week_start(s.starts_at, settings.week_zone), []).append(s)
-        limit = int(settings.max_weekly.total_seconds() // 60)
+        limit = int(settings.max_weekly.total_seconds())
         for week, inside in weeks.items():
             model.add(
-                sum(s.minutes * x[p, s.key] for s in inside) <= limit - fixed_week.get(week, 0)
+                sum(_seconds(s.length) * x[p, s.key] for s in inside)
+                <= limit - fixed_week.get(week, 0)
             )
 
     stages = _goals(problem, roster, model, x, theirs, people, minutes, nights)
@@ -155,10 +164,18 @@ def _goals(
 
     def spread(
         name: str, totals: Mapping[uuid.UUID, cp_model.LinearExprT], top: int
-    ) -> cp_model.IntVar:
+    ) -> cp_model.LinearExprT:
+        """The largest total less the smallest, among people who can take at least one slot.
+
+        Someone who can take none (away all range) has a total no choice changes; counting them
+        would pin the smallest and make the spread only the largest.
+        """
+        working = [total for p, total in totals.items() if theirs.get(p)]
+        if not working:
+            return 0
         high = model.new_int_var(0, top, f"{name}_max")
         low = model.new_int_var(0, top, f"{name}_min")
-        for total in totals.values():
+        for total in working:
             model.add(high >= total)
             model.add(low <= total)
         result = model.new_int_var(0, top, f"{name}_spread")

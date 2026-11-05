@@ -10,8 +10,9 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from functools import cached_property
 
+from .rules import local_day
 from .types import Employee, Entry, Settings, ShiftSlot
 
 UNAVAILABLE = "schedule.unavailable"
@@ -22,11 +23,6 @@ NEEDED_ELSEWHERE = "schedule.needed_elsewhere"
 NO_ACTIVE_EMPLOYEE = "schedule.no_active_employee"
 REASON_CODES = (UNAVAILABLE, OVERLAP, MINIMUM_REST, WEEKLY_MAXIMUM, NEEDED_ELSEWHERE)
 """The reasons a candidate cannot take a place, in the order they are tested (research G6)."""
-
-
-def local_day(moment: datetime, zone: str) -> date:
-    """The local date of ``moment`` in ``zone``."""
-    return moment.astimezone(ZoneInfo(zone)).date()
 
 
 def minutes(length: timedelta) -> int:
@@ -56,7 +52,7 @@ class Slot:
     night: bool
     kept: tuple[uuid.UUID, ...] = ()
 
-    @property
+    @cached_property
     def day(self) -> date:
         """The local date at the site the shift starts on, derived so it cannot disagree."""
         return local_day(self.starts_at, self.zone)
@@ -66,28 +62,32 @@ class Slot:
         """The shift's real elapsed length."""
         return self.ends_at - self.starts_at
 
-    @property
+    @cached_property
     def minutes(self) -> int:
         """The length in whole minutes, rounded up so a limit in minutes is never crossed."""
         return minutes(self.length)
 
     @property
     def places(self) -> int:
-        """The places candidates may fill: the headcount less the people kept on it."""
-        return self.headcount - len(self.kept)
+        """The places candidates may fill: the headcount less the people kept on it.
+
+        Never below zero: an Admin may have overfilled the draft by hand (003 FR-116).
+        """
+        return max(0, self.headcount - len(self.kept))
 
 
 @dataclass(frozen=True)
 class Problem:
     """Everything a solver needs, and nothing it may change.
 
-    ``fixed`` holds the shifts the proposal must respect but never changes: published shifts,
-    shifts of the surroundings (spec FR-016) and draft assignments of people who are not
-    candidates, each with its employees in ``assigned``. ``current`` maps a slot key to the people
-    on that draft now, for "fewest changes". ``first_day`` and ``last_day`` bound the range the
-    summary counts hours and nights in. ``night_types`` names the shift types that cross midnight,
-    so fixed shifts count as nights too. ``max_run`` is the longest run of working days that costs
-    nothing (spec assumption: 6).
+    ``fixed`` holds the shifts the proposal must respect but never changes: published shifts and
+    the other shifts of the surroundings (spec FR-016), each with its employees in ``assigned``. A
+    slot's own draft is never in ``fixed``: its non-candidates are the slot's ``kept`` people
+    (``generate`` refuses the overlap). ``current`` maps a slot key to the candidates on that draft
+    now, for "fewest changes"; kept people are ignored there. ``first_day`` and ``last_day`` bound
+    the range the summary counts hours and nights in. ``night_types`` names the shift types that
+    cross midnight, so fixed shifts count as nights too. ``max_run`` is the longest run of working
+    days that costs nothing (spec assumption: 6).
     """
 
     slots: tuple[Slot, ...]

@@ -24,11 +24,10 @@ from .problem import (
     Result,
     SolverError,
     Unfilled,
-    local_day,
 )
 from .problem import minutes as to_minutes
-from .rules import validate
-from .types import Employee, ShiftSlot
+from .rules import local_day, validate
+from .types import Employee, RuleWarning, ShiftSlot
 
 Solver = Literal["greedy", "cpsat"]
 _HARD = frozenset(
@@ -69,11 +68,14 @@ def generate(
         The proposal. A slot's ``assigned`` holds the candidates chosen for it, not its kept people.
 
     Raises:
-        ValueError: An unknown solver.
+        ValueError: An unknown solver, or a slot's own draft also given as a fixed shift.
         SolverError: A solver broke a hard rule (a bug; the result must not be stored).
     """
     if solver not in ("greedy", "cpsat"):
         raise ValueError(f"unknown solver {solver!r}")
+    drafts = {s.shift_id for s in problem.slots if s.shift_id is not None}
+    if any(shift.id in drafts for shift in problem.fixed):
+        raise ValueError("a slot's own draft must not also be a fixed shift; use Slot.kept")
     deadline_ns = time.monotonic_ns() + time_limit // timedelta(microseconds=1) * 1000
     people = [p.id for p in problem.candidates if p.is_active]
     roster = Roster(problem)
@@ -145,7 +147,9 @@ def _check(problem: Problem, assigned: Mapping[str, tuple[uuid.UUID, ...]]) -> N
     """Judge the proposal with ``validate`` against everything fixed; refuse a hard-rule warning.
 
     A slot is judged with its kept people and its chosen ones together, so a headcount can never be
-    exceeded unseen.
+    exceeded unseen. Only warnings the proposal causes count: a rule broken by someone it chose, or
+    a headcount it filled past. A rule a kept person already broke by hand (003 allows it) is not
+    the solver's doing and does not fail the run.
     """
     proposed = [
         ShiftSlot(
@@ -164,6 +168,13 @@ def _check(problem: Problem, assigned: Mapping[str, tuple[uuid.UUID, ...]]) -> N
     for shift in [*problem.fixed, *proposed]:
         for person in shift.assigned:
             everyone.setdefault(person, Employee(person, True))
+    chosen = {slot_id(key): set(on) for key, on in assigned.items() if on}
+
+    def caused(w: RuleWarning) -> bool:
+        if w.employee_id is None:  # a headcount: only when the proposal put someone there
+            return any(i in chosen for i in w.shift_ids)
+        return any(w.employee_id in chosen.get(i, ()) for i in w.shift_ids)
+
     broken = [
         w
         for w in validate(
@@ -173,7 +184,7 @@ def _check(problem: Problem, assigned: Mapping[str, tuple[uuid.UUID, ...]]) -> N
             employees=everyone,
             settings=problem.settings,
         )
-        if w.code in _HARD
+        if w.code in _HARD and caused(w)
     ]
     if broken:
         raise SolverError(f"the proposal breaks hard rules: {broken}")
@@ -204,7 +215,8 @@ def _unfilled(
                 raise SolverError(f"{p} could take an empty place on {slot.key}")
             counts[code] += 1
         reasons = tuple(Reason(c, counts[c]) for c in REASON_CODES if counts[c])
-        found.append(Unfilled(slot.key, places, reasons))
+        # Every active candidate is already on the slot: there is no one else to give it to.
+        found.append(Unfilled(slot.key, places, reasons or (Reason(NO_ACTIVE_EMPLOYEE, 0),)))
     return tuple(found)
 
 
@@ -236,8 +248,11 @@ def _summary(
 
 def _changes(problem: Problem, assigned: Mapping[str, tuple[uuid.UUID, ...]]) -> Changes:
     """What the proposal adds to and removes from the current drafts."""
+    kept = {s.key: set(s.kept) for s in problem.slots}
     now = {(key, p) for key, on in assigned.items() for p in on}
-    before = {(key, p) for key, on in problem.current.items() for p in on}
+    before = {
+        (key, p) for key, on in problem.current.items() for p in on if p not in kept.get(key, ())
+    }
 
     def order(pair: tuple[str, uuid.UUID]) -> tuple[str, str]:
         return pair[0], str(pair[1])
