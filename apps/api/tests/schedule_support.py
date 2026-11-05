@@ -8,11 +8,11 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from hds.worker import run_once
 from httpx import AsyncClient
 
 from hds.core.database import get_session_factory
 from hds.main import app
+from hds.worker import run_once
 from tests.roster_support import add_project
 
 JOBS = "/api/v1/schedule-jobs"

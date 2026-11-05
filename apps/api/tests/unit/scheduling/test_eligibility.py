@@ -6,7 +6,6 @@ Covers: 004 FR-011 to FR-016, research G6.
 from datetime import date, timedelta
 
 from hds.scheduling.eligibility import Roster
-
 from hds.scheduling.problem import (
     MINIMUM_REST,
     NEEDED_ELSEWHERE,

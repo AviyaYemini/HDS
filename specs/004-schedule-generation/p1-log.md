@@ -389,3 +389,33 @@ All tasks T001 to T027 are done and committed on `004-schedule-generation`; noth
 - The goal weights and the time limit per organisation are fixed in this feature (spec assumptions).
 - Qualifications on slots (the rest of H5).
 - Locking chosen assignments (SCH-5).
+
+## PR 6 CI findings (after the close)
+
+1. **Ruff: two import-order errors (I001) in `tests/unit/scheduling/test_eligibility.py` and
+   `tests/schedule_support.py`, hidden by a stale ruff cache.** `ruff clean`, then `--fix`. The
+   merge gate's ruff step now runs with `--no-cache`.
+2. **`POST /schedule-jobs` for `0001-01-01` failed (500 in CI, 202 locally).** asyncpg stores
+   `date.min` and `date.max` as minus and plus infinity, which `ck_schedule_jobs_length` subtracts.
+   The worker's surroundings, a week either side, would also leave the calendar. The service now
+   refuses a range within 14 days of either end with 422 `schedule.range_invalid`, before any
+   insert. Test first: four ranges at both ends, all refused and nothing stored. Jobs are created
+   only through the service, so the worker never meets such a range.
+3. **Deadlock between accept and a keyed assignment.** An assignment with an `Idempotency-Key`
+   inserts its key first, which key-share-locks the Admin's user row through the key's foreign key,
+   and then locks its shift. Accept held the shifts and then took `FOR UPDATE` on every staff row.
+   `lock_staff` is now `FOR NO KEY UPDATE`. That still conflicts with the `FOR UPDATE` that
+   availability changes, assignments, deactivations and sign-ins take, so the out-of-date check
+   stays exact, but it no longer conflicts with a key-share lock. Test first
+   (`tests/concurrency/test_accept_locks.py`), two sessions: A reserves the Admin's key; B takes
+   accept's locks up to the shifts; A's `get_locked(shift)` waits; B's `lock_staff` then raised
+   `DeadlockDetectedError` before the fix, and gets the lock after it.
+- **Every CI job's command, run locally after these fixes:**
+  - lint (`--no-cache`), format, docstrings 100%, `mypy --strict` (289 files), import graph,
+    pip-audit, `alembic check`: all clean;
+  - unit and property tests at 1,000 examples: 898 passed;
+  - integration, contract and concurrency, as CI runs them: 1,186 passed;
+  - Schemathesis CLI: passed on the first attempt, no 5xx; drift: clean;
+  - client: lint, type check, Jest 60, generated-client check;
+  - Playwright: 8 passed, 26 skipped with reasons;
+  - Markdown links: the changed files checked by script, since lychee is not installed locally.

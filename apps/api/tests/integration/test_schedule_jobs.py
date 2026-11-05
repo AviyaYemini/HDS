@@ -71,6 +71,32 @@ async def test_a_backwards_or_too_long_range_is_refused(
     assert (await async_client.get(JOBS, headers=manager)).json()["items"] == []
 
 
+@pytest.mark.parametrize(
+    ("first", "last"),
+    [
+        ("0001-01-01", "0001-01-01"),
+        ("0001-01-10", "0001-01-12"),
+        ("9999-12-31", "9999-12-31"),
+        ("9999-12-20", "9999-12-25"),
+    ],
+)
+async def test_a_range_at_either_end_of_the_calendar_is_refused(
+    async_client: AsyncClient, seed_users: dict[str, User], first: str, last: str
+) -> None:
+    """A range at the calendar's ends is refused before anything is stored (PR 6 CI finding).
+
+    0001-01-01 answered 500 (asyncpg stores ``date.min`` and ``date.max`` as infinity), and the
+    run's surroundings, a week either side, would leave the calendar.
+    """
+    manager = await headers_for(async_client, "manager")
+
+    answer = await async_client.post(JOBS, json={"from": first, "to": last}, headers=manager)
+
+    assert answer.status_code == 422, answer.text
+    assert answer.json()["code"] == "schedule.range_invalid"
+    assert (await async_client.get(JOBS, headers=manager)).json()["items"] == []
+
+
 async def test_thirty_one_days_are_allowed(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:

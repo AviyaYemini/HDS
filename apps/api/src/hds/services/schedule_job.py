@@ -33,6 +33,10 @@ from hds.services.schedule_inputs import Built, ScheduleInputService, surroundin
 logger = logging.getLogger(__name__)
 
 MAX_DAYS = 31
+CALENDAR_MARGIN = timedelta(days=14)
+"""How far a range must stay from the calendar's first and last dates: the run's surroundings
+reach the Sunday before the range less the minimum rest, and the Sunday after it plus the rest
+(research G9), and asyncpg stores ``date.min`` and ``date.max`` as minus and plus infinity."""
 LEASE = timedelta(minutes=5)
 """How long a claim lasts; a worker that dies leaves its job to be claimed again after it. Longer
 than the longest solve (``SCHEDULE_TIME_LIMIT_SECONDS`` is at most 60) plus building the problem."""
@@ -167,12 +171,14 @@ class ScheduleJobService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             DomainValidationError: ``schedule.range_invalid`` for a range that ends before it
-                starts or covers more than 31 days; ``schedule.project_not_active`` for a project
+                starts, covers more than 31 days, or lies within 14 days of either end of the
+                calendar; ``schedule.project_not_active`` for a project
                 that is not an active one of the organisation (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
         first, last = data["first_day"], data["last_day"]
-        if last < first or (last - first).days >= MAX_DAYS:
+        at_the_ends = first < date.min + CALENDAR_MARGIN or last > date.max - CALENDAR_MARGIN
+        if at_the_ends or last < first or (last - first).days >= MAX_DAYS:
             raise DomainValidationError(
                 code="schedule.range_invalid",
                 detail="The range must not end before it starts, and covers at most 31 days.",

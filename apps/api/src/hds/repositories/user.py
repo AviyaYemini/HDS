@@ -166,6 +166,11 @@ class UserRepository(OrgScopedRepository[User]):
         writes it (004 research G9): availability changes, assignments and deactivations each lock
         their user first, so none can slip in between. Ascending id order, as ``lock_user_row``
         asks of anything that locks several users.
+
+        ``FOR NO KEY UPDATE``, not ``FOR UPDATE``: it still waits for and blocks those paths'
+        ``FOR UPDATE``, but not the key-share lock a foreign key takes. An assignment with an
+        ``Idempotency-Key`` inserts its key (key-sharing the Admin's row) before it locks its
+        shift, while accepting holds the shifts first; a full lock here made the two deadlock.
         """
         await self.session.execute(
             select(User.id)
@@ -176,7 +181,7 @@ class UserRepository(OrgScopedRepository[User]):
                 User.role != UserRole.client,
             )
             .order_by(User.id)
-            .with_for_update()
+            .with_for_update(key_share=True)
         )
 
     async def get_for_auth(self, id: uuid.UUID) -> User | None:
