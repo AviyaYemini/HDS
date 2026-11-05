@@ -86,8 +86,9 @@ them.
 - `Problem`: `slots: tuple[Slot, ...]`, `fixed: tuple[ShiftSlot, ...]`, `candidates: tuple[Employee, ...]`,
   `entries: tuple[Entry, ...]`, `current: Mapping[slot key, tuple[user id, ...]]`, `settings: Settings`,
   `nights: frozenset[shift type id]`.
-- `Slot`: `key`, `shift_id | None`, `project_id`, `shift_type_id`, `day`, `starts_at`, `ends_at`, `zone`,
-  `headcount`.
+- `Slot`: `key`, `shift_id | None`, `project_id`, `shift_type_id`, `starts_at`, `ends_at`, `zone`,
+  `headcount`, `night`, `kept` (people on an existing draft who are not candidates; they stay and
+  take their places); `day` and `minutes` are derived from the times.
 - `Result`: `assigned: Mapping[slot key, tuple[user id, ...]]`, `unfilled: tuple[Unfilled, ...]`,
   `summary: tuple[EmployeeSummary, ...]`, `changes: Changes`, `optimal: bool`.
 - `Unfilled`: `key`, `places`, `reasons: tuple[Reason, ...]`; `Reason`: `code`, `employees`.

@@ -56,20 +56,23 @@ hard-rule warning in (defence in depth).
 - At most `headcount` per slot. Pairwise "at most one" for any two slots of one candidate that overlap
   or are closer than the minimum rest. Per candidate and week, minutes of fixed shifts plus chosen
   shifts at most the weekly maximum (integer minutes).
-- The objective is a weighted sum with weights spaced so the order of FR-017 holds: each unfilled place
-  costs more than any total of the lower goals. Preferences: each open shift given earns, each close
-  shift given costs. Hours and nights: the spread between the largest and smallest totals across
-  candidates, with two integer variables each. Runs: a worked-day boolean per candidate and date, and a
-  cost for every 7-day window that is worked on all 7 days (runs longer than 6). Changes: a cost for each
-  current draft assignment dropped or added.
-- `max_time_in_seconds` is the time limit; `optimal` is true only when the status is `OPTIMAL`. The
-  search is made repeatable for tests with a fixed seed and one worker; production uses the default
-  workers.
+- The goals of FR-017 are solved one after another in one time budget (filling places, then
+  preferences, the hours spread, the nights spread, long runs, changes). Each stage keeps the best value
+  of the earlier ones as a constraint and starts from their solution. Preferences: a close shift given
+  costs, an open shift given earns. Hours and nights: the spread between the largest and smallest
+  totals, with two integer variables each. Runs: a worked-day boolean per candidate and date, and a cost
+  for every 7-day window worked on all 7 days. Changes: a cost for each current draft assignment dropped
+  or added.
+- `max_time_in_seconds` shares the time limit between the stages (filling places gets the most);
+  `optimal` is true only when every stage is proven `OPTIMAL`. Tests use one worker and a fixed seed;
+  production uses the default workers.
 
-**Rationale**: weights in tiers give the lexicographic order of FR-017 in one solve. A proven optimum
-then means optimal for the whole order.
+**Rationale**: solving in stages gives the strict order of FR-017. A proven optimum then means optimal
+for the whole order.
 
-**Alternatives**: solving goal by goal (several solves within one 20-second budget; harder to bound).
+**Alternatives**: one weighted sum with weights in tiers (first choice in the plan; dropped while
+building Group B, because keeping the order strict needs weights near 10^15, which hurt the solver's
+relaxation; see p1-log.md).
 
 ## G5. The greedy baseline
 
@@ -90,8 +93,8 @@ it without breaking a rule against the final roster (a solver stopped by the tim
 one). Every place still unfilled is then explained by testing each candidate, and the first reason in
 this order counts that candidate:
 1. unavailable: blocked or absent that date and shift;
-2. weekly maximum, minimum rest or overlap against a fixed shift (published, another project's, or a
-   kept draft);
+2. overlap, minimum rest or weekly maximum, in that order, against a fixed shift (published, another
+   project's, or a kept draft);
 3. needed on another slot: the same rules, but only against slots the proposal filled, so taking this
    place would mean giving up another.
 

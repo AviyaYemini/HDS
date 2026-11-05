@@ -96,7 +96,7 @@ apps/api/
 │   │   ├── eligibility.py                # who may take a slot against a roster (shared)
 │   │   ├── greedy.py                     # standard library only
 │   │   ├── cpsat.py                      # the only module importing ortools
-│   │   └── generate.py                   # generate(): solve, repair, reasons, summary, changes
+│   │   └── engine.py                     # generate(): solve, repair, reasons, summary, changes
 │   ├── models/{staffing_need,schedule_job}.py   # shift.py: Assignment.source
 │   ├── repositories/{staffing_need,schedule_job,scheduling_inputs}.py
 │   ├── services/{staffing_need,scheduling_settings,schedule_job,schedule_inputs}.py

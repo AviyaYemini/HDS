@@ -216,18 +216,25 @@ def _entries(slot: ShiftSlot, person: uuid.UUID, theirs: Iterable[Entry]) -> set
     and weekday, when set, match the shift's.
     """
     day = slot.starts_at.astimezone(ZoneInfo(slot.zone)).date()
-    weekday = _sunday_index(day)
     found: set[RuleWarning] = set()
     for entry in theirs:
         code = _ENTRY_CODES.get(entry.kind)
-        if code is None or not entry.starts_on <= day <= entry.ends_on:
-            continue
-        if entry.shift_type_id is not None and entry.shift_type_id != slot.shift_type_id:
-            continue
-        if entry.weekday is not None and entry.weekday != weekday:
-            continue
-        found.add(RuleWarning(code, person, (slot.id,)))
+        if code is not None and entry_covers(entry, day, slot.shift_type_id):
+            found.add(RuleWarning(code, person, (slot.id,)))
     return found
+
+
+def entry_covers(entry: Entry, day: date, shift_type_id: uuid.UUID) -> bool:
+    """Whether ``entry`` covers a shift of ``shift_type_id`` that starts on the local date ``day``.
+
+    The date must be in the entry's range, and its shift type and weekday, when set, must match.
+    Used by ``validate`` and by the generator, so both read an entry the same way.
+    """
+    if not entry.starts_on <= day <= entry.ends_on:
+        return False
+    if entry.shift_type_id is not None and entry.shift_type_id != shift_type_id:
+        return False
+    return entry.weekday is None or entry.weekday == _sunday_index(day)
 
 
 def _headcount(slot: ShiftSlot) -> set[RuleWarning]:
