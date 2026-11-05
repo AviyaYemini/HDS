@@ -9,6 +9,7 @@ sessions so it takes effect at once.
 """
 
 import uuid
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -67,6 +68,27 @@ def validate_hourly_rate(rate: Any) -> None:
             code="users.hourly_rate_invalid",
             detail="default_hourly_rate must be greater than 0.",
         )
+
+
+def guard_rate_change(actor: User, data: Mapping[str, Any], *, clearing_counts: bool) -> None:
+    """Refuse a Manager who sets, changes or clears an employee's default rate (005 FR-001).
+
+    Args:
+        actor: The caller; only an Admin may touch the rate.
+        data: The request's fields.
+        clearing_counts: Whether ``null`` counts as a change: on an edit it clears the rate, on a
+            create it sets nothing.
+
+    Raises:
+        ForbiddenError: ``users.rate_admin_only`` (HTTP 403).
+    """
+    if actor.role == UserRole.admin or "default_hourly_rate" not in data:
+        return
+    if data["default_hourly_rate"] is None and not clearing_counts:
+        return
+    raise ForbiddenError(
+        code="users.rate_admin_only", detail="Only an Admin sets an employee's pay rate."
+    )
 
 
 def guard_client_role(target: User) -> None:
@@ -292,8 +314,9 @@ class EmployeeService:
             The new user.
 
         Raises:
-            ForbiddenError: ``users.manager_required``, or ``users.admin_required`` when a
-                Manager asks for the Admin role (HTTP 403).
+            ForbiddenError: ``users.manager_required``, ``users.admin_required`` when a
+                Manager asks for the Admin role, or ``users.rate_admin_only`` when a Manager
+                sends a rate (HTTP 403).
             DomainValidationError: ``users.role_invalid`` (Client users have their own
                 endpoints), ``users.hourly_rate_invalid`` or ``users.password_too_short``
                 (HTTP 422).
@@ -303,6 +326,7 @@ class EmployeeService:
         data = dict(data)
         role = UserRole(data.get("role", UserRole.employee))
         self._check_assignable_role(actor, role)
+        guard_rate_change(actor, data, clearing_counts=False)
         validate_hourly_rate(data.get("default_hourly_rate"))
 
         email = data.get("email", "")
@@ -339,7 +363,8 @@ class EmployeeService:
             The updated user.
 
         Raises:
-            ForbiddenError: ``users.manager_required`` or ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required``, ``users.admin_required``, or
+                ``users.rate_admin_only`` when a Manager sets or clears the rate (HTTP 403).
             NotFoundError: The user is not in the organisation (HTTP 404).
             DomainValidationError: ``users.role_invalid`` or ``users.hourly_rate_invalid``
                 (HTTP 422).
@@ -353,6 +378,7 @@ class EmployeeService:
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         data = dict(data)
+        guard_rate_change(actor, data, clearing_counts=True)
         validate_hourly_rate(data.get("default_hourly_rate"))
 
         role_changed = False

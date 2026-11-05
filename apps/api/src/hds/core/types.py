@@ -190,3 +190,60 @@ def whole_number(value: object) -> object:
 # means it, 40 and 40.0, never true, "40" or 40.5. The bounds come first, so they bind to the
 # integer and the published schema keeps ``minimum`` and ``maximum``.
 WHOLE_NUMBER = BeforeValidator(whole_number)
+
+
+_PERCENT = r"^(?:(?:1[0-9]{2}|2[0-9]{2})(?:\.[0-9]{1,2})?|300(?:\.0{1,2})?)$"
+_POINTS = r"^(?:(?!0+(?:\.0+)?$)(?:[0-9]{1,2}|1[0-9]{2})(?:\.[0-9]{1,2})?|200(?:\.0{1,2})?)$"
+
+
+def _decimal_text(pattern: str) -> Any:
+    """Accept only a JSON string matching ``pattern``, the shape the schema publishes."""
+    compiled = re.compile(pattern)
+
+    def check(value: object) -> object:
+        if not isinstance(value, str) or compiled.fullmatch(value) is None:
+            raise ValueError("Input should be a decimal string such as 125.00")
+        return value
+
+    return BeforeValidator(check)
+
+
+Percent = Annotated[
+    Decimal,
+    _decimal_text(_PERCENT),
+    Field(ge=100, le=300, decimal_places=2),
+    WithJsonSchema({"type": "string", "pattern": _PERCENT, "example": "125.00"}),
+]
+"""A pay rate in percent of the base rate, 100 to 300, as a decimal string (005 FR-003)."""
+
+Points = Annotated[
+    Decimal,
+    _decimal_text(_POINTS),
+    Field(gt=0, le=200, decimal_places=2),
+    WithJsonSchema({"type": "string", "pattern": _POINTS, "example": "25.00"}),
+]
+"""Percentage points added to a day's rate for overtime, above 0 and at most 200 (005 FR-003)."""
+
+Minutes = Annotated[int, Field(ge=1, le=1440), WHOLE_NUMBER]
+"""A length in whole minutes, 1 to 1440 (005 FR-003)."""
+
+PercentOut = Annotated[
+    Decimal,
+    PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
+    WithJsonSchema({"type": "string", "pattern": r"^[0-9]{1,3}\.[0-9]{2}$", "example": "125.00"}),
+]
+"""A percentage or points in a response, always with two decimals."""
+
+Amount = Annotated[
+    Decimal,
+    PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
+    WithJsonSchema({"type": "string", "pattern": r"^[0-9]{1,10}\.[0-9]{2}$", "example": "612.50"}),
+]
+"""A money amount in a response: ``NUMERIC(12,2)`` in shape, a string with two decimals (005 R1)."""
+
+HoursOut = Annotated[
+    Decimal,
+    PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
+    WithJsonSchema({"type": "string", "pattern": r"^[0-9]{1,7}\.[0-9]{2}$", "example": "7.50"}),
+]
+"""Hours in a response, a string with two decimals."""

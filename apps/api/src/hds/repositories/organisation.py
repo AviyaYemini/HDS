@@ -5,6 +5,7 @@ Layer: repositories. Depends on ``hds.models`` and ``hds.repositories.base`` onl
 
 import uuid
 from collections.abc import Mapping
+from typing import Any
 
 from sqlalchemy import select, update
 
@@ -44,6 +45,27 @@ class OrganisationRepository(BaseRepository[Organisation]):
             return await self.get_by_id(id)
         # One UPDATE, atomic on its own. It takes the row's lock until the transaction ends, as
         # window operations do, so the two wait on each other; both are rare and short.
+        result = await self.session.execute(
+            update(Organisation)
+            .where(Organisation.id == id)
+            .values(**values)
+            .returning(Organisation)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_pay(self, id: uuid.UUID, values: Mapping[str, Any]) -> Organisation | None:
+        """Set premium default columns (``pay_*``) of the organisation (005 FR-006).
+
+        Args:
+            id: Organisation id, taken from the authenticated user.
+            values: Column names and values, already checked by the service.
+
+        Returns:
+            The organisation as stored, or ``None``.
+        """
+        if not values:
+            return await self.get_by_id(id)
         result = await self.session.execute(
             update(Organisation)
             .where(Organisation.id == id)

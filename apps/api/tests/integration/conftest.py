@@ -23,6 +23,7 @@ from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
+from hds.models.special_day import SpecialDay
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 
@@ -42,6 +43,7 @@ class OtherOrg:
     shift: Shift | None = None
     assignment: Assignment | None = None
     job: ScheduleJob | None = None
+    special_day: SpecialDay | None = None
 
 
 @pytest_asyncio.fixture
@@ -131,7 +133,10 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         project_ids=[],
         settings={"min_rest_hours": 11, "max_weekly_hours": 48},
     )
-    test_db.add_all([assignment, job])
+    special_day = SpecialDay(
+        id=uuid.uuid4(), organization_id=org.id, day=date(2027, 9, 11), name="Their holiday"
+    )
+    test_db.add_all([assignment, job, special_day])
     await test_db.commit()
     return OtherOrg(
         org,
@@ -147,4 +152,5 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         shift,
         assignment,
         job,
+        special_day,
     )

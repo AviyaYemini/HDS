@@ -103,6 +103,25 @@ class ProjectRepository(OrgScopedRepository[Project]):
             query = query.where(Project.id.in_(list(ids)))
         await self.session.execute(query.order_by(Project.id).with_for_update())
 
+    async def lock_and_read(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
+        """Lock a non-deleted project of the organisation as ``lock`` does, and read it afresh.
+
+        The row is read again under the lock (``populate_existing``), so a copy the session
+        loaded earlier in the request cannot hide a change another transaction committed while
+        this one waited (005 Group C race tests).
+        """
+        result = await self.session.execute(
+            select(Project)
+            .where(
+                Project.id == id,
+                Project.organization_id == org_id,
+                Project.is_deleted.is_(False),
+            )
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
         """Fetch a non-deleted project of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(

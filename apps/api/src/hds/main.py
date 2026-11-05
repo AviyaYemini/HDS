@@ -83,14 +83,19 @@ def create_app() -> FastAPI:
     from hds.routers.invitations import router as invitations_router
     from hds.routers.me import router as me_router
     from hds.routers.me_shifts import router as me_shifts_router
+    from hds.routers.my_pay import router as my_pay_router
+    from hds.routers.pay_settings import router as pay_settings_router
+    from hds.routers.project_managers import router as project_managers_router
     from hds.routers.projects import router as projects_router
     from hds.routers.qualifications import router as qualifications_router
+    from hds.routers.reports import router as reports_router
     from hds.routers.requirements import router as requirements_router
     from hds.routers.schedule_jobs import router as schedule_jobs_router
     from hds.routers.scheduling_settings import router as scheduling_settings_router
     from hds.routers.shift_types import router as shift_types_router
     from hds.routers.shifts import router as shifts_router
     from hds.routers.sites import router as sites_router
+    from hds.routers.special_days import router as special_days_router
 
     application.include_router(auth_router)
     application.include_router(invitations_router)
@@ -108,6 +113,11 @@ def create_app() -> FastAPI:
     application.include_router(requirements_router)
     application.include_router(scheduling_settings_router)
     application.include_router(schedule_jobs_router)
+    application.include_router(pay_settings_router)
+    application.include_router(special_days_router)
+    application.include_router(project_managers_router)
+    application.include_router(my_pay_router)
+    application.include_router(reports_router)
 
     return application
 

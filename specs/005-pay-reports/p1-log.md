@@ -93,3 +93,88 @@ requirement, a security regression, an unplanned migration, a push or anything d
      do not import the pay package, which is for services only.
   8. The valid-override test did not read the values back. **Fixed.**
   9. A stale "depends on base only" docstring. **Fixed.**
+
+## Groups C, D and E: rates and settings, pay to date, reports (T008 to T028)
+
+One commit for the three groups: they share the composition root (`hds/wiring.py`), `hds/main.py`,
+the contract, the role matrix and the sweeps, and D's pricing is what E reuses, so splitting the
+working tree into three commits would have meant committing files that do not build alone. Each
+group still had its own failing tests first, mutation checks and review.
+
+- **Built:**
+  - C: the Admin-only default rate (`guard_rate_change`); organisation premium defaults and each
+    project's switches and overrides, frozen when a project ends (`PaySettingsService`); special
+    days for the organisation and per project; managers on projects. `routers/projects.py` now gets
+    its service from `hds.wiring`: the hook refuses a router that imports repositories, and the
+    file had to change for `pay_settings` on create.
+  - D: `GET /me/pay` (`PayService`, `repositories/pay_reports.py`), priced by `hds.payroll`.
+  - E: `GET /reports/work-log` and `GET /reports/hours` (`ReportsService`, read-only repositories
+    with plain-column queries); the pay-visibility rule.
+- **Decisions:**
+  - On `POST /employees`, a Manager's `default_hourly_rate: null` sets nothing and is allowed; on a
+    change it would clear the rate and is refused (T008, the contract and docs/hds-api.md say so).
+  - Times in the pay settings are written `HH:MM:SS`, as the shift types already are.
+  - FR-030's 366-day limit applies to the work-log too. A project's default `from` is its start
+    date, or 366 days before `to` when the project is older than that, so the request with only the
+    project (SC-006) always answers; the response's `from` says where it began. **For the owner**:
+    a work-log over a project's whole life, past a year, needs two requests today.
+  - A hidden project's lines count no missing rates, so a Manager learns nothing about its rates.
+- **Test changes, each for FR-001 (only Admins set a default rate):**
+  - `tests/unit/test_employee_manager.py::test_create_employee_non_positive_hourly_rate_rejected`
+    now uses an Admin: a Manager is refused before the rate is validated.
+  - `tests/integration/test_patch_null_clears.py`: test employees are created by an Admin, and the
+    rate is cleared by an Admin; the Manager still clears the phone.
+  - `tests/unit/test_project_service.py`, `test_project_client_scope.py`: `ProjectService` now
+    requires its pay settings collaborator (review finding below); the tests pass a mock.
+  - `tests/roster_support.add_project` takes an optional `start_date` (default unchanged).
+  - `tests/integration/conftest.py`: the other organisation has a special day, for the sweep.
+- **Bugs found by the new tests:**
+  - Ending a project reused a project row the session had loaded earlier, so it could overwrite an
+    override committed while it waited for the lock (race test). Fixed with `lock_and_read`
+    (`populate_existing` under the lock).
+  - Copying two or more organisation days onto an ending project failed: SQLAlchemy evaluated the
+    model's Python id default once for the whole `INSERT ... SELECT`. Fixed with
+    `include_defaults=False`; the freeze test now copies two days.
+  - Schemathesis: year `0000` passed `/me/pay`'s pattern but not the service, and the query
+    validator has no look-ahead; the pattern now spells out years 0001 to 9999.
+- **Mutation checks:** C 16, D 7, E 11; all caught after adding tests for three survivors (an ended
+  project seeing a day added after it ended, and on the pricing path; a future shift in a report
+  range; missing rates on hidden lines) and removing a duplicate start-date check that made one
+  mutant equivalent.
+- **/code-review high on C and D**, 10 findings:
+  1. A PATCH with a rename and `status: ended` locked the project before the organisation, the
+     reverse of every other path: a deadlock risk. The status now goes first; a race test covers it.
+  2. Months and ranges at the calendar's ends overflowed to 500. Windows are clamped (`widen`);
+     tests for `0001-01` and `9999-12`.
+  3. A Manager's `null` rate on a create: kept as allowed, and the contract and docs were
+     corrected to say so (decision above).
+  4. `ProjectService` silently skipped the pay rules without its collaborator; it is now required.
+  5. `Percent` and `Points` accepted `"1.25e2"`; they now match their published patterns. Tests added.
+  6. A special day read before its lock could be stale; it is read again under the lock.
+  7. T009 still described a per-setting `source`; it now describes `own`.
+  8. A duplicated body conversion became `project_pay_changes`.
+  9. A second `STAFF_ROLES` with another meaning became `ASSIGNABLE_ROLES`.
+  10. Extra round trips: the per-project special-day list is now built once per report. Re-reads
+      after `change_project` are **kept**: one row, an Admin action, and the read path stays shared.
+- **Performance (SC-005):** a year of 26,000 assignments, 100 employees, 20 projects: the hours
+  report about 1.15 s either way, a project's work-log about 40 ms.
+- **/code-review high on C, D and E together**, 9 findings:
+  1. A malformed month or setting is refused by the published schema with
+     `validation.request_invalid`, so the service's `pay.month_invalid` and `pay.settings_invalid`
+     are guards; docs/hds-api.md and the contract now say so. (The same holds for 004's limits.)
+  2. A project older than a year could not be read with the default range: the default start is
+     now clamped to the limit (decision above). Unit test added.
+  3. A project whose pay may be seen but whose lines all lack a rate showed no pay key, which looks
+     like hidden pay. Totals now carry pay wherever any line's pay may be seen, from zero, with the
+     missing count. **Test change**: `test_a_project_without_pay_shows_hours_only_and_missing_rates_
+     are_counted` now expects `"0.00"` on Omer's Alpha row instead of no pay key, for this reason.
+  4. Shift counts counted people, not shifts. Totals now count distinct shifts (hours stay
+     person-hours); the property test and a unit test check a shift of two people counts once.
+  5. The safe order of ending and editing a project lived in the router; it is now
+     `ProjectService.change_project`.
+  6. Three groups in one commit: acknowledged above.
+  7. `ReportScopeRepository` repeated existing lookups: removed for `ProjectRepository`,
+     `SiteRepository` and a new `GroupRepository.member_ids`. The work-log's own hours helper
+     **kept**: it reads one column pair and needs no pricing.
+  8. The rest-window message now says weekday or time.
+  9. The untyped `**narrow` became a typed `Scope`.

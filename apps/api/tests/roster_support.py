@@ -92,7 +92,10 @@ ZONE = "Asia/Jerusalem"
 
 
 async def add_project(
-    client: AsyncClient, headers: dict[str, str], name: str = "Night Watch"
+    client: AsyncClient,
+    headers: dict[str, str],
+    name: str = "Night Watch",
+    start_date: str = "2027-01-01",
 ) -> dict[str, Any]:
     """A project at a site in Israel that uses morning, afternoon and night."""
     owner = await client.post(
@@ -113,7 +116,7 @@ async def add_project(
             "name": name,
             "type": "security",
             "billing_rate": "75.0000",
-            "start_date": "2027-01-01",
+            "start_date": start_date,
         },
         headers=headers,
     )

@@ -19,6 +19,7 @@ from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.site import SiteRepository
+from hds.services.pay_settings import PaySettingsService
 
 
 def _validate_billing_rate(rate: Any) -> None:
@@ -45,6 +46,7 @@ class ProjectService:
         project_repo: ProjectRepository,
         client_repo: ClientRepository,
         site_repo: SiteRepository,
+        pay_settings: PaySettingsService,
     ) -> None:
         """Wire the service.
 
@@ -52,10 +54,13 @@ class ProjectService:
             project_repo: Project storage.
             client_repo: Used to verify client ids.
             site_repo: Used to verify site ids.
+            pay_settings: Checks the pay settings sent with a new project (Admin only) and
+                freezes a project's pay when it ends (005 FR-006a, FR-007).
         """
         self._repo = project_repo
         self._client_repo = client_repo
         self._site_repo = site_repo
+        self._pay = pay_settings
 
     async def _require_client(self, client_id: uuid.UUID, org_id: uuid.UUID) -> None:
         if await self._client_repo.get_by_id(client_id, org_id) is None:
@@ -76,12 +81,18 @@ class ProjectService:
             The new project.
 
         Raises:
-            ForbiddenError: ``users.manager_required`` (HTTP 403).
-            DomainValidationError: ``projects.billing_rate_invalid`` or
-                ``projects.date_range_invalid`` (HTTP 422).
+            ForbiddenError: ``users.manager_required``, or ``projects.pay_settings_admin_only``
+                when a Manager sends pay settings (HTTP 403).
+            DomainValidationError: ``projects.billing_rate_invalid``,
+                ``projects.date_range_invalid``, ``pay.settings_invalid`` or
+                ``pay.rest_window_invalid`` (HTTP 422).
             NotFoundError: Client or site not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
+        data = dict(data)
+        pay = data.pop("pay_settings", None)
+        if pay is not None:
+            data.update(self._pay.columns_for_new_project(actor, pay))
         if data.get("billing_rate") is not None:
             _validate_billing_rate(data["billing_rate"])
         _validate_date_range(data.get("start_date"), data.get("end_date"))
@@ -126,6 +137,8 @@ class ProjectService:
         Returns:
             The updated project.
 
+        Ending a project freezes its pay settings and special days first (005 FR-007).
+
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: The project is not in the organisation (HTTP 404).
@@ -134,7 +147,30 @@ class ProjectService:
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
+        if status == ProjectStatus.ended:
+            await self._pay.freeze(actor.organization_id, id)  # 005 FR-007, under the locks
         return await self._repo.update(id, actor.organization_id, status=status)
+
+    async def change_project(
+        self, actor: User, id: uuid.UUID, data: dict[str, Any], status: str | None
+    ) -> Project:
+        """Change a project's fields and, when given, its status, in a safe order (Manager+).
+
+        The status goes first: ending a project locks the organisation and then the project
+        (005 FR-007), the order schedule accept uses, so it must never follow an update that has
+        already locked the project.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The project is not in the organisation (HTTP 404).
+            DomainValidationError: As ``edit_project`` (HTTP 422).
+        """
+        if status is None:
+            return await self.edit_project(actor, id, data)
+        project = await self.set_status(actor, id, status)
+        if data:
+            project = await self.edit_project(actor, id, data)
+        return project
 
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         """Delete a project (Admin only); the row is kept and hidden.

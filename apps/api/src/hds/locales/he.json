@@ -104,5 +104,17 @@
   "jobs.project_not_active": "פרויקט שהריצה ציינה כבר אינו פעיל; דבר לא שונה.",
   "schedule.not_ready": "לריצה אין הצעה להחליט עליה.",
   "schedule.proposal_closed": "ההצעה כבר התקבלה, נדחתה או שפג תוקפה.",
-  "schedule.proposal_out_of_date": "משהו שההצעה נבנתה ממנו השתנה; יש ליצור אותה מחדש."
+  "schedule.proposal_out_of_date": "משהו שההצעה נבנתה ממנו השתנה; יש ליצור אותה מחדש.",
+  "users.rate_admin_only": "רק מנהל מערכת יכול לקבוע את תעריף השכר של עובד.",
+  "projects.pay_settings_admin_only": "רק מנהל מערכת יכול לקבוע את הגדרות השכר של פרויקט.",
+  "pay.settings_invalid": "אחת מהגדרות השכר מחוץ לטווח המותר.",
+  "pay.rest_window_invalid": "המנוחה השבועית חייבת להסתיים ביום או בשעה שונים מאלה שבהם היא מתחילה.",
+  "pay.project_ended": "לא ניתן לשנות את הגדרות השכר והימים המיוחדים של פרויקט שהסתיים.",
+  "special_days.duplicate": "כבר קיים יום מיוחד בתאריך זה.",
+  "special_days.name_required": "ליום מיוחד נדרש שם.",
+  "project_managers.not_staff": "ניתן לשייך לפרויקט רק מנהלים ומנהלי מערכת פעילים בארגון.",
+  "pay.month_invalid": "יש לכתוב את החודש בתבנית YYYY-MM, למשל 2026-10.",
+  "reports.scope_invalid": "יש לבחור בדיוק אחד מאלה: פרויקט, אתר או קבוצה.",
+  "reports.start_required": "דוח על אתר או קבוצה דורש תאריך התחלה.",
+  "reports.range_invalid": "דוח מכסה בין יום אחד ל-366 ימים ומסתיים בתאריך ההתחלה או אחריו."
 }

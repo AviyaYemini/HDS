@@ -8,11 +8,11 @@ decimals (`"125.00"`, `"7.50"`); rates keep `Money` (four decimals).
 
 | Operation | Roles | Notes |
 | --- | --- | --- |
-| `POST /employees`, `PATCH /employees/{id}` (changed) | M, A | `default_hourly_rate` from a Manager, any value, 403 `users.rate_admin_only`; other fields unchanged |
+| `POST /employees`, `PATCH /employees/{id}` (changed) | M, A | A Manager sending a rate on a create, or a rate or `null` on a change, 403 `users.rate_admin_only` (on a create `null` sets nothing); other fields unchanged |
 | `GET /organisation/pay-settings` | M, A | The premium defaults of data-model FR-006 |
-| `PATCH /organisation/pay-settings` | A | Any of them; 422 `pay.settings_invalid`, `pay.rest_window_invalid`; unknown fields 422 |
+| `PATCH /organisation/pay-settings` | A | Any of them; out-of-range values 422 by schema (and `pay.settings_invalid` from the service), `pay.rest_window_invalid` when the window's ends meet; null and unknown fields 422 |
 | `POST /projects` (changed) | M, A | Optional `pay_settings` (switches and overrides); from a Manager 403 `projects.pay_settings_admin_only` |
-| `GET /projects/{id}/pay-settings` | M, A | `{pay_enabled, managers_see_pay, settings: {name: {value, source: project or organisation}}}` |
+| `GET /projects/{id}/pay-settings` | M, A | `{pay_enabled, managers_see_pay, settings, own}`: the settings in effect, and the names the project sets itself; the rest follow the organisation. Times are written `HH:MM:SS` |
 | `PATCH /projects/{id}/pay-settings` | A | Switches and overrides; `null` returns a setting to the default; 409 `pay.project_ended`; 422 as above |
 | `GET /special-days?year=` | M, A | The organisation's days |
 | `POST /special-days` | A | `{day, name, rate_pct?}`; 409 `special_days.duplicate` |
@@ -21,7 +21,7 @@ decimals (`"125.00"`, `"7.50"`); rates keep `Money` (four decimals).
 | `POST /projects/{id}/special-days` | A | Adds a project day or overrides an organisation day's rate; 409 `special_days.duplicate`, `pay.project_ended` |
 | `GET /projects/{id}/managers` | M, A | `{items: [{id, full_name}]}` |
 | `PUT /projects/{id}/managers` | A | `{user_ids}` replaces the set; 422 `project_managers.not_staff` |
-| `GET /me/pay?month=YYYY-MM` | E, M, A | The caller's pay to date (data-model PayToDate); 422 `pay.month_invalid`; C 403 |
+| `GET /me/pay?month=YYYY-MM` | E, M, A | The caller's pay to date (data-model PayToDate); a malformed month 422 by its published pattern (`pay.month_invalid` is the service's guard); C 403 |
 | `GET /reports/work-log?project_id=|site_id=|group_id=&from=&to=` | M, A | Exactly one scope (422 `reports.scope_invalid`); `from` defaults to the project's start, required for a site or group (422 `reports.start_required`); `to` defaults to today; 422 `reports.range_invalid` (backwards or over 366 days); no pay |
 | `GET /reports/hours?from=&to=&group_by=employee|project` | M, A | Rows, group totals and grand total; `pay` only where the reader may see it (research R10); 422 `reports.range_invalid` |
 

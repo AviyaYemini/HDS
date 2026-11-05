@@ -140,6 +140,55 @@
       "operation_id": "list_jobs_api_v1_schedule_jobs_get",
       "suites": ["pytest", "cli"],
       "reason": "a cursor must be one the API returned, which no schema can state; any other string is answered 422 schedule.cursor_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/organisation/pay-settings",
+      "operation_id": "change_defaults_api_v1_organisation_pay_settings_patch",
+      "suites": ["pytest", "cli"],
+      "reason": "a weekly rest whose start and end are the same moment spans four fields, which OpenAPI 3.0 cannot state (005 FR-003); answered 422 pay.rest_window_invalid"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/projects/{id}/pay-settings",
+      "operation_id": "change_project_pay_api_v1_projects__id__pay_settings_patch",
+      "suites": ["pytest", "cli"],
+      "reason": "an ended project's settings are fixed (005 FR-007), which depends on stored state; answered 409 pay.project_ended, and the rest-window rule above as 422"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/special-days",
+      "operation_id": "add_day_api_v1_special_days_post",
+      "suites": ["pytest", "cli"],
+      "reason": "one organisation day per date (005 FR-008) depends on stored days; answered 409 special_days.duplicate, and a blank name 422 special_days.name_required"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/special-days/{id}",
+      "operation_id": "change_day_api_v1_special_days__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "a date already taken, or a day of an ended project, depends on stored state (005 FR-008a); answered 409 special_days.duplicate or pay.project_ended"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/special-days",
+      "operation_id": "add_project_day_api_v1_projects__id__special_days_post",
+      "suites": ["pytest", "cli"],
+      "reason": "one day per project and date, and an ended project's days are fixed (005 FR-008a); answered 409 special_days.duplicate or pay.project_ended"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/work-log",
+      "operation_id": "work_log_api_v1_reports_work_log_get",
+      "suites": ["pytest", "cli"],
+      "reason": "exactly one of three optional ids, a start needed for a site or group, and a range of at most 366 days span several parameters, which OpenAPI 3.0 cannot state (005 FR-023, FR-024, FR-030); answered 422 reports.scope_invalid, reports.start_required or reports.range_invalid"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/hours",
+      "operation_id": "hours_api_v1_reports_hours_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to on or after from and at most 366 days later spans two parameters (005 FR-030); answered 422 reports.range_invalid"
     }
   ]
 }

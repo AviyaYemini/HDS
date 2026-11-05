@@ -1,0 +1,79 @@
+"""Persistence of managers on projects (005 FR-021, FR-022).
+
+Layer: repositories. Depends on ``hds.models`` and ``hds.repositories.base`` only; it MUST NOT
+import services or routers. Callers lock the project before replacing its set.
+"""
+
+import uuid
+from collections.abc import Collection, Sequence
+
+from sqlalchemy import delete, insert, select
+
+from hds.models.project_manager import ProjectManager
+from hds.models.user import User, UserRole
+from hds.repositories.base import BaseRepository
+
+ASSIGNABLE_ROLES = (UserRole.manager, UserRole.admin)
+"""Who may be on a project as its manager."""
+
+
+class ProjectManagerRepository(BaseRepository[ProjectManager]):
+    """Which Managers and Admins are on which projects."""
+
+    model = ProjectManager
+
+    async def members(self, org_id: uuid.UUID, project_id: uuid.UUID) -> list[User]:
+        """The project's managers, by name then id."""
+        query = (
+            select(User)
+            .join(ProjectManager, ProjectManager.user_id == User.id)
+            .where(
+                ProjectManager.organization_id == org_id,
+                ProjectManager.project_id == project_id,
+            )
+            .order_by(User.full_name, User.id)
+        )
+        return list((await self.session.execute(query)).scalars())
+
+    async def staff_among(
+        self, org_id: uuid.UUID, user_ids: Collection[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Those of ``user_ids`` who are active Managers or Admins of the organisation."""
+        if not user_ids:
+            return set()
+        query = select(User.id).where(
+            User.organization_id == org_id,
+            User.id.in_(list(user_ids)),
+            User.role.in_(ASSIGNABLE_ROLES),
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+        )
+        return set((await self.session.execute(query)).scalars())
+
+    async def replace(
+        self, org_id: uuid.UUID, project_id: uuid.UUID, user_ids: Sequence[uuid.UUID]
+    ) -> None:
+        """Make ``user_ids`` the project's managers."""
+        await self.session.execute(
+            delete(ProjectManager).where(ProjectManager.project_id == project_id)
+        )
+        if user_ids:
+            await self.session.execute(
+                insert(ProjectManager),
+                [
+                    {"organization_id": org_id, "project_id": project_id, "user_id": u}
+                    for u in user_ids
+                ],
+            )
+        await self.session.flush()
+
+    async def manages(
+        self, user_id: uuid.UUID, project_ids: Collection[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Those of ``project_ids`` that ``user_id`` is assigned to."""
+        if not project_ids:
+            return set()
+        query = select(ProjectManager.project_id).where(
+            ProjectManager.user_id == user_id, ProjectManager.project_id.in_(list(project_ids))
+        )
+        return set((await self.session.execute(query)).scalars())
