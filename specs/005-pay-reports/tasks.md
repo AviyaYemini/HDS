@@ -67,10 +67,10 @@ reason before the code exists. Each group ends with mutation checks, the gates (
 ## Phase 6: Screens, P6, Group F
 
 - [X] T029 Regenerate `packages/api-client` (`pnpm api-client:generate`) so the screens use the generated client only
-- [ ] T030 [P] [US1] Failing Jest tests `apps/client/src/screens/__tests__/MyPayScreen.test.tsx`: lines, totals, a hidden pay, `rate_missing`, the month switch, Hebrew and English
-- [ ] T031 [P] [US4] Failing Jest tests `apps/client/src/screens/__tests__/WorkLogScreen.test.tsx` and `HoursReportScreen.test.tsx` [US5]: filters, grouping, pay columns only when present
-- [ ] T032 [P] Failing Playwright journeys `apps/client/tests/e2e/test_us_my_pay.spec.ts` (pay in at most three steps, SC-001), `test_us_work_log.spec.ts`, `test_us_hours_report.spec.ts`; extend `test_rtl.spec.ts` to the new screens; add `test_us_pay_settings.spec.ts` [US2] and `test_us_project_managers.spec.ts` [US6], skipped "pending the admin screens" as 004 did for journeys without screens (Constitution IV)
-- [ ] T033 Screens `apps/client/src/screens/{MyPayScreen,WorkLogScreen,HoursReportScreen}.tsx`, routes `apps/client/app/(employee)/pay.tsx` and `apps/client/app/(employee)/reports/{work-log,hours}.tsx`, `src/components/EmployeeNav.tsx` (My pay for everyone; Reports for Managers and Admins), strings in `src/locales/{en,he}.json`; client gates (lint, typecheck, Jest, `api-client:check`, e2e) green; commit `feat(client): my pay and report screens (005 Group F)`
+- [X] T030 [P] [US1] Failing Jest tests `apps/client/src/screens/__tests__/MyPayScreen.test.tsx`: lines, totals, a hidden pay, `rate_missing`, the month switch, Hebrew and English
+- [X] T031 [P] [US4] Failing Jest tests `apps/client/src/screens/__tests__/WorkLogScreen.test.tsx` and `HoursReportScreen.test.tsx` [US5]: filters, grouping, pay columns only when present
+- [X] T032 [P] Failing Playwright journeys `apps/client/tests/e2e/test_us_my_pay.spec.ts` (pay in at most three steps, SC-001), `test_us_work_log.spec.ts`, `test_us_hours_report.spec.ts`; extend `test_rtl.spec.ts` to the new screens; add `test_us_pay_settings.spec.ts` [US2] and `test_us_project_managers.spec.ts` [US6], skipped "pending the admin screens" as 004 did for journeys without screens (Constitution IV)
+- [X] T033 Screens `apps/client/src/screens/{MyPayScreen,WorkLogScreen,HoursReportScreen}.tsx`, routes `apps/client/app/(employee)/pay.tsx` and `apps/client/app/(employee)/reports/{work-log,hours}.tsx`, `src/components/EmployeeNav.tsx` (My pay for everyone; Reports for Managers and Admins), strings in `src/locales/{en,he}.json`; client gates (lint, typecheck, Jest, `api-client:check`, e2e) green; commit `feat(client): my pay and report screens (005 Group F)`
 
 ## Phase 7: Polish and checkpoint, P7, Group G
 

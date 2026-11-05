@@ -1,4 +1,4 @@
-/** The employee bar: My availability, My shifts and sign-out. */
+/** The bar: My availability, My shifts, My pay, the reports for Managers and Admins, sign-out. */
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
@@ -11,6 +11,8 @@ export function EmployeeNav() {
   const { t } = useTranslation();
   const router = useRouter();
   const session = useSession();
+  // Reports are for Managers and Admins; the API refuses anyone else whatever the bar shows.
+  const staff = session.user?.role === "manager" || session.user?.role === "admin";
 
   async function signOut(): Promise<void> {
     await session.signOut();
@@ -25,6 +27,18 @@ export function EmployeeNav() {
       <Row>
         <Button testID="nav-availability" label={t("nav.availability")} onPress={() => router.push("/availability")} quiet />
         <Button testID="nav-shifts" label={t("nav.shifts")} onPress={() => router.push("/shifts")} quiet />
+        <Button testID="nav-pay" label={t("nav.pay")} onPress={() => router.push("/pay")} quiet />
+        {staff ? (
+          <>
+            <Button
+              testID="nav-work-log"
+              label={t("nav.work_log")}
+              onPress={() => router.push("/reports/work-log")}
+              quiet
+            />
+            <Button testID="nav-hours" label={t("nav.hours")} onPress={() => router.push("/reports/hours")} quiet />
+          </>
+        ) : null}
         <Button testID="sign-out-btn" label={t("auth.sign_out")} onPress={() => void signOut()} quiet />
       </Row>
     </View>

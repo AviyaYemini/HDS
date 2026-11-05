@@ -178,3 +178,30 @@ group still had its own failing tests first, mutation checks and review.
      **kept**: it reads one column pair and needs no pricing.
   8. The rest-window message now says weekday or time.
   9. The untyped `**narrow` became a typed `Scope`.
+
+## Group F: the screens (T029 to T033)
+
+- **Built:** My pay (month switch, a line per worked shift with its hours at each rate, the total,
+  pay-off and missing-rate lines said in words), the work-log (a project, a site or a group; a site
+  or group asks for a start date) and the hours report (by employee or project, shift counts, pay
+  only where the answer has it, the missing-rate count). The bar shows My pay to everyone and the
+  reports to Managers and Admins (from the signed-in user's role; the API refuses others anyway).
+  `useLoad` takes inputs to reload on. English and Hebrew strings.
+- **Where the tests are:** tasks.md named `src/screens/__tests__`; the client's Jest tests live in
+  `apps/client/tests/unit`, so they went there (`pay.test.tsx`, `reports.test.tsx`, `nav.test.tsx`).
+- **Journeys:** `test_us_my_pay` (pay in two steps from sign-in, and the Hebrew layout),
+  `test_us_work_log`, `test_us_hours_report`; `test_us_pay_settings` and `test_us_project_managers`
+  written and skipped pending the admin screens, as 004 did. e2e: 13 passed, 28 skipped.
+- **Mutation checks:** 10 on the client, all caught (one after making its test wait long enough for
+  the stale answer to arrive).
+- **/code-review high**, 10 findings, all fixed:
+  1. and 2. A late answer to an earlier month or grouping could replace the newer one, and old
+     data stayed on screen while the new one loaded. `useLoad` now drops all but the latest answer
+     and clears data when its inputs change. Tests with held-back answers cover both.
+  3. and 4. The hours report hid the missing-rate count and the per-group shift counts; both shown.
+  5. The e2e month check used the runner's zone; it now compares the shift's date at the site.
+  6. A failed project list was silent; it now shows the error and a retry.
+  7. The work-log only offered projects; it now offers sites and groups too (FR-023).
+  8. A dead `undefined` check removed.
+  9. The month switch is one component (`MonthSwitch`) with its own strings.
+  10. The Hebrew singular forms now read "one shift", not "shift 1".
