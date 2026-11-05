@@ -64,3 +64,32 @@ requirement, a security regression, an unplanned migration, a push or anything d
   wrong, because one 15-minute step of its clock crossed both ends and it applied them in a fixed
   order. The oracle now applies them in the order the clock reaches them. **Test fix**, no code
   change; checked against every start minute of the week for that case.
+
+## Group B: migration 022 and the models (T006, T007)
+
+- **Built:** migration `022_pay_reports` and the models: the premium defaults on `organisations`,
+  the switches and nullable overrides on `projects` (the bounds of both from one helper,
+  `models/pay_columns.py`), `special_days`, `project_managers`, and the partial index
+  `idx_shifts_org_published_start`. `alembic check` is clean.
+- **Tests:** `tests/integration/test_migration_022.py` (26: defaults, bounds on both tables, the
+  partial unique days, the managers' key, indexes, downgrade and upgrade again, offline SQL) and
+  `tests/unit/test_pay_columns.py` (3).
+- **Mutation checks:** 11, all caught.
+- **/code-review high**, 9 findings:
+  1. Projects already ended at the upgrade kept following the defaults, against FR-007. The upgrade
+     now copies the defaults into them; a test covers it. **Fixed.**
+  2. Nothing ties a special day's or a project manager's organisation to its project's. **Declined**:
+     every organisation-owned table in the schema (staffing needs, shifts, assignments) relies on the
+     service and repository scoping, which the cross-organisation sweep tests; a composite key would
+     need a new unique constraint on `projects` for this one table.
+  3. `idx_special_days_project` duplicated the partial unique index. **Removed.**
+  4. `idx_shifts_org_published_start` overlaps `idx_shifts_org_start`. **Kept**: the plan prompt asks
+     for indexed report queries and research R9 chose it; the performance test (T026) measures it.
+     It now has the same `sqlite_where` as the other partial indexes.
+  5. An unused `SETTINGS` tuple. **Removed.**
+  6. and 7. The defaults and the bounds were written three times (pay package, models, migration),
+     and `alembic check` does not compare check constraints. **Fixed by tests**: the models' defaults
+     must equal `DEFAULT_SETTINGS`, and the migration's frozen bounds must equal the models'. Models
+     do not import the pay package, which is for services only.
+  8. The valid-override test did not read the values back. **Fixed.**
+  9. A stale "depends on base only" docstring. **Fixed.**

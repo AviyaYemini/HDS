@@ -16,6 +16,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,6 +63,14 @@ class Shift(TimestampedBase):
         ),
         Index("idx_shifts_org_start", "organization_id", "starts_at"),
         Index("idx_shifts_project_start", "project_id", "starts_at"),
+        # Reports and pay to date read published shifts only (005 research R9).
+        Index(
+            "idx_shifts_org_published_start",
+            "organization_id",
+            "starts_at",
+            postgresql_where=text("status = 'published'"),
+            sqlite_where=text("status = 'published'"),
+        ),
     )
 
 

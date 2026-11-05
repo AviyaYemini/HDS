@@ -1,12 +1,16 @@
 """The tenant that owns all other records.
 
-Layer: models. Depends on ``hds.models.base`` only.
+Layer: models. Depends on ``hds.models.base`` and ``hds.models.pay_columns`` only.
 """
 
-from sqlalchemy import CheckConstraint, SmallInteger, text
+from datetime import time
+from decimal import Decimal
+
+from sqlalchemy import CheckConstraint, Numeric, SmallInteger, Time, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from hds.models.base import TimestampedBase
+from hds.models.pay_columns import pay_setting_checks
 
 
 class Organisation(TimestampedBase):
@@ -19,6 +23,11 @@ class Organisation(TimestampedBase):
     ``min_rest_hours`` (default 11) and ``max_weekly_hours`` (default 48) are the limits the roster
     rules warn against, both positive (docs/hds-spec.md section 5, H2 and H3). A new organisation
     gets the shift types morning, afternoon and night from a database trigger (migration 020).
+
+    The ``pay_*`` columns are the premium defaults every project follows unless it has its own
+    value (005 FR-006): normal lengths and the first overtime tier in minutes, rates in percent
+    (``NUMERIC(5,2)``), increases in points, and the weekly rest window as weekday (0 Sunday) and
+    local time at both ends. Their bounds are in ``hds.models.pay_columns``.
     """
 
     __tablename__ = "organisations"
@@ -32,9 +41,47 @@ class Organisation(TimestampedBase):
         SmallInteger, nullable=False, default=48, server_default=text("48")
     )
 
+    pay_day_normal_minutes: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=480, server_default=text("480")
+    )
+    pay_night_normal_minutes: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=420, server_default=text("420")
+    )
+    pay_tier1_minutes: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=120, server_default=text("120")
+    )
+    pay_overtime1_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("125.00"), server_default=text("125.00")
+    )
+    pay_overtime2_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("150.00"), server_default=text("150.00")
+    )
+    pay_rest_start_weekday: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=5, server_default=text("5")
+    )
+    pay_rest_start_time: Mapped[time] = mapped_column(
+        Time, nullable=False, default=time(18, 0), server_default=text("'18:00'")
+    )
+    pay_rest_end_weekday: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=6, server_default=text("6")
+    )
+    pay_rest_end_time: Mapped[time] = mapped_column(
+        Time, nullable=False, default=time(22, 0), server_default=text("'22:00'")
+    )
+    pay_rest_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("150.00"), server_default=text("150.00")
+    )
+    pay_increase1_points: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("25.00"), server_default=text("25.00")
+    )
+    pay_increase2_points: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("50.00"), server_default=text("50.00")
+    )
+
     __table_args__ = (
         CheckConstraint("min_rest_hours BETWEEN 1 AND 24", name="ck_organisations_min_rest_range"),
         CheckConstraint(
             "max_weekly_hours BETWEEN 1 AND 168", name="ck_organisations_max_weekly_range"
         ),
+        *pay_setting_checks("organisations", optional=False),
     )
