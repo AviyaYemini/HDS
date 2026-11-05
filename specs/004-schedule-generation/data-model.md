@@ -29,8 +29,8 @@ A generation run and, once it has succeeded, its proposal (US2 to US4, FR-004 to
 | id | uuid | primary key |
 | organization_id | uuid | references organisations |
 | requested_by | uuid | references users |
-| first_day, last_day | date | `last_day >= first_day`, at most 31 days (`ck_schedule_jobs_range`) |
-| project_ids | uuid[] | the run's projects; empty means every active project |
+| first_day, last_day | date | `last_day >= first_day` (`ck_schedule_jobs_order`), at most 31 days (`ck_schedule_jobs_length`) |
+| project_ids | jsonb | the run's project ids as strings; empty means every active project. JSON rather than `uuid[]` so the SQLite unit-test schema builds; the service validates each id |
 | solver | text | `greedy` or `cpsat` (`cpsat` by default) |
 | status | text | `queued`, `running`, `succeeded`, `failed` |
 | attempts | smallint | claims so far; at most 3 |

@@ -106,3 +106,45 @@ requirement, a security regression, an unplanned migration, a push or anything d
   (Constitution VII bans the name `float` in `src`): the CP-SAT deadline was annotated `float`. The
   test is right, so the code changed: the deadline is now integer nanoseconds
   (`time.monotonic_ns()`). Fixed in the next commit; from here on, a commit waits for its tests.
+- **Second /code-review high** (engine and Group C), ten findings:
+  1. **A draft an Admin overfilled by hand, or a kept person who already broke a rule, failed every
+     run with `SolverError`.** 003 never refuses a manual change, so this can happen. The final
+     check now judges only the warnings the proposal causes: rules broken by someone it chose, and
+     headcounts it filled past. `Slot.places` never goes below zero.
+  2. **A slot's own draft could be given both in `fixed` and as the slot's `kept` people**, counting
+     them twice. The `Problem` contract now says it never goes in `fixed`, and `generate` refuses it
+     (`ValueError`).
+  3. **Kept people listed in `current` came out as "removed".** They are ignored in the changes.
+  4. **An empty place could have no reason** when every active candidate was already on the slot. It
+     now reads `no_active_employee` (0).
+  5. **On SQLite, `ddl_if` dropped the whole range check**, not only its length part. It is now two
+     checks: `ck_schedule_jobs_order` everywhere and `ck_schedule_jobs_length` on PostgreSQL only.
+     Checked by inserting a backwards range into a SQLite schema built from the models: refused.
+  6. **`project_ids` is JSONB, while data-model.md said `uuid[]`.** Kept as JSONB, so the SQLite
+     unit schema builds; data-model.md now says so, and the service validates the ids (Group E).
+  7. **A candidate who could take no slot pinned the smallest total** in the hours and nights
+     spreads. Both spreads now count only people who can take at least one slot.
+  8. **CP-SAT rounded fixed hours up to whole minutes**, so it could refuse what the rule allows. The
+     weekly constraint now counts whole seconds, as the rule does.
+  9. **Hot-loop cost:** `Slot.day` and `Slot.minutes` are cached, and the week of each slot is
+     worked out once per roster.
+  10. **Duplicated helpers:** there is now one `local_day`, in `rules.py`. `validate`'s own overlap
+      loop is left as it is: tested 003 code, and only cosmetic.
+- Mutations on these fixes: R1 to R6 caught. R7 (`places` allowed below zero) is equivalent, because
+  every use of `places` skips anything at or below zero.
+
+## Group C: migration 021 and the models (T008, T009)
+
+- Migration 021: `staffing_needs`, `schedule_jobs`, `assignments.source`, and the settings bounds
+  (rest 1 to 24 hours, weekly 1 to 168, replacing 020's positive-only checks). Models
+  `StaffingNeed` and `ScheduleJob`; `Assignment.source`; the organisation's new check names.
+  `alembic check` is clean.
+- **Test fix during the build:** `test_migration_021.py` first passed dates as strings, which asyncpg
+  refuses. Because the "bad row" cases accepted any `DBAPIError`, they would have passed on that
+  type error instead of on the constraints. Dates are now `date` objects, and the bad rows expect
+  `IntegrityError` only, so each one fails on its constraint alone.
+- Mutations: C1 to C11 all caught (weekday and headcount checks, range order and length, the unique
+  need, the source values and default, the settings bounds, the status and proposal-state values).
+- /hds-review: no findings. /code-review: covered with the engine above (finding 5, the SQLite
+  range check, is fixed here).
+- Full suite, then on Python 3.12: 1,944 passed.

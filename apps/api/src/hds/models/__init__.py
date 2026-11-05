@@ -17,9 +17,11 @@ from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification, user_qualifications
 from hds.models.refresh_token import RefreshToken
+from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
+from hds.models.staffing_need import StaffingNeed
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 
@@ -44,6 +46,8 @@ __all__ = [
     "ShiftType",
     "project_shift_types",
     "SubmissionWindow",
+    "ScheduleJob",
+    "StaffingNeed",
     "AvailabilityEntry",
     "Shift",
     "Assignment",
