@@ -332,3 +332,60 @@ requirement, a security regression, an unplanned migration, a push or anything d
   the staff screens".
 - `packages/api-client` regenerated; the drift check is green; client lint, type check and Jest (60)
   pass.
+
+## Merge gate (T027)
+
+Run on the committed tree after Group G (`e39118e`):
+
+| Gate | Result |
+| --- | --- |
+| ruff, format, `mypy --strict` (288 files), interrogate 100%, import graph, pip-audit | All pass |
+| Full suite | 2,082 passed, 5 deselected (timing and benchmark, run below) |
+| Concurrency, three runs | 54 passed each time |
+| Timing (SC-207 and the reset request) | Ratios 1.004 and 1.005; both pass |
+| Property tests at the CI profile (1,000 examples) | 6 passed |
+| Benchmark (`-m benchmark`) | 3 passed; SC-001 holds |
+| Schemathesis against a seeded server | Passed on the first attempt, no 5xx |
+| Migrations | 013 → head → 013 → head on a scratch database; `seed_dev`, then head → 020 → head on the seeded one; `alembic check` clean both times |
+| OpenAPI drift | The contract and the implementation agree |
+| Client | The generated client is up to date; ESLint and `tsc` clean; Jest 60 passed |
+
+Quickstart, row by row:
+
+- **Purity:** `test_purity.py`.
+- **Hard rules (SC-002):** `test_generate_properties.py`, at 1,000 examples.
+- **Legacy flaws (SC-005):** in `test_generate.py`, night then morning, a close preference yielding,
+  hours not counts, nights balanced, two projects at once.
+- **Coverage and reasons (SC-003, SC-004):** in `test_generate.py`, each reason built on purpose.
+- **Fairness (SC-006):** the hours-spread and nights tests, and the absent-candidate balance test.
+- **US1:** `test_requirements.py` and its races.
+- **US7:** `test_scheduling_settings.py`.
+- **US2:** `test_schedule_jobs.py` and `test_schedule_inputs.py`.
+- **Queue:** `test_worker.py` and `test_worker_claims.py`.
+- **US3:** `test_schedule_accept.py` and `test_accept_races.py`.
+- **US6, SC-007:** regenerating after accepting proposes no change; one absence changes only its own
+  day.
+- **Access:** the role matrix, the cross-organisation sweep and the visibility sweep.
+- **Benchmark (SC-001):** the table above, in Group G.
+
+## 004 closed
+
+All tasks T001 to T027 are done and committed on `004-schedule-generation`; nothing is pushed.
+
+**Deviations, each recorded above:**
+- Groups D to F were committed together; their routers share the composition root.
+- One commit (Group B) went in with a failing test and was fixed in the next commit.
+- The Group D tests were not seen failing before the code.
+- The lock-order fixes in accept rest on reasoning, not a failing test.
+
+**Open items, none blocking:**
+- The 003 routers still import SQLAlchemy and repositories; moving them onto `hds.wiring` is a
+  follow-up.
+- A composite foreign key from staffing needs to project shift types (FR-002 in the schema).
+- One shared cursor helper for the jobs and shifts lists.
+- Paging `GET /me/shifts` (from 003).
+- The staff screens: generating, reviewing and accepting a roster, and staffing needs; their
+  Playwright specs are written and skipped.
+- The goal weights and the time limit per organisation are fixed in this feature (spec assumptions).
+- Qualifications on slots (the rest of H5).
+- Locking chosen assignments (SCH-5).
