@@ -74,7 +74,7 @@ def generate(
     """
     if solver not in ("greedy", "cpsat"):
         raise ValueError(f"unknown solver {solver!r}")
-    deadline = time.monotonic() + time_limit.total_seconds()
+    deadline_ns = time.monotonic_ns() + time_limit // timedelta(microseconds=1) * 1000
     people = [p.id for p in problem.candidates if p.is_active]
     roster = Roster(problem)
     minutes, nights = _fixed_in_range(problem)
@@ -84,7 +84,9 @@ def generate(
     else:
         from . import cpsat
 
-        chosen, optimal = cpsat.solve(problem, roster, people, minutes, nights, deadline, workers)
+        chosen, optimal = cpsat.solve(
+            problem, roster, people, minutes, nights, deadline_ns, workers
+        )
         by_key = {s.key: s for s in problem.slots}
         for key, on in chosen.items():
             for p in on:

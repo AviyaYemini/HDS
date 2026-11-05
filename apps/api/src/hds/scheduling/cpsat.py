@@ -33,7 +33,7 @@ def solve(
     people: Sequence[uuid.UUID],
     minutes: Mapping[uuid.UUID, int],
     nights: Mapping[uuid.UUID, int],
-    deadline: float,
+    deadline_ns: int,
     workers: int | None = None,
 ) -> tuple[dict[str, list[uuid.UUID]], bool]:
     """Assign people to ``problem``'s slots.
@@ -44,8 +44,8 @@ def solve(
         people: The active candidates.
         minutes: Each candidate's minutes already worked in the range (fixed shifts).
         nights: Each candidate's nights already worked in the range.
-        deadline: When every stage must be done, on ``time.monotonic()``; the caller starts the
-            clock before the model is built, so building counts against the limit.
+        deadline_ns: When every stage must be done, on ``time.monotonic_ns()``; the caller starts
+            the clock before the model is built, so building counts against the limit.
         workers: Search workers; ``1`` with a fixed seed makes a run repeatable (tests).
 
     Returns:
@@ -98,7 +98,7 @@ def solve(
     optimal = True
     values: dict[tuple[uuid.UUID, str], int] | None = None
     for index, (expression, maximise) in enumerate(stages):
-        remaining = deadline - time.monotonic()
+        remaining = (deadline_ns - time.monotonic_ns()) / 1e9
         if remaining <= 0.01:
             optimal = False
             break

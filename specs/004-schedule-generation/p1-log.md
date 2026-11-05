@@ -100,3 +100,9 @@ requirement, a security regression, an unplanned migration, a push or anything d
 - Mutations after the fixes: 23 of 23 caught. New ones: B20 repair ignoring chosen minutes; B21 kept
   people taking no places; B22 minutes rounded down; B23 the final check ignoring kept people,
   defence in depth like B17, with a direct test.
+- **The Group B commit (`3067ba1`) went in with one failing test (my mistake).** The commit ran in
+  parallel with the unit and property run, before its result was read. The failing test was
+  `test_time_money_invariants.py::test_source_has_no_float_annotations_or_calls_on_money`
+  (Constitution VII bans the name `float` in `src`): the CP-SAT deadline was annotated `float`. The
+  test is right, so the code changed: the deadline is now integer nanoseconds
+  (`time.monotonic_ns()`). Fixed in the next commit; from here on, a commit waits for its tests.
