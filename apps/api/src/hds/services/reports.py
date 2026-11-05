@@ -26,6 +26,7 @@ from hds.core.exceptions import DomainValidationError, NotFoundError
 from hds.models.organisation import Organisation
 from hds.models.project import Project
 from hds.models.user import User, UserRole
+from hds.payroll import MICROS_PER_HOUR
 from hds.repositories.group import GroupRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import ReportShift, ReportShiftRepository
@@ -402,4 +403,4 @@ class ReportsService:
 def _hours(shift: ReportShift) -> Decimal:
     """A shift's real length in hours, as shown (two decimals, half up, as in pay to date)."""
     micros = Decimal((shift.ends_at - shift.starts_at) // timedelta(microseconds=1))
-    return shown(micros / 3_600_000_000)
+    return shown(micros / MICROS_PER_HOUR)

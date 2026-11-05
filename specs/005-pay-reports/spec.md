@@ -57,6 +57,21 @@ date rather than a projection.
 - Q: Are special days one list for the organisation, or can a project have its own? → A: The organisation's
   list applies to every project; an Admin can add days to a project or give a listed day its own rate there.
 
+### Session 2026-11-05 (review of PR 7)
+
+- Q: The roster and the employee list give Managers each shift's rate and each employee's default rate, so
+  rate times hours gives pay the reports hide. Is that allowed? → A: No, it is a gap in FR-022. A Manager
+  receives a shift's own rate only for projects whose pay they may see, and never another person's default
+  rate; Admins see every rate, and each person sees their own (FR-022a, Proposed).
+- Q: The 366-day limit and "who has worked at this project since it started" conflict for projects older
+  than a year. Which wins? → A: A project's work-log with no start date covers the whole project, from its
+  start date, with no limit; every range given explicitly keeps the 366-day limit (FR-024, FR-030).
+- Q: What happens to the pay of a project that is deleted without being ended? → A: Deleting fixes it as
+  ending does, so a later change to the defaults or the organisation's special days never changes its past
+  pay (FR-007).
+- Q: Does a Manager who is demoted keep their project assignments? → A: No; a demotion to Employee removes
+  them, so a later promotion shows no pay until an Admin assigns them again (FR-022).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - An employee sees the gross pay they have earned this month (Priority: P1)
@@ -308,7 +323,8 @@ report; remove M from A; M no longer sees it.
   unaffected. An Admin MUST be able to give a setting its own value or return it to following the default.
 - **FR-007**: An Admin MUST be able to set a project's pay settings when creating it and change them while
   it has not ended; changes to an ended project MUST be refused. When a project ends, the values it follows
-  from the defaults MUST be kept as they are at that moment.
+  from the defaults MUST be kept as they are at that moment. Deleting a project that has not ended MUST fix
+  its pay in the same way.
 - **FR-008**: Admins MUST be able to keep a list of special days for the organisation, each a date with a
   name and a rate (150% by default, up to 200% or more within FR-003, for example 200% for election day).
   Managers MUST be able to read it.
@@ -353,13 +369,17 @@ report; remove M from A; M no longer sees it.
   Admins MUST be able to read who is assigned; anyone else MUST be refused.
 - **FR-022**: A Manager MUST see pay in reports only for projects they are assigned to whose pay is on and
   open to Managers, and MUST never be able to change any rate or setting; a demoted, deactivated or deleted
-  Manager MUST see no pay.
+  Manager MUST see no pay, and a demotion to Employee MUST remove their project assignments.
+- **FR-022a** (Proposed): Outside reports, a Manager MUST receive a shift's own rate only for a project whose
+  pay they may see per FR-022, and MUST never receive another person's default rate; an Admin receives
+  every rate, and a person always receives their own default rate.
 
 **Work-log report (RPT-1, scenario A)**
 
 - **FR-023**: Managers and Admins MUST be able to read a work-log for exactly one of a project, a site or a
   group over a date range.
-- **FR-024**: For a project, a missing start date MUST default to the project's start date; for a site or a
+- **FR-024**: For a project, a missing start date MUST default to the project's start date, so the work-log
+  covers the whole project however long it has run; for a site or a
   group, the start date MUST be given; a missing end date MUST default to today in the organisation's time
   zone.
 - **FR-025**: The work-log MUST list each person once per project with shift count, hours, and first and last
@@ -380,7 +400,8 @@ report; remove M from A; M no longer sees it.
 
 - **FR-029**: Reports and pay to date MUST count only published shifts that have ended, each in the month or
   range of its local start date at its site.
-- **FR-030**: A report range MUST end on or after its start and cover at most 366 days, or be refused.
+- **FR-030**: A report range MUST end on or after its start and cover at most 366 days, or be refused. The
+  one exception is a project's work-log with no start date (FR-024), which has no limit.
 - **FR-031**: Employees and Clients MUST be refused every report and every pay setting; an Employee MUST never
   see another employee's hours or pay; a Client MUST never see employee fields (original rule 3).
 - **FR-032**: Data from another organisation MUST never appear, and a project, site, group or user of another

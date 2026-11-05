@@ -25,7 +25,7 @@ from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus
 from hds.models.special_day import SpecialDay
 from hds.models.user import User
-from hds.payroll import PaySettings, price
+from hds.payroll import CENT, PaySettings, price
 from hds.payroll import SpecialDay as PaidDay
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import PayReportRepository, WorkedShift
@@ -33,7 +33,6 @@ from hds.repositories.special_day import SpecialDayRepository
 from hds.services.pay_settings import project_settings
 from hds.services.special_day import merge_days
 
-CENT = Decimal("0.01")
 MARGIN = timedelta(days=1)
 """No zone is more than 14 hours from UTC, so a day either side holds every local date."""
 _MONTH = re.compile(r"^([0-9]{4})-(0[1-9]|1[0-2])$")

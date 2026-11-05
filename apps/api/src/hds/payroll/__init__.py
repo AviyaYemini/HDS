@@ -5,11 +5,13 @@ framework, a database driver or the network, and MUST NOT be imported by models 
 (005 research R2). Services call it; nothing else computes pay.
 """
 
-from .price import PayLine, PayPart, price
+from .price import CENT, MICROS_PER_HOUR, PayLine, PayPart, price
 from .settings import DEFAULT_SETTINGS, PaySettings, RestWindow, SpecialDay
 
 __all__ = [
+    "CENT",
     "DEFAULT_SETTINGS",
+    "MICROS_PER_HOUR",
     "PayLine",
     "PayPart",
     "PaySettings",

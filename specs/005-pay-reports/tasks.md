@@ -77,10 +77,25 @@ reason before the code exists. Each group ends with mutation checks, the gates (
 - [X] T034 [P] ADR `docs/adr/012-pay-calculation.md` (the pure package, cutting at instants, defaults and freezing, hiding pay), listed in `docs/README.md`; the FIN-3 note in `docs/hds-spec.md` (pay to date, premiums, Proposed); `apps/api/README.md`
 - [X] T035 The merge gate (all API gates, full suite, concurrency three times, contract, drift, migration round trips 021 ↔ 022 on a seeded database, the property tests at the CI profile, the performance test) plus the client gates; every quickstart row checked; close `p1-log.md`; commit `docs(spec): close 005`. Do not push.
 
+## Phase 8: Review of PR 7, Group H
+
+The review of PR 7 found 15 issues; the spec's Session 2026-11-05 (review of PR 7) records the decisions.
+
+- [X] T036 [P] [US1] Failing unit tests `apps/api/tests/unit/test_price_review.py`: a rest window whose ends differ only in seconds is priced to the second (Friday 18:00:00 to 18:00:30 pays 30 seconds at the rest rate); a time the clocks skip maps to the exact instant of the jump, not up to a second later
+- [X] T037 [US1] `apps/api/src/hds/payroll/price.py`: rest windows read to the microsecond; the skipped-time search exact to the microsecond; `CENT` and `MICROS_PER_HOUR` exported from `hds.payroll` and used by the services instead of copies; commit `fix(payroll): price rest windows to the second and clock jumps exactly (005 Group H)`
+- [ ] T038 [P] [US5] Failing tests, unit `test_reports_service.py` and integration `test_hours_report.py`: a row, group or total whose shown lines all lack a rate has no pay figure and a missing count above zero, never pay 0.00; `shifts_missing_rate` counts distinct shifts; lines whose pay is hidden are not priced; a special day on a date more than a day past the range still prices a long shift; the hours at each rate add up to the line's shown hours
+- [ ] T039 [P] [US4] Failing tests `test_work_log.py`: a project older than 366 days with no `from` lists shifts from its start date; an explicit range over 366 days is still refused
+- [ ] T040 [P] [US2] [US6] Failing tests: `GET /shifts` hides `pay_rate` from a Manager for projects whose pay they may not see; `GET /employees` and `GET /employees/{id}` never give a Manager another person's `default_hourly_rate`; an Admin sees both and a person their own (FR-022a); demoting a Manager to Employee removes their project assignments (FR-022); deleting a project that has not ended freezes its pay (FR-007)
+- [ ] T041 Reports service: report row and group ids required (no random default); pay totals only from lines with a rate; distinct shifts missing a rate; hidden lines take their hours without pricing; special days loaded from the earliest shift start to the latest shift end; parts rounded so they sum to the shown hours (largest remainder); work-log with no `from` for a project starts at its start date with no limit
+- [ ] T042 Rate hiding in `services/roster.py` (pay visibility shared with the reports in one service function) and `services/employee.py`; demotion removes project assignments; `ProjectService.soft_delete` freezes pay first, and `Pricing` treats a deleted project as fixed; migration 023 freezes projects deleted before 005; contract, `docs/hds-api.md` and drift check; commit `fix(api): hide rates outside reports and fix the review's report findings (005 Group H)`
+- [ ] T043 [P] Failing Jest tests: the hours report shows a missing-rate count on each row and group and "rate missing" instead of a pay figure; My pay shows each shift's start, end and base rate
+- [ ] T044 Regenerate `packages/api-client`; `HoursReportScreen.tsx` and `MyPayScreen.tsx`; strings in `en` and `he`; client gates green; commit `fix(client): show missing rates in the hours report and times and rates in my pay (005 Group H)`
+- [ ] T045 ADR 012 and `docs/hds-api.md` amended (rates outside reports, open-start work-log, deleting freezes); API and client gates; reword the commits commitlint refuses and push with `--force-with-lease`
+
 ## Dependencies
 
 - Group A before D and E. Group B before C. Group C before D. Group D before E (shared repository and
-  pricing). Group F after D and E. Group G last.
+  pricing). Group F after D and E. Group G last. Group H after G.
 - US2 and US6 (Group C) are independent of the pure package; US1 and US3 need A and C; US4 needs B and
   C; US5 needs A, C and D.
 

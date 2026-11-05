@@ -31,8 +31,7 @@ NIGHT_MINIMUM = timedelta(hours=2)
 HUNDRED = Decimal(100)
 CENT = Decimal("0.01")
 _MICRO = timedelta(microseconds=1)
-_SECOND = timedelta(seconds=1)
-_WEEK_MINUTES = 7 * 24 * 60
+_WEEK = timedelta(days=7)
 
 
 @dataclass(frozen=True)
@@ -181,13 +180,14 @@ def _first_showing(wall: datetime, zone: tzinfo) -> datetime:
     """The first instant at which the site's clock shows ``wall`` or later, in UTC.
 
     A wall time that exists maps to its earlier instant (the first of two when the clocks go back).
-    One the clocks skip maps to the moment of the jump, found by bisection to the second.
+    One the clocks skip maps to the moment of the jump, found by bisection to the microsecond, so
+    exactly (a datetime holds nothing finer).
     """
     candidates = sorted(wall.replace(tzinfo=zone, fold=f).astimezone(UTC) for f in (0, 1))
     if _wall(candidates[0], zone) == wall:
         return candidates[0]
     low, high = candidates  # the clock reads before ``wall`` at ``low``, after it at ``high``
-    while high - low > _SECOND:
+    while high - low > _MICRO:
         middle = low + (high - low) / 2
         if _wall(middle, zone) >= wall:
             high = middle
@@ -218,13 +218,24 @@ def _night_time(start: datetime, end: datetime, zone: tzinfo, first: date, last:
     return total
 
 
+def _in_week(weekday: int, at: time) -> timedelta:
+    """How far ``at`` on ``weekday`` is from Sunday 00:00, to the microsecond."""
+    return timedelta(
+        days=weekday,
+        hours=at.hour,
+        minutes=at.minute,
+        seconds=at.second,
+        microseconds=at.microsecond,
+    )
+
+
 def _rest_windows(
     rest: RestWindow, zone: tzinfo, first: date, last: date
 ) -> list[tuple[datetime, datetime]]:
     """Every weekly rest window that can touch the dates ``first`` to ``last``, as UTC instants."""
-    start_minute = rest.start_weekday * 1440 + rest.start_time.hour * 60 + rest.start_time.minute
-    end_minute = rest.end_weekday * 1440 + rest.end_time.hour * 60 + rest.end_time.minute
-    length = timedelta(minutes=(end_minute - start_minute) % _WEEK_MINUTES)
+    length = (
+        _in_week(rest.end_weekday, rest.end_time) - _in_week(rest.start_weekday, rest.start_time)
+    ) % _WEEK
     if not length:
         return []
     windows = []
