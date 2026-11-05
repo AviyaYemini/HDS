@@ -1,5 +1,6 @@
 /**
- * My pay (005 US1): the gross pay earned so far in a month, before tax, a line per shift worked.
+ * My pay (005 US1): the gross pay earned so far in a month, before tax, a line per shift worked,
+ * each with its start and end at the site and the rate it was paid at (FR-018).
  * Figures come from the API as strings and are shown as they come; pay a line does not have is said,
  * never shown as zero.
  */
@@ -10,7 +11,7 @@ import { call, useErrorText } from "../api/errors";
 import { useSession } from "../api/SessionContext";
 import { MonthSwitch } from "../components/MonthSwitch";
 import { Body, Button, Card, ErrorText, Row, Screen, Title } from "../components/ui";
-import { currentMonth, formatDay } from "../time";
+import { currentMonth, formatDay, shiftTimes } from "../time";
 import { useLoad } from "./useLoad";
 
 export function MyPayScreen() {
@@ -37,7 +38,7 @@ export function MyPayScreen() {
           <Card testID="pay-total">
             <Row>
               <Body>{t("pay.total_hours", { hours: pay.data.hours })}</Body>
-              <Body>{t("pay.total_pay", { pay: pay.data.pay })}</Body>
+              {pay.data.pay != null ? <Body>{t("pay.total_pay", { pay: pay.data.pay })}</Body> : null}
             </Row>
           </Card>
           {pay.data.shifts_missing_rate > 0 ? (
@@ -46,12 +47,24 @@ export function MyPayScreen() {
             </Card>
           ) : null}
           {pay.data.lines.length === 0 ? <Body>{t("pay.empty")}</Body> : null}
-          {pay.data.lines.map((line) => (
+          {pay.data.lines.map((line) => {
+            const times = shiftTimes(line.starts_at, line.ends_at, line.timezone, i18n.language);
+            return (
             <Card key={line.shift_id} testID={`pay-line-${line.shift_id}`}>
               <Row>
                 <Body>{formatDay(line.date, i18n.language)}</Body>
                 <Body>{line.project_name}</Body>
                 <Body>{t("pay.hours", { hours: line.hours })}</Body>
+              </Row>
+              <Row>
+                <Body muted>
+                  {times.endDay === null
+                    ? t("shifts.time_range", { start: times.start, end: times.end })
+                    : t("shifts.time_range_next_day", { start: times.start, end: times.end, endDay: times.endDay })}
+                </Body>
+                {line.base_rate !== null ? (
+                  <Body muted>{t("pay.base_rate", { rate: line.base_rate })}</Body>
+                ) : null}
               </Row>
               {line.parts.map((part) => (
                 <Body key={part.rate_pct} muted>
@@ -66,7 +79,8 @@ export function MyPayScreen() {
                     : t("pay.line_pay", { pay: line.pay ?? "" })}
               </Body>
             </Card>
-          ))}
+            );
+          })}
         </>
       )}
     </Screen>

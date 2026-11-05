@@ -77,6 +77,7 @@
   "pay.total_pay": "Total {{pay}}",
   "pay.hours": "{{hours}} h",
   "pay.part": "{{hours}} h at {{rate}}%",
+  "pay.base_rate": "{{rate}} an hour",
   "pay.line_pay": "Pay {{pay}}",
   "pay.no_pay_on_project": "No pay on this project",
   "pay.rate_missing": "No pay rate set — ask an admin",

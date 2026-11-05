@@ -18,6 +18,7 @@
   "pay.total_pay": "סה״כ {{pay}}",
   "pay.hours": "{{hours}} ש׳",
   "pay.part": "{{hours}} ש׳ ב-{{rate}}%",
+  "pay.base_rate": "{{rate}} לשעה",
   "pay.line_pay": "שכר {{pay}}",
   "pay.no_pay_on_project": "אין שכר בפרויקט זה",
   "pay.rate_missing": "לא נקבע תעריף שכר — יש לפנות למנהל מערכת",

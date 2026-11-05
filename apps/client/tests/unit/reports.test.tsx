@@ -136,6 +136,38 @@ test("the hours report shows pay only where the answer has it", async () => {
   }
 });
 
+test("a row whose rates are all missing says so instead of showing pay, and every level counts them", async () => {
+  const missing = {
+    ...HOURS,
+    groups: [
+      {
+        id: "p1",
+        name: "Gate",
+        hours: "16.00",
+        shifts: 2,
+        shifts_missing_rate: 1,
+        pay: "400.00",
+        rows: [
+          { id: "u1", name: "Dana Levi", hours: "8.00", shifts: 1, shifts_missing_rate: 0, pay: "400.00" },
+          { id: "u2", name: "Omer Cohen", hours: "8.00", shifts: 1, shifts_missing_rate: 1 },
+        ],
+      },
+    ],
+    hours: "16.00",
+    shifts: 2,
+    shifts_missing_rate: 1,
+    pay: "400.00",
+  };
+  const api = new FakeApi().on("GET", "/api/v1/reports/hours", json(200, missing));
+  await renderWith(await signedIn(api), <HoursReportScreen />);
+
+  const omer = await screen.findByTestId("hours-row-p1-u2");
+  expect(omer).toHaveTextContent(/1 shift has no pay rate yet/);
+  expect(omer).not.toHaveTextContent(/0\.00/);
+  expect(screen.getByTestId("hours-row-p1-u1")).not.toHaveTextContent(/no pay rate/);
+  expect(screen.getByTestId("hours-group-p1")).toHaveTextContent(/1 shift has no pay rate yet/);
+});
+
 test("the hours report can be grouped by project, never leaving the old grouping on screen", async () => {
   let release: (() => void) | undefined;
   const slow = new Promise<void>((resolve) => (release = resolve));

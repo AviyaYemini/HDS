@@ -1,6 +1,10 @@
 /**
  * Hours report (005 US5): hours and shifts by employee or by project for a month, with pay only
  * where the API sends it (an Admin, or a Manager on a project opened to them).
+ *
+ * Every level says how many of its shifts have no pay rate. A level whose shown shifts all lack a
+ * rate has that count and no pay figure, so it says the rate is missing; it never shows zero
+ * (FR-004). A hidden project's count is always 0, so nothing about its rates shows.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +17,21 @@ import { currentMonth, monthBounds } from "../time";
 import { useLoad } from "./useLoad";
 
 type GroupBy = "employee" | "project";
+
+type Totals = { pay?: string | null; shifts_missing_rate: number };
+
+/** A level's pay, if the answer has it, and its count of shifts with no pay rate. */
+function PayFigure({ totals, muted }: { totals: Totals; muted?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {totals.pay != null ? <Body muted={muted}>{t("reports.pay", { pay: totals.pay })}</Body> : null}
+      {totals.shifts_missing_rate > 0 ? (
+        <Body muted>{t("pay.missing_count", { count: totals.shifts_missing_rate })}</Body>
+      ) : null}
+    </>
+  );
+}
 
 export function HoursReportScreen() {
   const { t } = useTranslation();
@@ -73,14 +92,14 @@ export function HoursReportScreen() {
                 <Heading>{group.name}</Heading>
                 <Body>{t("reports.shifts", { count: group.shifts })}</Body>
                 <Body>{t("pay.hours", { hours: group.hours })}</Body>
-                {group.pay !== undefined ? <Body>{t("reports.pay", { pay: group.pay })}</Body> : null}
+                <PayFigure totals={group} />
               </Row>
               {group.rows.map((row) => (
-                <Row key={row.id}>
+                <Row key={row.id} testID={`hours-row-${group.id}-${row.id}`}>
                   <Body muted>{row.name}</Body>
                   <Body muted>{t("reports.shifts", { count: row.shifts })}</Body>
                   <Body muted>{t("pay.hours", { hours: row.hours })}</Body>
-                  {row.pay !== undefined ? <Body muted>{t("reports.pay", { pay: row.pay })}</Body> : null}
+                  <PayFigure totals={row} muted />
                 </Row>
               ))}
             </Card>

@@ -54,8 +54,12 @@ export function Body({ children, muted, testID }: { children: ReactNode; muted?:
 }
 
 /** Items side by side, start to end. */
-export function Row({ children }: { children: ReactNode }) {
-  return <View style={styles.row}>{children}</View>;
+export function Row({ children, testID }: { children: ReactNode; testID?: string }) {
+  return (
+    <View testID={testID} style={styles.row}>
+      {children}
+    </View>
+  );
 }
 
 /** A bordered block. */

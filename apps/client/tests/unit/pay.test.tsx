@@ -12,6 +12,7 @@ function line(id: string, extra: Record<string, unknown> = {}) {
     date: "2026-10-09",
     starts_at: "2026-10-09T19:00:00Z",
     ends_at: "2026-10-10T03:00:00Z",
+    timezone: "Asia/Jerusalem",
     hours: "8.00",
     base_rate: "50.0000",
     rate_missing: false,
@@ -57,6 +58,35 @@ test("a project without pay and a missing rate are said, never shown as zero", a
   expect(await screen.findByTestId("pay-line-b")).toHaveTextContent(/No pay on this project/);
   expect(screen.getByTestId("pay-line-c")).toHaveTextContent(/No pay rate set/);
   expect(screen.getByTestId("pay-line-c")).not.toHaveTextContent(/0\.00/);
+  expect(screen.getByTestId("pay-missing")).toHaveTextContent(/1 shift/);
+});
+
+test("each shift shows its start and end at the site and the rate it was paid at", async () => {
+  const api = new FakeApi().on("GET", "/me/pay", json(200, OCTOBER));
+  await renderWith(await signedIn(api), <MyPayScreen />);
+
+  const paid = await screen.findByTestId("pay-line-a");
+  // 19:00 to 03:00 UTC is 22:00 to 06:00 in Israel, ending the next day (FR-018).
+  expect(paid).toHaveTextContent(/22:00/);
+  expect(paid).toHaveTextContent(/06:00/);
+  expect(paid).toHaveTextContent(/50\.0000 an hour/);
+  expect(screen.getByTestId("pay-line-c")).not.toHaveTextContent(/an hour/);
+});
+
+test("a month whose rates are all missing shows no total pay, never zero", async () => {
+  const missing = {
+    ...OCTOBER,
+    lines: [line("c", { rate_missing: true, pay: undefined, base_rate: null })],
+    hours: "8.00",
+    pay: undefined,
+    shifts_missing_rate: 1,
+  };
+  const api = new FakeApi().on("GET", "/me/pay", json(200, missing));
+  await renderWith(await signedIn(api), <MyPayScreen />);
+
+  const total = await screen.findByTestId("pay-total");
+  expect(total).toHaveTextContent(/8\.00 h/);
+  expect(total).not.toHaveTextContent(/Total/);
   expect(screen.getByTestId("pay-missing")).toHaveTextContent(/1 shift/);
 });
 
