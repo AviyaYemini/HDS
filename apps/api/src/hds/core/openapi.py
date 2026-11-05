@@ -82,6 +82,8 @@ _CONFLICTS = {
     ("/api/v1/shift-types", "post"),
     ("/api/v1/shift-types/{id}", "patch"),
     ("/api/v1/shifts/{id}/assignments", "post"),
+    ("/api/v1/schedule-jobs/{id}/accept", "post"),
+    ("/api/v1/schedule-jobs/{id}/discard", "post"),
 }
 # Signed-in operations open to every role, with no other refusal, so they never answer 403.
 _NEVER_FORBIDDEN = {

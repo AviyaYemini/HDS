@@ -1,10 +1,11 @@
 """No read of availability or the roster leaks another employee's data or a draft (T060).
 
-Every Part 2 read is listed here, from the application's OpenAPI document, so a new read fails until
-it is added. Each is called as an Employee, a Client and an employee of another organisation, and
-the answer must hold nothing they may not see.
+Every Part 2 read, and every read of 004 (staffing needs, the scheduling limits and schedule jobs,
+whose proposals name employees), is listed here from the application's OpenAPI document, so a new
+read fails until it is added. Each is called as an Employee, a Client and an employee of another
+organisation, and the answer must hold nothing they may not see.
 
-Covers: 003 SC-104, FR-109, FR-122 to FR-125.
+Covers: 003 SC-104, FR-109, FR-122 to FR-125; 004 FR-022, FR-027.
 """
 
 from datetime import date
@@ -25,6 +26,7 @@ from tests.roster_support import (
     headers_for,
     open_window,
 )
+from tests.schedule_support import ask, work
 
 PART2_READS = {
     "GET /api/v1/availability-windows",
@@ -33,8 +35,20 @@ PART2_READS = {
     "GET /api/v1/projects/{id}/shift-types",
     "GET /api/v1/shifts",
     "GET /me/shifts",
+    "GET /api/v1/projects/{id}/requirements",
+    "GET /api/v1/organisation/scheduling",
+    "GET /api/v1/schedule-jobs",
+    "GET /api/v1/schedule-jobs/{id}",
 }
-PART2_TAGS = {"availability", "shift types", "shifts", "my roster"}
+PART2_TAGS = {
+    "availability",
+    "shift types",
+    "shifts",
+    "my roster",
+    "staffing needs",
+    "scheduling settings",
+    "schedule jobs",
+}
 
 
 def test_every_part_2_read_is_in_the_sweep() -> None:
@@ -69,7 +83,11 @@ async def world(
     await open_window(async_client, manager)
     boss_entry = await async_client.post(constraints(boss), json=body(), headers=manager)
     assert boss_entry.status_code == 201, boss_entry.text
+    job = await ask(async_client, manager)  # its proposal names Ann and her manager
+    assert job.status_code == 202, job.text
+    await work()
     return {
+        "job": job.json()["id"],
         "project": project,
         "ann": ann,
         "boss": boss,
@@ -96,6 +114,12 @@ def paths(w: dict[str, Any], me: Any) -> dict[str, str]:
         ),
         "GET /api/v1/shifts": "/api/v1/shifts",
         "GET /me/shifts": "/me/shifts",
+        "GET /api/v1/projects/{id}/requirements": (
+            f"/api/v1/projects/{w['project']['id']}/requirements"
+        ),
+        "GET /api/v1/organisation/scheduling": "/api/v1/organisation/scheduling",
+        "GET /api/v1/schedule-jobs": "/api/v1/schedule-jobs",
+        "GET /api/v1/schedule-jobs/{id}": f"/api/v1/schedule-jobs/{w['job']}",
     }
 
 
@@ -107,6 +131,10 @@ EMPLOYEE = {
     "GET /api/v1/projects/{id}/shift-types": 403,
     "GET /api/v1/shifts": 403,
     "GET /me/shifts": 200,
+    "GET /api/v1/projects/{id}/requirements": 403,
+    "GET /api/v1/organisation/scheduling": 403,
+    "GET /api/v1/schedule-jobs": 403,
+    "GET /api/v1/schedule-jobs/{id}": 403,
 }
 
 

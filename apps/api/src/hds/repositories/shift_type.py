@@ -89,6 +89,15 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
         )
         return result.scalar_one_or_none()
 
+    async def share_lock_all(self, org_id: uuid.UUID) -> None:
+        """Share-lock every shift type of the organisation, so a retirement or change waits."""
+        await self.session.execute(
+            select(ShiftType.id)
+            .where(ShiftType.organization_id == org_id)
+            .order_by(ShiftType.id)
+            .with_for_update(read=True)
+        )
+
     async def share_lock(self, org_id: uuid.UUID, ids: Sequence[uuid.UUID]) -> list[ShiftType]:
         """The organisation's types among ``ids``, locked against changes until the end.
 

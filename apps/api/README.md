@@ -52,6 +52,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `RESET_JOB_TIMEOUT_SECONDS` | How long one reset job may run before it is stopped, so a stalled mail provider cannot hold every place. Its link stays stored, and its email is lost | `30` |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limits set to `0`: otherwise every user shares the proxy's address, so one bad window locks everyone out of sign-in and silently stops reset mail for everyone, with only a warning in the log. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
+| `SCHEDULE_TIME_LIMIT_SECONDS` | How long the schedule worker's solver may search before it returns its best roster, 1 to 60 (004) | `20` |
 | `TEST_DATABASE_URL` | Tests only; a database to use and keep, whose name must end in `_test`. Unset, each run creates its own `hds_run_<process id>_test` and drops it at the end | a database per run |
 
 ## Common tasks

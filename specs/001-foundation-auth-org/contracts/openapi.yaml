@@ -860,6 +860,228 @@ components:
           items:
             $ref: "#/components/schemas/UUIDv4"
 
+    # ── Staffing needs and scheduling limits (004) ──────────────────────────
+
+    NeedItem:
+      type: object
+      additionalProperties: false
+      required: [shift_type_id, weekday, headcount]
+      properties:
+        shift_type_id:
+          $ref: "#/components/schemas/UUIDv4"
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 Sunday to 6 Saturday.
+        headcount:
+          type: integer
+          minimum: 1
+          maximum: 999
+
+    NeedsRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NeedItem"
+
+    NeedsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NeedItem"
+
+    SchedulingSettings:
+      type: object
+      required: [min_rest_hours, max_weekly_hours]
+      properties:
+        min_rest_hours:
+          type: integer
+        max_weekly_hours:
+          type: integer
+
+    SchedulingSettingsUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        min_rest_hours:
+          type: integer
+          minimum: 1
+          maximum: 24
+        max_weekly_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+
+    # ── Schedule jobs (004) ──────────────────────────────────────────────────
+
+    JobCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties:
+        from:
+          $ref: "#/components/schemas/ISODate"
+        to:
+          $ref: "#/components/schemas/ISODate"
+        project_ids:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/UUIDv4"
+        solver:
+          type: string
+          enum: [greedy, cpsat]
+          default: cpsat
+
+    JobSummary:
+      type: object
+      required: [id, status, from, to, project_ids, solver, requested_by, settings, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        from:
+          $ref: "#/components/schemas/ISODate"
+        to:
+          $ref: "#/components/schemas/ISODate"
+        project_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/UUIDv4"
+        solver:
+          type: string
+        requested_by:
+          $ref: "#/components/schemas/UUIDv4"
+        settings:
+          $ref: "#/components/schemas/SchedulingSettings"
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+          description: jobs.solver_failed or jobs.worker_lost when failed.
+        optimal:
+          type: boolean
+          nullable: true
+        proposal_state:
+          type: string
+          nullable: true
+          enum: [open, accepted, discarded, expired]
+
+    JobRead:
+      allOf:
+        - $ref: "#/components/schemas/JobSummary"
+        - type: object
+          properties:
+            proposal:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/Proposal"
+
+    JobPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobSummary"
+        next_cursor:
+          type: string
+          nullable: true
+
+    Proposal:
+      type: object
+      description: Who works each slot, what stays empty and why, and what it changes; employees by id only.
+      required: [slots, unfilled, employees, no_availability, short_published, changes]
+      properties:
+        slots:
+          type: array
+          items:
+            type: object
+            required: [key, project_id, shift_type_id, date, starts_at, ends_at, headcount, assigned, kept]
+            properties:
+              key: {type: string}
+              shift_id: {type: string, format: uuid, nullable: true}
+              project_id: {$ref: "#/components/schemas/UUIDv4"}
+              shift_type_id: {$ref: "#/components/schemas/UUIDv4"}
+              date: {$ref: "#/components/schemas/ISODate"}
+              starts_at: {type: string, format: date-time}
+              ends_at: {type: string, format: date-time}
+              headcount: {type: integer}
+              assigned: {type: array, items: {$ref: "#/components/schemas/UUIDv4"}}
+              kept: {type: array, items: {$ref: "#/components/schemas/UUIDv4"}}
+        unfilled:
+          type: array
+          items:
+            type: object
+            required: [key, places, reasons]
+            properties:
+              key: {type: string}
+              places: {type: integer}
+              reasons:
+                type: array
+                items:
+                  type: object
+                  required: [code, employees]
+                  properties:
+                    code:
+                      type: string
+                      enum: [schedule.unavailable, schedule.overlap, schedule.minimum_rest, schedule.weekly_maximum, schedule.needed_elsewhere, schedule.no_active_employee]
+                    employees: {type: integer}
+        employees:
+          type: array
+          items:
+            type: object
+            required: [user_id, minutes, nights, open_met, close_not_met]
+            properties:
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+              minutes: {type: integer}
+              nights: {type: integer}
+              open_met: {type: integer}
+              close_not_met: {type: integer}
+        no_availability:
+          type: array
+          items: {$ref: "#/components/schemas/UUIDv4"}
+        short_published:
+          type: array
+          items:
+            type: object
+            required: [shift_id, needed, assigned]
+            properties:
+              shift_id: {$ref: "#/components/schemas/UUIDv4"}
+              needed: {type: integer}
+              assigned: {type: integer}
+        changes:
+          type: object
+          required: [added, removed]
+          properties:
+            added:
+              type: array
+              items: {type: object, required: [key, user_id], properties: {key: {type: string}, user_id: {$ref: "#/components/schemas/UUIDv4"}}}
+            removed:
+              type: array
+              items: {type: object, required: [key, user_id], properties: {key: {type: string}, user_id: {$ref: "#/components/schemas/UUIDv4"}}}
+
     # ── Manual roster (003 Part 2) ────────────────────────────────────────────
 
     Money:
@@ -2822,6 +3044,286 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Staffing needs and scheduling limits (004) ──────────────────────────
+  /projects/{id}/requirements:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: project_requirements_list
+      summary: List a project's staffing needs (Manager+)
+      tags: [StaffingNeeds]
+      responses:
+        "200":
+          description: The project's needs, by weekday.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NeedsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    put:
+      operationId: project_requirements_set
+      summary: Set a project's staffing needs (Manager+)
+      description: >
+        Replaces the needs as a whole. A shift type the project does not use, including another
+        organisation's, is refused with 422 requirements.shift_type_not_in_project; a retired one
+        with 422 requirements.shift_type_retired; a repeated shift type and weekday with 422
+        requirements.duplicate.
+      tags: [StaffingNeeds]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NeedsRequest"
+      responses:
+        "200":
+          description: The project's needs as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NeedsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /organisation/scheduling:
+
+    get:
+      operationId: scheduling_settings_read
+      summary: Read the scheduling limits (Manager+)
+      tags: [SchedulingSettings]
+      responses:
+        "200":
+          description: The minimum rest and weekly maximum, in whole hours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulingSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    patch:
+      operationId: scheduling_settings_change
+      summary: Change the scheduling limits (Admin)
+      tags: [SchedulingSettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchedulingSettingsUpdate"
+      responses:
+        "200":
+          description: The limits as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulingSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Schedule jobs (004) ──────────────────────────────────────────────────
+  /schedule-jobs:
+
+    post:
+      operationId: schedule_jobs_create
+      summary: Ask for a roster (Manager+)
+      description: >
+        Queues a run that proposes a roster for from to to (at most 31 days) over every active
+        project, or the project_ids given. A worker solves it; nothing in the roster changes
+        until the proposal is accepted. 422 schedule.range_invalid, schedule.project_not_active;
+        with an Idempotency-Key, a repeat answers the first job and the same key with another
+        request is 422 idempotency.key_reused.
+      tags: [ScheduleJobs]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCreateRequest"
+      responses:
+        "202":
+          description: The queued job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    get:
+      operationId: schedule_jobs_list
+      summary: List schedule jobs (Manager+)
+      tags: [ScheduleJobs]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [queued, running, succeeded, failed]
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: The organisation's jobs, newest first, without proposals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: schedule_jobs_read
+      summary: Read a schedule job and its proposal (Manager+)
+      tags: [ScheduleJobs]
+      responses:
+        "200":
+          description: The job and, once it has succeeded, its proposal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/accept:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: schedule_jobs_accept
+      summary: Accept a proposal as drafts (Manager+)
+      description: >
+        Stores the proposal as draft shifts and assignments, all or nothing; nothing is
+        published. 409 schedule.not_ready, schedule.proposal_closed, schedule.proposal_out_of_date.
+      tags: [ScheduleJobs]
+      responses:
+        "200":
+          description: What was written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shifts_created, shifts_updated, assignments_added, assignments_removed]
+                properties:
+                  shifts_created: {type: integer}
+                  shifts_updated: {type: integer}
+                  assignments_added: {type: integer}
+                  assignments_removed: {type: integer}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/discard:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: schedule_jobs_discard
+      summary: Discard a proposal (Manager+)
+      description: Closes the proposal without storing it. 409 schedule.not_ready, schedule.proposal_closed.
+      tags: [ScheduleJobs]
+      responses:
+        "200":
+          description: The job, its proposal now discarded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

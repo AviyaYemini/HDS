@@ -19,6 +19,7 @@ from hds.models.group import Group
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification
+from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
@@ -40,6 +41,7 @@ class OtherOrg:
     shift_type: ShiftType | None = None
     shift: Shift | None = None
     assignment: Assignment | None = None
+    job: ScheduleJob | None = None
 
 
 @pytest_asyncio.fixture
@@ -120,7 +122,16 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     assignment = Assignment(
         id=uuid.uuid4(), organization_id=org.id, shift_id=shift.id, user_id=user.id
     )
-    test_db.add(assignment)
+    job = ScheduleJob(
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        requested_by=user.id,
+        first_day=date(2027, 6, 6),
+        last_day=date(2027, 6, 12),
+        project_ids=[],
+        settings={"min_rest_hours": 11, "max_weekly_hours": 48},
+    )
+    test_db.add_all([assignment, job])
     await test_db.commit()
     return OtherOrg(
         org,
@@ -135,4 +146,5 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         shift_type,
         shift,
         assignment,
+        job,
     )

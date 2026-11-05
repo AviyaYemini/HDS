@@ -148,3 +148,168 @@ requirement, a security regression, an unplanned migration, a push or anything d
 - /hds-review: no findings. /code-review: covered with the engine above (finding 5, the SQLite
   range check, is fixed here).
 - Full suite, then on Python 3.12: 1,944 passed.
+
+## Group D: staffing needs and the scheduling limits (T010 to T014)
+
+- **Built:**
+  - `GET`/`PUT /api/v1/projects/{id}/requirements`: the needs, replaced as a whole under the
+    project's row lock, with the named types share-locked.
+  - `GET`/`PATCH /api/v1/organisation/scheduling`: the limits; Admin changes them.
+  - Removing a type from a project, or retiring it, removes its needs (FR-002).
+  - Three error codes in `en` and `he`; the role matrix, the cross-organisation sweep (a foreign
+    shift type in an own project answers 422 `requirements.shift_type_not_in_project`, revealing
+    nothing) and `unprovable_operations.json` extended.
+  - The contract (`openapi.yaml`) and `docs/hds-api.md` updated; the drift check agrees.
+- **Harness slip:** the Group D tests were written before the code, but I did not run them before
+  writing it, so I never saw them fail. The mutation checks stand in for that: D1 to D15, with each
+  surviving mutant then given a test.
+- **Mutations:**
+  - D2 (a retired type accepted) survived: a retired type also leaves the project's set, so it was
+    refused as "not in the project" instead. A direct test now expects `shift_type_retired`.
+  - D8 and D11 (the services' own role checks removed) are equivalent: the routers' role gates
+    refuse first. They stay as defence in depth.
+  - All others caught, including D4 and D5 (the project and type locks), by the race tests.
+- **/hds-review:** no findings. All four operations have allowed and forbidden tests.
+- **/code-review high**, nine findings:
+  1. **Retiring a type could deadlock against replacing a project's needs.** The two deletes locked
+     shared rows in opposite orders. Fixed: replacing the needs, and replacing a project's types,
+     now share-lock the types of the project's current needs before touching any need row, as a
+     retirement locks its type first. A seven-row race test was added, but it never reproduced the
+     deadlock, so the fix rests on the lock order, not on a failing test.
+  2. **An unbounded list of needs became one huge `IN` and a 500.** The list is capped at 1,000
+     items (422). Test first.
+  3. **The error code depended on set order** when a request held both a retired and a foreign
+     type. Validation now follows the request order. Test first.
+  4. **A composite foreign key from needs to project shift types**, suggested so the schema enforces
+     FR-002: declined. Migration 021 is committed, so this would need another migration, and the
+     service rule is tested, races included. Recorded as a follow-up.
+  5. **`update_limits` took the organisation row lock that window operations also take.** It is now
+     a single `UPDATE … RETURNING`.
+  6. **`Weekday` was defined twice.** The required, strict form now lives in `hds.core.types`.
+     Availability's optional `weekday` field is a different shape and keeps its own.
+  7. and 8. **A duplicated tenant check and an extra read after the replace:** cosmetic, left.
+  9. **`for_projects` did not exclude deleted projects or retired types.** It does now.
+
+## Group E: jobs and the worker (T015 to T019)
+
+- **Built:**
+  - `POST`/`GET /api/v1/schedule-jobs` and `GET /api/v1/schedule-jobs/{id}`, with `Idempotency-Key`
+    through the existing service.
+  - The problem builder, `ScheduleInputService`: slots from the needs within each project's own
+    dates, drafts standing in for their need, every other draft a slot too, published shifts
+    fixed and short ones reported. The surroundings run from the Sunday of the first week to the
+    Saturday of the last, plus the minimum rest either side. Candidates follow FR-007; people on a
+    draft who are not candidates are kept on it. The fingerprint covers the problem, the run's
+    projects and their shift types.
+  - `python -m hds.worker`: claim with `FOR UPDATE SKIP LOCKED`, a 2-minute lease, three attempts,
+    `LISTEN schedule_jobs` with a 5-second poll, the solve in a thread, and three short
+    transactions per job.
+  - `SCHEDULE_TIME_LIMIT_SECONDS` (default 20) in the settings and `.env.example`.
+- **The hook caught a layering slip:**
+  - The first `schedule_jobs.py` imported SQLAlchemy and repositories into a router, as 003's
+    routers do.
+  - `requirements.py` and `scheduling_settings.py` (Group D) had the same imports. I had written
+    them through the shell, so the hook never saw them; that was a slip, not a deliberate way
+    round the hook.
+  - Fixed at the cause: a composition root, `hds/wiring.py`, builds the services and offers them
+    as FastAPI dependencies, so the three new routers import neither the database nor a
+    repository.
+  - The 003 routers still import both. Recorded as a follow-up; they predate this feature.
+- **Test fixes while building, all in tests written for this group, before they ever passed:**
+  - The worker test asked for 7 mornings with one employee: 56 hours, over the weekly 48. It now
+    asks for Sunday to Thursday.
+  - A project's start date cannot be changed through the API; the test sets it in the database.
+- **Code fix found by the tests:** the fingerprint missed a project's shift types when no need used
+  the changed one. FR-024 names those changes, so the fingerprint now includes the (project, type)
+  pairs in use.
+- **The cross-organisation sweep's inventory missed body fields named `*_ids`**, so a list of ids
+  could have escaped it. It now includes them; no older operation surfaced.
+- **The visibility sweep** covers the four new reads too: a proposal names employees, and an
+  Employee, a Client or another organisation sees none of it.
+- **Mutations:** E1 to E18 run.
+  - E9 (no rest margin before the range) and E10 (the fingerprint ignoring entries) survived at
+    first; their tests are now sharper and both are caught.
+  - E15 (a late run overwriting a newer claim) survived; a new test holds a second claim open while
+    the first run ends, and it is caught.
+  - E12 (no `SKIP LOCKED`) is equivalent for correctness: PostgreSQL re-checks the row after the
+    lock wait, so the second worker finds nothing; `SKIP LOCKED` only saves the wait.
+- An earlier full suite started before these changes hung at 97% for 11 minutes with no database
+  activity, while its files changed under it. I stopped it; a fresh full run covers D and E.
+- **/code-review high on D and E**, ten findings:
+  1. **The worker solved with the organisation's limits at claim time, not the job's own.** A job
+     records the limits it was asked with and now solves with them (`build(..., limits=)`).
+     Accepting still compares with the current limits, so a change makes it out of date. Test
+     first.
+  2. **The 2-minute lease could run out mid-solve**, and the time limit had no upper bound. The time
+     limit is now 1 to 60 seconds and the lease 5 minutes.
+  3. **A database error in the claim or store steps stopped the worker.** Each step of the loop is
+     now caught and logged, and the job keeps its lease to be claimed again.
+  4. **My comment on `update_limits` was wrong:** a plain `UPDATE` takes the row lock too. The
+     comment now says so. The contention with window operations stays; both are rare and short.
+  5. **A chosen project that ended before the run was silently left out.** The job now fails with
+     `jobs.project_not_active` (`en`, `he`). Test first.
+  6. **Groups D and E were not committed separately.** True: D's routers moved onto the wiring E
+     added, so the two cannot be split cleanly now. They are committed together, with this note.
+  7. **The new repositories extended `BaseRepository`, not `OrgScopedRepository`.** The job and need
+     repositories now use the tenant-scoped base. The inputs repository reads across tables, each
+     query scoped by hand.
+  8. **Duplicated helpers:** `rules.sunday_index` is now the one weekday helper, used by the problem
+     builder and the availability service. The cursor helper still has two copies (cosmetic, left).
+  9. **The builder re-sorted every cell per project and every need per day.** Both are now grouped
+     once.
+  10. **A notification arriving during the drain was lost.** The wake event is cleared before the
+      drain.
+- **Contract test findings (Schemathesis):**
+  - `GET /schedule-jobs` with a random cursor answers 422, as `GET /shifts` does; it joins
+    `unprovable_operations.json`.
+  - `PATCH /organisation/scheduling` refused `5.0`, which JSON Schema counts as an integer. The
+    limits are no longer `strict`; `5.5` and `"eleven"` are still refused.
+
+## Group F: accept and discard (T020 to T023)
+
+- `POST /schedule-jobs/{id}/accept` and `/discard`. Accepting locks the job, then the run's
+  projects in id order, then every staff account of the organisation in id order. It rebuilds the
+  problem and compares fingerprints (409 `schedule.proposal_out_of_date`), then writes. Existing
+  drafts are updated in place; new slots become new drafts; assignments get `source = 'generated'`
+  and `assigned_by` the accepter. Nothing is published. Codes `schedule.not_ready`,
+  `schedule.proposal_closed` and `schedule.proposal_out_of_date` in `en` and `he`; 409 added to both
+  operations in `core/openapi.py`.
+- Tests seen failing first this time (16 of 17, as 404s), then passing. One test fix while building:
+  shift answers have no `date` field, so the Monday check reads the start time.
+- **A fix found by the tests:** discard answered with a stale copy of the job, because the
+  repository updated the row behind the session's back. `decide` now sets the fields on the locked
+  job itself.
+- Mutations F1 to F10, all caught after one gap: F10 (people the proposal takes off a draft were
+  kept) needed a test where the person on a draft becomes absent before the run.
+- Race tests: two accepts at once store the proposal once; an accept racing an absence is either
+  first (200) or refused as out of date.
+- **/code-review high on F**, nine findings:
+  1. **Accept did not block the shift-level writes.** Publishing, changing, deleting, assigning and
+     unassigning could commit between the fingerprint check and accept's writes.
+  2. **Accept did not lock all the fingerprint's inputs:** projects with no slots, shift types, the
+     organisation's limits.
+     Fixed together. Accept now locks, in an order consistent with the other paths: the job; the
+     organisation row (`FOR NO KEY UPDATE`; a change of limits waits); every project in scope,
+     `FOR UPDATE` (needs, shift types and new shifts there wait, a new shift's key-share lock
+     included); the shift types (shared; a retirement waits); every shift in the surroundings
+     (`FOR NO KEY UPDATE`, as `get_locked`); then the staff. Shifts come before users because an
+     assignment locks its shift and then its user. A race test with publishing was added (8
+     rounds). **The race tests cannot prove the fix:** with the shift or staff locks removed (F11,
+     F12), they still pass, because the window is too narrow to hit on demand. The fix rests on
+     the lock order, and is recorded as such.
+  3. **While accept runs, staff sign-ins and refreshes wait on their user rows.** Accepted, and
+     documented in the service and ADR 011: accept is rare and short, and this is what makes the
+     out-of-date check exact.
+  4. **A failure storing the result was retried three times and reported as lost.** The worker now
+     fails the job with `jobs.solver_failed` at once.
+  5. **A third attempt finishing just past its lease is marked lost.** Left as is: the lease is 5
+     minutes and a solve at most 60 seconds.
+  6. **One savepoint per assignment while holding the locks.** New shifts and assignments are now
+     inserted in bulk, one statement each.
+  7. **A redundant projects query.** The job's project check now reads the built problem's own list.
+  8. **The cursor helper is duplicated.** Cosmetic; left.
+  9. **F was built on uncommitted D and E.** True: D to F are committed together, with this note.
+- **Full suite after D to F:** 2,081 passed, 1 failed. `test_deployment_files` wants every setting in
+  the API README's configuration table; `SCHEDULE_TIME_LIMIT_SECONDS` was missing and is added. The
+  gates found one missing docstring (`draft_slot`); fixed. Everything else is green: ruff, format,
+  `mypy --strict` (290 files), the import graph, `alembic check`.

@@ -6,7 +6,8 @@ given; it MUST NOT import routers or know about HTTP.
 Rules (003 FR-110 to FR-112): everyone who works shifts reads the types; Managers and Admins add,
 change and retire them, and choose a project's set. A type crosses midnight exactly when its end is
 not after its start, so that is computed, never sent. Changing a type does not move shifts already
-made from it, which keep their own times.
+made from it, which keep their own times. Removing a type from a project, or retiring it, removes
+its staffing needs (004 FR-002).
 """
 
 import uuid
@@ -19,6 +20,7 @@ from hds.models.shift_type import ShiftType
 from hds.models.user import User
 from hds.repositories.project import ProjectRepository
 from hds.repositories.shift_type import ShiftTypeRepository
+from hds.repositories.staffing_need import StaffingNeedRepository
 
 
 def _refuse_equal_times(starts: time, ends: time) -> None:
@@ -34,16 +36,21 @@ class ShiftTypeService:
     """Shift types and project shift types."""
 
     def __init__(
-        self, shift_type_repo: ShiftTypeRepository, project_repo: ProjectRepository
+        self,
+        shift_type_repo: ShiftTypeRepository,
+        project_repo: ProjectRepository,
+        need_repo: StaffingNeedRepository,
     ) -> None:
         """Wire the service to its repositories.
 
         Args:
             shift_type_repo: Shift types and project shift types.
             project_repo: Projects, to check one is in the organisation.
+            need_repo: Staffing needs, removed with a type's place in a project.
         """
         self._types = shift_type_repo
         self._projects = project_repo
+        self._needs = need_repo
 
     async def list_types(self, actor: User) -> list[ShiftType]:
         """Every shift type of the organisation, retired ones included and marked.
@@ -93,6 +100,10 @@ class ShiftTypeService:
             ends = data.get("ends_at_local", existing.ends_at_local)
             _refuse_equal_times(starts, ends)
             fields["crosses_midnight"] = ends <= starts
+        if data.get("is_active") is False:
+            # Under the type's row lock, which a staffing-need change share-locks, so no need is
+            # added to a type being retired.
+            await self._needs.remove_type(id)
         return await self._types.update(id, actor.organization_id, **fields)
 
     async def _project(self, actor: User, project_id: uuid.UUID) -> None:
@@ -134,5 +145,9 @@ class ShiftTypeService:
                 raise DomainValidationError(
                     code="shift_types.retired", detail="A retired shift type cannot be added."
                 )
+        # The types of the needs about to go are share-locked first, as replacing the needs does,
+        # so this and a retirement of one of them lock in the same order.
+        await self._types.share_lock(actor.organization_id, await self._needs.types_of(project_id))
         await self._types.set_for_project(project_id, ids)
+        await self._needs.keep_types(project_id, ids)
         return await self._types.for_project(project_id)

@@ -179,7 +179,7 @@ def _short_rests(
     return found
 
 
-def _sunday_index(day: date) -> int:
+def sunday_index(day: date) -> int:
     """The weekday of ``day`` counted from Sunday (0) to Saturday (6), the Israeli week."""
     return (day.weekday() + 1) % 7
 
@@ -192,7 +192,7 @@ def local_day(moment: datetime, zone: str) -> date:
 def week_start(moment: datetime, zone: str) -> date:
     """The Sunday that starts the week ``moment`` falls in, in ``zone`` (research R2)."""
     day = local_day(moment, zone)
-    return day - timedelta(days=_sunday_index(day))
+    return day - timedelta(days=sunday_index(day))
 
 
 def _week(
@@ -239,7 +239,7 @@ def entry_covers(entry: Entry, day: date, shift_type_id: uuid.UUID) -> bool:
         return False
     if entry.shift_type_id is not None and entry.shift_type_id != shift_type_id:
         return False
-    return entry.weekday is None or entry.weekday == _sunday_index(day)
+    return entry.weekday is None or entry.weekday == sunday_index(day)
 
 
 def _headcount(slot: ShiftSlot) -> set[RuleWarning]:

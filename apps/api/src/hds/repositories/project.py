@@ -5,6 +5,7 @@ import services or routers.
 """
 
 import uuid
+from collections.abc import Collection
 from typing import Any
 
 from sqlalchemy import select
@@ -87,6 +88,20 @@ class ProjectRepository(OrgScopedRepository[Project]):
             .with_for_update(key_share=True)
         )
         return result.first() is not None
+
+    async def lock_for_shifts(self, org_id: uuid.UUID, ids: Collection[uuid.UUID] | None) -> None:
+        """Lock the organisation's projects (``ids`` only, when given) in id order, ``FOR UPDATE``.
+
+        The full lock, unlike ``lock``: a new shift's foreign key takes a key-share lock on its
+        project, so creating a shift in one of them waits too. Accepting a schedule proposal holds
+        these while it checks the proposal is current and writes it (004 research G9).
+        """
+        query = select(Project.id).where(
+            Project.organization_id == org_id, Project.is_deleted.is_(False)
+        )
+        if ids is not None:
+            query = query.where(Project.id.in_(list(ids)))
+        await self.session.execute(query.order_by(Project.id).with_for_update())
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
         """Fetch a non-deleted project of the organisation, or ``None`` (also for other tenants)."""

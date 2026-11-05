@@ -159,6 +159,26 @@ class UserRepository(OrgScopedRepository[User]):
         """
         await lock_user_row(self.session, user_id)
 
+    async def lock_staff(self, org_id: uuid.UUID) -> None:
+        """Lock every active, not deleted, non-Client account of the organisation, in id order.
+
+        Accepting a schedule proposal holds these while it checks the proposal is current and
+        writes it (004 research G9): availability changes, assignments and deactivations each lock
+        their user first, so none can slip in between. Ascending id order, as ``lock_user_row``
+        asks of anything that locks several users.
+        """
+        await self.session.execute(
+            select(User.id)
+            .where(
+                User.organization_id == org_id,
+                User.is_active.is_(True),
+                User.is_deleted.is_(False),
+                User.role != UserRole.client,
+            )
+            .order_by(User.id)
+            .with_for_update()
+        )
+
     async def get_for_auth(self, id: uuid.UUID) -> User | None:
         """Resolve the owner of a verified credential: a token, or a one-time link.
 

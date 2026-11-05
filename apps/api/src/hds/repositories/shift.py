@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.core.exceptions import ConflictError
@@ -68,6 +68,27 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         self.session.add(shift)
         await self.session.flush()
         return shift
+
+    async def lock_between(self, org_id: uuid.UUID, start: datetime, end: datetime) -> None:
+        """Lock the organisation's shifts that overlap ``start`` to ``end``, in id order.
+
+        ``FOR NO KEY UPDATE``, as ``get_locked`` takes, so publishing, changing, deleting,
+        assigning and unassigning any of them waits. Accepting a schedule proposal holds these
+        (004 research G9).
+        """
+        await self.session.execute(
+            select(Shift.id)
+            .where(Shift.organization_id == org_id, Shift.starts_at < end, Shift.ends_at > start)
+            .order_by(Shift.id)
+            .with_for_update(key_share=True)
+        )
+
+    async def create_many(self, org_id: uuid.UUID, rows: Sequence[dict[str, Any]]) -> None:
+        """Insert many shifts in one statement; each row carries its own ``id``."""
+        if rows:
+            await self.session.execute(
+                insert(Shift), [{**row, "organization_id": org_id} for row in rows]
+            )
 
     async def get_locked(self, id: uuid.UUID, org_id: uuid.UUID) -> Shift | None:
         """Fetch a shift of the organisation and lock it until the transaction ends.
@@ -280,6 +301,29 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
                 ) from None
             raise
         return assignment
+
+    async def create_many(self, org_id: uuid.UUID, rows: Sequence[dict[str, Any]]) -> None:
+        """Insert many assignments in one statement.
+
+        Callers hold the locks that rule out a duplicate, so ``assignments.duplicate`` cannot
+        happen here.
+        """
+        if rows:
+            await self.session.execute(
+                insert(Assignment),
+                [{"id": uuid.uuid4(), **row, "organization_id": org_id} for row in rows],
+            )
+
+    async def remove_people(self, shift_id: uuid.UUID, user_ids: Sequence[uuid.UUID]) -> int:
+        """Take ``user_ids`` off a shift; the number of assignments removed."""
+        if not user_ids:
+            return 0
+        result = await self.session.execute(
+            delete(Assignment)
+            .where(Assignment.shift_id == shift_id, Assignment.user_id.in_(list(user_ids)))
+            .returning(Assignment.id)
+        )
+        return len(result.all())
 
     async def exists(self, id: uuid.UUID, org_id: uuid.UUID) -> bool:
         """Whether the assignment is still there, read from the database, not the session."""

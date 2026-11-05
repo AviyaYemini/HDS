@@ -163,3 +163,8 @@ LocalTimeOut = Annotated[
 
 # Roles that may be assigned through the employee endpoints (clients have their own).
 AssignableRole = Literal["employee", "manager", "admin"]
+
+
+# A day of the week counted from Sunday, as the Israeli week runs (003 research R2): 0 Sunday to 6
+# Saturday. Required wherever it is used as a whole value; strict, so "3" is refused, not cast.
+Weekday = Annotated[int, Field(ge=0, le=6, strict=True, description="0 Sunday to 6 Saturday.")]

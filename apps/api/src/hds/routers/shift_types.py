@@ -17,6 +17,7 @@ from hds.core.types import ChangeRequest, IsoTime, LocalTimeOut, Name, omittable
 from hds.models.user import User
 from hds.repositories.project import ProjectRepository
 from hds.repositories.shift_type import ShiftTypeRepository
+from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.services.shift_type import ShiftTypeService
 
 router = APIRouter(prefix="/api/v1", tags=["shift types"])
@@ -24,7 +25,9 @@ router = APIRouter(prefix="/api/v1", tags=["shift types"])
 
 def _svc(db: AsyncSession) -> ShiftTypeService:
     return ShiftTypeService(
-        shift_type_repo=ShiftTypeRepository(db), project_repo=ProjectRepository(db)
+        shift_type_repo=ShiftTypeRepository(db),
+        project_repo=ProjectRepository(db),
+        need_repo=StaffingNeedRepository(db),
     )
 
 
