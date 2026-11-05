@@ -136,10 +136,3 @@ class ReportShiftRepository(BaseRepository[Shift]):
             query = query.where(User.id.in_(list(user_ids)))
         rows = await self.session.execute(query)
         return [ReportShift(*row) for row in rows.all()]
-
-    async def projects(self, org_id: uuid.UUID, ids: Collection[uuid.UUID]) -> list[Project]:
-        """The organisation's projects with these ids, deleted ones too."""
-        if not ids:
-            return []
-        query = select(Project).where(Project.organization_id == org_id, Project.id.in_(list(ids)))
-        return list((await self.session.execute(query)).scalars())

@@ -2,11 +2,11 @@
 
 ``aggregate`` turns priced lines (one person on one shift) into groups of rows. For any lines, the
 hours by employee and by project are equal, every total is the sum of the rows under it, a shift
-shared by several people counts once, pay appears exactly where some line under it may be seen, and
-missing rates are counted only on lines whose pay the reader may see.
+shared by several people counts once, pay appears exactly where some line under it may be seen and
+has a rate, and missing rates are counted, once per shift, only on lines whose pay may be seen.
 
-Covers: 005 FR-027, FR-028, SC-002. Examples: ``HDS_GENERATE_EXAMPLES`` (200 by default, 1,000
-in CI).
+Covers: 005 FR-004, FR-027, FR-028, SC-002. Examples: ``HDS_GENERATE_EXAMPLES`` (200 by default,
+1,000 in CI).
 """
 
 import os
@@ -60,12 +60,14 @@ def test_totals_are_sums_of_what_is_shown_both_ways(items: list[ReportLine]) -> 
         assert report.hours == sum((line.hours for line in items), Decimal(0))
         assert report.shift_ids == {line.shift_id for line in items}
         shown = [line for line in items if line.pay_shown]
-        assert report.shifts_missing_rate == sum(1 for line in shown if line.rate_missing)
-        expected_pay = sum((line.pay or Decimal(0) for line in shown), Decimal(0))
-        assert report.pay == (expected_pay if shown else None)
+        assert report.shifts_missing_rate == len({x.shift_id for x in shown if x.rate_missing})
+        rated = [line.pay for line in shown if line.pay is not None]
+        # A pay figure only where some shown line has a rate: never zero for missing rates (FR-004).
+        assert report.pay == (sum(rated, Decimal(0)) if rated else None)
         for group in report.groups:
             assert group.hours == sum((r.hours for r in group.rows), Decimal(0))
             assert group.shift_ids == set().union(*(r.shift_ids for r in group.rows))
+            assert group.missing_ids == set().union(*(r.missing_ids for r in group.rows))
             row_pay = [r.pay for r in group.rows if r.pay is not None]
             assert group.pay == (sum(row_pay, Decimal(0)) if row_pay else None)
         assert report.hours == sum((g.hours for g in report.groups), Decimal(0))

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
@@ -25,4 +26,5 @@ def roster_service(db: AsyncSession) -> RosterService:
         user_repo=UserRepository(db),
         entry_repo=AvailabilityRepository(db),
         organisation_repo=OrganisationRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
     )

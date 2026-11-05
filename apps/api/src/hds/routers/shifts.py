@@ -132,7 +132,7 @@ def _shift(view: ShiftView) -> ShiftRead:
         ends_at=s.ends_at,
         timezone=view.timezone,
         headcount=s.headcount,
-        pay_rate=s.pay_rate,
+        pay_rate=s.pay_rate if view.rate_shown else None,
         status=s.status,  # type: ignore[arg-type]
         published_at=s.published_at,
         assignments=[

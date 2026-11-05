@@ -248,3 +248,42 @@ async def test_shifts_not_yet_worked_are_not_listed(
     )
 
     assert rows(answer) == [("Dana Levi", "Gate", 1, "8.00", "2026-10-05", "2026-10-05")]
+
+
+async def test_an_old_projects_work_log_covers_it_since_it_started(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """SC-006 for a project over a year old: no `from` means the whole project (FR-024, FR-030)."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin, "Old Gate", start_date="2024-01-01")
+    dana = await employee(async_client, admin, "Dana Levi")
+    await published_shift(
+        async_client, admin, project, "2024-02-04T06:00:00Z", "2024-02-04T14:00:00Z", dana
+    )
+    await worked(async_client, admin, project, 5, dana)
+
+    answer = await async_client.get(
+        WORK_LOG,
+        params={"project_id": project["id"], "to": "2026-10-31"},
+        headers=await headers_for(async_client, "manager"),
+    )
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["from"] == "2024-01-01"
+    assert rows(answer) == [("Dana Levi", "Old Gate", 2, "16.00", "2024-02-04", "2026-10-05")]
+
+
+async def test_an_old_projects_explicit_range_over_366_days_is_still_refused(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin, "Old Gate", start_date="2024-01-01")
+
+    answer = await async_client.get(
+        WORK_LOG,
+        params={"project_id": project["id"], "from": "2024-01-01", "to": "2026-10-31"},
+        headers=admin,
+    )
+
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "reports.range_invalid"

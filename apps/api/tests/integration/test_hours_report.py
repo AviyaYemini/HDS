@@ -154,9 +154,9 @@ async def test_a_project_without_pay_shows_hours_only_and_missing_rates_are_coun
 
     rows = flat(body)
     assert "pay" not in rows[("Bravo", "Dana Levi")]
-    # Alpha's pay may be seen: Omer's row shows the pay of its lines with a rate (none) and
-    # counts the line without one; it is not left out, which would look like hidden pay.
-    assert rows[("Alpha", "Omer Cohen")]["pay"] == "0.00"
+    # Alpha's pay may be seen, but Omer's only line has no rate: his row has no pay figure,
+    # never 0.00, and counts the shift missing a rate (FR-004). A hidden row's count is always 0.
+    assert "pay" not in rows[("Alpha", "Omer Cohen")]
     assert rows[("Alpha", "Omer Cohen")]["shifts_missing_rate"] == 1
     assert body["pay"] == "400.00"
     assert body["shifts_missing_rate"] == 1

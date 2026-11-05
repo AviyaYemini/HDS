@@ -67,6 +67,15 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
             )
         await self.session.flush()
 
+    async def remove_user(self, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Take ``user_id`` off every project of the organisation they are assigned to."""
+        await self.session.execute(
+            delete(ProjectManager).where(
+                ProjectManager.organization_id == org_id, ProjectManager.user_id == user_id
+            )
+        )
+        await self.session.flush()
+
     async def manages(
         self, user_id: uuid.UUID, project_ids: Collection[uuid.UUID]
     ) -> set[uuid.UUID]:

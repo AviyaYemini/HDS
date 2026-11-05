@@ -25,7 +25,7 @@ from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.exceptions import DomainValidationError, NotFoundError
 from hds.models.organisation import Organisation
 from hds.models.project import Project
-from hds.models.user import User, UserRole
+from hds.models.user import User
 from hds.payroll import MICROS_PER_HOUR
 from hds.repositories.group import GroupRepository
 from hds.repositories.organisation import OrganisationRepository
@@ -34,7 +34,8 @@ from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.site import SiteRepository
 from hds.repositories.special_day import SpecialDayRepository
-from hds.services.pay import Pricing, shown, utc_window, widen
+from hds.services.pay import Pricing, shown, spanned, utc_window
+from hds.services.pay_visibility import pay_visible
 
 MAX_DAYS = 366
 GroupBy = Literal["employee", "project"]
@@ -77,37 +78,49 @@ class _Totals:
 
     hours: Decimal = _ZERO
     pay: Decimal | None = None
-    shifts_missing_rate: int = 0
     shift_ids: set[uuid.UUID] = field(default_factory=set, repr=False)
+    missing_ids: set[uuid.UUID] = field(default_factory=set, repr=False)
 
     @property
     def shifts(self) -> int:
         """How many different shifts are under this total (a shift of three people counts once)."""
         return len(self.shift_ids)
 
+    @property
+    def shifts_missing_rate(self) -> int:
+        """How many different shifts shown with pay have a line missing its rate, as ``shifts``."""
+        return len(self.missing_ids)
+
     def add(self, line: ReportLine) -> None:
-        """Add one line: its hours and shift; its pay, from zero, when the reader may see it."""
+        """Add one line: its hours and shift; where the reader may see pay, its pay or its gap.
+
+        A pay figure exists only once a line with a rate is added: lines missing a rate are
+        counted, never added as zero (FR-004).
+        """
         self.hours += line.hours
         self.shift_ids.add(line.shift_id)
-        if line.pay_shown:
-            self.pay = (self.pay or _ZERO) + (line.pay or _ZERO)
-            self.shifts_missing_rate += 1 if line.rate_missing else 0
+        if not line.pay_shown:
+            return
+        if line.pay is None:
+            self.missing_ids.add(line.shift_id)
+        else:
+            self.pay = (self.pay or _ZERO) + line.pay
 
 
 @dataclass
 class Row(_Totals):
     """Totals of one employee at one project."""
 
-    id: uuid.UUID = field(default_factory=uuid.uuid4)
-    name: str = ""
+    id: uuid.UUID = field(kw_only=True)
+    name: str = field(kw_only=True)
 
 
 @dataclass
 class Group(_Totals):
     """Totals of one employee or project, with a row per project or employee."""
 
-    id: uuid.UUID = field(default_factory=uuid.uuid4)
-    name: str = ""
+    id: uuid.UUID = field(kw_only=True)
+    name: str = field(kw_only=True)
     rows: list[Row] = field(default_factory=list)
 
 
@@ -148,9 +161,11 @@ def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:
     """Group priced lines by employee (rows per project) or by project (rows per employee).
 
     Hours are person-hours, summed; shifts are distinct shifts. A pay total exists exactly where
-    some line under it is one whose pay the reader may see; it is the sum of their pay, and lines
-    missing a rate add nothing and are counted in ``shifts_missing_rate``. Where no line's pay may
-    be seen there is no pay figure at all (FR-028). The dates are left to the caller.
+    some line under it is one whose pay the reader may see and that has a rate; it is the sum of
+    their pay. Shown lines missing a rate add nothing and their shifts are counted in
+    ``shifts_missing_rate``, so a total of only such lines has a count and no pay figure, never
+    zero (FR-004). Where no line's pay may be seen there is no pay figure at all (FR-028). The
+    dates are left to the caller.
     """
     groups: dict[uuid.UUID, Group] = {}
     rows: dict[tuple[uuid.UUID, uuid.UUID], Row] = {}
@@ -173,13 +188,16 @@ def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:
     return report
 
 
-def check_range(first: date, last: date) -> None:
+def check_range(first: date, last: date, *, limited: bool = True) -> None:
     """Refuse a range that ends before it starts or covers more than 366 days (FR-030).
+
+    ``limited`` is false only for a project's work-log with no start date, which covers the whole
+    project (FR-024).
 
     Raises:
         DomainValidationError: ``reports.range_invalid`` (HTTP 422).
     """
-    if last < first or (last - first).days >= MAX_DAYS:
+    if last < first or (limited and (last - first).days >= MAX_DAYS):
         raise DomainValidationError(
             code="reports.range_invalid",
             detail="A report covers 1 to 366 days and ends on or after its start.",
@@ -255,9 +273,8 @@ class ReportsService:
 
         Args:
             actor: The caller.
-            project_id: A project; ``first`` then defaults to its start date, or to 366 days
-                before ``last`` for a project older than that, so the default is always a range
-                the limit allows.
+            project_id: A project; ``first`` then defaults to its start date, and the range then
+                has no 366-day limit, so the log covers the whole project (FR-024, FR-030).
             site_id: A site: every project at it.
             group_id: A group: its current members, at every project.
             first: The first date; required for a site or group.
@@ -280,13 +297,14 @@ class ReportsService:
         org = await self._organisation(actor)
         last = last or now.astimezone(ZoneInfo(org.timezone)).date()
         scope = Scope()
+        whole_project = False
         if project_id is not None:
             project = await self._projects.get_by_id(project_id, actor.organization_id)
             if project is None:
                 raise NotFoundError(resource="Project", id=project_id)
             if first is None:
-                # Since the project started, but at most the last 366 days (FR-024, FR-030).
-                first = max(project.start_date, last - timedelta(days=MAX_DAYS - 1))
+                # Since the project started, however long ago (FR-024, FR-030).
+                first, whole_project = project.start_date, True
             scope = Scope(project_ids=[project_id])
         elif site_id is not None:
             if await self._sites.get_by_id(site_id, actor.organization_id) is None:
@@ -301,11 +319,11 @@ class ReportsService:
                 code="reports.start_required",
                 detail="A work-log of a site or a group needs a start date.",
             )
-        check_range(first, last)
+        check_range(first, last, limited=not whole_project)
         shifts = await self._in_range(actor, first, last, now, scope)
         names = {
             p.id: p.name
-            for p in await self._shifts.projects(
+            for p in await self._projects.get_many(
                 actor.organization_id, {s.project_id for s in shifts}
             )
         }
@@ -333,13 +351,7 @@ class ReportsService:
 
     async def _visible(self, actor: User, projects: Iterable[Project]) -> set[uuid.UUID]:
         """The projects whose pay the reader may see (FR-022, FR-028)."""
-        with_pay = [p for p in projects if p.pay_enabled]
-        if actor.role == UserRole.admin:
-            return {p.id for p in with_pay}
-        open_ = {p.id for p in with_pay if p.managers_see_pay}
-        if not open_:
-            return set()
-        return await self._managers.manages(actor.id, open_)
+        return await pay_visible(actor, projects, self._managers)
 
     async def hours(
         self,
@@ -362,15 +374,36 @@ class ReportsService:
         shifts = await self._in_range(actor, first, last, now)
         project_ids = {s.project_id for s in shifts}
         projects = {
-            p.id: p for p in await self._shifts.projects(actor.organization_id, project_ids)
+            p.id: p for p in await self._projects.get_many(actor.organization_id, project_ids)
         }
         visible = await self._visible(actor, projects.values())
-        days = await self._days.for_projects(actor.organization_id, visible, *widen(first, last))
+        paid_shifts = [s for s in shifts if s.project_id in visible]
+        days = (
+            await self._days.for_projects(actor.organization_id, visible, *spanned(paid_shifts))
+            if paid_shifts
+            else []
+        )
         pricing = Pricing(org, days)
         lines = []
         for s in shifts:
             project = projects[s.project_id]
-            paid = s.project_id in visible
+            if s.project_id not in visible:
+                # Hours only: a line whose pay the reader may not see is never priced.
+                lines.append(
+                    ReportLine(
+                        shift_id=s.shift_id,
+                        user_id=s.user_id,
+                        user_name=s.full_name,
+                        project_id=project.id,
+                        project_name=project.name,
+                        date=local_date(s),
+                        hours=_hours(s),
+                        pay_shown=False,
+                        pay=None,
+                        rate_missing=False,
+                    )
+                )
+                continue
             priced = pricing.price_one(
                 s.shift_id,
                 s.starts_at,
@@ -379,7 +412,7 @@ class ReportsService:
                 project,
                 s.timezone,
                 s.default_rate,
-                paid=paid,
+                paid=True,
             )
             lines.append(
                 ReportLine(
@@ -390,7 +423,7 @@ class ReportsService:
                     project_name=project.name,
                     date=priced.date,
                     hours=priced.hours,
-                    pay_shown=paid,
+                    pay_shown=True,
                     pay=priced.pay,
                     rate_missing=priced.rate_missing,
                 )

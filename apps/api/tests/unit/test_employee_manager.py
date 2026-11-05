@@ -42,6 +42,7 @@ def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
     return svc, user_repo, token_repo
 

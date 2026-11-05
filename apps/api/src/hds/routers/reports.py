@@ -48,8 +48,16 @@ class HoursRowRead(BaseModel):
     name: str
     hours: HoursOut
     shifts: int
-    shifts_missing_rate: int
-    pay: Amount | None = Field(default=None, description="Left out where pay is not shown.")
+    shifts_missing_rate: int = Field(
+        description="Shifts shown with pay that have a line missing a rate; 0 where pay is hidden."
+    )
+    pay: Amount | None = Field(
+        default=None,
+        description=(
+            "Left out where pay is not shown, and where every line shown with pay lacks a rate "
+            "(then shifts_missing_rate is above 0): a missing rate is never shown as zero."
+        ),
+    )
 
 
 class HoursGroupRead(HoursRowRead):
@@ -68,7 +76,9 @@ class HoursReportRead(BaseModel):
     hours: HoursOut
     shifts: int
     shifts_missing_rate: int
-    pay: Amount | None = Field(default=None, description="Left out when no pay is shown.")
+    pay: Amount | None = Field(
+        default=None, description="Left out when no pay is shown or no line shown has a rate."
+    )
 
 
 def _totals(item: Row | Group | HoursReport) -> dict[str, Any]:
@@ -127,8 +137,9 @@ def read_log(log: WorkLog) -> WorkLogRead:
         "Manager or Admin. Each person once per project with their shift count, hours and first "
         "and last date in the range, for exactly one of a project, a site or a group (422 "
         "`reports.scope_invalid`). For a project the range starts on its start date unless "
-        "`from` is given; a site or a group needs `from` (422 `reports.start_required`). `to` is "
-        "today by default. At most 366 days (422 `reports.range_invalid`). Only published "
+        "`from` is given, and then covers the whole project with no length limit; a site or a "
+        "group needs `from` (422 `reports.start_required`). `to` is today by default. A range "
+        "with `from` covers at most 366 days (422 `reports.range_invalid`). Only published "
         "shifts that have ended count; no pay is shown."
     ),
 )

@@ -22,11 +22,13 @@ decimals (`"125.00"`, `"7.50"`); rates keep `Money` (four decimals).
 | `GET /projects/{id}/managers` | M, A | `{items: [{id, full_name}]}` |
 | `PUT /projects/{id}/managers` | A | `{user_ids}` replaces the set; 422 `project_managers.not_staff` |
 | `GET /me/pay?month=YYYY-MM` | E, M, A | The caller's pay to date (data-model PayToDate); a malformed month 422 by its published pattern (`pay.month_invalid` is the service's guard); C 403 |
-| `GET /reports/work-log?project_id=|site_id=|group_id=&from=&to=` | M, A | Exactly one scope (422 `reports.scope_invalid`); `from` defaults to the project's start, required for a site or group (422 `reports.start_required`); `to` defaults to today; 422 `reports.range_invalid` (backwards or over 366 days); no pay |
-| `GET /reports/hours?from=&to=&group_by=employee|project` | M, A | Rows, group totals and grand total; `pay` only where the reader may see it (research R10); 422 `reports.range_invalid` |
+| `GET /reports/work-log?project_id=|site_id=|group_id=&from=&to=` | M, A | Exactly one scope (422 `reports.scope_invalid`); `from` defaults to the project's start, required for a site or group (422 `reports.start_required`); `to` defaults to today; with no `from`, a project's log has no length limit; 422 `reports.range_invalid` (backwards, or over 366 days when `from` is given); no pay |
+| `GET /reports/hours?from=&to=&group_by=employee|project` | M, A | Rows, group totals and grand total; `pay` only where the reader may see it (research R10) and some line shown has a rate; `shifts_missing_rate` counts shifts, never people; 422 `reports.range_invalid` |
 
 Every operation answers 403 to the roles not listed, with the role-gate code, and 401 without a token.
 Every new error code has a text in `en` and `he`.
 
 `/me/pay` replaces the `/me/pay-forecast` placeholder of docs/hds-api.md, because the figure is pay to
 date (spec clarification); docs/hds-api.md is updated with it.
+
+After the review of PR 7 (FR-022a, Proposed): `GET /shifts` gives a Manager a shift's own `pay_rate` only for projects whose pay they may see, and `null` elsewhere; `GET /employees` and `GET /employees/{id}` give a Manager no one's `default_hourly_rate` but their own. Deleting a project that has not ended freezes its pay as ending does (FR-007).

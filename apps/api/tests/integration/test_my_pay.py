@@ -201,7 +201,8 @@ async def test_no_rate_is_missing_never_zero(
     assert line["rate_missing"] is True
     assert line["base_rate"] is None
     assert "pay" not in line
-    assert (body["pay"], body["shifts_missing_rate"]) == ("0.00", 1)
+    # The month's only shift lacks a rate: no total at all, never 0.00 (FR-004).
+    assert ("pay" in body, body["shifts_missing_rate"]) == (False, 1)
 
 
 async def test_a_shift_belongs_to_the_month_it_starts_in_at_its_site(

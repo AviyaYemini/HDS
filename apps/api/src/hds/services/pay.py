@@ -16,7 +16,8 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from hds.core.authz import STAFF_ROLES, ensure_role
@@ -25,7 +26,7 @@ from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus
 from hds.models.special_day import SpecialDay
 from hds.models.user import User
-from hds.payroll import CENT, PaySettings, price
+from hds.payroll import CENT, PayPart, PaySettings, price
 from hds.payroll import SpecialDay as PaidDay
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import PayReportRepository, WorkedShift
@@ -61,6 +62,7 @@ class LineView:
     date: date
     starts_at: datetime
     ends_at: datetime
+    timezone: str
     hours: Decimal
     base_rate: Decimal | None
     rate_missing: bool
@@ -76,7 +78,9 @@ class PayToDate:
     month: str
     lines: list[LineView] = field(default_factory=list)
     hours: Decimal = Decimal("0.00")
-    pay: Decimal = Decimal("0.00")
+    pay: Decimal | None = Decimal("0.00")
+    """The sum of the lines' pay; ``None`` when no line has pay and some line lacks a rate, so a
+    month whose rates are all missing is never shown as zero (FR-004)."""
     shifts_missing_rate: int = 0
 
 
@@ -93,8 +97,8 @@ class Pricing:
     def _for(self, project: Project) -> tuple[PaySettings, list[PaidDay]]:
         if project.id not in self._settings:
             self._settings[project.id] = project_settings(self._org, project)[0]
-            ended = project.status == ProjectStatus.ended
-            rates = merge_days(self._days, project.id, ended)
+            fixed = project.status == ProjectStatus.ended or project.is_deleted
+            rates = merge_days(self._days, project.id, fixed)
             self._paid_days[project.id] = [PaidDay(d, r) for d, r in rates.items()]
         return self._settings[project.id], self._paid_days[project.id]
 
@@ -143,6 +147,7 @@ class Pricing:
         settings, days = self._for(project)
         base = shift_rate if shift_rate is not None else default_rate
         priced = price(starts_at, ends_at, timezone, base if paid else None, settings, days)
+        hours = shown(priced.hours)
         return LineView(
             shift_id=shift_id,
             project_id=project.id,
@@ -150,11 +155,12 @@ class Pricing:
             date=starts_at.astimezone(ZoneInfo(timezone)).date(),
             starts_at=starts_at,
             ends_at=ends_at,
-            hours=shown(priced.hours),
+            timezone=timezone,
+            hours=hours,
             base_rate=base if paid else None,
             rate_missing=paid and base is None,
             pay_enabled=project.pay_enabled,
-            parts=[PartView(p.rate_pct, shown(p.hours)) for p in priced.parts],
+            parts=shown_parts(priced.parts, hours),
             pay=priced.pay,
         )
 
@@ -178,6 +184,35 @@ def month_bounds(text: str | None, zone: str, now: datetime) -> tuple[str, date,
     following = date(year + month // 12, month % 12 + 1, 1) if year < 9999 or month < 12 else None
     last = (following - timedelta(days=1)) if following else date(9999, 12, 31)
     return text, first, last
+
+
+def spanned(shifts: Iterable[Any]) -> tuple[date, date]:
+    """The dates, widened by a day, from the earliest start to the latest end of ``shifts``.
+
+    Special days are read over this span, not the range asked for: a shift that starts in the
+    range may run on for days, and every local date it touches needs its special day. The shifts
+    carry ``starts_at`` and ``ends_at``; there must be at least one.
+    """
+    items = list(shifts)
+    first = min(s.starts_at for s in items).astimezone(UTC).date()
+    last = max(s.ends_at for s in items).astimezone(UTC).date()
+    return widen(first, last)
+
+
+def shown_parts(parts: Iterable[PayPart], hours: Decimal) -> list[PartView]:
+    """The hours at each rate, rounded so that they add up to the line's shown ``hours``.
+
+    Each part is cut down to the hundredth and the missing hundredths go to the parts that lost
+    the most, the first of them on a tie (largest remainder), so no part moves by more than 0.01
+    and the parts never disagree with the line (FR-015).
+    """
+    items = list(parts)
+    floors = [p.hours.quantize(CENT, rounding=ROUND_DOWN) for p in items]
+    left = int((hours - sum(floors, Decimal(0))) / CENT)
+    order = sorted(range(len(items)), key=lambda i: floors[i] - items[i].hours)
+    for i in order[: max(left, 0)]:
+        floors[i] += CENT
+    return [PartView(p.rate_pct, f) for p, f in zip(items, floors, strict=True)]
 
 
 def widen(first: date, last: date) -> tuple[date, date]:
@@ -249,15 +284,21 @@ class PayService:
             for r in rows
             if first <= r.shift.starts_at.astimezone(ZoneInfo(r.timezone)).date() <= last
         ]
-        days = await self._days.for_projects(
-            actor.organization_id, {r.project.id for r in rows}, *widen(first, last)
+        days = (
+            await self._days.for_projects(
+                actor.organization_id, {r.project.id for r in rows}, *spanned(r.shift for r in rows)
+            )
+            if rows
+            else []
         )
         pricing = Pricing(org, days)
         lines = [pricing.line(r, actor.default_hourly_rate) for r in rows]
+        paid = [line.pay for line in lines if line.pay is not None]
+        missing = sum(1 for line in lines if line.rate_missing)
         return PayToDate(
             month=text,
             lines=lines,
             hours=sum((line.hours for line in lines), Decimal("0.00")),
-            pay=sum((line.pay for line in lines if line.pay is not None), Decimal("0.00")),
-            shifts_missing_rate=sum(1 for line in lines if line.rate_missing),
+            pay=None if missing and not paid else sum(paid, Decimal("0.00")),
+            shifts_missing_rate=missing,
         )

@@ -13,7 +13,7 @@ inactive employee, the same employee twice on a shift, times that do not end aft
 
 import uuid
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -26,6 +26,7 @@ from hds.models.user import User, UserRole
 from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.shift import AssignmentRepository, OwnShift, ShiftRepository, ShiftView
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
@@ -39,6 +40,7 @@ from hds.scheduling import (
     validate,
     week_start,
 )
+from hds.services.pay_visibility import pay_visible
 
 # The longest a shift can be, for how far around a change the rules must look (research R3).
 _LONGEST_SHIFT = timedelta(hours=24)
@@ -117,6 +119,7 @@ class RosterService:
         user_repo: UserRepository,
         entry_repo: AvailabilityRepository,
         organisation_repo: OrganisationRepository,
+        project_manager_repo: ProjectManagerRepository,
     ) -> None:
         """Wire the service to its repositories.
 
@@ -128,6 +131,7 @@ class RosterService:
             user_repo: Employees to assign and to judge.
             entry_repo: Availability entries the rules weigh.
             organisation_repo: The organisation's limits and time zone.
+            project_manager_repo: Who manages which project, for who sees shift rates.
         """
         self._shifts = shift_repo
         self._assignments = assignment_repo
@@ -136,6 +140,7 @@ class RosterService:
         self._users = user_repo
         self._entries = entry_repo
         self._orgs = organisation_repo
+        self._managers = project_manager_repo
 
     # ------------------------------------------------------------------ reads
 
@@ -153,7 +158,8 @@ class RosterService:
         """A page of the roster, drafts and published, with assignments (Manager or Admin).
 
         ``first`` and ``last`` are dates in the organisation's time zone; a shift is in the range
-        when it starts on one of them.
+        when it starts on one of them. A shift's own rate is shown only where the reader may see
+        its project's pay (FR-022a): rate times hours would otherwise give the pay the reports hide.
 
         Returns:
             The page and the position to continue from, ``None`` on the last page.
@@ -182,7 +188,14 @@ class RosterService:
         more = len(shifts) > limit
         shifts = shifts[:limit]
         following = (shifts[-1].starts_at, shifts[-1].id) if more else None
-        return await self._shifts.views(shifts), following
+        views = await self._shifts.views(shifts)
+        if actor.role == UserRole.admin:
+            return views, following
+        projects = await self._projects.get_many(
+            actor.organization_id, {v.shift.project_id for v in views}
+        )
+        shown = await pay_visible(actor, projects, self._managers)
+        return [replace(v, rate_shown=v.shift.project_id in shown) for v in views], following
 
     async def my_shifts(self, actor: User, first: date | None, last: date | None) -> list[OwnShift]:
         """The caller's own published shifts that start on ``first`` to ``last`` (FR-123).

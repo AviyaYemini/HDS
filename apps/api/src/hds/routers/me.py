@@ -14,6 +14,7 @@ from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -88,5 +89,6 @@ async def patch_me(
         group_repo=GroupRepository(db),
         qualification_repo=QualificationRepository(db),
         client_repo=ClientRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
     )
     return await svc.update_own_profile(current_user, data)

@@ -138,7 +138,10 @@ async def test_an_employees_optional_field_can_be_cleared(
         f"/api/v1/employees/{employee['id']}", json={field: None}, headers=actor
     )
 
-    stored = await async_client.get(f"/api/v1/employees/{employee['id']}", headers=manager)
+    # Read back as an Admin: since 005 FR-022a a Manager is given no one's default rate but
+    # their own, so only an Admin's read shows that the other field was left alone.
+    admin = await headers_for(async_client, "admin@hds.test")
+    stored = await async_client.get(f"/api/v1/employees/{employee['id']}", headers=admin)
     assert cleared.status_code == 200, cleared.text
     assert stored.json()[field] is None
     assert stored.json()[other] == employee[other]

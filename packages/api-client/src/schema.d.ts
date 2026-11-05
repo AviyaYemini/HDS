@@ -719,7 +719,7 @@ export interface paths {
         };
         /**
          * Who worked at a project, site or group
-         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for exactly one of a project, a site or a group (422 `reports.scope_invalid`). For a project the range starts on its start date unless `from` is given; a site or a group needs `from` (422 `reports.start_required`). `to` is today by default. At most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
+         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for exactly one of a project, a site or a group (422 `reports.scope_invalid`). For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site or a group needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
          */
         get: operations["work_log_api_v1_reports_work_log_get"];
         put?: never;
@@ -1704,14 +1704,17 @@ export interface components {
             name: string;
             /**
              * Pay
-             * @description Left out where pay is not shown.
+             * @description Left out where pay is not shown, and where every line shown with pay lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
              */
             pay?: string | null;
             /** Rows */
             rows: components["schemas"]["HoursRowRead"][];
             /** Shifts */
             shifts: number;
-            /** Shifts Missing Rate */
+            /**
+             * Shifts Missing Rate
+             * @description Shifts shown with pay that have a line missing a rate; 0 where pay is hidden.
+             */
             shifts_missing_rate: number;
         };
         /**
@@ -1738,7 +1741,7 @@ export interface components {
             hours: string;
             /**
              * Pay
-             * @description Left out when no pay is shown.
+             * @description Left out when no pay is shown or no line shown has a rate.
              */
             pay?: string | null;
             /** Shifts */
@@ -1770,12 +1773,15 @@ export interface components {
             name: string;
             /**
              * Pay
-             * @description Left out where pay is not shown.
+             * @description Left out where pay is not shown, and where every line shown with pay lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
              */
             pay?: string | null;
             /** Shifts */
             shifts: number;
-            /** Shifts Missing Rate */
+            /**
+             * Shifts Missing Rate
+             * @description Shifts shown with pay that have a line missing a rate; 0 where pay is hidden.
+             */
             shifts_missing_rate: number;
         };
         /**
@@ -2163,6 +2169,11 @@ export interface components {
              * Format: date-time
              */
             starts_at: string;
+            /**
+             * Timezone
+             * @description The site's IANA time zone, to show the times as there.
+             */
+            timezone: string;
         };
         /**
          * PayToDateRead
@@ -2183,9 +2194,9 @@ export interface components {
             month: string;
             /**
              * Pay
-             * @example 612.50
+             * @description The sum of the lines' pay. Left out when no line has pay and some line lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
              */
-            pay: string;
+            pay?: string | null;
             /** Shifts Missing Rate */
             shifts_missing_rate: number;
         };

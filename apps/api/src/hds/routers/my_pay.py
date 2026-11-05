@@ -43,6 +43,7 @@ class PayLineRead(BaseModel):
     date: date
     starts_at: datetime
     ends_at: datetime
+    timezone: str = Field(description="The site's IANA time zone, to show the times as there.")
     hours: HoursOut
     base_rate: Decimal | None = Field(description="The hourly rate used, a decimal string.")
     rate_missing: bool
@@ -57,7 +58,13 @@ class PayToDateRead(BaseModel):
     month: str = Field(examples=["2026-10"])
     lines: list[PayLineRead]
     hours: HoursOut
-    pay: Amount
+    pay: Amount | None = Field(
+        default=None,
+        description=(
+            "The sum of the lines' pay. Left out when no line has pay and some line lacks a rate "
+            "(then shifts_missing_rate is above 0): a missing rate is never shown as zero."
+        ),
+    )
     shifts_missing_rate: int
 
 
@@ -70,6 +77,7 @@ def read_line(line: LineView) -> PayLineRead:
         "date": line.date,
         "starts_at": line.starts_at,
         "ends_at": line.ends_at,
+        "timezone": line.timezone,
         "hours": line.hours,
         "base_rate": line.base_rate,
         "rate_missing": line.rate_missing,
@@ -83,13 +91,15 @@ def read_line(line: LineView) -> PayLineRead:
 
 def read(answer: PayToDate) -> PayToDateRead:
     """The response form of pay to date."""
-    return PayToDateRead(
-        month=answer.month,
-        lines=[read_line(line) for line in answer.lines],
-        hours=answer.hours,
-        pay=answer.pay,
-        shifts_missing_rate=answer.shifts_missing_rate,
-    )
+    fields = {
+        "month": answer.month,
+        "lines": [read_line(line) for line in answer.lines],
+        "hours": answer.hours,
+        "shifts_missing_rate": answer.shifts_missing_rate,
+    }
+    if answer.pay is not None:
+        fields["pay"] = answer.pay
+    return PayToDateRead.model_validate(fields)
 
 
 @router.get(

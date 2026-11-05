@@ -28,6 +28,7 @@ from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -68,6 +69,18 @@ def validate_hourly_rate(rate: Any) -> None:
             code="users.hourly_rate_invalid",
             detail="default_hourly_rate must be greater than 0.",
         )
+
+
+def shown_rate(actor: User, target: User) -> Decimal | None:
+    """``target``'s default rate as ``actor`` may see it (005 FR-022a).
+
+    An Admin sees every rate and each person their own; anyone else, a Manager included, sees
+    none: a default rate applies on every project, and rate times hours would give pay that the
+    reports hide.
+    """
+    if actor.role == UserRole.admin or actor.id == target.id:
+        return target.default_hourly_rate
+    return None
 
 
 def guard_rate_change(actor: User, data: Mapping[str, Any], *, clearing_counts: bool) -> None:
@@ -118,6 +131,7 @@ class EmployeeService:
         group_repo: GroupRepository,
         qualification_repo: QualificationRepository,
         client_repo: ClientRepository,
+        project_manager_repo: ProjectManagerRepository,
     ) -> None:
         """Wire the service.
 
@@ -130,9 +144,12 @@ class EmployeeService:
             qualification_repo: Used to check that a qualification filter belongs to the
                 organisation.
             client_repo: Used to refuse reactivating a portal user whose client is gone.
+            project_manager_repo: Used to remove a demoted Manager from their projects (005
+                FR-022).
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
+        self._project_managers = project_manager_repo
         self._link_repo = link_repo
         self._group_repo = group_repo
         self._qualification_repo = qualification_repo
@@ -394,6 +411,10 @@ class EmployeeService:
         updated = await self._user_repo.update(target_id, actor.organization_id, **data)
         if role_changed:
             await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
+            if data["role"] == UserRole.employee:
+                # A demoted Manager leaves their projects, so a later promotion shows no pay
+                # until an Admin assigns them again (005 FR-022).
+                await self._project_managers.remove_user(actor.organization_id, target_id)
         return updated
 
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:

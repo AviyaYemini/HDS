@@ -43,6 +43,7 @@ def employees(
         group_repo=group or AsyncMock(),
         qualification_repo=qualification or AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
 

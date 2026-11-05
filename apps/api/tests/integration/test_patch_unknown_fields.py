@@ -95,7 +95,10 @@ async def test_an_unknown_field_is_refused_and_nothing_changes(
 
     assert refused.status_code == 422, refused.text
     assert refused.json()["code"] == "validation.request_invalid"
-    assert await stored(async_client, operation, url, manager) == created
+    # Read back as an Admin, who is given every field: since 005 FR-022a a Manager is not given
+    # an employee's default rate, which ``created`` (an Admin's answer) holds.
+    admin = await headers_for(async_client, "admin@hds.test")
+    assert await stored(async_client, operation, url, admin) == created
 
 
 @pytest.mark.parametrize("operation", ["project", "client"])

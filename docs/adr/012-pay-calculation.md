@@ -23,12 +23,14 @@ database and nothing else computes pay.
 days are local dates) and the two overtime boundaries, measured in real elapsed time so overtime is
 the last hours of the shift. Each part takes one rate: the higher of the special day's and the
 rest's, else 100%; overtime adds its increase on a day above 100%. A wall time becomes "the first
-moment the site's clock shows it", which settles the days the clocks change. Hours are exact
-microseconds; pay is summed exactly and rounded half up to the agora once per line.
+moment the site's clock shows it", which settles the days the clocks change; the rest window and
+that search are exact to the microsecond, so a window's seconds count. Hours are exact
+microseconds; pay is summed exactly and rounded half up to the agora once per line. The hours shown
+at each rate are rounded by largest remainder, so they add up to the line's shown hours.
 
 **Settings are defaults that projects follow or override.** The organisation row holds the
-premium defaults; each project holds the same columns, `NULL` meaning "follow". Ending a project
-copies the defaults it follows and the organisation's special days into it, under the organisation's
+premium defaults; each project holds the same columns, `NULL` meaning "follow". Ending a project,
+or deleting one that has not ended (its shifts still count), copies the defaults it follows and the organisation's special days into it, under the organisation's
 lock and then the project's (the order schedule accept uses), so its pay stops changing. There is no
 history of settings: figures use the values as they stand when read.
 
@@ -38,16 +40,22 @@ narrowing applied columns is a destructive change.
 
 **Who sees pay is decided on every read.** An Admin sees pay for every project with pay on; a
 Manager only for a project with pay on, opened to Managers, and that they are assigned to, from the
-live role. Where the reader may not see pay the answer has no pay key at all.
+live role. Where the reader may not see pay the answer has no pay key at all, and the line is not
+priced. The same rule decides who is given a shift's own rate in the roster; a person's default
+rate goes only to Admins and to that person, since rate times hours is pay (FR-022a). A demotion to
+Employee removes a Manager's project assignments. A level of a report whose shown lines all lack a
+rate has a count of missing shifts and no pay figure, never zero.
 
 ## Consequences
 
 - Every pay figure, in pay to date and in reports, comes from one function with worked examples and a
   property test against a minute-by-minute oracle.
 - Changing a default changes the pay of every active project that follows it, past shifts included;
-  only ending a project fixes its pay. Recording worked hours (EMP-2) and payslips may later want pay
+  only ending or deleting a project fixes its pay. Recording worked hours (EMP-2) and payslips may later want pay
   frozen when earned; that would add a history, not change `price`.
-- Reports price every line on each request: about 1.2 seconds for a year of 26,000 assignments.
+- Reports price every line whose pay is shown on each request: at most about 1.2 seconds for a year
+  of 26,000 assignments. Special days are read from the earliest start to the latest end of those
+  shifts, so a shift longer than a day still meets its dates.
 
 ## Alternatives considered
 

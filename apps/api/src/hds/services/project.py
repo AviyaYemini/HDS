@@ -175,6 +175,10 @@ class ProjectService:
     async def soft_delete(self, actor: User, id: uuid.UUID) -> None:
         """Delete a project (Admin only); the row is kept and hidden.
 
+        Deleting freezes the project's pay first, as ending does (005 FR-007): its shifts still
+        count in pay to date and the reports, so later changes to the defaults or the
+        organisation's special days must not reach them.
+
         Args:
             actor: The caller.
             id: Project to delete.
@@ -187,6 +191,7 @@ class ProjectService:
         existing = await self._repo.get_by_id(id, actor.organization_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
+        await self._pay.freeze(actor.organization_id, id)  # under the locks, org then project
         await self._repo.soft_delete(id, actor.organization_id)
 
     async def list_projects(

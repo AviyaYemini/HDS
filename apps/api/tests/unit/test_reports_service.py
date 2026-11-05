@@ -38,6 +38,7 @@ def project(
         id=uuid.uuid4(),
         name="Alpha",
         status=ProjectStatus.active,
+        is_deleted=False,
         start_date=start,
         pay_enabled=pay_enabled,
         managers_see_pay=managers_see_pay,
@@ -64,7 +65,7 @@ def service(
 ) -> tuple[ReportsService, Any]:
     reports, orgs, days, managers, project_repo, sites, groups = (AsyncMock() for _ in range(7))
     reports.worked_in_range.return_value = shifts
-    reports.projects.return_value = projects
+    project_repo.get_many.return_value = projects
     orgs.get_by_id.return_value = SimpleNamespace(**vars(organisation()), timezone=ZONE)
     days.for_projects.return_value = []
     managers.manages.return_value = managed or set()
@@ -98,7 +99,8 @@ async def test_a_projects_log_starts_on_its_start_and_ends_today() -> None:
     )
 
 
-async def test_an_old_projects_default_start_keeps_within_366_days() -> None:
+async def test_an_old_projects_default_start_is_its_start_date_with_no_limit() -> None:
+    """FR-024 and FR-030 as amended after the review of PR 7: the whole project, however old."""
     proj = project(start=date(2024, 1, 1))
     svc, _ = service([proj], [])
 
@@ -112,7 +114,7 @@ async def test_an_old_projects_default_start_keeps_within_366_days() -> None:
         now=NOW,
     )
 
-    assert (log.first, log.last) == (date(2025, 11, 5), date(2026, 11, 5))
+    assert (log.first, log.last) == (date(2024, 1, 1), date(2026, 11, 5))
 
 
 async def test_a_shift_of_two_people_counts_once_in_a_projects_total() -> None:

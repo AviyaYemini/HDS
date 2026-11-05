@@ -39,6 +39,7 @@ def worked(start: str, end: str, *, pay_rate: str | None = None, pay_enabled: bo
         id=uuid.uuid4(),
         name="Night Watch",
         status=ProjectStatus.active,
+        is_deleted=False,
         pay_enabled=pay_enabled,
         **columns,
     )
@@ -110,11 +111,20 @@ async def test_pay_off_and_missing_rate_lines_carry_hours_but_no_pay() -> None:
     off, missing = answer.lines
     assert (off.pay_enabled, off.pay, off.rate_missing) == (False, None, False)
     assert (missing.pay, missing.rate_missing) == (None, True)
-    assert (answer.hours, answer.pay, answer.shifts_missing_rate) == (
-        Decimal("16.00"),
-        Decimal("0.00"),
-        1,
-    )
+    # No line has a pay figure and one lacks a rate: no total at all, never 0.00 (FR-004).
+    assert (answer.hours, answer.pay, answer.shifts_missing_rate) == (Decimal("16.00"), None, 1)
+
+
+async def test_a_total_covers_the_lines_with_pay_and_counts_the_missing_ones() -> None:
+    rows = [
+        worked("2026-10-05T05:00:00+00:00", "2026-10-05T13:00:00+00:00", pay_rate="40.0000"),
+        worked("2026-10-06T05:00:00+00:00", "2026-10-06T13:00:00+00:00"),
+    ]
+    svc, _ = service(rows)
+
+    answer = await svc.my_pay(person(rate=None), "2026-10", now=NOW)
+
+    assert (answer.pay, answer.shifts_missing_rate) == (Decimal("320.00"), 1)
 
 
 @pytest.mark.parametrize("month", ["2026-13", "2026-1", "2026-10-01", "0000-01"])

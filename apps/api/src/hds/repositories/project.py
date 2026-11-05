@@ -122,6 +122,13 @@ class ProjectRepository(OrgScopedRepository[Project]):
         )
         return result.scalar_one_or_none()
 
+    async def get_many(self, org_id: uuid.UUID, ids: Collection[uuid.UUID]) -> list[Project]:
+        """The organisation's projects with these ids, deleted ones too."""
+        if not ids:
+            return []
+        query = select(Project).where(Project.organization_id == org_id, Project.id.in_(list(ids)))
+        return list((await self.session.execute(query)).scalars())
+
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
         """Fetch a non-deleted project of the organisation, or ``None`` (also for other tenants)."""
         result = await self.session.execute(
