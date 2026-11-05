@@ -189,6 +189,13 @@
       "operation_id": "hours_api_v1_reports_hours_get",
       "suites": ["pytest", "cli"],
       "reason": "to on or after from and at most 366 days later spans two parameters (005 FR-030); answered 422 reports.range_invalid"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/projects/{id}/managers",
+      "operation_id": "replace_managers_api_v1_projects__id__managers_put",
+      "suites": ["pytest", "cli"],
+      "reason": "each id must be an active Manager or Admin of the organisation (005 FR-021), which depends on stored users; any other UUID is answered 422 project_managers.not_staff"
     }
   ]
 }

@@ -355,3 +355,31 @@ async def test_another_organisations_project_is_not_found(
     changed = await async_client.patch(url, json={"pay_enabled": False}, headers=admin)
 
     assert (read.status_code, changed.status_code) == (404, 404)
+
+
+@pytest.mark.parametrize("value", ["true", 1, 0, "yes"])
+async def test_a_switch_must_be_a_json_boolean(
+    async_client: AsyncClient, seed_users: dict[str, User], value: Any
+) -> None:
+    """Lax booleans would read "true" or 1 as true; the schema says boolean (contract finding)."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+
+    answer = await async_client.patch(
+        project_pay(project["id"]), json={"managers_see_pay": value}, headers=admin
+    )
+    created = await async_client.post(
+        "/api/v1/projects",
+        json={
+            "client_id": project["client_id"],
+            "site_id": project["site_id"],
+            "name": "Lax",
+            "type": "security",
+            "billing_rate": "80.0000",
+            "start_date": "2027-02-01",
+            "pay_settings": {"pay_enabled": value},
+        },
+        headers=admin,
+    )
+
+    assert (answer.status_code, created.status_code) == (422, 422)

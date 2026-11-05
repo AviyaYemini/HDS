@@ -8,7 +8,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from hds.core.deps import require_admin, require_manager
 from hds.core.types import (
@@ -109,8 +109,8 @@ class PremiumOverrides(ChangeRequest):
 class ProjectPayChanges(ChangeRequest):
     """A project's switches and overrides; omitted fields stay as they are."""
 
-    pay_enabled: bool = omittable()
-    managers_see_pay: bool = omittable()
+    pay_enabled: StrictBool = omittable()
+    managers_see_pay: StrictBool = omittable()
     settings: PremiumOverrides = omittable()
 
 
