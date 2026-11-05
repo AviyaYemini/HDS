@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     # IANA time zone data for systems that ship none (site time zone validation, research D11).
     "tzdata>=2024.1",
+    "ortools>=9.15",
 ]
 
 [project.optional-dependencies]
