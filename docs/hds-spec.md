@@ -143,7 +143,7 @@ Every requirement below traces to the original spec (scenarios A to F, its entit
 | EMP-3 | Employee | Monthly hours and pay report with gross figures | Original entity 1 | v1 |
 | FIN-1 | Finance | Pay rate per employee, and an hourly pay field on each shift that an admin can edit | Original entities 2 and 7 | MVP |
 | FIN-2 | Finance | Billing rate per project | Original entity 6 | MVP |
-| FIN-3 | Finance | Expected gross pay for the month, per employee | Original scenario F | MVP |
+| FIN-3 | Finance | Expected gross pay for the month, per employee. Feature 005 shows the gross pay earned so far (shifts that have ended), with overtime, weekly-rest and special-day premiums from defaults each project follows or overrides *(Proposed, owner's decision)* | Original scenario F | MVP |
 | FIN-4 | Finance | Cash flow: current from recorded hours and forecast from the roster; billing income minus pay; may be negative | Original scenario C, rule 1 | v1 |
 | FIN-5 | Finance | Billing breakdown per client and project: hours, number of employees, shift types, amounts | Original scenario D | v1 |
 | FIN-6 | Finance | Record real invoices and payments to make cash flow exact | Proposed | Later |
