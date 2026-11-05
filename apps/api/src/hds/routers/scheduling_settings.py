@@ -10,17 +10,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from hds.core.deps import require_admin, require_manager
-from hds.core.types import ChangeRequest, omittable
+from hds.core.types import WHOLE_NUMBER, ChangeRequest, omittable
 from hds.models.user import User
 from hds.services.scheduling_settings import SchedulingSettingsService
 from hds.wiring import scheduling_settings
 
 router = APIRouter(prefix="/api/v1", tags=["scheduling settings"])
 
-# Not strict: JSON's 5.0 is the integer 5, as the published schema says; 5.5 and "eleven" are still
-# refused.
-RestHours = Annotated[int, Field(ge=1, le=24)]
-WeeklyHours = Annotated[int, Field(ge=1, le=168)]
+# Whole numbers as JSON Schema means them: 40 and 40.0, never true, "40" or 40.5.
+RestHours = Annotated[int, Field(ge=1, le=24), WHOLE_NUMBER]
+WeeklyHours = Annotated[int, Field(ge=1, le=168), WHOLE_NUMBER]
 
 
 class SchedulingSettings(BaseModel):

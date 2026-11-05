@@ -419,3 +419,11 @@ All tasks T001 to T027 are done and committed on `004-schedule-generation`; noth
   - client: lint, type check, Jest 60, generated-client check;
   - Playwright: 8 passed, 26 skipped with reasons;
   - Markdown links: the changed files checked by script, since lychee is not installed locally.
+4. **Schemathesis (CI): `PATCH /organisation/scheduling` accepted `{"max_weekly_hours": true}`.**
+   Dropping `strict` earlier (to accept `5.0`) also let pydantic read `true` as 1, and `"11"` as 11.
+   My local contract runs missed it only because Hypothesis did not happen to generate `true`. Fixed
+   with `hds.core.types.WHOLE_NUMBER`, which lets through a JSON integer or a number with no
+   fractional part, and nothing else. It goes after the bounds in the `Annotated`, so the published
+   schema keeps `minimum` and `maximum` (before them, pydantic printed `ge`/`le`). Test first:
+   `true`, `"11"` and `40.5` are refused; `40.0` is stored as 40. The full contract suite at CI's
+   100 examples passes.

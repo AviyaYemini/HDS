@@ -65,6 +65,9 @@ async def test_a_manager_reads_but_cannot_change_the_limits(
         {"max_weekly_hours": 0},
         {"max_weekly_hours": 169},
         {"min_rest_hours": "eleven"},
+        {"min_rest_hours": "11"},  # a string is not an integer, even when it reads as one
+        {"max_weekly_hours": True},  # PR 6 CI finding: lax ints read true as 1
+        {"max_weekly_hours": 40.5},
         {"time_limit": 30},
     ],
 )
@@ -106,3 +109,15 @@ async def test_the_bounds_are_inclusive(
         answer = await async_client.patch(SETTINGS, json=body, headers=admin)
         assert answer.status_code == 200, answer.text
         assert answer.json() == body
+
+
+async def test_a_whole_number_sent_as_a_float_is_accepted(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """JSON's 40.0 is the integer 40, as the published schema says."""
+    admin = await headers_for(async_client, "admin")
+
+    answer = await async_client.patch(SETTINGS, json={"max_weekly_hours": 40.0}, headers=admin)
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["max_weekly_hours"] == 40
