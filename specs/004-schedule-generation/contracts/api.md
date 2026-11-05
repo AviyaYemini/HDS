@@ -21,4 +21,6 @@ forbidden test.
 `schedule.minimum_rest`, `schedule.overlap`, `schedule.needed_elsewhere`, `schedule.no_active_employee`;
 each has a text in `en` and `he`.
 
+Job statuses follow the plan prompt: `queued` is the spec's "waiting" and `succeeded` its "finished".
+
 The job and proposal schemas name employees by id only; no pay, email or other personal field.
