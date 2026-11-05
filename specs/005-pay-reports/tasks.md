@@ -75,7 +75,7 @@ reason before the code exists. Each group ends with mutation checks, the gates (
 ## Phase 7: Polish and checkpoint, P7, Group G
 
 - [X] T034 [P] ADR `docs/adr/012-pay-calculation.md` (the pure package, cutting at instants, defaults and freezing, hiding pay), listed in `docs/README.md`; the FIN-3 note in `docs/hds-spec.md` (pay to date, premiums, Proposed); `apps/api/README.md`
-- [ ] T035 The merge gate (all API gates, full suite, concurrency three times, contract, drift, migration round trips 021 ↔ 022 on a seeded database, the property tests at the CI profile, the performance test) plus the client gates; every quickstart row checked; close `p1-log.md`; commit `docs(spec): close 005`. Do not push.
+- [X] T035 The merge gate (all API gates, full suite, concurrency three times, contract, drift, migration round trips 021 ↔ 022 on a seeded database, the property tests at the CI profile, the performance test) plus the client gates; every quickstart row checked; close `p1-log.md`; commit `docs(spec): close 005`. Do not push.
 
 ## Dependencies
 

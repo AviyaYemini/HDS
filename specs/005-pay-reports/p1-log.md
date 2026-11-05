@@ -205,3 +205,34 @@ group still had its own failing tests first, mutation checks and review.
   8. A dead `undefined` check removed.
   9. The month switch is one component (`MonthSwitch`) with its own strings.
   10. The Hebrew singular forms now read "one shift", not "shift 1".
+
+## Group G: docs and the merge gate (T034, T035)
+
+- **Docs:** ADR 012 (pay calculation), listed in docs/README.md; the FIN-3 note in docs/hds-spec.md
+  (pay to date and premiums, Proposed); the API README lists the pure packages and the wiring.
+- **Merge gate**, run on the branch after Group F:
+  - ruff, format (both `--no-cache`), `mypy --strict` (333 files), interrogate 100%, import graph,
+    pip-audit: clean.
+  - Full suite: 2421 passed, 5 deselected (the timing and benchmark markers).
+  - Concurrency three times: 60 passed each.
+  - Timing: unknown and known address equal (ratio 1.000); property tests at the CI profile: 8
+    passed; benchmark: 3 passed.
+  - Migrations: 013 → head → 013 → head, and on a seeded database 021 ↔ 022: clean, `alembic
+    check` clean. OpenAPI drift check: agree.
+  - Client: lint, typecheck, Jest 73 passed, generated client up to date, e2e 13 passed and 28
+    skipped.
+  - **Schemathesis CLI failed** on two findings, both fixed and committed (`f288311`):
+    `PUT /projects/{id}/managers` refuses an id that is not an active Manager or Admin, a stored-data
+    rule now recorded in `unprovable_operations.json`; and lax booleans let `"true"` and `1` through
+    the pay switches, now `StrictBool`, with a test (mutation caught). The CLI then passed, 0 5xx;
+    the in-process contract suite 92 passed.
+- **Quickstart rows**, each proven by the tests named in quickstart.md: purity, worked examples,
+  invariants (1,000 examples), US1 to US6, access (matrix, sweeps, pay-visibility sweep,
+  Schemathesis), performance (about 1.15 s for a year), screens (journeys and RTL), checkpoint
+  (above).
+- **For the owner, before merging:**
+  - The premium defaults follow common readings of Israeli law and are to be confirmed (spec,
+    Assumptions); weekly overtime beyond 42 hours is not counted, by the owner's choice.
+  - A project's work-log by default covers at most the last 366 days (FR-030).
+  - The admin screens (rates, project pay settings, special days, managers on projects) are API
+    only; their journeys are written and skipped.
