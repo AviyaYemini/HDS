@@ -1,0 +1,88 @@
+"""Shifts and the employees assigned to them.
+
+Layer: models. Depends on ``hds.models.base`` only.
+"""
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from hds.models.base import TimestampedBase
+
+SHIFT_STATUSES = ("draft", "published")
+"""A shift starts as a draft, seen by Managers and Admins only, until it is published."""
+
+
+class Shift(TimestampedBase):
+    """One shift of a project, of one of the project's shift types.
+
+    ``starts_at`` and ``ends_at`` are UTC instants (Constitution VII), the end after the start.
+    ``headcount`` is how many employees it needs, at least 1; more or fewer is a warning, never a
+    refusal (003 FR-116). ``pay_rate`` is the hourly pay for the shift, ``NUMERIC(12,4)`` and
+    positive when set, otherwise each employee's default rate applies (FIN-1); only an Admin sets
+    it. ``status`` is ``draft`` or ``published``; ``published_at`` records when it was
+    published, and is set exactly when the status is published (``ck_shifts_published_at``).
+    """
+
+    __tablename__ = "shifts"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    shift_type_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shift_types.id"), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    headcount: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    pay_rate: Mapped[Decimal | None] = mapped_column(Numeric(precision=12, scale=4, asdecimal=True))
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_shifts_ends_after_start"),
+        CheckConstraint("headcount >= 1", name="ck_shifts_headcount"),
+        CheckConstraint("pay_rate IS NULL OR pay_rate > 0", name="ck_shifts_pay_rate_positive"),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_shifts_status"),
+        CheckConstraint(
+            "(status = 'published') = (published_at IS NOT NULL)", name="ck_shifts_published_at"
+        ),
+        Index("idx_shifts_org_start", "organization_id", "starts_at"),
+        Index("idx_shifts_project_start", "project_id", "starts_at"),
+    )
+
+
+class Assignment(TimestampedBase):
+    """An employee on a shift, at most once (``uq_assignments_shift_user``).
+
+    Removed with its shift (``ON DELETE CASCADE``). ``assigned_by`` is the Admin who made it.
+    """
+
+    __tablename__ = "assignments"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id"), nullable=False
+    )
+    shift_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    assigned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        UniqueConstraint("shift_id", "user_id", name="uq_assignments_shift_user"),
+        Index("idx_assignments_user", "user_id"),
+    )

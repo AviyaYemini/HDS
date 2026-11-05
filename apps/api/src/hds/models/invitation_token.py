@@ -41,4 +41,5 @@ class InvitationToken(Base):
     __table_args__ = (
         CheckConstraint("purpose IN ('invite','reset')", name="ck_invitation_tokens_purpose"),
         Index("idx_invitation_tokens_user", "user_id"),
+        Index("idx_invitation_tokens_expires_at", "expires_at"),  # the bulk clean-up
     )

@@ -39,15 +39,25 @@ class ClientRepository(OrgScopedRepository[Client]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Client | None:
-        """Fetch a non-deleted client of the organisation, or ``None`` (also for other tenants)."""
-        result = await self.session.execute(
-            select(Client).where(
-                Client.id == id,
-                Client.organization_id == org_id,
-                Client.is_deleted.is_(False),
-            )
+    async def get_by_id(
+        self, id: uuid.UUID, org_id: uuid.UUID, *, for_update: bool = False
+    ) -> Client | None:
+        """Fetch a non-deleted client of the organisation, or ``None`` (also for other tenants).
+
+        Args:
+            id: Client to fetch.
+            org_id: The caller's organisation.
+            for_update: Lock the row until the transaction ends and read its latest committed
+                values, so a rule judged on them still holds when the change is written.
+        """
+        stmt = select(Client).where(
+            Client.id == id,
+            Client.organization_id == org_id,
+            Client.is_deleted.is_(False),
         )
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Client:

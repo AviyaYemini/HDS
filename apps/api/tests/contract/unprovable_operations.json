@@ -49,6 +49,76 @@
       "operation_id": "edit_client_api_v1_clients__id__patch",
       "suites": ["pytest", "cli"],
       "reason": "same date-order rule as the create, judged against the stored start (FR-243)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/availability-windows",
+      "operation_id": "open_window_api_v1_availability_windows_post",
+      "suites": ["pytest", "cli"],
+      "reason": "ends_on >= starts_on spans two fields (003 FR-106), answered 422 windows.date_range_invalid; a period that shares a date with another window is answered 409 windows.overlap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/{id}/constraints",
+      "operation_id": "add_entry_api_v1_employees__id__constraints_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the date order, the weekday and the absence fields span several fields (003 FR-101, FR-102), and the window rule depends on stored windows (FR-105); answered 422 or 409 with availability.* codes"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/constraints/{id}",
+      "operation_id": "change_entry_api_v1_constraints__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same rules as adding an entry (003 FR-104, FR-105)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-types",
+      "operation_id": "add_type_api_v1_shift_types_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a type may not start and end at the same time, which spans two fields (003 FR-110); answered 422 shift_types.times_equal"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/shift-types/{id}",
+      "operation_id": "change_type_api_v1_shift_types__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same rule as adding a type, judged with the stored time of the field not sent"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shifts",
+      "operation_id": "list_shifts_api_v1_shifts_get",
+      "suites": ["pytest", "cli"],
+      "reason": "a cursor must be one this API returned, which no schema can state; any other text is answered 422 shifts.cursor_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shifts",
+      "operation_id": "create_shift_api_v1_shifts_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the times span two fields and the shift type must be one the project uses, which depends on stored data (003 FR-111, FR-113); answered 422 shifts.times_invalid or shifts.type_not_in_project"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/shifts/{id}",
+      "operation_id": "change_shift_api_v1_shifts__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the new times are judged with the stored time of the field not sent (003 FR-114); answered 422 shifts.times_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/publish",
+      "operation_id": "publish_api_v1_projects__id__publish_post",
+      "suites": ["pytest", "cli"],
+      "reason": "to >= from spans two fields (003 FR-121), answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "GET",
+      "path": "/me/shifts",
+      "operation_id": "my_shifts_me_shifts_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to >= from spans two parameters, answered 422 shifts.date_range_invalid"
     }
   ]
 }

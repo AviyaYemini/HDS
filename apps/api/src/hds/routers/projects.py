@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_admin, require_manager, require_manager_or_client
-from hds.core.types import Money, Name, StrictDate, omittable
+from hds.core.types import ChangeRequest, Money, Name, StrictDate, omittable
 from hds.models.project import ProjectStatus, ProjectType
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
@@ -60,7 +60,7 @@ class ProjectCreateRequest(BaseModel):
     end_date: StrictDate | None = None
 
 
-class ProjectUpdateRequest(BaseModel):
+class ProjectUpdateRequest(ChangeRequest):
     """Project fields that may change; omitted fields are left as they are, null clears."""
 
     name: Name = omittable()

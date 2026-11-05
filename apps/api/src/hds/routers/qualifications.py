@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
-from hds.core.types import Name
+from hds.core.types import ChangeRequest, Name
 from hds.models.user import User
 from hds.repositories.qualification import QualificationRepository
 from hds.services.qualification import QualificationService
@@ -33,7 +33,13 @@ class QualificationRead(BaseModel):
 
 
 class QualificationWriteRequest(BaseModel):
-    """Qualification name for create and rename; unique within the organisation."""
+    """Qualification name for create; unique within the organisation."""
+
+    name: Name
+
+
+class QualificationRenameRequest(ChangeRequest):
+    """The new name; unique within the organisation. Any other field is refused with 422."""
 
     name: Name
 
@@ -98,7 +104,7 @@ async def create_qualification(
 )
 async def rename_qualification(
     id: uuid.UUID,
-    body: QualificationWriteRequest,
+    body: QualificationRenameRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:

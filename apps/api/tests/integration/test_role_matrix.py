@@ -23,6 +23,7 @@ ANY = frozenset({"employee", "manager", "admin", "client"})
 MGR = frozenset({"manager", "admin"})
 ADMIN = frozenset({"admin"})
 MGR_OR_CLIENT = frozenset({"manager", "admin", "client"})
+STAFF = frozenset({"employee", "manager", "admin"})
 PUBLIC = None  # no authentication required
 
 E = "/api/v1/employees/{id}"
@@ -83,6 +84,30 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("GET", P): MGR_OR_CLIENT,
     ("PATCH", P): MGR,
     ("DELETE", P): ADMIN,
+    # availability (003 FR-105 to FR-109); whose records is decided by the service
+    ("GET", "/api/v1/availability-windows"): STAFF,
+    ("POST", "/api/v1/availability-windows"): MGR,
+    ("PATCH", "/api/v1/availability-windows/{id}"): MGR,
+    ("DELETE", "/api/v1/availability-windows/{id}"): MGR,
+    ("GET", E + "/constraints"): STAFF,
+    ("POST", E + "/constraints"): STAFF,
+    ("PATCH", "/api/v1/constraints/{id}"): STAFF,
+    ("DELETE", "/api/v1/constraints/{id}"): STAFF,
+    # shift types (003 FR-110, FR-111)
+    ("GET", "/api/v1/shift-types"): STAFF,
+    ("POST", "/api/v1/shift-types"): MGR,
+    ("PATCH", "/api/v1/shift-types/{id}"): MGR,
+    ("GET", P + "/shift-types"): MGR,
+    ("PUT", P + "/shift-types"): MGR,
+    # the manual roster (003 FR-113 to FR-120)
+    ("GET", "/api/v1/shifts"): MGR,
+    ("POST", "/api/v1/shifts"): ADMIN,
+    ("PATCH", "/api/v1/shifts/{id}"): ADMIN,
+    ("DELETE", "/api/v1/shifts/{id}"): ADMIN,
+    ("POST", "/api/v1/shifts/{id}/assignments"): ADMIN,
+    ("DELETE", "/api/v1/assignments/{id}"): ADMIN,
+    ("POST", P + "/publish"): MGR,
+    ("GET", "/me/shifts"): STAFF,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}

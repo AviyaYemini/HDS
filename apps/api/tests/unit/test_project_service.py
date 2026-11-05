@@ -214,6 +214,7 @@ async def test_a_client_account_with_no_client_lists_nothing(sent: uuid.UUID | N
 
     assert await _svc(repo).list_projects(actor.organization_id, actor, client_id=sent) == []
     repo.list_by_org.assert_not_awaited()
+    repo.list_by_client.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
-from hds.core.types import Name
+from hds.core.types import ChangeRequest, Name
 from hds.models.user import User
 from hds.repositories.group import GroupRepository
 from hds.services.group import GroupService
@@ -33,7 +33,13 @@ class GroupRead(BaseModel):
 
 
 class GroupWriteRequest(BaseModel):
-    """Group name for create and rename; unique within the organisation."""
+    """Group name for create; unique within the organisation."""
+
+    name: Name
+
+
+class GroupRenameRequest(ChangeRequest):
+    """The new name; unique within the organisation. Any other field is refused with 422."""
 
     name: Name
 
@@ -97,7 +103,7 @@ async def create_group(
 )
 async def rename_group(
     id: uuid.UUID,
-    body: GroupWriteRequest,
+    body: GroupRenameRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> object:

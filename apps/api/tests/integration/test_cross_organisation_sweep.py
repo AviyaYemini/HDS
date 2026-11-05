@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.security import hash_password
@@ -30,6 +30,8 @@ from hds.models.client import Client
 from hds.models.group import Group
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.qualification import Qualification
+from hds.models.shift import Shift
+from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
 from hds.models.user import User, UserRole
 from tests.integration.conftest import OtherOrg
@@ -48,6 +50,7 @@ class Mine:
     project: Project
     group: Group
     qualification: Qualification
+    shift: Shift | None = None
 
 
 @pytest_asyncio.fixture
@@ -84,8 +87,28 @@ async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
         status=ProjectStatus.active,
     )
     test_db.add(project)
+    await test_db.flush()
+    shift_type = (
+        (await test_db.execute(select(ShiftType).where(ShiftType.organization_id == org_id)))
+        .scalars()
+        .first()
+    )
+    assert shift_type is not None
+    await test_db.execute(
+        insert(project_shift_types).values(project_id=project.id, shift_type_id=shift_type.id)
+    )
+    shift = Shift(
+        id=uuid.uuid4(),
+        organization_id=org_id,
+        project_id=project.id,
+        shift_type_id=shift_type.id,
+        starts_at=datetime(2027, 6, 7, 4, tzinfo=UTC),
+        ends_at=datetime(2027, 6, 7, 12, tzinfo=UTC),
+        headcount=1,
+    )
+    test_db.add(shift)
     await test_db.commit()
-    return Mine(seed_users["employee"], client, site, project, group, qualification)
+    return Mine(seed_users["employee"], client, site, project, group, qualification, shift)
 
 
 @dataclass
@@ -108,6 +131,8 @@ class Case:
     build: Callable[[World], tuple[str, dict[str, Any]]]  # (path, request kwargs)
     status: int = 404
     code: str = "resource.not_found"
+    # What a Manager gets instead, where it differs from an Admin, as (status, code).
+    manager: tuple[int, str] | None = None
 
 
 def req(path: str, **kwargs: Any) -> tuple[str, dict[str, Any]]:
@@ -354,6 +379,160 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/sites/{w.theirs.site.id}", json={"name": "Renamed"}),
         ),
     ],
+    "PATCH /api/v1/availability-windows/{id}": [
+        Case(
+            "foreign window id",
+            lambda w: req(
+                f"/api/v1/availability-windows/{w.theirs.window.id}",  # type: ignore[union-attr]
+                json={"deadline": "2030-01-01T00:00:00Z"},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/availability-windows/{id}": [
+        Case(
+            "foreign window id",
+            lambda w: req(f"/api/v1/availability-windows/{w.theirs.window.id}"),  # type: ignore[union-attr]
+        ),
+    ],
+    "GET /api/v1/employees/{id}/constraints": [
+        Case("foreign user id", lambda w: req(f"/api/v1/employees/{w.theirs.user.id}/constraints")),
+    ],
+    "POST /api/v1/employees/{id}/constraints": [
+        Case(
+            "foreign user id",
+            lambda w: req(
+                f"/api/v1/employees/{w.theirs.user.id}/constraints",
+                json={"kind": "blocked", "starts_on": "2027-06-06", "ends_on": "2027-06-06"},
+            ),
+        ),
+        Case(
+            "own user id, foreign shift type",
+            manager=(403, "availability.admin_required"),  # another employee's: Admin only
+            build=lambda w: req(
+                f"/api/v1/employees/{w.mine.user.id}/constraints",
+                json={
+                    "kind": "blocked",
+                    "starts_on": "2027-06-06",
+                    "ends_on": "2027-06-06",
+                    "shift_type_id": str(w.theirs.shift_type.id),  # type: ignore[union-attr]
+                },
+            ),
+        ),
+    ],
+    "PATCH /api/v1/constraints/{id}": [
+        Case(
+            "foreign entry id",
+            lambda w: req(
+                f"/api/v1/constraints/{w.theirs.entry.id}",  # type: ignore[union-attr]
+                json={"kind": "open"},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/constraints/{id}": [
+        Case(
+            "foreign entry id",
+            lambda w: req(f"/api/v1/constraints/{w.theirs.entry.id}"),  # type: ignore[union-attr]
+        ),
+    ],
+    "PATCH /api/v1/shift-types/{id}": [
+        Case(
+            "foreign shift type id",
+            lambda w: req(
+                f"/api/v1/shift-types/{w.theirs.shift_type.id}",  # type: ignore[union-attr]
+                json={"name": "Renamed"},
+            ),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/shift-types": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/shift-types"),
+        ),
+    ],
+    "PUT /api/v1/projects/{id}/shift-types": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/shift-types", json={"ids": []}),
+        ),
+        Case(
+            "own project, foreign shift type",
+            lambda w: req(
+                f"/api/v1/projects/{w.mine.project.id}/shift-types",
+                json={"ids": [str(w.theirs.shift_type.id)]},  # type: ignore[union-attr]
+            ),
+        ),
+    ],
+    "GET /api/v1/shifts": [
+        Case(
+            "foreign project_id", lambda w: req(f"/api/v1/shifts?project_id={w.theirs.project.id}")
+        ),
+    ],
+    "POST /api/v1/shifts": [
+        Case(
+            "foreign project, own shift type",
+            lambda w: req(
+                "/api/v1/shifts",
+                json={
+                    "project_id": str(w.theirs.project.id),
+                    "shift_type_id": str(w.mine.shift.shift_type_id),  # type: ignore[union-attr]
+                    "date": "2027-06-08",
+                    "headcount": 1,
+                },
+            ),
+        ),
+        Case(
+            "own project, foreign shift type",
+            lambda w: req(
+                "/api/v1/shifts",
+                json={
+                    "project_id": str(w.mine.project.id),
+                    "shift_type_id": str(w.theirs.shift_type.id),  # type: ignore[union-attr]
+                    "date": "2027-06-08",
+                    "headcount": 1,
+                },
+            ),
+        ),
+    ],
+    "PATCH /api/v1/shifts/{id}": [
+        Case(
+            "foreign shift id",
+            lambda w: req(f"/api/v1/shifts/{w.theirs.shift.id}", json={"headcount": 2}),  # type: ignore[union-attr]
+        ),
+    ],
+    "DELETE /api/v1/shifts/{id}": [
+        Case("foreign shift id", lambda w: req(f"/api/v1/shifts/{w.theirs.shift.id}")),  # type: ignore[union-attr]
+    ],
+    "POST /api/v1/shifts/{id}/assignments": [
+        Case(
+            "foreign shift id",
+            lambda w: req(
+                f"/api/v1/shifts/{w.theirs.shift.id}/assignments",  # type: ignore[union-attr]
+                json={"user_id": str(w.mine.user.id)},
+            ),
+        ),
+        Case(
+            "own shift, foreign employee",
+            lambda w: req(
+                f"/api/v1/shifts/{w.mine.shift.id}/assignments",  # type: ignore[union-attr]
+                json={"user_id": str(w.theirs.user.id)},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/assignments/{id}": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}"),  # type: ignore[union-attr]
+        ),
+    ],
+    "POST /api/v1/projects/{id}/publish": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/publish",
+                json={"from": "2027-06-01", "to": "2027-06-30"},
+            ),
+        ),
+    ],
     "POST /auth/invite": [
         Case(
             "address held by another organisation",
@@ -478,6 +657,11 @@ async def test_foreign_id_or_address_is_refused_and_nothing_changes(
 # Cases a Manager may not perform at all: the role check comes first, so the answer is 403 and
 # says nothing about whether the foreign id exists.
 ADMIN_ONLY = {
+    "POST /api/v1/shifts": "users.admin_required",
+    "PATCH /api/v1/shifts/{id}": "users.admin_required",
+    "DELETE /api/v1/shifts/{id}": "users.admin_required",
+    "POST /api/v1/shifts/{id}/assignments": "users.admin_required",
+    "DELETE /api/v1/assignments/{id}": "users.admin_required",
     "DELETE /api/v1/employees/{id}": "users.admin_required",
     "DELETE /api/v1/clients/{id}": "users.admin_required",
     "DELETE /api/v1/projects/{id}": "users.admin_required",
@@ -494,6 +678,15 @@ PORTAL_READS = {
 # lookup by organisation, so another organisation's id never gets a different answer from a
 # missing one.
 NOT_STAFF = ("employee", "client")
+
+# Availability is the employee's own (003 FR-105): an Employee passes the role gate, so another
+# organisation's id gets 404, exactly as a missing one would.
+EMPLOYEE_OPEN = {
+    "GET /api/v1/employees/{id}/constraints",
+    "POST /api/v1/employees/{id}/constraints",
+    "PATCH /api/v1/constraints/{id}",
+    "DELETE /api/v1/constraints/{id}",
+}
 
 
 async def headers_for(client: AsyncClient, role: str) -> dict[str, str]:
@@ -524,6 +717,8 @@ async def test_a_manager_gets_the_same_refusals(
     if key in ADMIN_ONLY:
         assert response.status_code == 403, response.text
         assert response.json()["code"] == ADMIN_ONLY[key]
+    elif case.manager is not None:
+        assert (response.status_code, response.json()["code"]) == case.manager, response.text
     else:
         assert response.status_code == case.status, response.text
         assert response.json().get("code") == case.code, response.text
@@ -554,6 +749,9 @@ async def test_employees_and_client_users_are_refused_by_role_before_any_lookup(
         assert response.status_code == 200, response.text
         assert str(other_org.project.id) not in response.text, "another organisation's project"
     elif role == "client" and key in PORTAL_READS:
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "resource.not_found"
+    elif role == "employee" and key in EMPLOYEE_OPEN:
         assert response.status_code == 404, response.text
         assert response.json()["code"] == "resource.not_found"
     else:

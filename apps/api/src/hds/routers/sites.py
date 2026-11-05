@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
-from hds.core.types import Address, Name, Timezone, omittable
+from hds.core.types import Address, ChangeRequest, Name, Timezone, omittable
 from hds.models.user import User
 from hds.repositories.site import SiteRepository
 from hds.services.site import SiteService
@@ -43,7 +43,7 @@ class SiteCreateRequest(BaseModel):
     timezone: Timezone
 
 
-class SiteUpdateRequest(BaseModel):
+class SiteUpdateRequest(ChangeRequest):
     """Site fields that may change; omitted fields are left as they are."""
 
     name: Name = omittable()

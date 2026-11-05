@@ -171,19 +171,27 @@ class ClientService:
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: The client is not in the organisation (HTTP 404).
-            DomainValidationError: ``clients.date_range_invalid`` (HTTP 422), judged with the
-                stored value of a field that is not sent. A service rule and not a constraint,
-                because rows stored before it may break it.
+            DomainValidationError: ``clients.date_range_invalid`` (HTTP 422), judged on the pair
+                as it will be after the change, with the stored value of a date that is not sent,
+                and only when that pair differs from the stored one. A service rule and not a
+                constraint, because rows stored before it may break it.
 
         Side effects:
-            On deactivation, ends the portal users' sessions and cancels their links.
+            Locks the client row when either date is sent or on deactivation, before any portal
+            user. On deactivation, ends the portal users' sessions and cancels their links.
         """
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._client_repo.get_by_id(id, actor.organization_id)
+        # A date change locks the row: two requests moving the start and the end at once would
+        # each pass against the old pair and together store a broken one. Deactivation locks it
+        # too, so every path takes the client row before its portal users and none can deadlock.
+        lock = "contract_start" in data or "contract_end" in data or data.get("is_active") is False
+        existing = await self._client_repo.get_by_id(id, actor.organization_id, for_update=lock)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
-        if "contract_end" in data and data["contract_end"] != existing.contract_end:
-            _validate_contract_dates(existing.contract_start, data["contract_end"])
+        start = data.get("contract_start", existing.contract_start)
+        end = data.get("contract_end", existing.contract_end)
+        if (start, end) != (existing.contract_start, existing.contract_end):
+            _validate_contract_dates(start, end)
         if data.get("is_active") is False and existing.is_active:
             await self._deactivate_portal_users(id, actor.organization_id)
         return await self._client_repo.update(id, actor.organization_id, **data)
@@ -283,10 +291,12 @@ class ClientService:
                 (HTTP 409).
 
         Side effects:
-            Deactivates the client's portal users, ends their sessions and cancels their links.
+            Locks the client row, then deactivates the client's portal users, ends their sessions
+            and cancels their links.
         """
         ensure_role(actor, *ADMIN_ROLES)
-        existing = await self._client_repo.get_by_id(id, actor.organization_id)
+        # The client row before its portal users, as in edit_client, so the two cannot deadlock.
+        existing = await self._client_repo.get_by_id(id, actor.organization_id, for_update=True)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         count = await self._client_repo.count_non_deleted_projects(id)

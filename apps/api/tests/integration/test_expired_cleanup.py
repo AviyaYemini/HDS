@@ -4,19 +4,23 @@ Cleanup runs only after a successful sign-in or refresh: a failed sign-in writes
 failure count. A spent or cancelled link inside its lifetime is kept, because cancelling marks a
 link used and its answer must stay ``auth.token_used``.
 
-Covers: FR-209, FR-224.
+Covers: FR-209, FR-224, 003 FR-008, SC-003.
 """
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.security import generate_refresh_token
 from hds.models.user import User
+from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
+from hds.scripts.purge_expired_records import BATCH
 from tests.conftest import OutboxMailSender
 
 EMAIL = "employee@hds.test"
@@ -133,3 +137,100 @@ async def test_a_spent_link_inside_its_lifetime_is_kept_and_answers_used(
     )
     assert answer.status_code == 401
     assert answer.json()["code"] == "auth.token_used"
+
+
+# ── SC-003: the clean-up reads only the expired rows (003 Group D) ─────────────────────────────
+
+UNEXPIRED = 100_000
+
+
+async def seed_volume(
+    db: AsyncSession, table: str, user_id: uuid.UUID, expired: int, analyzed: bool
+) -> None:
+    """Unexpired rows first, then expired, so a sequential scan has to read past all of them."""
+    extra = ", purpose" if table == "invitation_tokens" else ""
+    value = ", 'invite'" if table == "invitation_tokens" else ""
+    for count, sign, tag in ((UNEXPIRED, "+", "live"), (expired, "-", "old")):
+        await db.execute(
+            text(
+                f"INSERT INTO {table} (id, user_id, token_hash, expires_at{extra}) "
+                f"SELECT gen_random_uuid(), :u, md5(:t || n::text) || md5(n::text), "
+                f"now() {sign} interval '1 day'{value} FROM generate_series(1, :c) AS n"
+            ),
+            {"u": user_id, "t": tag, "c": count},
+        )
+    await db.commit()
+    if analyzed:
+        await db.execute(text(f"ANALYZE {table}"))
+        await db.commit()  # statistics are transactional; the test's rollback must not undo them
+
+
+def scanned(plan: dict[str, Any], table: str) -> tuple[int, bool]:
+    """Rows read from ``table`` by every scan node of the plan, and whether any was sequential.
+
+    Per-loop counts are multiplied by the loops, so a scan inside a nested loop counts in full.
+    """
+    rows, sequential = 0, False
+    if plan.get("Relation Name") == table and plan["Node Type"] != "ModifyTable":
+        per_loop = sum(
+            int(plan.get(key, 0))
+            for key in ("Actual Rows", "Rows Removed by Filter", "Rows Removed by Index Recheck")
+        )
+        rows += per_loop * int(plan.get("Actual Loops", 1))
+        sequential = plan["Node Type"] == "Seq Scan"
+    for child in plan.get("Plans", []):
+        more, seq = scanned(child, table)
+        rows, sequential = rows + more, sequential or seq
+    return rows, sequential
+
+
+@pytest.mark.parametrize(
+    ("expired", "analyzed"),
+    [(1_000, True), (5_000, True), (5_000, False)],
+    ids=["one batch (SC-003)", "a backlog of five batches", "a fresh backlog, not yet analyzed"],
+)
+@pytest.mark.parametrize(
+    ("table", "repository"),
+    [("refresh_tokens", RefreshTokenRepository), ("invitation_tokens", InvitationTokenRepository)],
+)
+async def test_the_clean_up_reads_only_the_expired_rows(
+    table: str,
+    repository: type[RefreshTokenRepository] | type[InvitationTokenRepository],
+    expired: int,
+    analyzed: bool,
+    test_db: AsyncSession,
+    seed_users: dict[str, User],
+) -> None:
+    """One batch reads about its own rows, never the whole table or the whole backlog.
+
+    The unanalyzed case is a table right after a bulk load, before any statistics exist.
+    """
+    await seed_volume(test_db, table, seed_users["employee"].id, expired, analyzed)
+    captured: list[tuple[str, Any]] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, params: Any, *rest: Any) -> None:
+        captured.append((statement, params))
+
+    sync_engine = test_db.bind.sync_engine  # type: ignore[union-attr]
+    event.listen(sync_engine, "before_cursor_execute", capture)
+    try:
+        deleted = await repository(test_db).delete_expired(datetime.now(UTC), BATCH)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", capture)
+    await test_db.rollback()
+
+    # Every statement the clean-up ran, replayed under EXPLAIN ANALYZE and rolled back.
+    rows, sequential = 0, False
+    connection = await test_db.connection()
+    for statement, params in captured:
+        explained = await connection.exec_driver_sql(
+            "EXPLAIN (ANALYZE, FORMAT JSON) " + statement, params
+        )
+        read, seq = scanned(explained.scalar_one()[0]["Plan"], table)
+        rows, sequential = rows + read, sequential or seq
+    await test_db.rollback()
+
+    assert deleted == min(expired, BATCH)
+    assert captured, "the clean-up ran no statement"
+    assert not sequential, [s for s, _ in captured]
+    assert rows <= 3 * deleted, rows

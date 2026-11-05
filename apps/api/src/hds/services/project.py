@@ -180,11 +180,12 @@ class ProjectService:
         """
         if current_user.role == UserRole.client:
             if current_user.client_id is None:
-                return []  # an empty filter means every project, which must not reach this user
-            client_id = current_user.client_id
-        elif client_id is not None:
+                return []  # an account with no client sees no project
+            return await self._repo.list_by_client(current_user.client_id, org_id, status=status)
+        if client_id is not None:
             await self._require_client(client_id, org_id)
-        return await self._repo.list_by_org(org_id, status=status, client_id=client_id)
+            return await self._repo.list_by_client(client_id, org_id, status=status)
+        return await self._repo.list_by_org(org_id, status=status)
 
     async def get_project(self, id: uuid.UUID, org_id: uuid.UUID, current_user: User) -> Project:
         """Return one project, refusing a Client access to another client's project.

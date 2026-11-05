@@ -159,41 +159,34 @@ async def test_manager_cannot_create_admin() -> None:
     assert exc.value.code == "users.admin_required"
 
 
-# ── promote ─────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
-async def test_promote_to_manager_by_manager_revokes_sessions() -> None:
+async def test_a_manager_promoting_to_manager_by_edit_ends_the_sessions() -> None:
+    """Covers what the removed ``promote_to_manager`` tests pinned (003 Group C)."""
+    actor = _make_user(role=UserRole.manager)
     target = _make_user(role=UserRole.employee)
     svc, user_repo, token_repo = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(role=UserRole.manager))
 
-    result = await svc.promote_to_manager(_make_user(role=UserRole.manager), target.id)
+    result = await svc.edit_employee(actor, target.id, {"role": "manager"})
 
     assert result.role == UserRole.manager
+    user_repo.update.assert_awaited_once_with(
+        target.id, actor.organization_id, role=UserRole.manager
+    )
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
 @pytest.mark.asyncio
-async def test_promote_to_admin_by_manager_forbidden() -> None:
-    target = _make_user()
-    svc, user_repo, _ = _svc()
-    user_repo.get_by_id = AsyncMock(return_value=target)
-    with pytest.raises(ForbiddenError) as exc:
-        await svc.promote_to_admin(_make_user(role=UserRole.manager), target.id)
-    assert exc.value.code == "users.admin_required"
-
-
-@pytest.mark.asyncio
-async def test_promote_to_admin_by_admin_succeeds() -> None:
+async def test_an_admin_making_an_admin_by_edit_ends_the_sessions() -> None:
+    """Covers what the removed ``promote_to_admin`` tests pinned (003 Group C)."""
     actor = _make_user(role=UserRole.admin)
-    target = _make_user()
+    target = _make_user(role=UserRole.employee)
     svc, user_repo, token_repo = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(role=UserRole.admin))
 
-    await svc.promote_to_admin(actor, target.id)
+    await svc.edit_employee(actor, target.id, {"role": "admin"})
 
     user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, role=UserRole.admin)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
@@ -202,13 +195,15 @@ async def test_promote_to_admin_by_admin_succeeds() -> None:
 # ── FR-011a: only an Admin may change an Admin ─────────────────────────────
 
 
+@pytest.mark.parametrize("data", [{"full_name": "X"}, {"role": "manager"}], ids=["name", "role"])
 @pytest.mark.asyncio
-async def test_manager_cannot_edit_admin() -> None:
+async def test_manager_cannot_edit_admin(data: dict[str, str]) -> None:
     target = _make_user(role=UserRole.admin)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    with pytest.raises(ForbiddenError):
-        await svc.edit_employee(_make_user(role=UserRole.manager), target.id, {"full_name": "X"})
+    with pytest.raises(ForbiddenError) as refused:
+        await svc.edit_employee(_make_user(role=UserRole.manager), target.id, data)
+    assert refused.value.code == "users.admin_required"
     user_repo.update.assert_not_awaited()
 
 
@@ -219,15 +214,6 @@ async def test_manager_cannot_deactivate_admin() -> None:
     user_repo.get_by_id = AsyncMock(return_value=target)
     with pytest.raises(ForbiddenError):
         await svc.deactivate(_make_user(role=UserRole.manager), target.id)
-
-
-@pytest.mark.asyncio
-async def test_manager_cannot_demote_admin_via_promote_to_manager() -> None:
-    target = _make_user(role=UserRole.admin)
-    svc, user_repo, _ = _svc()
-    user_repo.get_by_id = AsyncMock(return_value=target)
-    with pytest.raises(ForbiddenError):
-        await svc.promote_to_manager(_make_user(role=UserRole.manager), target.id)
 
 
 @pytest.mark.asyncio
@@ -244,8 +230,10 @@ async def test_manager_cannot_set_role_admin_via_edit() -> None:
     target = _make_user(role=UserRole.employee)
     svc, user_repo, _ = _svc()
     user_repo.get_by_id = AsyncMock(return_value=target)
-    with pytest.raises(ForbiddenError):
+    with pytest.raises(ForbiddenError) as refused:
         await svc.edit_employee(_make_user(role=UserRole.manager), target.id, {"role": "admin"})
+    assert refused.value.code == "users.admin_required"
+    user_repo.update.assert_not_awaited()
 
 
 # ── deactivate / reactivate ────────────────────────────────────────────────
@@ -488,31 +476,16 @@ async def test_deactivating_a_pending_account_is_refused() -> None:
     token_repo.revoke_all_for_user.assert_not_awaited()
 
 
-@pytest.mark.parametrize("change", ["manager", "admin"])
+@pytest.mark.parametrize("change", ["employee", "manager", "admin"])
 @pytest.mark.asyncio
-async def test_a_promotion_of_a_client_account_is_refused(change: str) -> None:
-    actor = _make_user(role=UserRole.admin)
-    svc, user_repo, _ = _svc()
-    target = _make_user(role=UserRole.client, org_id=actor.organization_id)
-    user_repo.get_by_id = AsyncMock(return_value=target)
-    promote = svc.promote_to_manager if change == "manager" else svc.promote_to_admin
-
-    with pytest.raises(ConflictError) as refused:
-        await promote(actor, target.id)
-
-    assert refused.value.code == "users.client_role_locked"
-    user_repo.update.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_an_edit_of_a_client_accounts_role_is_refused() -> None:
+async def test_an_edit_of_a_client_accounts_role_is_refused(change: str) -> None:
     actor = _make_user(role=UserRole.admin)
     svc, user_repo, _ = _svc()
     target = _make_user(role=UserRole.client, org_id=actor.organization_id)
     user_repo.get_by_id = AsyncMock(return_value=target)
 
     with pytest.raises(ConflictError) as refused:
-        await svc.edit_employee(actor, target.id, {"role": "manager"})
+        await svc.edit_employee(actor, target.id, {"role": change})
 
     assert refused.value.code == "users.client_role_locked"
     user_repo.update.assert_not_awaited()

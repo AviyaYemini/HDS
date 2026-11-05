@@ -1,7 +1,7 @@
 
 ## 8. API surface
 
-A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI generates. The web and mobile clients are the only consumers; the generated TypeScript client keeps both in sync with it.
+A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI generates. The web and mobile clients are the only consumers; the generated TypeScript client keeps both in sync with it: `packages/api-client` is generated from this document (`pnpm api-client:generate`), and CI fails when the committed copy differs (`pnpm api-client:check`).
 
 | Resource group | Example endpoints | Notes |
 | --- | --- | --- |
@@ -10,9 +10,11 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | People | `GET/POST /employees`, `PATCH /employees/{id}`, `GET/POST /groups` | Managers create and edit; only admins delete |
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
 | Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
-| Availability | `GET/POST /employees/{id}/constraints` | Employees edit their own; admins edit any |
-| Shifts | `GET /shifts?from=&to=&project=`, `PATCH /shifts/{id}` | Cursor pagination; admins edit the pay field |
-| Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Returns constraint warnings, not just errors |
+| Availability | `GET/POST /availability-windows`, `PATCH/DELETE /availability-windows/{id}`, `GET/POST /employees/{id}/constraints`, `PATCH/DELETE /constraints/{id}` | Managers and Admins open submission windows. Employees edit their own blocked, open and close entries inside an open window and their absences any time; Admins edit anyone's at any time; Managers read everyone's *(003)* |
+| Shift types | `GET/POST /shift-types`, `PATCH /shift-types/{id}`, `GET/PUT /projects/{id}/shift-types` | Every organisation starts with morning, afternoon and night; Managers and Admins add, change and retire types and choose each project's set; everyone who works shifts reads them *(003)* |
+| Shifts | `GET /shifts?from=&to=&project_id=&status=`, `POST /shifts`, `PATCH/DELETE /shifts/{id}` | Cursor pagination; Managers and Admins read the roster, drafts included; only Admins create, change and delete shifts, including the pay field. Every change answers with its rule warnings and is never refused for one *(003)* |
+| Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Admin only. Returns rule warnings (rest, overlap, weekly hours, availability, headcount, inactive employee), never refuses for them. `Idempotency-Key` on the create *(003)* |
+| Publishing and my shifts | `POST /projects/{id}/publish`, `GET /me/shifts` | Managers and Admins publish a project's drafts for a date range at the project's site; drafts are seen by Managers and Admins only. Each employee sees only their own published shifts, with the project, the site and its time zone, and never who else is on them *(003)* |
 | Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
 | Finance | `GET /me/pay-forecast`, `GET /finance/cash-flow`, `GET /finance/billing` | Pay rates and billing rates; cash flow may be negative |
 | Overview | `GET /overview` | Managers and admins only |
@@ -35,7 +37,7 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 - *(Proposed)* Operations that hash a password (sign-in, invitation, accepting one, confirming a reset, creating an employee or a client user) answer 503 `service.busy` with `Retry-After` when the hashing queue is full, and change nothing.
 - Every request is one transaction: a change either fully happens or does not, and invitation and reset email is sent only after the change is saved and the response has gone out, so a 202 does not mean the mail was handed over.
 - A reset request only counts and answers 202, for every address. The account is looked at, the link stored and the mail sent after the response; a failure there is logged and never reported, and a crash loses that one mail. Requests are limited per address and per network in a 60-minute window (defaults 5 and 30); over a limit nothing is issued or sent and the answer is still 202.
-- In a `PATCH`, an omitted field is left alone, an explicit `null` clears a field that allows it (a phone, an hourly rate, a contract or project end date, a client's contact details), and `null` on a required field is refused with 422.
+- In a `PATCH`, an omitted field is left alone, an explicit `null` clears a field that allows it (a phone, an hourly rate, a contract or project end date, a client's contact details), and `null` on a required field is refused with 422. In the `PATCH` of an employee, client, project, site, group or qualification, a field the operation does not accept is refused with 422 `validation.request_invalid` *(Proposed)*; editing one's own profile keeps its 403 `profile.field_not_allowed`. Create requests still ignore unknown fields.
 - Timestamps travel as ISO 8601 in UTC; clients render in the site's timezone.
 - Writes that can be retried (job creation, assignment) accept an `Idempotency-Key` header.
 - Breaking changes ship under a new `/api/v2` prefix; additive changes do not.
@@ -49,7 +51,29 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `users.pending_cannot_deactivate` | 409 | Deactivating an account that was invited and never activated |
 | `users.client_inactive` | 409 | Reactivating a portal user whose client is inactive or deleted, or creating one under an inactive client |
 | `users.client_role_locked` | 409 | A role change on a Client account *(Proposed)* |
-| `clients.date_range_invalid` | 422 | A client's contract end is before its start *(Proposed)* |
+| `clients.date_range_invalid` | 422 | A client's contract end is before its start, judged on the pair after a create or change; a Manager or Admin may correct either date *(Proposed)* |
+| `windows.overlap` | 409 | A submission window shares a date with another *(003)* |
+| `windows.date_range_invalid` | 422 | A submission window ends before it starts *(003)* |
+| `availability.no_window` | 409 | An employee's blocked, open or close entry has a date outside every submission window *(003)* |
+| `availability.window_closed` | 409 | The deadline of the window for those dates has passed *(003)* |
+| `availability.conflict` | 409 | Another entry of the employee already applies to one of those shifts and dates *(003)* |
+| `availability.admin_required` | 403 | A Manager changing another employee's availability *(003)* |
+| `availability.absence_kind_invalid` | 422 | An absence without its kind, or a kind on another entry *(003)* |
+| `availability.absence_whole_days` | 422 | An absence limited to a shift type or weekday *(003)* |
+| `availability.date_range_invalid` | 422 | An entry ends before it starts *(003)* |
+| `availability.no_matching_day` | 422 | An entry's weekday never falls between its first and last date *(003)* |
+| `availability.shift_type_retired` | 422 | An entry limited to a retired shift type *(003)* |
+| `shift_types.duplicate_name` | 409 | Another active shift type has the name, in any letter case *(003)* |
+| `shift_types.retired` | 422 | A retired shift type added to a project *(003)* |
+| `shift_types.times_equal` | 422 | A shift type that starts and ends at the same time *(003)* |
+| `shifts.times_invalid` | 422 | A shift that does not end after it starts, or only one of its two times given *(003)* |
+| `shifts.type_not_in_project` | 422 | A shift of a type the project does not use, or a retired one *(003)* |
+| `shifts.cursor_invalid` | 422 | A roster cursor the API did not return *(003)* |
+| `shifts.pay_rate_invalid` | 422 | A shift pay rate that is not greater than zero *(003)* |
+| `shifts.date_range_invalid` | 422 | A publish range that ends before it starts *(003)* |
+| `assignments.duplicate` | 409 | The employee is already on the shift *(003)* |
+| `assignments.employee_inactive` | 409 | Assigning an inactive employee *(003)* |
+| `idempotency.key_reused` | 422 | An `Idempotency-Key` sent again with a different request *(003)* |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |
 | `auth.token_revoked` | 401 | A refresh token was already used (see above) |

@@ -65,4 +65,5 @@ class RefreshToken(Base):
             name="ck_refresh_tokens_revoked_reason",
         ),
         Index("idx_refresh_tokens_user", "user_id"),
+        Index("idx_refresh_tokens_expires_at", "expires_at"),  # the bulk clean-up
     )

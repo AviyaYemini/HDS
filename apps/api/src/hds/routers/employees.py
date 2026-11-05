@@ -13,7 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user_or_self, require_admin, require_manager
-from hds.core.types import AssignableRole, Email, Money, Name, Password, Phone, omittable
+from hds.core.types import (
+    AssignableRole,
+    ChangeRequest,
+    Email,
+    Money,
+    Name,
+    Password,
+    Phone,
+    omittable,
+)
 from hds.models.group import Group
 from hds.models.qualification import Qualification
 from hds.models.user import User, UserRole
@@ -46,7 +55,7 @@ class UserCreateRequest(BaseModel):
     default_hourly_rate: Money | None = None
 
 
-class UserUpdateRequest(BaseModel):
+class UserUpdateRequest(ChangeRequest):
     """Fields a Manager or Admin may change; omitted fields are left as they are, null clears."""
 
     full_name: Name = omittable()

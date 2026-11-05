@@ -17,7 +17,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Numeric,
-    SmallInteger,
     String,
     func,
     text,
@@ -52,9 +51,8 @@ class User(TimestampedBase):
     non-deleted users, whatever the letter case (partial index ``uq_users_email_ci`` on
     ``lower(email)``); ``default_hourly_rate`` is positive when set; users are soft-deleted
     (``is_deleted``) so history stays intact and the email can be reused.
-    ``failed_login_attempts`` and ``locked_until`` are no longer used: every address's sign-in
-    failures are counted in ``login_throttle`` (FR-221). They stay because dropping them needs a
-    migration.
+    Sign-in failures and locks are not kept here: every address's are counted in
+    ``login_throttle`` (FR-221), and migration 019 dropped the old columns.
 
     ``activated_at`` is when the account was first active; it is null only for a *pending* account
     (invited, never activated). The check constraint ``ck_users_active_has_activated_at`` makes
@@ -84,8 +82,6 @@ class User(TimestampedBase):
         Numeric(precision=12, scale=4, asdecimal=True)
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clients.id"))
-    failed_login_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
-    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     client: Mapped["Client | None"] = relationship("Client", back_populates="users")
     groups: Mapped[list["Group"]] = relationship(

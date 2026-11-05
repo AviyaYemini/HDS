@@ -15,6 +15,8 @@ from hds.models.user import User, UserRole
 # Role sets that map to a dedicated error code in ``ensure_role``.
 MANAGER_ROLES: tuple[UserRole, ...] = (UserRole.manager, UserRole.admin)
 ADMIN_ROLES: tuple[UserRole, ...] = (UserRole.admin,)
+# Everyone who works shifts and so has availability and rosters: every role but Client.
+STAFF_ROLES: tuple[UserRole, ...] = (UserRole.employee, UserRole.manager, UserRole.admin)
 
 
 def ensure_role(actor: User, *roles: UserRole) -> None:
