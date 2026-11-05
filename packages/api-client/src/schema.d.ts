@@ -402,6 +402,30 @@ export interface paths {
         patch: operations["rename_group_api_v1_groups__id__patch"];
         trace?: never;
     };
+    "/api/v1/organisation/scheduling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the scheduling limits
+         * @description Manager or Admin. The minimum rest between shifts and the maximum hours per week, used by generation and by the warnings of manual rostering.
+         */
+        get: operations["read_settings_api_v1_organisation_scheduling_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the scheduling limits
+         * @description Admin. Change the minimum rest (1 to 24 hours) or the weekly maximum (1 to 168 hours); later generation and warnings use the new values.
+         */
+        patch: operations["change_settings_api_v1_organisation_scheduling_patch"];
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -468,6 +492,30 @@ export interface paths {
          * @description Manager or Admin. Publish the project's draft shifts that start on `from` to `to` (dates at the project's site); published ones are left as they are. A range that ends before it starts is refused with 422 (`shifts.date_range_invalid`).
          */
         post: operations["publish_api_v1_projects__id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's staffing needs
+         * @description Manager or Admin. How many people the project needs per shift type and weekday.
+         */
+        get: operations["list_needs_api_v1_projects__id__requirements_get"];
+        /**
+         * Set a project's staffing needs
+         * @description Manager or Admin. Replace the project's needs as a whole. Each shift type must be one the project uses (422 `requirements.shift_type_not_in_project`) and not retired (422 `requirements.shift_type_retired`); a shift type and weekday appear once (422 `requirements.duplicate`).
+         */
+        put: operations["replace_needs_api_v1_projects__id__requirements_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -544,6 +592,90 @@ export interface paths {
          * @description Manager or Admin. Change a qualification's name. A name already used by another qualification returns 409 (`qualifications.duplicate_name`).
          */
         patch: operations["rename_qualification_api_v1_qualifications__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List schedule jobs
+         * @description Manager or Admin. The organisation's jobs, newest first, without their proposals; `status` filters them. `limit` (1 to 200, default 50) per page; pass `next_cursor` back as `cursor` for the next.
+         */
+        get: operations["list_jobs_api_v1_schedule_jobs_get"];
+        put?: never;
+        /**
+         * Ask for a roster
+         * @description Manager or Admin. Queue a run that proposes a roster for `from` to `to` (at most 31 days) over every active project, or the `project_ids` given. A worker solves it; follow it with `GET /schedule-jobs/{id}`. Nothing in the roster changes until the proposal is accepted. A backwards or too long range is refused with 422 (`schedule.range_invalid`), a project that is not active with 422 (`schedule.project_not_active`). With an `Idempotency-Key`, a repeat of the same request answers the first job, and the same key with another request is refused with 422 (`idempotency.key_reused`).
+         */
+        post: operations["create_job_api_v1_schedule_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a schedule job
+         * @description Manager or Admin. The job's status, range, projects, limits and times; once it has succeeded, whether its proposal is proven optimal, the proposal's state (open, accepted, discarded or expired after 7 days) and the proposal itself.
+         */
+        get: operations["read_job_api_v1_schedule_jobs__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposal
+         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then.
+         */
+        post: operations["accept_job_api_v1_schedule_jobs__id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a proposal
+         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`).
+         */
+        post: operations["discard_job_api_v1_schedule_jobs__id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/shift-types": {
@@ -915,6 +1047,20 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcceptAnswer
+         * @description What accepting wrote to the roster, as drafts.
+         */
+        AcceptAnswer: {
+            /** Assignments Added */
+            assignments_added: number;
+            /** Assignments Removed */
+            assignments_removed: number;
+            /** Shifts Created */
+            shifts_created: number;
+            /** Shifts Updated */
+            shifts_updated: number;
+        };
+        /**
          * AcceptInviteRequest
          * @description Invitation token and the chosen password (at least 12 characters).
          */
@@ -964,6 +1110,29 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * Change
+         * @description A person on a slot, added or removed against the current drafts.
+         */
+        Change: {
+            /** Key */
+            key: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * Changes
+         * @description The proposal against the current drafts.
+         */
+        Changes: {
+            /** Added */
+            added: components["schemas"]["Change"][];
+            /** Removed */
+            removed: components["schemas"]["Change"][];
         };
         /**
          * ClientCreateRequest
@@ -1112,6 +1281,25 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * EmployeeShare
+         * @description A candidate's share of the range.
+         */
+        EmployeeShare: {
+            /** Close Not Met */
+            close_not_met: number;
+            /** Minutes */
+            minutes: number;
+            /** Nights */
+            nights: number;
+            /** Open Met */
+            open_met: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * EntryCreateRequest
@@ -1277,6 +1465,153 @@ export interface components {
             role: components["schemas"]["UserRole"];
         };
         /**
+         * JobCreateRequest
+         * @description What to generate: a range of dates, and optionally some projects and the solver.
+         */
+        JobCreateRequest: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /** Project Ids */
+            project_ids?: string[];
+            /**
+             * Solver
+             * @default cpsat
+             * @enum {string}
+             */
+            solver: "greedy" | "cpsat";
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
+         * JobPage
+         * @description A page of jobs, newest first.
+         */
+        JobPage: {
+            /** Items */
+            items: components["schemas"]["JobSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * JobRead
+         * @description A job and, once it has succeeded, its proposal.
+         */
+        JobRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Optimal */
+            optimal: boolean | null;
+            /** Project Ids */
+            project_ids: string[];
+            proposal: components["schemas"]["Proposal"] | null;
+            /** Proposal State */
+            proposal_state: ("open" | "accepted" | "discarded" | "expired") | null;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+            settings: components["schemas"]["Limits"];
+            /** Solver */
+            solver: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed";
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
+         * JobSummary
+         * @description A job without its proposal.
+         */
+        JobSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Optimal */
+            optimal: boolean | null;
+            /** Project Ids */
+            project_ids: string[];
+            /** Proposal State */
+            proposal_state: ("open" | "accepted" | "discarded" | "expired") | null;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+            settings: components["schemas"]["Limits"];
+            /** Solver */
+            solver: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed";
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
+         * Limits
+         * @description The limits a job ran with.
+         */
+        Limits: {
+            /** Max Weekly Hours */
+            max_weekly_hours: number;
+            /** Min Rest Hours */
+            min_rest_hours: number;
+        };
+        /**
          * LoginRequest
          * @description Credentials for ``POST /auth/login``.
          */
@@ -1336,6 +1671,40 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /**
+         * NeedItem
+         * @description People needed on one shift type on one weekday; any other field is refused with 422.
+         */
+        NeedItem: {
+            /** Headcount */
+            headcount: number;
+            /**
+             * Shift Type Id
+             * Format: uuid
+             */
+            shift_type_id: string;
+            /**
+             * Weekday
+             * @description 0 Sunday to 6 Saturday.
+             */
+            weekday: number;
+        };
+        /**
+         * NeedsRequest
+         * @description A project's complete set of needs; an empty list removes them all.
+         */
+        NeedsRequest: {
+            /** Items */
+            items: components["schemas"]["NeedItem"][];
+        };
+        /**
+         * NeedsResponse
+         * @description A project's needs, by weekday.
+         */
+        NeedsResponse: {
+            /** Items */
+            items: components["schemas"]["NeedItem"][];
         };
         /**
          * PasswordResetConfirm
@@ -1505,6 +1874,64 @@ export interface components {
             status?: components["schemas"]["ProjectStatus"];
         };
         /**
+         * Proposal
+         * @description Who works each slot, what stays empty and why, and what it changes; employees by id.
+         */
+        Proposal: {
+            changes: components["schemas"]["Changes"];
+            /** Employees */
+            employees: components["schemas"]["EmployeeShare"][];
+            /** No Availability */
+            no_availability: string[];
+            /** Short Published */
+            short_published: components["schemas"]["ShortPublished"][];
+            /** Slots */
+            slots: components["schemas"]["ProposedSlot"][];
+            /** Unfilled */
+            unfilled: components["schemas"]["UnfilledSlot"][];
+        };
+        /**
+         * ProposedSlot
+         * @description A slot of the proposal: an existing draft (``shift_id``) or a new shift.
+         */
+        ProposedSlot: {
+            /** Assigned */
+            assigned: string[];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Headcount */
+            headcount: number;
+            /** Kept */
+            kept: string[];
+            /** Key */
+            key: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Shift Id */
+            shift_id: string | null;
+            /**
+             * Shift Type Id
+             * Format: uuid
+             */
+            shift_type_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+        };
+        /**
          * PublishAnswer
          * @description How many drafts were published.
          */
@@ -1553,12 +1980,42 @@ export interface components {
             name: string;
         };
         /**
+         * Reason
+         * @description One reason places stayed empty, and how many candidates it excluded.
+         */
+        Reason: {
+            /** Code */
+            code: string;
+            /** Employees */
+            employees: number;
+        };
+        /**
          * RefreshRequest
          * @description A refresh token to exchange or revoke.
          */
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * SchedulingSettings
+         * @description The limits the roster is generated and checked against, in whole hours.
+         */
+        SchedulingSettings: {
+            /** Max Weekly Hours */
+            max_weekly_hours: number;
+            /** Min Rest Hours */
+            min_rest_hours: number;
+        };
+        /**
+         * SchedulingSettingsUpdate
+         * @description Either limit; any other field is refused with 422.
+         */
+        SchedulingSettingsUpdate: {
+            /** Max Weekly Hours */
+            max_weekly_hours?: number;
+            /** Min Rest Hours */
+            min_rest_hours?: number;
         };
         /**
          * ShiftAnswer
@@ -1773,6 +2230,21 @@ export interface components {
             starts_at?: string;
         };
         /**
+         * ShortPublished
+         * @description A published shift with fewer people than its need; reported, not changed.
+         */
+        ShortPublished: {
+            /** Assigned */
+            assigned: number;
+            /** Needed */
+            needed: number;
+            /**
+             * Shift Id
+             * Format: uuid
+             */
+            shift_id: string;
+        };
+        /**
          * SiteCreateRequest
          * @description New site; ``timezone`` is an IANA zone name such as ``Asia/Jerusalem``.
          */
@@ -1854,6 +2326,18 @@ export interface components {
              * @default bearer
              */
             token_type: string;
+        };
+        /**
+         * UnfilledSlot
+         * @description A slot with empty places, and why.
+         */
+        UnfilledSlot: {
+            /** Key */
+            key: string;
+            /** Places */
+            places: number;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
         };
         /**
          * UserCreateRequest
@@ -4217,6 +4701,104 @@ export interface operations {
             };
         };
     };
+    read_settings_api_v1_organisation_scheduling_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingSettings"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_settings_api_v1_organisation_scheduling_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulingSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingSettings"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
@@ -4601,6 +5183,135 @@ export interface operations {
             };
         };
     };
+    list_needs_api_v1_projects__id__requirements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NeedsResponse"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    replace_needs_api_v1_projects__id__requirements_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NeedsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NeedsResponse"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     project_types_api_v1_projects__id__shift_types_get: {
         parameters: {
             query?: never;
@@ -4924,6 +5635,311 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_jobs_api_v1_schedule_jobs_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "succeeded" | "failed") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPage"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    create_job_api_v1_schedule_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "idempotency-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_job_api_v1_schedule_jobs__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    accept_job_api_v1_schedule_jobs__id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptAnswer"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    discard_job_api_v1_schedule_jobs__id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */

@@ -66,6 +66,8 @@ class Settings(BaseSettings):
             ignored. A wrong value cannot be detected at start-up.
         HASH_CONCURRENCY: Password hashes that may run at once in one worker.
         HASH_QUEUE_LIMIT: Password hashes that may wait; beyond that a request is refused (503).
+        SCHEDULE_TIME_LIMIT_SECONDS: How long a schedule job's solver may search (004 FR-010),
+            1 to 60; the worker's 5-minute lease covers the longest.
         LOGIN_LOCKOUT_MINUTES: How long a locked account stays locked.
         REFRESH_REUSE_GRACE_SECONDS: After a refresh token is used, a second use within this
             many seconds is refused without ending the user's sessions (an honest retry); a
@@ -103,6 +105,7 @@ class Settings(BaseSettings):
     TRUSTED_PROXY_COUNT: int = Field(default=0, ge=0)
     HASH_CONCURRENCY: int = Field(default=2, ge=1)
     HASH_QUEUE_LIMIT: int = Field(default=8, ge=0)
+    SCHEDULE_TIME_LIMIT_SECONDS: int = Field(default=20, gt=0, le=60)
     # JSON list in the environment, e.g. CORS_ORIGINS='["https://app.example.com"]'.
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
     MAIL_BACKEND: str | None = None

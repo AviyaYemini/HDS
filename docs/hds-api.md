@@ -9,13 +9,14 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Invitations and password reset *(Proposed)* | `POST /auth/invite`, `/auth/invite/accept`, `/auth/password-reset/request`, `/auth/password-reset/confirm` | One-time links. An invitation completes only a pending account (never activated); a deactivated account cannot be invited back; links are cancelled when an account is deactivated, deleted or activated |
 | People | `GET/POST /employees`, `PATCH /employees/{id}`, `GET/POST /groups` | Managers create and edit; only admins delete |
 | Clients | `GET/POST /clients`, `GET /clients/{id}/projects` | Client users are accounts linked to one client |
-| Sites and projects | `GET/POST /projects`, `PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422) |
+| Sites and projects | `GET/POST /projects`, `GET/PUT /projects/{id}/requirements` | Type, billing rate and staffing needs live here. A site's time zone must be a real IANA name (`sites.timezone_invalid`, 422). Staffing needs: Managers and Admins read and replace a project's needs as a whole, as people per shift type and weekday (0 Sunday to 6 Saturday); a type the project does not use, a retired one or a repeated shift type and weekday is refused with 422 *(004)* |
+| Scheduling limits | `GET/PATCH /organisation/scheduling` | The minimum rest (1 to 24 hours, default 11) and weekly maximum (1 to 168 hours, default 48) that generation and the warnings of manual rostering use; Managers read them, Admins change them *(004)* |
 | Availability | `GET/POST /availability-windows`, `PATCH/DELETE /availability-windows/{id}`, `GET/POST /employees/{id}/constraints`, `PATCH/DELETE /constraints/{id}` | Managers and Admins open submission windows. Employees edit their own blocked, open and close entries inside an open window and their absences any time; Admins edit anyone's at any time; Managers read everyone's *(003)* |
 | Shift types | `GET/POST /shift-types`, `PATCH /shift-types/{id}`, `GET/PUT /projects/{id}/shift-types` | Every organisation starts with morning, afternoon and night; Managers and Admins add, change and retire types and choose each project's set; everyone who works shifts reads them *(003)* |
 | Shifts | `GET /shifts?from=&to=&project_id=&status=`, `POST /shifts`, `PATCH/DELETE /shifts/{id}` | Cursor pagination; Managers and Admins read the roster, drafts included; only Admins create, change and delete shifts, including the pay field. Every change answers with its rule warnings and is never refused for one *(003)* |
 | Assignments | `POST /shifts/{id}/assignments`, `DELETE /assignments/{id}` | Admin only. Returns rule warnings (rest, overlap, weekly hours, availability, headcount, inactive employee), never refuses for them. `Idempotency-Key` on the create *(003)* |
 | Publishing and my shifts | `POST /projects/{id}/publish`, `GET /me/shifts` | Managers and Admins publish a project's drafts for a date range at the project's site; drafts are seen by Managers and Admins only. Each employee sees only their own published shifts, with the project, the site and its time zone, and never who else is on them *(003)* |
-| Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs/{id}` | Asynchronous; covers all active projects by default; result is a draft roster to review |
+| Schedule jobs | `POST /schedule-jobs`, `GET /schedule-jobs`, `GET /schedule-jobs/{id}`, `POST /schedule-jobs/{id}/accept`, `POST /schedule-jobs/{id}/discard` | Managers and Admins ask for a roster for 1 to 31 days over every active project, or chosen ones (`Idempotency-Key` accepted); a worker solves it within a time limit (20 s by default) and stores a proposal: who works each slot, every empty place with the rule that blocked it, the share of each employee, and whether it is proven optimal. Nothing changes in the roster until the proposal is accepted: accepting stores it as drafts, all or nothing (an existing draft keeps its id), and is refused if anything it was made from has changed since; nothing is published. A proposal open for 7 days expires. Employees and clients never see a proposal *(004)* |
 | Finance | `GET /me/pay-forecast`, `GET /finance/cash-flow`, `GET /finance/billing` | Pay rates and billing rates; cash flow may be negative |
 | Overview | `GET /overview` | Managers and admins only |
 | Reports | `GET /reports/work-log`, `/reports/hours`, `?format=xlsx` | Date range required |
@@ -73,6 +74,15 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `shifts.date_range_invalid` | 422 | A publish range that ends before it starts *(003)* |
 | `assignments.duplicate` | 409 | The employee is already on the shift *(003)* |
 | `assignments.employee_inactive` | 409 | Assigning an inactive employee *(003)* |
+| `requirements.shift_type_not_in_project` | 422 | A staffing need on a shift type the project does not use, or another organisation's *(004)* |
+| `requirements.shift_type_retired` | 422 | A staffing need on a retired shift type *(004)* |
+| `requirements.duplicate` | 422 | A shift type and weekday given twice in one set of needs *(004)* |
+| `schedule.range_invalid` | 422 | A generation range that ends before it starts or covers more than 31 days *(004)* |
+| `schedule.project_not_active` | 422 | A generation project that is not an active project of the organisation, another organisation's included *(004)* |
+| `schedule.cursor_invalid` | 422 | A job-list cursor the API did not return *(004)* |
+| `schedule.not_ready` | 409 | Accepting or discarding a job that has not succeeded *(004)* |
+| `schedule.proposal_closed` | 409 | Accepting or discarding a proposal already accepted, discarded or expired *(004)* |
+| `schedule.proposal_out_of_date` | 409 | Accepting a proposal after something it was made from changed (availability, shifts nearby, employees, needs, shift types, limits) *(004)* |
 | `idempotency.key_reused` | 422 | An `Idempotency-Key` sent again with a different request *(003)* |
 | `sites.timezone_invalid` | 422 | A site is saved with a time zone that is not an exact name on the IANA list, letter case included |
 | `auth.token_used` | 401 | A link is spent, cancelled, or belongs to an account that is not in the right state; the same answer in every case |

@@ -462,6 +462,70 @@ CASES: dict[str, list[Case]] = {
             ),
         ),
     ],
+    "GET /api/v1/schedule-jobs/{id}": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}"),  # type: ignore[union-attr]
+        ),
+    ],
+    "POST /api/v1/schedule-jobs/{id}/accept": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/accept"),  # type: ignore[union-attr]
+        ),
+    ],
+    "POST /api/v1/schedule-jobs/{id}/discard": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/discard"),  # type: ignore[union-attr]
+        ),
+    ],
+    "POST /api/v1/schedule-jobs": [
+        Case(
+            "foreign project id: refused as not active here, revealing nothing",
+            lambda w: req(
+                "/api/v1/schedule-jobs",
+                json={
+                    "from": "2027-06-06",
+                    "to": "2027-06-12",
+                    "project_ids": [str(w.theirs.project.id)],
+                },
+            ),
+            status=422,
+            code="schedule.project_not_active",
+        ),
+    ],
+    "GET /api/v1/projects/{id}/requirements": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/requirements"),
+        ),
+    ],
+    "PUT /api/v1/projects/{id}/requirements": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/requirements", json={"items": []}
+            ),
+        ),
+        Case(
+            "own project, foreign shift type: refused as not in the project, revealing nothing",
+            lambda w: req(
+                f"/api/v1/projects/{w.mine.project.id}/requirements",
+                json={
+                    "items": [
+                        {
+                            "shift_type_id": str(w.theirs.shift_type.id),  # type: ignore[union-attr]
+                            "weekday": 0,
+                            "headcount": 1,
+                        }
+                    ]
+                },
+            ),
+            status=422,
+            code="requirements.shift_type_not_in_project",
+        ),
+    ],
     "GET /api/v1/shifts": [
         Case(
             "foreign project_id", lambda w: req(f"/api/v1/shifts?project_id={w.theirs.project.id}")
@@ -581,7 +645,8 @@ def inventory() -> set[str]:
             for media in op.get("requestBody", {}).get("content", {}).values():
                 ref = media.get("schema", {}).get("$ref", "")
                 for name in schemas.get(ref.rsplit("/", 1)[-1], {}).get("properties", {}):
-                    if name.endswith("_id") or name in ("ids", "email"):
+                    # ``*_ids`` too: a list of ids is as much a way in as one (004 review).
+                    if name.endswith(("_id", "_ids")) or name in ("ids", "email"):
                         takes = True
             if takes:
                 found.add(f"{method.upper()} {path}")

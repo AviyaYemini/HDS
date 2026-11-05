@@ -33,6 +33,8 @@ class Organisation(TimestampedBase):
     )
 
     __table_args__ = (
-        CheckConstraint("min_rest_hours > 0", name="ck_organisations_min_rest_positive"),
-        CheckConstraint("max_weekly_hours > 0", name="ck_organisations_max_weekly_positive"),
+        CheckConstraint("min_rest_hours BETWEEN 1 AND 24", name="ck_organisations_min_rest_range"),
+        CheckConstraint(
+            "max_weekly_hours BETWEEN 1 AND 168", name="ck_organisations_max_weekly_range"
+        ),
     )

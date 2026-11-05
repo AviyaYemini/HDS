@@ -1,4 +1,7 @@
-"""The scheduling package is pure: standard library only, nothing else from the app (T033).
+"""The scheduling package is pure: no app, database or network import (T033, 004 T002).
+
+Every module uses the standard library only, except ``cpsat.py``, which may also import the CP-SAT
+solver library (004 research G2). ``import scheduling`` never loads it.
 
 Covers: Constitution III.
 """
@@ -10,6 +13,8 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[3] / "src" / "hds" / "scheduling"
 STDLIB = sys.stdlib_module_names
+# The one third-party library the package may use, and the one module allowed to import it.
+SOLVER_MODULE, SOLVER_LIBRARY = "cpsat.py", "ortools"
 
 
 def test_it_imports_in_a_bare_interpreter_with_only_the_standard_library() -> None:
@@ -18,7 +23,8 @@ def test_it_imports_in_a_bare_interpreter_with_only_the_standard_library() -> No
         "import sys; sys.path[:] = [p for p in sys.path if 'site-packages' not in p]; "
         f"sys.path.insert(0, {str(PACKAGE.parent)!r}); "
         "import scheduling; "
-        "assert not [m for m in sys.modules if m.startswith(('hds', 'sqlalchemy', 'fastapi'))]"
+        "assert not [m for m in sys.modules if m.startswith(('hds', 'sqlalchemy', 'fastapi', "
+        "'ortools'))]"
     )
 
     result = subprocess.run(
@@ -29,6 +35,7 @@ def test_it_imports_in_a_bare_interpreter_with_only_the_standard_library() -> No
 
 
 def test_every_module_imports_only_the_standard_library_and_itself() -> None:
+    """Standard library and the package only; the CP-SAT module may also import ortools."""
     modules = sorted(PACKAGE.glob("*.py"))
     assert modules, "the package has no modules"
     for path in modules:
@@ -42,5 +49,6 @@ def test_every_module_imports_only_the_standard_library_and_itself() -> None:
                 names = [node.module or ""]
             else:
                 continue
+            allowed = STDLIB | ({SOLVER_LIBRARY} if path.name == SOLVER_MODULE else set())
             for name in names:
-                assert name.split(".")[0] in STDLIB, f"{path.name} imports {name}"
+                assert name.split(".")[0] in allowed, f"{path.name} imports {name}"

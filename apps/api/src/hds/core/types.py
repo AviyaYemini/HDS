@@ -8,6 +8,8 @@ aliases instead of bare ``str`` and ``Decimal``. Money is a ``Decimal``, never a
 (Constitution VII).
 """
 
+import math
+import numbers
 import re
 from datetime import date, time
 from decimal import Decimal
@@ -163,3 +165,28 @@ LocalTimeOut = Annotated[
 
 # Roles that may be assigned through the employee endpoints (clients have their own).
 AssignableRole = Literal["employee", "manager", "admin"]
+
+
+# A day of the week counted from Sunday, as the Israeli week runs (003 research R2): 0 Sunday to 6
+# Saturday. Required wherever it is used as a whole value; strict, so "3" is refused, not cast.
+Weekday = Annotated[int, Field(ge=0, le=6, strict=True, description="0 Sunday to 6 Saturday.")]
+
+
+def whole_number(value: object) -> object:
+    """Let only a JSON integer through, or a number with no fractional part (``40.0``).
+
+    Pydantic's lax integers read ``true`` as 1 and ``"11"`` as 11, which the published schema
+    (``type: integer``) does not allow; strict integers refuse ``40.0``, which it does.
+    """
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError("must be a whole number")
+    whole = math.floor(value)
+    if whole != value:
+        raise ValueError("must be a whole number")
+    return whole
+
+
+# Use as ``Annotated[int, Field(ge=..., le=...), WHOLE_NUMBER]``: an integer exactly as JSON Schema
+# means it, 40 and 40.0, never true, "40" or 40.5. The bounds come first, so they bind to the
+# integer and the published schema keeps ``minimum`` and ``maximum``.
+WHOLE_NUMBER = BeforeValidator(whole_number)

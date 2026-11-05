@@ -119,6 +119,27 @@
       "operation_id": "my_shifts_me_shifts_get",
       "suites": ["pytest", "cli"],
       "reason": "to >= from spans two parameters, answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/projects/{id}/requirements",
+      "operation_id": "replace_needs_api_v1_projects__id__requirements_put",
+      "suites": ["pytest", "cli"],
+      "reason": "a need's shift type must be one the project uses (004 FR-001), which no schema can state; a random id is answered 422 requirements.shift_type_not_in_project, and a repeated shift type and weekday 422 requirements.duplicate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedule-jobs",
+      "operation_id": "create_job_api_v1_schedule_jobs_post",
+      "suites": ["pytest", "cli"],
+      "reason": "to >= from and at most 31 days span two fields (004 FR-005), answered 422 schedule.range_invalid; a project id must be an active project of the organisation, answered 422 schedule.project_not_active"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/schedule-jobs",
+      "operation_id": "list_jobs_api_v1_schedule_jobs_get",
+      "suites": ["pytest", "cli"],
+      "reason": "a cursor must be one the API returned, which no schema can state; any other string is answered 422 schedule.cursor_invalid"
     }
   ]
 }

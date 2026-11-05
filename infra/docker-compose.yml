@@ -33,3 +33,20 @@ services:
       - "8000:8000"
     volumes:
       - ../apps/api/src:/app/src
+
+  worker:
+    # The schedule worker (004): the API's image, running the jobs the API queues. More than one
+    # may run; each claims a job with FOR UPDATE SKIP LOCKED.
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hds}:${POSTGRES_PASSWORD:-hds_dev}@postgres:5432/${POSTGRES_DB:-hds}
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?set JWT_SECRET_KEY, generate one with: openssl rand -hex 32}"
+    command: ["python", "-m", "hds.worker"]
+    volumes:
+      - ../apps/api/src:/app/src

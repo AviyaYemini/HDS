@@ -86,18 +86,21 @@ jobs:
         working-directory: apps/api
 
   test-unit:
-    name: Unit tests (SQLite)
+    name: Unit and property tests (SQLite)
     runs-on: ubuntu-latest
     env:
       # The settings need an explicit environment and secret (specs/002-security-hardening).
       ENVIRONMENT: test
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
+      # Examples per generation property (004 SC-002); 200 locally.
+      HDS_GENERATE_EXAMPLES: "1000"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
         working-directory: apps/api
-      - run: uv run pytest tests/unit/ -v --tb=short
+      # tests/property holds the Hypothesis tests of the scheduling package (Constitution IV).
+      - run: uv run pytest tests/unit/ tests/property/ -v --tb=short
         working-directory: apps/api
 
   test-integration:

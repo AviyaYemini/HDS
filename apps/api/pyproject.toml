@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     # IANA time zone data for systems that ship none (site time zone validation, research D11).
     "tzdata>=2024.1",
+    "ortools>=9.15",
 ]
 
 [project.optional-dependencies]
@@ -84,8 +85,10 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# Statistical timing checks are noisy on shared machines: opt in with `-m timing`.
-addopts = "-m 'not timing'"
+# Statistical timing checks are noisy on shared machines: opt in with `-m timing`. The solver
+# benchmark takes minutes: opt in with `-m benchmark` (004 T024).
+addopts = "-m 'not timing and not benchmark'"
 markers = [
     "timing: statistical timing check, skipped unless selected with -m timing",
+    "benchmark: solver comparison and SC-001's time limit, skipped unless selected with -m benchmark",
 ]

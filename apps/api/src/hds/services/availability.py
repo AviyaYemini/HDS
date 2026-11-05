@@ -31,13 +31,9 @@ from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
+from hds.scheduling.rules import sunday_index
 
 _ENTRY_FIELDS = ("kind", "absence_kind", "starts_on", "ends_on", "shift_type_id", "weekday")
-
-
-def _sunday_index(day: date) -> int:
-    """The weekday of ``day`` counted from Sunday (0) to Saturday (6)."""
-    return (day.weekday() + 1) % 7
 
 
 def _applies_between(first: date, last: date, weekday: int | None) -> bool:
@@ -48,7 +44,7 @@ def _applies_between(first: date, last: date, weekday: int | None) -> bool:
     the calendar's last days (up to 9999-12-31) are judged like any other.
     """
     span = min((last - first).days, 6)
-    return any(weekday in (None, _sunday_index(first + timedelta(days=n))) for n in range(span + 1))
+    return any(weekday in (None, sunday_index(first + timedelta(days=n))) for n in range(span + 1))
 
 
 def _clash(a: dict[str, Any], b: AvailabilityEntry) -> bool:

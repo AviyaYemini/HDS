@@ -99,6 +99,17 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("PATCH", "/api/v1/shift-types/{id}"): MGR,
     ("GET", P + "/shift-types"): MGR,
     ("PUT", P + "/shift-types"): MGR,
+    # staffing needs and the scheduling limits (004 FR-001 to FR-003, FR-026)
+    ("GET", P + "/requirements"): MGR,
+    ("PUT", P + "/requirements"): MGR,
+    ("GET", "/api/v1/organisation/scheduling"): MGR,
+    ("PATCH", "/api/v1/organisation/scheduling"): ADMIN,
+    # schedule jobs (004 FR-004 to FR-027)
+    ("POST", "/api/v1/schedule-jobs"): MGR,
+    ("GET", "/api/v1/schedule-jobs"): MGR,
+    ("GET", "/api/v1/schedule-jobs/{id}"): MGR,
+    ("POST", "/api/v1/schedule-jobs/{id}/accept"): MGR,
+    ("POST", "/api/v1/schedule-jobs/{id}/discard"): MGR,
     # the manual roster (003 FR-113 to FR-120)
     ("GET", "/api/v1/shifts"): MGR,
     ("POST", "/api/v1/shifts"): ADMIN,

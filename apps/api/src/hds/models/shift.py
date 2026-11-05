@@ -68,7 +68,9 @@ class Shift(TimestampedBase):
 class Assignment(TimestampedBase):
     """An employee on a shift, at most once (``uq_assignments_shift_user``).
 
-    Removed with its shift (``ON DELETE CASCADE``). ``assigned_by`` is the Admin who made it.
+    Removed with its shift (``ON DELETE CASCADE``). ``assigned_by`` is who made it: the Admin of a
+    manual assignment, or the Manager or Admin who accepted a generated one. ``source`` is
+    ``manual`` or ``generated`` (004 research G10).
     """
 
     __tablename__ = "assignments"
@@ -81,8 +83,12 @@ class Assignment(TimestampedBase):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     assigned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )
 
     __table_args__ = (
         UniqueConstraint("shift_id", "user_id", name="uq_assignments_shift_user"),
+        CheckConstraint("source IN ('manual', 'generated')", name="ck_assignments_source"),
         Index("idx_assignments_user", "user_id"),
     )

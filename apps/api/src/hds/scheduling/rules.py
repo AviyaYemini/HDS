@@ -179,15 +179,20 @@ def _short_rests(
     return found
 
 
-def _sunday_index(day: date) -> int:
+def sunday_index(day: date) -> int:
     """The weekday of ``day`` counted from Sunday (0) to Saturday (6), the Israeli week."""
     return (day.weekday() + 1) % 7
 
 
+def local_day(moment: datetime, zone: str) -> date:
+    """The local date of ``moment`` in ``zone``: the one reading of "which day a shift is on"."""
+    return moment.astimezone(ZoneInfo(zone)).date()
+
+
 def week_start(moment: datetime, zone: str) -> date:
     """The Sunday that starts the week ``moment`` falls in, in ``zone`` (research R2)."""
-    day = moment.astimezone(ZoneInfo(zone)).date()
-    return day - timedelta(days=_sunday_index(day))
+    day = local_day(moment, zone)
+    return day - timedelta(days=sunday_index(day))
 
 
 def _week(
@@ -215,19 +220,26 @@ def _entries(slot: ShiftSlot, person: uuid.UUID, theirs: Iterable[Entry]) -> set
     An entry covers a shift when the shift's local start date is in its range, and its shift type
     and weekday, when set, match the shift's.
     """
-    day = slot.starts_at.astimezone(ZoneInfo(slot.zone)).date()
-    weekday = _sunday_index(day)
+    day = local_day(slot.starts_at, slot.zone)
     found: set[RuleWarning] = set()
     for entry in theirs:
         code = _ENTRY_CODES.get(entry.kind)
-        if code is None or not entry.starts_on <= day <= entry.ends_on:
-            continue
-        if entry.shift_type_id is not None and entry.shift_type_id != slot.shift_type_id:
-            continue
-        if entry.weekday is not None and entry.weekday != weekday:
-            continue
-        found.add(RuleWarning(code, person, (slot.id,)))
+        if code is not None and entry_covers(entry, day, slot.shift_type_id):
+            found.add(RuleWarning(code, person, (slot.id,)))
     return found
+
+
+def entry_covers(entry: Entry, day: date, shift_type_id: uuid.UUID) -> bool:
+    """Whether ``entry`` covers a shift of ``shift_type_id`` that starts on the local date ``day``.
+
+    The date must be in the entry's range, and its shift type and weekday, when set, must match.
+    Used by ``validate`` and by the generator, so both read an entry the same way.
+    """
+    if not entry.starts_on <= day <= entry.ends_on:
+        return False
+    if entry.shift_type_id is not None and entry.shift_type_id != shift_type_id:
+        return False
+    return entry.weekday is None or entry.weekday == sunday_index(day)
 
 
 def _headcount(slot: ShiftSlot) -> set[RuleWarning]:

@@ -22,6 +22,7 @@
 | [008](adr/008-delivery-after-the-response.md) | Work on a reset request's address runs after the response |
 | [009](adr/009-rule-checks-and-warnings.md) | Roster rules live in one pure function, and manual changes only warn |
 | [010](adr/010-client-stack.md) | One Expo app with a generated API client; web tokens stay in memory |
+| [011](adr/011-solvers-and-job-queue.md) | Two solvers behind one function, and a table that is also the job queue |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 
