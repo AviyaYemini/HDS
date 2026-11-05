@@ -115,10 +115,14 @@ class RestClock:
     def move(self, moment: datetime) -> bool:
         """Advance the clock to ``moment``; return whether that moment is inside the rest."""
         current = position(moment.astimezone(self.tz))
-        if crossed(self.previous, current, self.start):
-            self.inside = True
-        if crossed(self.previous, current, self.end):
-            self.inside = False
+        # Both ends can fall inside one step; apply them in the order the clock reaches them.
+        reached = [
+            ((target - self.previous) % WEEK, inside)
+            for target, inside in ((self.start, True), (self.end, False))
+            if crossed(self.previous, current, target)
+        ]
+        for _, inside in sorted(reached):
+            self.inside = inside
         self.previous = current
         return self.inside
 

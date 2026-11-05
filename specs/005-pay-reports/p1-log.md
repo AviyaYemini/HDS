@@ -59,3 +59,8 @@ requirement, a security regression, an unplanned migration, a push or anything d
   7. The purity test globbed one level; now `rglob`.
   8. `rate_missing` and `hours` are properties, `itertools.pairwise` replaces `zip`, and one helper
      turns wall times into instants.
+- **After the commit:** a wider run replayed an example the mutation run had saved: a rest window of
+  7 days less 1 minute (Sunday 23:47 to Sunday 23:46). `price` was right; the test's oracle was
+  wrong, because one 15-minute step of its clock crossed both ends and it applied them in a fixed
+  order. The oracle now applies them in the order the clock reaches them. **Test fix**, no code
+  change; checked against every start minute of the week for that case.
