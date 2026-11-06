@@ -281,8 +281,12 @@ async def test_no_log_line_holds_the_token_or_the_full_address(
     await send(sender(port, client_tls))
     with pytest.raises(MailDeliveryError):
         await send(sender(port, client_tls, password="wrong-relay-password-77c1"))
-    text = "\n".join(r.getMessage() for r in caplog.records)
-    assert caplog.records  # a delivery is logged
+    # Our code's records only: the test relay (aiosmtpd) and asyncio log too, and their lines alone
+    # would make "a delivery is logged" pass with the sender logging nothing (review R46). Every
+    # hds logger is checked, so a leak from another of our modules is caught as well.
+    ours = [r for r in caplog.records if r.name == "hds" or r.name.startswith("hds.")]
+    assert any(r.name == "hds.mail" for r in ours)  # the sender logs the delivery
+    text = "\n".join(r.getMessage() for r in ours)
     assert TOKEN not in text
     assert RECIPIENT not in text
     assert PASSWORD not in text
