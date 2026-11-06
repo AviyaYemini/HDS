@@ -106,18 +106,30 @@ for env in local ci; do
         "$(yq "$f" "[$ing | .path + \":\" + .backend.service.name + \":\" + (.backend.service.port.number | tostring)] | join(\" \")")"
     expect "ingress routes no /metrics and no 9100" "" \
         "$(yq "$f" "$ing | select(.path == \"/metrics\" or .backend.service.port.number == 9100) | .path")"
-    # NetworkPolicy: only the monitoring namespace reaches 9100. A rule naming no ports covers 9100
-    # too, and a rule with no sources lets everyone in, so both count.
+    # NetworkPolicy: each of the API and the worker is selected by a policy that filters ingress
+    # (a policy selecting nothing, or Egress only, leaves its 9100 open to all).
+    for part in api worker; do
+        expect "$part has an ingress policy" 1 \
+            "$(yq "$f" "(select(.kind == \"Deployment\" and .metadata.name == \"hds-$part\")
+                | .spec.selector.matchLabels | to_json(0)) as \$sel
+                | [select(.kind == \"NetworkPolicy\" and (.spec.podSelector.matchLabels | to_json(0)) == \$sel
+                    and (.spec.policyTypes | any_c(. == \"Ingress\")))] | length")"
+    done
+    # Only the monitoring namespace reaches 9100. A rule naming no ports covers 9100 too, as does
+    # the port's name (ops) or a range reaching it (counted from endPort alone: stricter, never
+    # looser), and a rule with no sources lets everyone in, so all of them count.
     expect "9100 open to monitoring only" "monitoring" \
         "$(yq "$f" '[select(.kind == "NetworkPolicy") | .spec.ingress[]
-            | select(((.ports // []) | length) == 0 or ((.ports // []) | any_c(.port == 9100)))
+            | select(((.ports // []) | length) == 0 or ((.ports // [])
+                | any_c(.port == 9100 or .port == "ops" or (.endPort // 0) >= 9100)))
             | (.from // []) | if length == 0 then "EVERYONE"
               else .[] | .namespaceSelector.matchLabels["kubernetes.io/metadata.name"] // "OTHER" end]
             | unique | join(" ")')"
     # Only the pods that use the database carry the label hds-postgres lets in; not the web.
     expect "database clients" "api migrate worker" \
-        "$(yq "$f" '[select(.spec.template.metadata.labels["hds/database-client"] == "true")
-            | .spec.template.metadata.labels["app.kubernetes.io/component"]] | sort | join(" ")')"
+        "$(yq "$f" '[(.spec.template.metadata.labels // .spec.jobTemplate.spec.template.metadata.labels)
+            | select(.["hds/database-client"] == "true") | .["app.kubernetes.io/component"]]
+            | sort | join(" ")')"
     # No Secret is defined by the chart: they are referred to by name.
     expect "no Secret rendered" 0 "$(yq "$f" '[select(.kind == "Secret")] | length')"
     expect "DATABASE_URL names the database Service" "yes" \
@@ -152,8 +164,16 @@ expect "postgres probes over TCP" "pg_isready -h 127.0.0.1 -U hds|pg_isready -h 
     "$(yq "$f" "$pg | .containers[0] | [.readinessProbe.exec.command[2], .livenessProbe.exec.command[2]] | join(\"|\")")"
 expect "postgres password from hds-api by name" "hds-api DATABASE_PASSWORD" \
     "$(yq "$f" "$pg | .containers[0].env[] | select(.name == \"POSTGRES_PASSWORD\") | .valueFrom.secretKeyRef | [.name, .key] | join(\" \")")"
-expect "postgres lets in only the database clients" '{"hds/database-client":"true"}' \
-    "$(yq "$f" 'select(.kind == "NetworkPolicy") | .spec.ingress[].from[].podSelector.matchLabels | to_json(0)')"
+# The policy selects the database's pods and filters ingress, and its rules are exactly one: the
+# database clients, from this namespace only (no namespaceSelector), on 5432. A second rule, a
+# rule without sources or a peer in any namespace would each change it.
+expect "postgres has an ingress policy" 1 \
+    "$(yq "$f" "(select(.kind == \"StatefulSet\") | .spec.selector.matchLabels | to_json(0)) as \$sel
+        | [select(.kind == \"NetworkPolicy\" and (.spec.podSelector.matchLabels | to_json(0)) == \$sel
+            and (.spec.policyTypes | any_c(. == \"Ingress\")))] | length")"
+expect "postgres lets in only the database clients" \
+    '[{"from":[{"podSelector":{"matchLabels":{"hds/database-client":"true"}}}],"ports":[{"port":5432,"protocol":"TCP"}]}]' \
+    "$(yq "$f" 'select(.kind == "NetworkPolicy") | .spec.ingress | to_json(0)')"
 expect "postgres listens on the Service's port" "5432 5432" \
     "$(yq "$f" "[($pg | .containers[0].env[] | select(.name == \"PGPORT\") | .value),
         (select(.kind == \"Service\") | .spec.ports[0].port)] | join(\" \")")"

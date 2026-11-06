@@ -1,6 +1,8 @@
 # The operations port 9100 (metrics, and the worker's probes for the kubelet, which NetworkPolicy
-# does not filter) is reachable from the monitoring namespace only (FR-009). The API's and the
-# web's own ports stay open to the ingress controller.
+# does not filter) is reachable from the monitoring namespace only (FR-009). The API's port 8000
+# is open to every pod in the cluster, not only the ingress controller, and the web has no policy:
+# both serve only what the ingress already exposes, and the health paths are meant to be reachable
+# inside the cluster (contracts/ops.md section 1).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

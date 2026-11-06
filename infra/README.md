@@ -28,8 +28,10 @@ Neither chart defines a Secret; both read them by name: `hds-api` (`JWT_SECRET_K
 `THROTTLE_SECRET_KEY`), `hds-smtp` (the relay's settings, when `mail.backend` is `smtp`),
 `hds-backup` and `hds-registry`. `DATABASE_PASSWORD` goes into the database URL, so it must be
 URL-safe (`openssl rand -hex 32`). PostgreSQL takes it only when it first creates the database;
-to change it later, set the role's password first (`ALTER ROLE hds PASSWORD ...` in the pod), then
-the Secret, then restart the API and the worker. In the other order, the next migration hook cannot
+to change it later, set the role's password first, with `\password hds` in `psql` in the pod,
+which sends only its hash (an `ALTER ROLE ... PASSWORD` statement would land in psql's history on
+the data volume, and in the server log if statements are logged), then the Secret, then restart
+the API and the worker. In the other order, the next migration hook cannot
 sign in and the upgrade stops. Only the API, worker, migration and backup pods carry the
 `hds/database-client` label that the database's NetworkPolicy lets in; the web pods do not. The
 operations port 9100 is reachable only from the `monitoring` namespace, and the ingress never

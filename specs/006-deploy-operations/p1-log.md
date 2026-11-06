@@ -519,3 +519,21 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   - `test_migrate_lock` counts lock waits in its own database only and kills a timed-out child (R59).
   - Won't-fix: one yq container per check (R61, so each failure stays named), and the shared test
     helpers (R62, the same pattern as migration tests 021 to 024).
+
+## The helper's review of Group G (0cbda96): R63 to R71
+
+- Four NetworkPolicy mutants, run on copies of the committed charts, all passed assert.sh:
+  - the worker's policy selecting nothing;
+  - the worker's policy set to Egress only;
+  - a second database rule with no `from`;
+  - `namespaceSelector: {}` on the database's peer.
+- My mutants had only changed rules inside policies that still selected the right pods. None
+  removed the policy's selection or added a rule.
+- The checks now require each of the API, the worker and the database to be selected by a policy
+  with exactly its workload's selector and with `Ingress` in its `policyTypes`. The database's
+  whole `.spec.ingress` must equal one exact value, and a 9100 rule counts by the port's name or
+  by a range too.
+- The four mutants, and a rule naming port `ops` that is open to all, now fail.
+- The client-page test (R69) failed first under a mutant that adds `/pay`, a real page, to the API
+  prefixes. The policy comment (R68), the rotation advice (R70) and the CronJob label path for Group
+  H (R71) are corrected.
