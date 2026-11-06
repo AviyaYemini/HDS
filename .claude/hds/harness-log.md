@@ -190,3 +190,11 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
 - **The gate in practice**: at the end of the turn that made 73e6337 it blocked once, on the log
   redaction timing test, which runs slow beside the database suite (as twice before in 006); the
   file alone passed, 93 tests.
+- **Wall-clock tests out of the gate only**: a new marker, `wall_clock` (registered in pyproject),
+  marks the three unit tests with a hard time limit a busy machine can miss: the hostile-text
+  redaction (14 cases), the century-long clash check and the hung reset job. The gate runs pytest
+  with `-m "not timing and not benchmark and not wall_clock"`: a second `-m` replaces the one in
+  addopts, so its exclusions are repeated (a test checks the exact expression). CI and
+  `make ci-local` pass no `-m`, so they still run all 16. The existing `timing` marker was not
+  reused: it means statistical checks skipped everywhere unless chosen, which would drop these from
+  CI too. `test_login_equal_work` counts work rather than time and stays unmarked.

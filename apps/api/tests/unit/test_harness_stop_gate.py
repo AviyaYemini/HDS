@@ -251,3 +251,16 @@ def test_in_a_linked_worktree_edits_are_recorded_in_its_own_git_folder(tmp_path:
     recorded = Path(git_dir) / "hds-hooks" / "edits-worktree-session"
     assert recorded.read_text().splitlines() == ["notes.md"]
     assert not (main / ".git" / "hds-hooks" / "edits-worktree-session").exists()
+
+
+def test_the_gate_leaves_out_wall_clock_tests_and_keeps_the_default_exclusions(
+    hooks: ModuleType,
+) -> None:
+    # A hard time limit flakes under load (it did three times beside the database suite); CI and
+    # make ci-local run those tests, the gate does not. A second -m replaces the addopts one, so the
+    # gate repeats the defaults.
+    plan = hooks.stop_plan(["apps/api/src/hds/payroll/price.py"])
+    for label in ("unit tests", "property tests"):
+        cmd = command(plan, label)
+        expression = cmd[cmd.index("-m") + 1]
+        assert expression == "not timing and not benchmark and not wall_clock"

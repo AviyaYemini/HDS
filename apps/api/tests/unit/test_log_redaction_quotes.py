@@ -243,6 +243,7 @@ def test_a_second_pass_changes_nothing_on_inputs_that_used_to_reshape(text: str)
     assert redact(redact(text)) == redact(text)
 
 
+@pytest.mark.wall_clock
 @pytest.mark.parametrize(
     "text",
     [

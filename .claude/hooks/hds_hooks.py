@@ -828,10 +828,14 @@ def stop_plan(changed):
         plan.append(("ruff format", uv + ["ruff", "format", "--check", *present]))
     if api:
         plan.append(("mypy", uv + ["mypy", "--strict", "src/", "tests/"]))
-    plan.append(("unit tests", uv + ["pytest", "-q", "-x", "-p", "no:cacheprovider", "tests/unit/"]))
+    # A hard time limit can be missed on a busy machine (beside the database suite, three times), so
+    # the gate leaves out the `wall_clock` tests; CI and `make ci-local` still run them. A second
+    # -m replaces the one in pyproject's addopts, so its exclusions are repeated here.
+    pytest = ["pytest", "-q", "-x", "-p", "no:cacheprovider",
+              "-m", "not timing and not benchmark and not wall_clock"]
+    plan.append(("unit tests", uv + pytest + ["tests/unit/"]))
     if any(p.startswith(_PROPERTY_SOURCES) for p in api):
-        plan.append(("property tests",
-                     uv + ["pytest", "-q", "-x", "-p", "no:cacheprovider", "tests/property/"]))
+        plan.append(("property tests", uv + pytest + ["tests/property/"]))
     return plan
 
 
