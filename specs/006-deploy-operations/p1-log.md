@@ -461,3 +461,14 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   both now start lower-case. Group E's line keeps the subject that was used.
 - Missed locally because this session's git hooks predate PR 9's `make hooks`, which installs the
   commit-msg check, and the pre-bash hook does not check subject case.
+
+## PR 10's review: T032b and T032c (PR 3)
+
+- **T032c** (`fb21e72`): the SMTP log test captured every logger, so "a delivery is logged" passed
+  on the test relay's and asyncio's records. With the sender's log line removed, the old test still
+  passed. It now needs an `hds.mail` record and checks every `hds` record; the same mutant fails it.
+- **T032b** (`ec3d823`): a taken ops port made uvicorn's `SystemExit` escape the loop and cancel the job.
+  `_serve_ops` ends it there, so the drain path runs: the job finishes, and the exit is non-zero.
+  A unit test, with `serve()` raising `SystemExit` mid-job, and a held-port case in
+  `test_worker_drain` both failed first and fail again with the wrapper removed. All 6 drain tests
+  pass on `hds_p3_test`.
