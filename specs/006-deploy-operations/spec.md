@@ -14,6 +14,24 @@ backups with a tested restore, zero-downtime updates, no secrets in the reposito
 Sections 9 (non-functional requirements) and 10 (engineering standards) continue the product spec in
 `docs/hds-api.md`. Anything here that the original does not state is marked **Proposed**.
 
+## Clarifications
+
+### Session 2026-11-06
+
+- Q: Where does the shared environment that main deploys to run? → A: On a cluster on the operator's
+  own machine first (open decision 8's default). The pipeline builds and publishes each version; the
+  environment notices the new version and installs it itself, so the pipeline needs no way in.
+- Q: How much recent data may be lost if the database is lost? → A: Up to one day: a daily backup,
+  kept 30 days.
+- Q: Where are backups kept? → A: On the machine and, encrypted, in storage off the machine; the
+  restore test restores from the off-machine copy.
+- Q: How are operators told that a backup, a restore test or a deploy failed? → A: A message is sent
+  to the operators for each failure, and it is also shown with the health status; no alert rules on
+  metrics.
+- Q: How does returning to the previous version work when the database changed since? → A: Code only,
+  in one action; the database is left as it is, which is safe because every database change keeps the
+  previous version working (FR-016). Undoing a database change is a separate, deliberate step.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The actors here are not application roles. A **developer** works on HDS from a copy of the repository;
@@ -95,7 +113,7 @@ and compare: every record is present and the application works on the restored c
 2. **Given** a backup, **When** the operator follows the restore procedure into an empty environment,
    **Then** the data matches the backup and users can sign in and see their shifts and pay.
 3. **Given** the automated restore test runs, **When** the restored copy does not match or the restore
-   fails, **Then** the operator is told and the test is marked failed.
+   fails, **Then** the operators get a message and the test is marked failed.
 4. **Given** backups older than the retention period, **When** the schedule runs, **Then** they are
    removed, and the newest successful backup is never removed.
 5. **Given** a backup is stored, **Then** it is encrypted and readable only by operators, because it
@@ -123,9 +141,9 @@ acting, then return to the previous version and see the change gone.
 2. **Given** a merge whose checks fail, or whose build has a high-severity vulnerability, **Then**
    nothing is deployed and the running version is unchanged.
 3. **Given** a deploy whose new version never reports ready, **Then** the deploy stops, the previous
-   version keeps serving, and the operator is told.
+   version keeps serving, and the operators get a message.
 4. **Given** a deployed version, **When** the operator returns to the previous one, **Then** it runs
-   again without data loss, provided no database change in between removed what it needs (see FR-016).
+   again on the database as it is, without data loss (FR-016).
 
 ---
 
@@ -187,6 +205,8 @@ outside.
 - Two deploys are triggered close together: they run one after the other, never at the same time.
 - A backup runs while users are writing: the backup is consistent as of one moment.
 - The backup storage is full or unreachable: the backup fails loudly and the previous backups are kept.
+- The off-machine copy fails while the local backup succeeds: the backup counts as failed and is
+  reported, and the copy is tried again on the next run.
 - A restore is aimed at an environment that already holds data: it refuses unless the operator
   explicitly confirms replacing it.
 - The ready check is slow because a dependency hangs: it answers within a short limit and reports not
@@ -227,24 +247,31 @@ outside.
   reachable from outside the operators' network.
 - **FR-010**: Every running part MUST report the version it runs, so an operator can tell what is
   deployed. **Proposed.**
+- **FR-010a**: A failed backup, off-machine copy, restore test or deploy MUST send a message to the
+  operators naming what failed and when, and MUST also be shown with the health status. The message
+  MUST contain no secrets and no personal data. **Proposed.**
 
 **Backups and restore**
 
 - **FR-011**: The shared environment's database MUST be backed up automatically at least once a day,
-  and backups MUST be kept for at least 30 days. **The frequency and retention are Proposed.**
+  and backups MUST be kept for at least 30 days, so at most one day of data is lost. **The frequency
+  and retention are Proposed.**
 - **FR-012**: A backup MUST be consistent as of one moment, encrypted, and readable only by operators
-  (§9 Privacy).
+  (§9 Privacy). Each backup MUST also be copied to storage off the machine the environment runs on, so
+  losing that machine loses no more than one day of data. **The off-machine copy is Proposed.**
 - **FR-013**: A written procedure MUST let an operator restore any kept backup into an empty
   environment; a restore into an environment with data MUST require explicit confirmation.
 - **FR-014**: A restore MUST be tested automatically at least once a week by restoring the newest
   backup into a separate, empty environment and checking it; a failure MUST be reported to the
-  operator (§9 Reliability: "a tested restore"). **The weekly interval is Proposed.**
+  operator (§9 Reliability: "a tested restore"). The test MUST restore from the off-machine copy.
+  **The weekly interval is Proposed.**
 
 **Deploys and updates**
 
-- **FR-015**: A merge to the main line whose checks all pass MUST be built once and deployed to the
-  shared environment without manual steps; a failed check or a high-severity vulnerability MUST stop
-  the deploy (§7 CI/CD, §10 Dependencies).
+- **FR-015**: A merge to the main line whose checks all pass MUST be built once and published as a
+  release version; the shared environment MUST notice the new version and install it without manual
+  steps, with no way into the environment from the pipeline. A failed check or a high-severity
+  vulnerability MUST stop the release (§7 CI/CD, §10 Dependencies).
 - **FR-016**: Database changes MUST keep the version before them working, so old and new versions can
   run side by side during an update; a change that removes something ships in two releases, first
   stop using it, then remove it (§10 Migrations).
@@ -256,8 +283,9 @@ outside.
 - **FR-019**: Sign-ins MUST survive an update.
 - **FR-020**: A schedule job interrupted by an update MUST be retried and recorded once (§9
   Reliability: "retried and idempotent").
-- **FR-021**: The operator MUST be able to return to the previous deployed version with one action.
-  **Proposed.**
+- **FR-021**: The operator MUST be able to return to the previous deployed version with one action. It
+  changes only the running version and leaves the database as it is (FR-016 keeps that safe); undoing
+  a database change is a separate, deliberate step and is never part of it. **Proposed.**
 - **FR-022**: Each deploy MUST be recorded with its version, time, and outcome. **Proposed.**
 - **FR-023**: Deploys MUST NOT run at the same time; a second waits for the first.
 
@@ -290,7 +318,7 @@ outside.
 - **SC-001**: A developer goes from a fresh copy to signed in, using only the quickstart, in under 15
   minutes the first time and under 2 minutes afterwards.
 - **SC-002**: A merge to the main line reaches the shared environment, with no one acting, within 30
-  minutes.
+  minutes while the environment is on.
 - **SC-003**: During a deploy under a steady stream of requests, no request fails because of the deploy.
 - **SC-004**: An operator can tell whether each part is alive and ready, and which version it runs,
   within 1 minute.
@@ -302,16 +330,16 @@ outside.
 
 ## Assumptions
 
-- There is one shared environment for now; where it runs is open decision 8 in `docs/hds-api.md` §12
-  (a local cluster first by default) and is settled in the plan.
+- There is one shared environment for now: a cluster on the operator's own machine (open decision 8's
+  default). It may be off at times; it catches up with the newest release when it is on. Moving to a
+  cloud cluster is only for a public demo, later.
 - Operators are trusted people outside the application's roles; this feature adds no screens for
   Employees, Managers, Admins or Clients.
-- Daily backups and 30-day retention are reasonable defaults for a single company's data; they are
-  settings and can change.
+- Daily backups and 30-day retention are settings and can change.
 - Phone builds and app store releases are out of scope: they are a later v1 feature (push and native
   builds). This feature deploys the API, the worker and the web client.
-- Alerting and dashboards beyond reading health and metrics are out of scope; failures of backups,
-  restore tests and deploys are reported where the operator already looks.
+- Alert rules on metrics (error rates, slow requests) and dashboards are out of scope; only failures of
+  backups, restore tests and deploys send a message (FR-010a).
 - Traces across the API and worker (§9 Observability) and the audit log are out of scope here; the
   audit log is a later v1 feature.
 - The existing local setup (a start command for the database and API) is extended, not replaced.
