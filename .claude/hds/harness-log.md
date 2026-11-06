@@ -22,3 +22,20 @@ session reviews; this session implements; nothing is pushed without the owner. O
 - **Tests**: 11 new unit tests (`test_run_database.py`: allowed and refused names, in and out of CI,
   the lock key) failed first on the missing functions, then passed. Two integration tests
   (`test_run_lock.py`) run with the database suite at the end of this PR.
+
+## Item 2: the git hooks
+
+- `make hooks` installs the pre-commit and commit-msg hooks with pre-commit 4.7.0 through `uvx`.
+- The config was stale and partly broken, so installing it as it stood would have failed or fought
+  CI: ruff 0.4.4 and mypy 1.10 (src only, without the project's packages) against the project's
+  ruff 0.17.3 and mypy 2.4. And the commitlint entry pointed at commitlint's own repository, which
+  publishes no pre-commit hook, so it could never install. Now ruff, ruff format and mypy are local
+  hooks running the project's versions (`uv run --extra dev`, from the lockfile), and commitlint
+  comes from `alessandrojcm/commitlint-pre-commit-hook` v9.27.0 with config-conventional 21.2.4, on
+  a Node pre-commit downloads (this Mac has none). gitleaks stays as it was.
+- **Proof**, in a separate clone (its own `.git/hooks`; a worktree would share this repository's):
+  `make hooks` installed both hooks; "Bad Subject." was refused (subject-empty, type-empty,
+  subject-full-stop); a Python file with an unused import was refused by ruff (F401) and the format
+  check; clean commits passed every hook. The first try showed `uv run ruff` cannot start ruff in a
+  fresh clone, because ruff is in the `dev` extra; hence `--extra dev`. This repository's own
+  `.git/hooks` were never touched.

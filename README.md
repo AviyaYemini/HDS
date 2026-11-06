@@ -57,7 +57,14 @@ make wipe   # stop everything and DELETE the local database (it asks first)
 make build  # only rebuild the images (make up also does)
 make ps     # state of the containers
 make logs   # follow the logs; `make logs S=api` for one service
+make hooks  # once per clone: install the git hooks (needs uv)
 ```
+
+`make hooks` installs the git hooks from `.pre-commit-config.yaml`, with pre-commit 4.7.0 through
+`uvx`. Each commit then runs ruff, ruff format and `mypy --strict` on `apps/api` (the project's own
+versions) and the gitleaks scan of the staged change; each message runs commitlint, with the rules
+CI uses. pre-commit downloads the Node and Go they need. CI stays the authority, and
+`git commit --no-verify` skips the hooks when you mean to.
 
 `make up` rebuilds the images each time, so a pull that changes the client or a dependency is picked
 up; when nothing changed, the build yields the same image and a running stack is left as it is. The
