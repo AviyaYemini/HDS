@@ -60,3 +60,13 @@ session reviews; this session implements; nothing is pushed without the owner. O
   integration, contract and concurrency suites on `hds_p3_test`.
 - **Run**: `make ci-local` passed on the branch (1079 unit and property tests, 76 client tests,
   the generated client up to date, both commits linted).
+
+## Item 8: CI tidying
+
+- The quickstart job's description is above the script step again, under the `docker version` step.
+- `actions/checkout@v4` (Node 20) is now `@v7` (Node 24, a major tag, as the file pins) in all 15
+  places, and `astral-sh/setup-uv@v4` is now `@v10.3.0` (Node 24, 2026-10-09) in all 11: that
+  action publishes no `v10` major tag, so the exact version is pinned. Its `version: 0.13.5` input is
+  unchanged.
+- Left for a follow-up, outside the review's list: `actions/cache`, `actions/setup-node`,
+  `actions/upload-artifact` and `pnpm/action-setup` are still `@v4` on Node 20.
