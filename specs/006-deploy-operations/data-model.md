@@ -24,6 +24,20 @@ in Helm and Flux, and job outcomes in Kubernetes.
 - **Migration**: 024 adds the nullable column, which is an expand step. The previous release ignores
   the column, so the two run side by side (FR-016), and the downgrade drops it.
 
+### `schedule_jobs`: a job handed back on shutdown (FR-020)
+
+This refines 004's job table and lifecycle (`specs/004-schedule-generation/data-model.md`), with no
+schema change:
+
+- **`attempts`** counts the claims that may have run the solve, at most 3. A claim handed back
+  before its solve is subtracted again, so rolling restarts never use a job up (review R35).
+- **Lifecycle**: one transition is added, `running ──handed back before the solve──▶ queued`. A
+  worker told to stop gives back a job it has claimed but not started solving: `status` becomes
+  `queued`, `attempts` goes down by one, `lease_until` and `started_at` become null, and the change
+  is announced on the `schedule_jobs` channel in the same transaction, as queuing is, so an idle
+  worker claims it at once. It depends on no clock (review R41). A worker killed mid-solve still
+  leaves the job `running` until its lease ends, as in 004; that claim counts.
+
 ## Kept outside the database
 
 ### Backup (the spec's "Backup")
