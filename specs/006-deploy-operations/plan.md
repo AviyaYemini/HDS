@@ -43,7 +43,7 @@ Helm chart, Flux and Actions.
   `opentelemetry-exporter-otlp-proto-http`, `opentelemetry-instrumentation-fastapi`,
   `opentelemetry-instrumentation-sqlalchemy`.
 - **New Python dev package**: `aiosmtpd`, a fake SMTP server for the tests.
-- **New cluster parts**: k3d (k3s), Helm 3, Flux 2 (source, helm and notification controllers),
+- **New cluster parts**: age (for Vault's snapshot only), k3d (k3s), Helm 3, Flux 2 (source, helm and notification controllers),
   HashiCorp Vault and the Vault Secrets Operator, kube-prometheus-stack (with Grafana off), rclone
   and an unprivileged nginx image.
 - **New CI tools**: Trivy, gitleaks, ShellCheck and k3d.
@@ -215,6 +215,15 @@ Each group follows the same steps:
   e-mail. Then write the runbooks and ADR 013, and add the operations section to `docs/hds-api.md`
   §9 (quickstart scenarios 3 and 4).
 
+**Pull requests** (Constitution IX: small and focused): five, each squash-merged and each started
+from the updated `main` rather than from the merged branch:
+
+1. **A–C**: kept together, because B's quickstart test needs C's `/readyz`.
+2. **D–F**: traces, SMTP mail and the worker drain.
+3. **G–H**: the chart and backups.
+4. **I–L**: release, Vault, monitoring and the rolling-update proof.
+5. **M**: the shared environment, end to end.
+
 Group M needs the owner's machine and accounts: an SMTP relay, a Google account, and the GHCR
 packages' visibility. Each step it needs is in `docs/runbooks/operations.md`.
 
@@ -226,4 +235,6 @@ packages' visibility. Each step it needs is in `docs/runbooks/operations.md`.
 | Vault plus the Vault Secrets Operator, with manual unseal | The original names Vault. Pods keep reading environment variables | Plain Kubernetes Secrets fail Constitution VI's "environment or Vault" intent for a shared environment; auto-unseal needs a cloud key service |
 | A separate metrics port in the API process | Metrics must not be public (FR-009) | Filtering `/metrics` at the ingress fails open if the rule is wrong |
 | A trace column on `schedule_jobs` | One trace across the API and the worker (§9) needs the context to travel with the job | There is no broker message to carry a header |
+| `/livez`, `/readyz`, `/health` and `/metrics` outside the OpenAPI document | They serve probes and operators, not the client, as `/health` does today (Constitution V keeps the client contract to the client's operations) | Putting them in the document would add them to the generated client. Schemathesis therefore does not cover them; the integration tests T013, T015 and T017 stand in |
+| age for Vault's snapshot, besides rclone crypt | The snapshot that restores Vault cannot depend on a password kept in Vault, and its key must not be in the cluster (research R11) | rclone crypt alone needs its password, which lives in Vault; a crypt password in a Kubernetes Secret would be lost with the machine |
 | rclone for the off-machine copy | Drive now and S3 later, with encryption, behind one interface | Separate Drive and S3 code paths, plus a separate encryption step |

@@ -202,7 +202,8 @@ outside.
   naming the port, not with a part half started.
 - The database is at an older version than the code: the version change is applied before the API
   serves; if it fails, the API does not start and says why.
-- Two deploys are triggered close together: they run one after the other, never at the same time.
+- Two deploys are triggered close together: they run one after the other, never at the same time
+  (FR-023). **Proposed.**
 - A backup runs while users are writing: the backup is consistent as of one moment.
 - The backup storage is full or unreachable: the backup fails loudly and the previous backups are kept.
 - The off-machine copy fails while the local backup succeeds: the backup counts as failed and is
@@ -237,7 +238,7 @@ outside.
 
 - **FR-006**: Every long-running part (API and worker) MUST answer an alive check that depends only on
   the process itself, and a ready check that also checks what it needs (for the API: the database and
-  the job queue). The ready check MUST answer within 2 seconds. **The split into two checks is
+  the job queue, which is held in the database). The ready check MUST answer within 2 seconds. **The split into two checks is
   Proposed.**
 - **FR-007**: The API MUST expose, per endpoint, the rate of requests, the rate of errors and the
   distribution of durations (§9 Observability).
@@ -284,15 +285,15 @@ outside.
   once it reports ready, and letting an old copy finish its requests before it stops; no request may
   fail because of the update (§9 Reliability: rolling updates).
 - **FR-018**: A deploy whose new version does not become ready within a set time MUST stop and leave the
-  previous version serving.
-- **FR-019**: Sign-ins MUST survive an update.
+  previous version serving (§9 Reliability: "zero-downtime deploys via rolling updates").
+- **FR-019**: Sign-ins MUST survive an update (§9 Reliability: "zero-downtime deploys").
 - **FR-020**: A schedule job interrupted by an update MUST be retried and recorded once (§9
   Reliability: "retried and idempotent").
 - **FR-021**: The operator MUST be able to return to the previous deployed version with one action. It
   changes only the running version and leaves the database as it is (FR-016 keeps that safe); undoing
   a database change is a separate, deliberate step and is never part of it. **Proposed.**
 - **FR-022**: Each deploy MUST be recorded with its version, time, and outcome. **Proposed.**
-- **FR-023**: Deploys MUST NOT run at the same time; a second waits for the first.
+- **FR-023**: Deploys MUST NOT run at the same time; a second waits for the first. **Proposed.**
 
 **Secrets**
 

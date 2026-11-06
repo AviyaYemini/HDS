@@ -89,8 +89,10 @@ The CI job `rolling-update` does the following:
 4. It upgrades to the change's images and waits for the rollout.
 
 Expected: zero failed requests, the same user is still signed in after the upgrade, and the schedule
-job has one result. The same job checks that the sign-in throttle sees the client's address, not
-the ingress's.
+job has one result. Every run upgrades across a migration, adding a throwaway one when the change has
+none. The same job checks that sign-in failures from two pods inside the cluster count separately
+behind Traefik, and that a forged `X-Forwarded-For` does not change the address counted. On the Mac
+the client's address is lost before Traefik; this is an accepted limit (research R14).
 
 The compatibility test runs the previous release's API tests against the new migration head, and it
 passes.

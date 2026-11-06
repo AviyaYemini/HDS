@@ -12,7 +12,7 @@ metrics are for probes and operators, not for the client, and the generated clie
 | Method and path | 200 when | Failure | Auth |
 | --- | --- | --- | --- |
 | `GET /livez` | the process runs | none: no answer at all means not alive | none |
-| `GET /readyz` | the database answers and its migration version is the code's head, all within 2 s | 503 | none |
+| `GET /readyz` | the database answers and is not behind the code's migrations, all within 2 s | 503 | none |
 | `GET /health` | as `/livez`, kept for existing probes and the compose file | as `/livez` | none |
 
 The body is always JSON:
@@ -26,7 +26,10 @@ The body is always JSON:
 ```
 
 The values `failing` can hold are `database` (unreachable, or it took longer than 2 s) and
-`migrations` (the version differs from the code's head). The body never carries an error message, a
+`migrations` (the database is behind the code: `alembic_version` is empty or missing, or holds a
+revision in the code's own history that is not its head). A revision the code does not know is
+newer and counts as ready, because each migration keeps the previous release working (FR-016); this
+lets old pods keep serving during an upgrade and after a rollback. The body never carries an error message, a
 host name or a connection string (FR-009). The ingress routes none of these paths, so they are
 reachable only inside the cluster. Locally they answer on `localhost:8000`.
 
@@ -34,7 +37,7 @@ reachable only inside the cluster. Locally they answer on `localhost:8000`.
 
 | Method and path | 200 when |
 | --- | --- |
-| `GET /livez` | the job loop has turned within the last 30 s |
+| `GET /livez` | the job loop has turned within the last 30 s, or the worker holds a job still inside its lease (a solve runs up to 60 s) |
 | `GET /readyz` | as `/livez`, and the database answers within 2 s |
 | `GET /metrics` | always |
 
@@ -87,10 +90,10 @@ only the `monitoring` namespace may connect to it (FR-009).
 | Alert | Fires when |
 | --- | --- |
 | `HdsBackupFailed` | the newest `hds-backup` Job failed, including when only the off-machine copy failed |
-| `HdsBackupMissing` | no successful backup for 26 h (a missed or stuck run) |
+| `HdsBackupMissing` | no successful backup for 26 h (a missed or stuck run), for 1 h (`for: 1h`), so waking the Mac after a day off does not e-mail before the catch-up run ends |
 | `HdsRestoreTestFailed` | the newest `hds-restore-test` Job failed |
-| `HdsRestoreTestMissing` | no successful restore test for 8 days |
-| `HdsVaultSnapshotFailed` | the newest `vault-snapshot` Job failed |
+| `HdsRestoreTestMissing` | no successful restore test for 8 days, for 1 h (`for: 1h`) |
+| `HdsVaultSnapshotFailed` | the newest `vault-snapshot` Job failed; while Vault is sealed after a restart this fires, as a reminder to unseal |
 | `HdsDeployFailed` | Flux reports the `hds` HelmRelease failed (forwarded by Flux's Alertmanager provider) |
 
 Each message gives the alert's name, the object, the time and a one-line reason (FR-010a). It never

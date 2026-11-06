@@ -98,5 +98,6 @@ for the shapes.
 | `hds/backup` | `RCLONE_CRYPT_PASSWORD`, `RCLONE_CRYPT_SALT`, `DRIVE_TOKEN`, `DRIVE_FOLDER_ID` | backup and restore-test Jobs |
 | `hds/registry` | `GHCR_READ_TOKEN` | image pull secret, when the packages are private |
 
-Vault's unseal keys, its root token and the password for Vault's own snapshots are never stored in
-Vault, in the cluster or in the repository.
+Vault's unseal keys, its root token and the age private key for Vault's own snapshots are never
+stored in Vault, in the cluster or in the repository. The age public key is not a secret and sits in
+the chart values (research R11).

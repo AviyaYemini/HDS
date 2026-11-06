@@ -97,7 +97,8 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
   the worker is killed anyway, the job's lease expires and another worker claims it. The existing
   claim compares the attempt before it stores, so the result is recorded once (FR-020). New: on
   `SIGTERM` the worker gives back the lease of a job it has not started solving, so the job does
-  not wait the 5-minute lease.
+  not wait the 5-minute lease. The worker's liveness counts a job inside its lease as alive (R6),
+  so the kubelet never kills a solve that is still working.
 - **Migrations**: a Helm `pre-upgrade` Job runs `alembic upgrade head` before any new pod starts.
   It holds a PostgreSQL advisory lock so two can never run together. Every migration must keep the
   previous release working (expand, then contract; §10 Migrations, FR-016). A CI check, the
@@ -118,16 +119,29 @@ FR.
 
 - **API**:
   - `GET /livez` checks nothing outside the process.
-  - `GET /readyz` runs `SELECT 1` and checks the migration version equals the code's head, with a
-    2-second total limit (FR-006). It answers 503 with the failing check's name, and never a
-    message from the database.
+  - `GET /readyz` runs `SELECT 1` and checks the database is not behind the code, with a 2-second
+    total limit (FR-006). It answers 503 with the failing check's name, and never a message from
+    the database.
+  - **What "behind" means**: the check reports `migrations` only when `alembic_version` is empty
+    or missing, or holds a revision that is in the code's own script history but is not its head.
+    A revision the code does not know must be newer, and FR-016 says the code works on it, so it
+    counts as ready. Requiring an exact match would break both updates and rollback:
+    - **during an upgrade**: the pre-upgrade Job moves the database ahead first, so the old pods
+      would fail readiness before any new pod is ready, and no pod would serve;
+    - **after a rollback**: the database stays ahead (FR-021), so the older pods would never become
+      ready.
   - `GET /health` stays as an alias of `/livez` for the existing compose file and probes.
   - None of the three is in the OpenAPI document; all are open, as `/health` is today.
 - **The job queue**: it is the `schedule_jobs` table (ADR 011), so "the database" covers it. There
   is no broker to check.
 - **Worker**: it serves `/livez`, `/readyz` and `/metrics` on port 9100 with a small ASGI app in
-  its own event loop (uvicorn and Starlette are already dependencies). It is alive while its loop
-  turns, and ready while it can reach the database.
+  its own event loop (uvicorn and Starlette are already dependencies).
+  - **Alive**: the loop turned in the last 30 s, or the worker holds a job still inside its lease.
+    A solve runs up to 60 s, and the loop awaits it the whole time, so a plain 30 s heartbeat would
+    have the kubelet kill the worker near the end of every long solve, three times over, until the
+    job ended as `jobs.worker_lost`. A solve stuck past its lease still fails the check, at the
+    moment another worker may reclaim the job.
+  - **Ready**: while it can also reach the database.
 - **Version** (FR-010): both answer `HDS_VERSION` in the `/livez` body, and as the metric
   `hds_build_info{version}`.
 - **Health of the backup jobs**: the backup and restore-test CronJobs report through Kubernetes job
@@ -260,22 +274,39 @@ dies with the pod. The test:
 
 1. Downloads the newest backup from `offsite-crypt:`, never the local copy, and checks its SHA-256.
 2. Runs `pg_restore`.
-3. Compares the migration version and every table's row count with the manifest.
-4. Runs `python -m hds.scripts.check_restore` from the API image against the restored database.
-   This read-only script checks that the API's `/readyz` checks pass and that it can load the
-   organisation, its users and the last month's shifts through the repositories. No check account
-   is needed, so no fake user ever enters the real data.
-5. Fails, and so alerts, on any difference.
+3. Compares the migration version and every table's row count with the **manifest**, which proves
+   the backup is intact.
+4. Runs `python -m hds.scripts.migrate` on the throwaway copy, as a real restore would. A backup
+   taken under an older release is brought to the code's head; a backup at a revision the code does
+   not know (newer, for example after a rollback) is left as it is.
+5. Runs `python -m hds.scripts.check_restore` from the API image against the copy. This read-only
+   script runs the `ready()` checks and loads the organisation, its users and the last month's
+   shifts through the repositories. No check account is needed, so no fake user ever enters the
+   real data.
+6. Fails, and so alerts, on any difference.
 
 **Restore procedure** (FR-013, SC-005): `make ops-restore BACKUP=<name>` restores a backup into the
 cluster's database, and refuses unless that database is empty or `CONFIRM=replace` is given. It
-stops the API and the worker first and starts them afterwards. `docs/runbooks/restore.md` is the
+stops the API and the worker first, runs `migrate` after the restore, and only then starts them
+again, so an older backup does not leave pods that never become ready. `docs/runbooks/restore.md` is the
 written procedure, and it covers a lost machine too: a new cluster, Vault restored from its own
 backup, then the database from Drive.
 
-**Vault's own data**: Vault holds the backup password, so it is backed up as well. A weekly
-encrypted raft snapshot of Vault goes to the same two places under a separate password.
-The operator keeps that password, with the unseal keys, outside the machine.
+**Vault's own data**: Vault holds the backup password, so it is backed up as well, but never
+through rclone crypt, whose password lives in Vault: after losing the machine, Vault would be
+needed to open the thing that restores Vault.
+
+- **Encryption**: the weekly `vault-snapshot` job encrypts the raft snapshot with age to a
+  **public** key held in the chart values. It is not a secret, so the cluster can write snapshots
+  but never read them. The private key stays outside the machine.
+- **Storage**: the file `vault-<UTC time>.snap.age` goes through the plain `offsite:` remote (not
+  `offsite-crypt:`), and likewise to the plain local volume.
+- **Why age is enough**: Vault's storage is already encrypted by its barrier, so a snapshot is
+  unreadable without the unseal keys. age makes FR-012's "encrypted" explicit for one small file. A
+  crypt password in a Kubernetes Secret would put the key in the cluster, which data-model.md rules
+  out, and it would be lost with the machine.
+- **The recovery kit outside the machine**: the unseal keys, the age private key and the Google
+  account. The snapshot file can be downloaded from Drive in a browser.
 
 **Google Drive**:
 
@@ -294,7 +325,8 @@ Drive and S3, and its crypt remote does the encryption, so the move to S3 is a c
 
 - WAL archiving with pgBackRest (point-in-time recovery, which the clarification did not ask for)
 - Velero (it backs up volumes, not a consistent database dump)
-- age or GPG encryption (rclone crypt already encrypts, and also hides the names)
+- age or GPG for the database backups (rclone crypt already encrypts them, and also hides the
+  names). age is used only for Vault's snapshot, where the key must not be in Vault.
 
 ## R12. The one-command local environment
 
@@ -309,7 +341,9 @@ Drive and S3, and its crypt remote does the encryption, so the move to S3 is a c
   deletes `infra/volumes/postgres`.
 - **Secrets** (FR-003): `make env` writes `.env` with a fresh random `JWT_SECRET_KEY`, and never
   overwrites an existing file. Compose's `:?` already refuses a missing key.
-- **Ports in use**: compose's own error names the port.
+- **Ports in use**: `make up` first checks that its ports are free, and names a taken one and starts
+  nothing. Compose alone would start PostgreSQL and then fail on the API, leaving the stack half
+  started, which the spec's edge case forbids.
 - **Proof** (FR-005): a CI job, **quickstart**, runs `make env up` in a clean checkout. It waits for
   `/readyz` and the web page, signs in as each sample role through the API, runs `make down up`, and
   checks the data is still there.
@@ -328,8 +362,17 @@ cluster.
 ## R14. What stays as it is
 
 - Logs stay structured JSON on stdout. Only the trace fields are added (R8).
-- `TRUSTED_PROXY_COUNT` is 1 in the cluster, for Traefik. k3d's load balancer works at the TCP
-  level, so it adds no forwarded header. An integration check in the rolling-update job asserts
-  that the sign-in throttle sees the client's address and not Traefik's. This is the check that
-  `infra/README.md` demands (ADR 007).
+- `TRUSTED_PROXY_COUNT` is 1 in the cluster, for Traefik, so a client cannot pick its own address.
+- **Accepted limit: the client's address is lost before Traefik.** Three hops hide it: Docker
+  Desktop's port forwarding on macOS, which does not keep the source address at all, then k3d's TCP
+  load balancer, then k3s's service load balancer. Mapping ports onto the node would not help.
+  - **Why it is acceptable here**: `hds.localhost` resolves only on the operator's Mac, so the
+    operator is the only client.
+  - **Where it is recorded**: here, in ADR 013 and in the proxy note of `infra/README.md`, which
+    ADR 007 requires the ingress feature to check.
+  - **Later**: revisiting it with the move to a cloud cluster is **Proposed**.
+- **What the rolling-update job checks** instead is the hop we control. Two pods inside the cluster
+  with different pod addresses call Traefik's Service and fail sign-in, and their failures count
+  separately. A request with a forged `X-Forwarded-For` is still counted under its own pod's
+  address.
 - Phone builds, alert rules on error rates, dashboards and a trace store stay out of scope.

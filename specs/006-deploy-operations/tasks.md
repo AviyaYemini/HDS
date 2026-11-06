@@ -32,7 +32,7 @@ three bullets.
 
 - [ ] T001 Pin versions in `infra/VERSIONS.md` (one table: tool or image, version, digest where an image, why) and use them everywhere they appear:
   - **images**: `python:3.12-slim`, `postgres:16`, `nginxinc/nginx-unprivileged`, `rclone/rclone`
-  - **cluster**: k3d, k3s, Helm, Flux, Vault chart, Vault Secrets Operator chart, kube-prometheus-stack chart
+  - **cluster**: age, k3d, k3s, Helm, Flux, Vault chart, Vault Secrets Operator chart, kube-prometheus-stack chart
   - **CI tools**: Trivy, gitleaks, ShellCheck, kubeconform
   - **Python packages**: `prometheus-client`, the OpenTelemetry packages and `aiosmtpd`, added to `apps/api/pyproject.toml` and `uv.lock`, which commits the lockfile change (§10 Dependencies)
 - [ ] T002 [P] [US6] Failing test, a CI job `secrets` in `.github/workflows/ci.yml` that runs gitleaks over the pull request's commits. Prove it fails: run it locally on a throwaway branch carrying an AWS-format sample key in `tmp/leak.txt`, and check that the output names the file and the line. Then add the gitleaks hook to `.pre-commit-config.yaml`, plus `.gitleaks.toml` allowing only the published development placeholders, each listed by exact value with a comment (FR-025)
@@ -53,17 +53,19 @@ three bullets.
 - [ ] T007 [US1] Failing test, a CI job `quickstart` in `.github/workflows/ci.yml` and the script `scripts/ops/quickstart_check.sh`, which works from a clean checkout and fails at the first unmet step:
   1. `make env` writes `.env` with a 64-hex-character `JWT_SECRET_KEY`.
   2. A second `make env` exits non-zero and leaves the file unchanged.
-  3. `make up` (with `timeout 600`) returns.
+  3. `make up` (with `timeout 600`, under SC-001's 15 minutes) returns. Log how long it took.
   4. `curl localhost:8000/readyz` reaches 200 within 120 s.
   5. `curl localhost:8081/` returns HTML containing the app's root element.
   6. Each sample account from `apps/api/src/hds/scripts/seed_dev.py` signs in through `POST /auth/login`.
-  7. A shift created through the API, then `make down` and `make up`, is still there.
+  7. A shift created through the API, then `make down` and `make up` (with `timeout 120`; log the time), is still there.
   8. `make up` again creates no second organisation.
   9. With `JWT_SECRET_KEY=` emptied, `make up` exits non-zero with output naming `JWT_SECRET_KEY`.
   10. `make wipe` with `yes` piped in deletes the data, and the next `make up` has only the seed.
+  11. With port 8000 held by another process, `make up` exits non-zero naming `8000`, and `docker compose ps` shows nothing running (no half-started stack).
+  12. In an empty database, create one of migration 001's tables by hand so 001 fails: `make up` exits non-zero, the API is not started, and the output shows the migration error. No repository file changes for this step.
 
   It needs `/readyz`, so it runs after T013; until then it is expected to fail at step 4. Record that failure in the log (FR-001 to FR-005)
-- [ ] T008 [P] [US1] `infra/Dockerfile.web`: a multi-stage build that runs `pnpm install --frozen-lockfile` and `pnpm --filter client export:web` with `EXPO_PUBLIC_API_URL=""`, then copies `apps/client/dist` into the pinned `nginx-unprivileged`, listening on 8080 with an SPA fallback to `index.html`, configured in `infra/web/nginx.conf`. Locally the API is on another origin, so the compose build passes `EXPO_PUBLIC_API_URL=http://localhost:8000` as a build arg; the cluster image keeps it empty (research R2)
+- [ ] T008 [P] [US1] `infra/Dockerfile.web`: a multi-stage build that runs `pnpm install --frozen-lockfile` and `pnpm --filter hds-client export:web` with `EXPO_PUBLIC_API_URL=""`, then copies `apps/client/dist` into the pinned `nginx-unprivileged`, listening on 8080 with an SPA fallback to `index.html`, configured in `infra/web/nginx.conf`. Locally the API is on another origin, so the compose build passes `EXPO_PUBLIC_API_URL=http://localhost:8000` as a build arg; the cluster image keeps it empty (research R2)
 - [ ] T009 [US1] `infra/docker-compose.yml`:
   - **`migrate`**: a one-shot service on the API image, running `alembic upgrade head && python -m hds.scripts.seed_dev`.
   - **API and worker**: `api` and `worker` depend on `migrate: service_completed_successfully`. `api` has a healthcheck on `/readyz` and maps `9100:9100`; `worker` maps `9101:9100`.
@@ -72,7 +74,7 @@ three bullets.
   - **No new defaults** for secrets.
 - [ ] T010 [US1] `Makefile`, with each target's comment saying what it keeps and what it deletes:
   - **`env`**: writes `.env` from `.env.example` with a fresh `openssl rand -hex 32`; refuses if `.env` exists.
-  - **`up`**: also waits for the API to be healthy.
+  - **`up`**: first checks that ports 5432, 8000, 8081, 9100 and 9101 are free and, if one is taken, names it and starts nothing; then starts everything and waits for the API to be healthy.
   - **`down`**: unchanged.
   - **`wipe`**: asks `Delete the local database? [y/N]`, then runs `down -v` and removes `infra/volumes/postgres`.
 - [ ] T011 [US1] Docs: the root `README.md` quickstart becomes the prerequisites (Docker, make), then `make env`, then `make up`, then the sample accounts and their roles. Rewrite the local section of `infra/README.md` for the new services and targets, and keep the proxy note
@@ -83,9 +85,10 @@ three bullets.
 **Goal**: FR-006 to FR-010. **Independent test**: quickstart scenario 2.
 
 - [ ] T013 [P] [US2] Failing tests `apps/api/tests/unit/test_health.py`, using a fake health repository:
-  - **ready**: `ready()` is ok when the ping and the revision match head.
+  - **ready**: `ready()` is ok when the ping succeeds and the revision is the code's head.
+  - **newer**: a revision the code's script history does not know counts as ready, because it is newer and FR-016 keeps the code working on it (this is what lets old pods serve during an upgrade and after a rollback).
   - **database**: it reports `failing: ["database"]` when the ping raises or takes over 2 s; time is controlled, with no real waiting.
-  - **migrations**: it reports `failing: ["migrations"]` when the revision differs from head.
+  - **migrations**: it reports `failing: ["migrations"]` only when the database is behind: `alembic_version` empty or missing, or a revision in the code's own history that is not its head.
   - **live**: `live()` never touches the repository.
   - **bodies**: a body never contains the exception's text.
 
@@ -93,7 +96,7 @@ three bullets.
   - `GET /livez`, `/readyz` and `/health` answer 200 with `{"status":"ok","version":...}`.
   - With the database stopped (an engine pointed at a closed port), `/readyz` answers 503 `{"status":"not_ready","failing":["database"],...}` within 2.5 s, while `/livez` answers 200.
   - None of the three is in `/api/v1/openapi.json`, and none needs authentication (FR-006, FR-009, FR-010).
-- [ ] T014 [US2] Add `apps/api/src/hds/repositories/health.py` (`ping()` and `revision()`, which reads `alembic_version`) and `apps/api/src/hds/core/health.py` (`live()` and `ready(repo, head, limit=2.0)` using `asyncio.timeout`; the head comes from Alembic's `ScriptDirectory` once at start-up). Add the routes in `apps/api/src/hds/main.py`, with `/health` answering as `/livez`. Add `HDS_VERSION` to `apps/api/src/hds/core/config.py`
+- [ ] T014 [US2] Add `apps/api/src/hds/repositories/health.py` (`ping()` and `revision()`, which reads `alembic_version`) and `apps/api/src/hds/core/health.py` (`live()` and `ready(repo, history, limit=2.0)` using `asyncio.timeout`; `history` is the code's known revisions and its head, read from Alembic's `ScriptDirectory` once at start-up, and "behind" means a known revision that is not the head, or none). Add the routes in `apps/api/src/hds/main.py`, with `/health` answering as `/livez`. Add `HDS_VERSION` to `apps/api/src/hds/core/config.py`
 - [ ] T015 [P] [US2] Failing tests `apps/api/tests/unit/test_metrics.py`:
   - **labels**: after requests to `/api/v1/shifts/<uuid>`, a 404 path, `/auth/login` with a body and a query string containing an e-mail address, the registry holds `hds_http_requests_total` only with `route` values from the app's route templates or `unmatched`;
   - **status**: the `status` label is the code;
@@ -104,13 +107,14 @@ three bullets.
   Failing integration test `apps/api/tests/integration/test_metrics_port.py`: the metrics answer on `METRICS_PORT` and `GET /metrics` on the public port is 404 (FR-007, FR-009)
 - [ ] T016 [US2] Add `apps/api/src/hds/core/metrics.py`, a pure ASGI middleware that reads the matched route's `path_format` after routing, with its own `CollectorRegistry`. Start the metrics server on `METRICS_PORT` (default 9100) in the app's lifespan, but not under the test client's lifespan unless asked. Add `METRICS_PORT` to config
 - [ ] T017 [P] [US2] Failing tests `apps/api/tests/unit/test_worker_ops.py`:
-  - **live**: the worker's ops app answers `/livez` 200 while the loop's heartbeat is under 30 s old, and 503 after.
+  - **live**: the worker's ops app answers `/livez` 200 while the loop's heartbeat is under 30 s old, or while the worker holds a job still inside its lease; 503 when neither holds.
+  - **long solve**: `/livez` stays 200 through a 60 s solve (time controlled), and turns 503 once the held job passes its lease.
   - **ready**: `/readyz` adds the database ping.
   - **metrics**: `/metrics` has `hds_schedule_jobs{state}` for all four states, counted from the table through a fake repository, plus `hds_schedule_job_duration_seconds{outcome}` after a run.
 
   Failing integration test `apps/api/tests/integration/test_worker_metrics.py`: with two queued jobs and one failed job, the gauge reads 2 and 1 (FR-006, FR-008)
-- [ ] T018 [US2] Worker: in `apps/api/src/hds/worker.py`, serve a Starlette ops app with uvicorn on `METRICS_PORT` in the worker's event loop, and add a heartbeat set on each loop turn. Add `count_by_state()` to `apps/api/src/hds/repositories/schedule_job.py`, and observe the job duration in `run_once`
-- [ ] T019 [US2] Mutation checks: label by path; skip the 2 s limit; ready ignores migrations; heartbeat never ages; metrics on the public port. Then the gates, both reviews, the log, and a commit `feat(api): live and ready checks, version and RED metrics (006 Group C)`
+- [ ] T018 [US2] Worker: in `apps/api/src/hds/worker.py`, serve a Starlette ops app with uvicorn on `METRICS_PORT` in the worker's event loop, and add a heartbeat set on each loop turn, plus the held job's `lease_until`, which liveness also accepts (research R6). Add `count_by_state()` to `apps/api/src/hds/repositories/schedule_job.py`, and observe the job duration in `run_once`
+- [ ] T019 [US2] Mutation checks: label by path; skip the 2 s limit; ready ignores migrations; ready fails on an unknown (newer) revision; heartbeat never ages; liveness ignores the held job; metrics on the public port. Then the gates, both reviews, the log, and a commit `feat(api): live and ready checks, version and RED metrics (006 Group C)`
 
 ## Phase 4: Group D, traces (US2, P1)
 
@@ -161,7 +165,7 @@ once, and the worker exits within the grace period.
 - [ ] T030 [P] [US5] Failing tests `apps/api/tests/integration/test_worker_drain.py`, with real processes on the test database:
   - **during a solve**: SIGTERM during a solve (the solver stubbed to take 3 s) lets it finish and store, and the process exits 0 with no new claim;
   - **before the solve**: SIGTERM after claiming but before solving gives the lease back (`lease_until` set to now, attempts unchanged), and a second worker claims the job at once and stores it once;
-  - **lease expiry**: SIGKILL in the middle of a solve leaves the job to be reclaimed after its lease. With a test lease of 2 s it is reclaimed and stored once, and `attempts` is 2 (FR-020)
+  - **lease expiry**: SIGKILL in the middle of a solve leaves the job to be reclaimed after its lease. The test then sets the job's `lease_until` in the past on the test database and starts a second worker, which reclaims it (the claim already takes running jobs past their lease) and stores it once; `attempts` is 2 (FR-020). No lease setting is added
 - [ ] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet built. Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
 - [ ] T032 [US5] Mutation checks: no release; exit before storing; claim after SIGTERM. Then the gates, both reviews, the log, and a commit `feat(worker): finish or hand back the current job on shutdown (006 Group F)`
 
@@ -180,7 +184,7 @@ once, and the worker exits within the grace period.
   - **History**: `maxHistory` is documented as 10 for Flux.
 - [ ] T034 [P] Failing test `apps/api/tests/unit/test_ingress_prefixes.py`: every route in `hds.main.app.routes` that is in the OpenAPI document, or is `/livez`, `/readyz` or `/health`, starts with a prefix listed in `infra/helm/hds/values.yaml` under `ingress.apiPrefixes`, or is one of the three health paths, which the ingress does not route (research R2)
 - [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, PostgreSQL StatefulSet and Service, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
-- [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
+- [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). A database at a revision the code does not know (newer, for example the older image after a rollback) is left untouched and the command exits 0, rather than `alembic upgrade head` stopping on an unknown revision. Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
 - [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
 
 ## Phase 8: Group H, backups and the restore test (US3, P1)
@@ -199,19 +203,19 @@ quickstart scenario 3 in the cluster (Group M).
   8. `restore.sh` into a database with data refuses without `CONFIRM=replace`, and with it, restores and the shifts match.
 
   (FR-011 to FR-014)
-- [ ] T039 [P] [US3] Add `infra/Dockerfile.backup`, built from the pinned `postgres:16` with the pinned rclone binary copied from `rclone/rclone` and `jq`, running as non-root. Add `infra/backup/rclone.conf.tmpl`, which defines `local-crypt` and `offsite-crypt` (crypt over `local` and `drive` remotes, with names encrypted) and is filled from environment variables at run time. No secret goes in the template (research R11)
+- [ ] T039 [P] [US3] Add `infra/Dockerfile.backup`, built from the pinned `postgres:16` with the pinned rclone binary copied from `rclone/rclone`, `jq`, `curl` and the pinned `age`, running as non-root. Add `infra/backup/rclone.conf.tmpl`, which defines `local-crypt` and `offsite-crypt` (crypt over `local` and `drive` remotes, with names encrypted) and is filled from environment variables at run time. No secret goes in the template (research R11)
 - [ ] T040 [US3] Add `infra/backup/backup.sh`. It runs `pg_dump --format=custom`, computes the row counts, the revision and the SHA-256, and writes the dump and then the manifest to `local-crypt:` and `offsite-crypt:`. If either fails it exits non-zero. Add `infra/backup/prune.sh`, which deletes past `expires_on` and never deletes the newest backup whose checksum verifies. Both scripts are POSIX `sh` with `set -eu` and log no secret
-- [ ] T041 [P] [US3] Failing tests `apps/api/tests/integration/test_check_restore.py`: `python -m hds.scripts.check_restore --manifest m.json` against a database restored from that backup exits 0. It exits non-zero, naming the table, when a count differs, and naming the revisions when the revision differs. It runs the `ready()` checks and loads the organisation, its users and the last month's shifts through the repositories, it writes nothing (the test checks no row changes), and its output holds no personal data
-- [ ] T042 [US3] Add `apps/api/src/hds/scripts/check_restore.py`, and `infra/backup/restore-test.sh`, which downloads the newest offsite backup, verifies it, runs `pg_restore` into the sidecar database, then runs `check_restore`. Add `infra/backup/restore.sh`, which refuses a database with data unless `CONFIRM=replace` is set. It scales the API and the worker to 0 before restoring and back afterwards, but only when it runs in the cluster
+- [ ] T041 [P] [US3] Failing tests `apps/api/tests/integration/test_check_restore.py`: `python -m hds.scripts.check_restore --manifest m.json` against a database restored from that backup exits 0. It exits non-zero, naming the table, when a count differs from the manifest, and naming both revisions when the restored revision differs from the manifest's. A backup from an older revision restores, migrates and passes; a backup at a revision the code does not know passes without migrating. It runs the `ready()` checks and loads the organisation, its users and the last month's shifts through the repositories, it writes nothing (the test checks no row changes), and its output holds no personal data
+- [ ] T042 [US3] Add `apps/api/src/hds/scripts/check_restore.py`, and `infra/backup/restore-test.sh`, which downloads the newest offsite backup, verifies it, runs `pg_restore` into the sidecar database, compares the revision and row counts with the manifest, runs `python -m hds.scripts.migrate` on the copy, then runs `check_restore` (research R11). Add `infra/backup/restore.sh`, which refuses a database with data unless `CONFIRM=replace` is set. It scales the API and the worker to 0 before restoring, runs `migrate` after the restore, and only then scales them back, so an older backup leaves no pods that never become ready; the scaling happens only when it runs in the cluster
 - [ ] T043 [US3] Chart templates `infra/helm/hds/templates/backup-cronjob.yaml` and `restore-test-cronjob.yaml`:
   - **backup**: 02:30, `timeZone` set from values.
-  - **restore test**: Sundays 04:00, with an empty `postgres:16` as a native sidecar (an init container with `restartPolicy: Always`).
+  - **restore test**: Sundays 04:00, with an empty `postgres:16` as a native sidecar (an init container with `restartPolicy: Always`). The download, checksum, `pg_restore` and manifest comparison run in an `hds-backup` init container; `migrate` and `check_restore` then run in an `hds-api` container on the same image as the release, so the check uses the running code.
   - **both**: `startingDeadlineSeconds: 86400`, `concurrencyPolicy: Forbid`, history limits of 3, and a PVC `hds-backups` for `local-crypt`.
 
-  Add `vault-snapshot-cronjob.yaml`, which runs weekly and copies a `vault operator raft snapshot save` snapshot, encrypted under its own password, to both remotes. Extend `infra/helm/tests/assert.sh` with these values
+  Add `vault-snapshot-cronjob.yaml`, which runs weekly and takes a raft snapshot through Vault's HTTP API with `curl` (the image needs no vault binary), encrypts it with `age` to the **public** key in the chart values (`vault.snapshotRecipient`, not a secret), and writes `vault-<UTC time>.snap.age` through the plain `offsite:` remote and the plain local volume, **not** through `offsite-crypt:`, whose password lives in Vault (research R11). It runs under its own ServiceAccount (T052). Extend `infra/helm/tests/assert.sh` with these values
 - [ ] T044 [US3] Add `docs/runbooks/restore.md`:
   - restoring a named backup in the running cluster;
-  - restoring after losing the machine: a new cluster, Vault from its snapshot, the database from Drive;
+  - restoring after losing the machine: a new cluster, then Vault from its snapshot (downloaded from Drive in a browser, decrypted with the age private key, restored with the unseal keys), then the database from Drive. The recovery kit kept outside the machine is the unseal keys, the age private key and the Google account;
   - the Drive OAuth set-up, including the 7-day expiry warning for apps left in testing (research R11);
   - moving the offsite copy to S3 by changing the `offsite` remote only.
 
@@ -256,8 +260,8 @@ chart assertions.
 - [ ] T051 [US6] Failing assertions in `infra/helm/tests/assert.sh`:
   - with `vault.enabled=true` the chart renders a `VaultConnection`, a `VaultAuth` (Kubernetes auth, role `hds`), and one `VaultStaticSecret` per path in data-model.md (`hds/api`, `hds/smtp`, `hds/backup`, `hds/registry`), each with `refreshAfter: 60s` and `rolloutRestartTargets` naming the Deployments that read it;
   - with `vault.enabled=false` (CI) none renders, and the chart expects the Secrets to exist.
-- [ ] T052 [US6] Add `infra/helm/hds/templates/vault-secrets.yaml`, and add `infra/cluster/vault-values.yaml`, which is one node with integrated storage (raft) on a PVC, the injector off and the UI off. Add `infra/cluster/vault-policy.hcl`, which gives read-only access to `hds/*` for the `hds` role. Add `infra/cluster/vso-values.yaml`
-- [ ] T053 [US6] `scripts/ops/unseal.sh` (`make ops-unseal`) reads the unseal key from the terminal without echo and runs `vault operator unseal`. Add `docs/runbooks/operations.md` §Vault: run init once, keep the unseal key and root token in a password manager, put them in no file, revoke the root token after set-up, and write each path's keys with the commands listed
+- [ ] T052 [US6] Add `infra/helm/hds/templates/vault-secrets.yaml`, and add `infra/cluster/vault-values.yaml`, which is one node with integrated storage (raft) on a PVC, the injector off and the UI off. Add `infra/cluster/vault-policy.hcl`, which gives read-only access to `hds/*` for the `hds` role, and `infra/cluster/vault-snapshot-policy.hcl` with only `path "sys/storage/raft/snapshot" { capabilities = ["read"] }`, bound to a Kubernetes-auth role `vault-snapshot` for the snapshot job's own ServiceAccount, with a short token TTL. Add `infra/cluster/vso-values.yaml`
+- [ ] T053 [US6] `scripts/ops/unseal.sh` (`make ops-unseal`) reads the unseal key from the terminal without echo and runs `vault operator unseal`. Add `docs/runbooks/operations.md` §Vault: run init once, keep the unseal key and root token in a password manager, put them in no file, revoke the root token after set-up, generate the age key pair once (the public key into the values, the private key into the password manager with the unseal keys), and write each path's keys with the commands listed. Note that while Vault is sealed after a restart the snapshot job fails and `HdsVaultSnapshotFailed` fires, as a reminder to unseal
 - [ ] T054 [US6] Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): secrets from Vault through the Vault Secrets Operator (006 Group J)`
 
 ## Phase 11: Group K, monitoring and failure messages (US2, US3, US4)
@@ -270,8 +274,8 @@ broken backup sends an e-mail (Group M).
   - `kube_cronjob_status_last_successful_time` older than 26 h for the backup and 8 d for the restore test;
   - a failed `hds-restore-test` or `vault-snapshot` Job.
 
-  Each one stays quiet on healthy series, and no rule uses `hds_http_*` (Clarifications: no rules on error rates)
-- [ ] T056 [US3] Add `infra/helm/hds/templates/prometheus-rules.yaml` (the five job alerts) and `servicemonitors.yaml` (the API and the worker on port 9100). Add `infra/cluster/monitoring-values.yaml` for kube-prometheus-stack: Grafana off; Alertmanager with one e-mail receiver using `smarthost`, `auth_username` and `auth_password` from the `hds-smtp` Secret, `require_tls: true`, and `to` from `OPERATOR_EMAILS`; message templates naming the alert, the object, the time and the summary only (FR-010a)
+  `HdsBackupMissing` and `HdsRestoreTestMissing` carry `for: 1h`: a case where the series turns stale and recovers within the hour (the Mac waking after a day off and the catch-up run finishing) sends nothing. Each one stays quiet on healthy series, and no rule uses `hds_http_*` (Clarifications: no rules on error rates)
+- [ ] T056 [US3] Add `infra/helm/hds/templates/prometheus-rules.yaml` (the five job alerts, the two "missing" ones with `for: 1h`) and `servicemonitors.yaml` (the API and the worker on port 9100). Add `infra/cluster/monitoring-values.yaml` for kube-prometheus-stack: Grafana off; Alertmanager with one e-mail receiver using `smarthost`, `auth_username` and `auth_password` from the `hds-smtp` Secret, `require_tls: true`, and `to` from `OPERATOR_EMAILS`; message templates naming the alert, the object, the time and the summary only (FR-010a)
 - [ ] T057 [US2] `scripts/ops/status.sh` (`make ops-status`) prints:
   - per Deployment, ready over desired and the image version;
   - the last successful and the last failed backup and restore test;
@@ -288,7 +292,7 @@ broken backup sends an e-mail (Group M).
 
 - [ ] T059 [US5] Failing test, a CI job `rolling-update` with the script `infra/tests/rolling_update.sh`:
   1. Create a k3d cluster from `infra/cluster/k3d.yaml`.
-  2. Build the images at the pull request's base commit and the head, and import them with `k3d image import`.
+  2. Build the images at the pull request's base commit and the head, and import them with `k3d image import`. The head's API image gets one extra throwaway additive migration (a nullable column on a scratch table) on top, built only in this job, so every run upgrades across a migration even when the pull request has none.
   3. Create the `hds-*` Secrets from throwaway values, and install the chart at the base with `values-ci.yaml` (`ENVIRONMENT=production`, SMTP pointed at an in-cluster fake server).
   4. Create the first Admin.
   5. Start `infra/tests/load.py`, which runs for the whole upgrade: 20 requests a second, signed-in reads and writes, plus a refresh every 30 s.
@@ -301,9 +305,9 @@ broken backup sends an e-mail (Group M).
   - the schedule job not ending `succeeded` with exactly one result;
   - `make ops-status` reporting `FAIL`.
 
-  It also runs the Playwright smoke journeys against the upgraded cluster's ingress, and checks that two sign-in failures from two client addresses (set with `X-Forwarded-For` at the load balancer) count separately (ADR 007, research R14)
+  It also runs the Playwright smoke journeys against the upgraded cluster's ingress, and checks the hop we control (ADR 007, research R14): two pods inside the cluster, with different pod addresses, call Traefik's Service and fail sign-in, and their failures count separately; a third request with a forged `X-Forwarded-For` is still counted under its own pod's address
 - [ ] T060 [US5] Add `infra/tests/load.py` (httpx, using only API dependencies already present, which prints totals and the failures) and `infra/cluster/k3d.yaml` (one server, ports 8080:80 and 8443:443, local-path)
-- [ ] T061 [P] [US5] Failing test, a CI job `compatibility` with the script `infra/tests/compat.sh`: check out the base commit's `apps/api/tests` and `apps/api/src` into a temporary worktree, upgrade a fresh database with the head's migrations, and run the base's integration tests against it with the base's code. A change that drops or renames a column the base uses fails here (FR-016). Prove it on a throwaway branch with a migration that renames `shifts.headcount`, and record the failing run in the log
+- [ ] T061 [P] [US5] Failing test, a CI job `compatibility` with the script `infra/tests/compat.sh`: check out the base commit into a temporary worktree, copy the head's `apps/api/alembic/versions/` over the base's (keeping the base's `env.py`), and run the base's integration tests with the base's code, skipping the base's own `test_migration_*` tests, which pin the old head. After the run, assert that `alembic_version` holds the head's revision. Files are copied rather than a conftest switch added, because the base has no such switch until this feature merges. A change that drops or renames a column the base uses fails here (FR-016). Prove it on a throwaway branch with a migration that renames `shifts.headcount`, and record the failing run in the log
 - [ ] T062 [US5] Gates, ShellCheck, both reviews, the log, and a commit `test(infra): prove zero-downtime updates and old-new compatibility (006 Group L)`
 
 ## Phase 13: Group M, the shared environment end to end (US1 to US6; run with the owner)
@@ -327,7 +331,7 @@ broken backup sends an e-mail (Group M).
   8. Rotate `JWT_SECRET_KEY` and stay signed in.
 
   Record each outcome, with times, in the log
-- [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys, Vault with the operator, the private metrics port, traces through the job row, the SMTP relay, and backups through rclone, with the rejected alternatives from research.md. Add it to the index in `docs/`
+- [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys, Vault with the operator, the private metrics port, traces through the job row, the SMTP relay, backups through rclone, Vault's snapshot through age, and the accepted limit that the client's address is lost before Traefik on a Mac (research R14; revisiting it with the cloud move is Proposed), with the rejected alternatives from research.md. Add the same limit to the proxy note in `infra/README.md`. Add it to the index in `docs/`
 - [ ] T066 [P] Update `docs/hds-api.md` §9 with an operations note linking the runbooks, and §12 decision 8 as settled (a local k3d cluster). Also add `apps/api/README.md` for the new settings, `infra/README.md` for the shared environment, the `docs/` index, and `.env.example` for the new optional settings, leaving secrets empty
 - [ ] T067 Final gates on the whole branch, the Markdown link check, `/hds-review`, `/code-review high`, the log, and a commit `docs(spec): close 006`
 
@@ -363,3 +367,5 @@ broken backup sends an e-mail (Group M).
 - **Then**: G to L build and prove the shared environment in CI, without the owner's machine.
 - **Finally**: M turns it on for real.
 - Each group is committed on its own and leaves `main` deployable.
+- **Pull requests** (Constitution IX): five, each squash-merged and started from the updated `main`:
+  A–C (kept together: B's quickstart needs C's `/readyz`), D–F, G–H, I–L and M.
