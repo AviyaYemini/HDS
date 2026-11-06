@@ -151,6 +151,7 @@ def test_real_commands_next_to_or_inside_a_message_stay_blocked(command: str) ->
         "grep -rn JWT_SECRET_KEY docs/",  # a folder that holds no settings file
         "rg JWT_SECRET_KEY",  # rg skips git-ignored files by default
         "cat > notes.md <<'EOF'\ncp .env apps/api/.env\nEOF",  # a heredoc written to a file
+        "cat > notes.md <<-EOF\n\tcp .env apps/api/.env\n\tEOF\necho done",  # still a heredoc
         "python3 - <<'EOF'\ns = open('README.md').read()\ns += 'cp .env apps/api/.env'\nEOF",
     ],
 )
@@ -191,6 +192,9 @@ def test_a_mention_of_a_settings_file_is_not_blocked(command: str) -> None:
         "echo x >> .env.local",
         "printf x | tee .env",
         "find . -name .env -exec cat {} +",
+        # A `<<` that starts no heredoc must not hide the lines after it (review C2).
+        "echo $((1<<3))\ncat .env",
+        "cat <<< hi\ncat .env",
     ],
 )
 def test_reading_or_copying_a_settings_file_is_blocked(command: str) -> None:
@@ -317,6 +321,13 @@ GITLEAKS_IMAGE = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb7"
         "GITLEAKS_CONFIG=x gitleaks dir apps",
         "env gitleaks git .",
         "nohup gitleaks git . &",
+        # --redact is a percentage (default 100): anything less prints part of the secret, and the
+        # last one given wins (review C1).
+        "gitleaks git --redact=0 -v .",
+        "gitleaks dir apps --redact=50 -v",
+        "gitleaks git --redact --redact=0 .",
+        "gitleaks git --redact=0100 .",
+        "gitleaks git --redact= .",
     ],
 )
 def test_an_unredacted_or_whole_folder_gitleaks_run_is_blocked(command: str) -> None:
@@ -329,6 +340,8 @@ def test_an_unredacted_or_whole_folder_gitleaks_run_is_blocked(command: str) -> 
         "gitleaks git --no-banner --redact --log-opts=origin/main..HEAD .",
         f"docker run --rm -v $PWD:/repo:ro -w /repo {GITLEAKS_IMAGE} git --no-banner --redact .",
         "gitleaks dir --redact apps/api/src",
+        "gitleaks git --redact=100 .",
+        "gitleaks git --redact=0 --redact .",
         "grep -n gitleaks .github/workflows/ci.yml",
     ],
 )

@@ -82,3 +82,14 @@ def test_the_template_is_an_empty_table_with_the_five_columns(hooks: ModuleType)
     template = (ROOT / ".claude" / "hds" / "review-ledger-template.md").read_text()
     assert "| ID | Source | Finding | Status | Fix commit |" in template
     assert hooks.ledger_counts(ROOT / ".claude" / "hds" / "review-ledger-template.md") == (0, 0)
+
+
+def test_a_pipe_inside_a_finding_does_not_move_the_status(
+    hooks: ModuleType, tmp_path: Path
+) -> None:
+    # The status is the second-to-last cell, so a quoted `|` in the finding shifts nothing (C3).
+    ledger = tmp_path / "review-ledger.md"
+    ledger.write_text(
+        LEDGER.replace("the parser skips punctuation | fixed", "`cat <<EOF | sh` passes | open")
+    )
+    assert hooks.ledger_counts(ledger) == (3, 4)

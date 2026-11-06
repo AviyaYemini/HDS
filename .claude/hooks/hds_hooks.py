@@ -144,17 +144,18 @@ def ledger_counts(path):
     """How many findings in a review ledger are open, and how many it holds: ``(open, total)``.
 
     The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``) whose fourth column
-    is the status: open, fixed or won't-fix, in any case. No file counts as ``(0, 0)``.
+    is the status: open, fixed or won't-fix, in any case. It is read as the second-to-last cell, so
+    a ``|`` inside a finding's text moves nothing. No file counts as ``(0, 0)``.
     """
     if not path.exists():
         return 0, 0
     open_rows = total = 0
     for line in path.read_text(errors="ignore").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 5 or cells[3].lower() not in _LEDGER_STATUSES:
+        if len(cells) < 5 or cells[-2].lower() not in _LEDGER_STATUSES:
             continue
         total += 1
-        open_rows += cells[3].lower() == "open"
+        open_rows += cells[-2].lower() == "open"
     return open_rows, total
 
 
@@ -276,7 +277,10 @@ _SHELLS = frozenset({"sh", "bash", "zsh", "dash"})
 _CODE_SETTINGS_PATH = re.compile(
     r"""['"](?:[\w.~-]*/)*\.env(?:\.(?!example['"]|sample['"])[\w-]+)*['"]""")
 _CODE_READS = re.compile(r"\bopen\s*\(|read_text|read_bytes|dotenv|copyfile|shutil\.copy")
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
+# Not the `<<` of a here-string (`<<<`) or of a shift (`$((1<<3))`): read as a heredoc, the lines
+# after it would be dropped as its body. A `cat<<EOF` with no space is missed too, which only means
+# its body is scanned as commands, the stricter reading.
+_HEREDOC = re.compile(r"(?<![<\w])<<-?(?!<)\s*(['\"]?)(\w+)\1")
 
 
 def is_settings_file(word):
@@ -549,7 +553,9 @@ _ROOT_PATHS = frozenset({".", "./", "/", "$PWD", "${PWD}", "/repo", "/mnt", "/sr
 def gitleaks_problem(cmd):
     """Why a gitleaks run in ``cmd`` is refused, or None.
 
-    Every run must redact what it finds (``--redact``), so no secret reaches the screen or a log.
+    Every run must redact all of what it finds: ``--redact`` takes a percentage (100 by default) and
+    the last one given wins, so that one must be a bare ``--redact`` or ``--redact=100``. No
+    secret, nor part of one, reaches the screen or a log.
     A ``dir`` (or ``detect --no-git``) scan reads files that git ignores, such as real settings
     files, so it must name exactly one path, and not the repository's root; scan commits with
     ``gitleaks git`` instead.
@@ -570,8 +576,10 @@ def gitleaks_problem(cmd):
         if at is None:
             continue
         args = words[at + 1 :]
-        if not any(w == "--redact" or w.startswith("--redact=") for w in args):
-            return "gitleaks must run with --redact, so no secret it finds is printed"
+        redact = [w for w in args if w == "--redact" or w.startswith("--redact=")]
+        if not redact or redact[-1] not in ("--redact", "--redact=100"):
+            return ("gitleaks must run with a bare --redact (or --redact=100), so no secret it "
+                    "finds is printed, not even in part")
         sub = next((w for w in args if not w.startswith("-")), "")
         if sub == "dir" or "--no-git" in args:
             after = args[args.index(sub) + 1 :] if sub == "dir" else args
