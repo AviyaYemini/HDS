@@ -12,6 +12,7 @@ Covers: none directly; the harness's end-of-turn gate (.claude/hds/harness-log.m
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -203,3 +204,50 @@ def test_without_a_session_the_whole_tree_is_read_with_new_folders_listed(
     hooks.stop({})
     assert seen and seen[0][:3] == ["git", "status", "--porcelain"]
     assert "--untracked-files=all" in seen[0]
+
+
+def test_in_a_linked_worktree_edits_are_recorded_in_its_own_git_folder(tmp_path: Path) -> None:
+    # In a worktree, .git is a file ("gitdir: ..."), not a folder; the state must go to the
+    # worktree's own git folder, or the gate is silently off there (review H1).
+    main = tmp_path / "main"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(main)], check=True)
+    git = [
+        "git",
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "commit.gpgsign=false",
+    ]
+    subprocess.run(
+        [*git, "commit", "-q", "--allow-empty", "-m", "chore: start"], cwd=main, check=True
+    )
+    tree = tmp_path / "tree"
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "work", str(tree)], cwd=main, check=True)
+    assert (tree / ".git").is_file()
+    (tree / "notes.md").write_text("x\n")
+
+    hook_input = {
+        "session_id": "worktree-session",
+        "tool_input": {"file_path": str(tree / "notes.md")},
+    }
+    subprocess.run(
+        [sys.executable, str(HOOK), "post-edit"],
+        input=json.dumps(hook_input),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(tree)},
+        cwd=tree,
+        check=False,
+    )
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--absolute-git-dir"],
+        cwd=tree,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    recorded = Path(git_dir) / "hds-hooks" / "edits-worktree-session"
+    assert recorded.read_text().splitlines() == ["notes.md"]
+    assert not (main / ".git" / "hds-hooks" / "edits-worktree-session").exists()

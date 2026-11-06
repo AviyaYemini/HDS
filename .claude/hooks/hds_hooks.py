@@ -835,9 +835,20 @@ def stop_plan(changed):
     return plan
 
 
+def _git_dir():
+    """This checkout's own git folder, or None outside git.
+
+    In a linked worktree `.git` is a file pointing elsewhere, so the folder is asked of git; each
+    worktree has its own, so sessions in different worktrees never share a record.
+    """
+    rc, out = run(["git", "rev-parse", "--absolute-git-dir"])
+    return Path(out) if rc == 0 and out else None
+
+
 # Each session's edited paths, so the gate checks this session's work and not another's in the
-# same checkout. Inside .git: never committed, and gone with the clone.
-STATE_DIR = ROOT / ".git" / "hds-hooks"
+# same checkout. In the git folder: never committed, and gone with the clone or the worktree.
+_GIT_DIR = _git_dir()
+STATE_DIR = _GIT_DIR / "hds-hooks" if _GIT_DIR else None
 # The whole gate's time, under the Stop hook's 300 s in settings.json: past that, Claude Code kills
 # the hook, which counts as a non-blocking error and lets the turn end unchecked.
 STOP_BUDGET_SECONDS = 270
@@ -850,7 +861,7 @@ def _edits_file(session_id):
 
 def record_edit(session_id, path):
     """Note that this session's Write or Edit changed ``path`` (repository-relative)."""
-    if not session_id or not path or not STATE_DIR.parent.is_dir():
+    if not session_id or not path or STATE_DIR is None:
         return
     STATE_DIR.mkdir(exist_ok=True)
     known = set(session_edits(session_id))
@@ -861,6 +872,8 @@ def record_edit(session_id, path):
 
 def session_edits(session_id):
     """The paths this session's Write and Edit tools changed since its gate last passed."""
+    if STATE_DIR is None:
+        return []
     file = _edits_file(session_id)
     if not file.exists():
         return []
@@ -869,7 +882,8 @@ def session_edits(session_id):
 
 def clear_edits(session_id):
     """Forget a session's edits, once its gate has passed."""
-    _edits_file(session_id).unlink(missing_ok=True)
+    if STATE_DIR is not None:
+        _edits_file(session_id).unlink(missing_ok=True)
 
 
 def stop(d):
@@ -885,7 +899,7 @@ def stop(d):
     if d.get("stop_hook_active") or os.environ.get("HDS_SKIP_STOP_GATE"):
         return 0
     session_id = d.get("session_id")
-    if session_id:
+    if session_id and STATE_DIR is not None:
         changed = session_edits(session_id)
     else:
         rc, out = run(["git", "status", "--porcelain", "--untracked-files=all"])

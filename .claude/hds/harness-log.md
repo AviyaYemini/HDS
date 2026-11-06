@@ -180,3 +180,13 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
   first (one was wrong at first, a fragile parse of settings.json, now read as JSON). The unit suite:
   1152 passed. Recording checked live: this session's post-edit wrote `.claude/hooks/hds_hooks.py`
   to its file.
+- **H1, the gate was off in worktrees**: in a linked worktree `.git` is a file, so `ROOT/.git/
+  hds-hooks` could not be made and nothing was recorded; with a session id the gate then checked
+  nothing. The state folder is now asked of git (`git rev-parse --absolute-git-dir`), which in a
+  worktree is its own, so sessions in different worktrees never share a record; outside git the
+  gate falls back to reading the status. A new test makes a worktree in a temporary repository,
+  records an edit through the real post-edit hook, and finds it in the worktree's git folder and
+  not the main one. It failed first. Each hook call now runs one `git rev-parse` (about 10 ms).
+- **The gate in practice**: at the end of the turn that made 73e6337 it blocked once, on the log
+  redaction timing test, which runs slow beside the database suite (as twice before in 006); the
+  file alone passed, 93 tests.
