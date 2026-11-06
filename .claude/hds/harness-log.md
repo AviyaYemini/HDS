@@ -39,3 +39,24 @@ session reviews; this session implements; nothing is pushed without the owner. O
   check; clean commits passed every hook. The first try showed `uv run ruff` cannot start ruff in a
   fresh clone, because ruff is in the `dev` extra; hence `--extra dev`. This repository's own
   `.git/hooks` were never touched.
+
+## Item 3: make ci-local and make ci-local-db
+
+- `scripts/ops/ci_local.sh` mirrors CI's jobs that need no database, stopping at the first failure:
+  ruff and format, interrogate, `mypy --strict`, the import graph, pip-audit, the unit and property
+  tests with CI's 1000 examples, the API image check, ShellCheck, the Markdown links (lychee, offline,
+  over tracked Markdown only, since node_modules holds its own), gitleaks over `origin/main..HEAD`
+  (redacted), commitlint over the same commits, and the client (ESLint, tsc, Jest, the generated
+  client's drift) in the pinned Node image, with the OpenAPI document exported here and a stand-in
+  `uv` in the container. Images pinned as VERSIONS.md (lychee 0.24.2 added).
+- **commitlint**: a first version went through pre-commit's commitlint hook, and passed "Bad
+  Subject.": that hook's `commitlint --edit` reads the last commit's message file, not the one
+  given, and pre-commit stashes unstaged changes while it runs. It now lints each message from
+  standard input in the Node image with the repository's rules (good passes, "Bad Subject." fails
+  with subject-empty, type-empty, subject-full-stop). The git hook itself is right: at commit time
+  that file is the new message.
+- `scripts/ops/ci_local_db.sh`, opt in: the migration check on a throwaway PostgreSQL container (a
+  long-lived database can hold leftovers no migration defines, as `hds_p3_test` did), then the
+  integration, contract and concurrency suites on `hds_p3_test`.
+- **Run**: `make ci-local` passed on the branch (1079 unit and property tests, 76 client tests,
+  the generated client up to date, both commits linted).
