@@ -172,7 +172,13 @@ def configure(service_name: str, app: FastAPI | None = None) -> TracerProvider:
         for processor in span_processors(os.environ):
             _provider.add_span_processor(processor)
         trace.set_tracer_provider(_provider)
-        SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine, tracer_provider=_provider)
+        # skip_dep_check (review R29): 0.66b1 declares SQLAlchemy below 2.1 only, and on 2.1 it
+        # refused to instrument anything. The engine events it hooks (before and after cursor
+        # execute) are unchanged in 2.1, and tests/integration/test_sql_spans.py, which runs real
+        # statements, is what makes the bypass safe. Remove it once a release declares 2.1.
+        SQLAlchemyInstrumentor().instrument(
+            engine=engine.sync_engine, tracer_provider=_provider, skip_dep_check=True
+        )
     if app is not None:
         FastAPIInstrumentor.instrument_app(
             app,

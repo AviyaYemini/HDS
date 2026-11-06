@@ -425,3 +425,19 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   `test_worker_metrics` and `concurrency/test_worker_claims`, 16 passed.
 - An unpinned `koalaman/shellcheck:stable` was pulled by mistake for a manual check. No script
   changed in F; `make ci-local` uses the pinned image.
+
+## Review R29: SQL spans on SQLAlchemy 2.1
+
+- Found in Group F's drain run: `opentelemetry-instrumentation-sqlalchemy` 0.66b1 declares
+  `sqlalchemy >= 1.0.0, < 2.1.0`, so on 2.1.6 it logged an error and instrumented nothing. No SQL
+  span existed since Group D, and no test ran a real statement under it.
+- The reviewer's decision, option (b): no release declares 2.1 support yet (0.66b2, eight days
+  old, still caps it), and SQLAlchemy stays at 2.1.6. `configure` passes `skip_dep_check=True`,
+  with the reason in a comment and a note in `infra/VERSIONS.md`; drop it once a release declares 2.1.
+- `tests/integration/test_sql_spans.py` runs real statements on `hds_p3_test` through an engine
+  the instrumentation wraps:
+  - a request's queries are spans inside its trace;
+  - a job's are under `schedule_job.run`;
+  - a sign-in address appears in no attribute (statements carry placeholders, never bound values);
+  - a statement outside any span starts no trace, while one inside a span is kept.
+- The tests failed first, with no SQL span. With `skip_dep_check` removed, all 4 fail.
