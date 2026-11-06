@@ -637,31 +637,71 @@ def tail(text, n=40):
     return "\n".join(text.splitlines()[-n:])
 
 
+API = ROOT / "apps" / "api"
+# The pure packages whose property tests are worth their seconds when they change.
+_PROPERTY_SOURCES = ("apps/api/src/hds/payroll/", "apps/api/src/hds/scheduling/",
+                     "apps/api/tests/property/")
+
+
+def changed_paths(porcelain):
+    """The paths in ``git status --porcelain`` output; a rename gives its new path."""
+    paths = []
+    for line in porcelain.splitlines():
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path.strip('"'))
+    return paths
+
+
+def stop_plan(changed):
+    """The checks the end-of-turn gate runs for ``changed`` (repository-relative paths).
+
+    Quick ones only: ruff and the format check on the changed apps/api files that still exist,
+    mypy --strict, the unit tests, and the property tests when the pure packages or their tests
+    changed. Never the integration, contract or concurrency suites: they need a database and take
+    about 25 minutes (`make ci-local-db` runs them). A changed hook runs the unit tests, which hold
+    the hook's own tests. Every step runs with the dev extra, where ruff, mypy and pytest live.
+
+    Returns:
+        ``(label, command)`` pairs, run in apps/api in this order; empty when no Python changed.
+    """
+    python = [p for p in changed if p.endswith(".py")]
+    api = [p for p in python if p.startswith("apps/api/")]
+    hooks = [p for p in python if p.startswith(".claude/hooks/")]
+    if not (api or hooks) or not (API / "pyproject.toml").exists():
+        return []
+    uv = ["uv", "run", "--extra", "dev", "--quiet"]
+    plan = []
+    present = [p[len("apps/api/"):] for p in api if (ROOT / p).exists()]
+    if present:
+        plan.append(("ruff", uv + ["ruff", "check", *present]))
+        plan.append(("ruff format", uv + ["ruff", "format", "--check", *present]))
+    if api:
+        plan.append(("mypy", uv + ["mypy", "--strict", "src/", "tests/"]))
+    plan.append(("unit tests", uv + ["pytest", "-q", "-x", "-p", "no:cacheprovider", "tests/unit/"]))
+    if any(p.startswith(_PROPERTY_SOURCES) for p in api):
+        plan.append(("property tests",
+                     uv + ["pytest", "-q", "-x", "-p", "no:cacheprovider", "tests/property/"]))
+    return plan
+
+
 def stop(d):
+    """The end-of-turn gate: the quick checks for what changed (principle 9), never a database.
+
+    With ``stop_hook_active`` (the gate already sent Claude back once) it lets Claude stop, so a
+    failing gate cannot loop.
+    """
     if d.get("stop_hook_active") or os.environ.get("HDS_SKIP_STOP_GATE"):
         return 0
     rc, out = run(["git", "status", "--porcelain"])
-    changed = [l[3:] for l in out.splitlines() if re.search(r"\.(py|ts|tsx)$", l)]
-    if rc != 0 or not changed:
+    if rc != 0 or not shutil.which("uv"):
         return 0
-
-    problems = []
-    py_root = ROOT if (ROOT / "pyproject.toml").exists() else (ROOT / "backend" if (ROOT / "backend" / "pyproject.toml").exists() else None)
-    if py_root and shutil.which("uv") and any(c.endswith(".py") for c in changed):
-        pyproject = (py_root / "pyproject.toml").read_text(errors="ignore")
-        steps = [("ruff", ["uv", "run", "--quiet", "ruff", "check", "."])]
-        if "mypy" in pyproject:
-            steps.append(("mypy", ["uv", "run", "--quiet", "mypy", "."]))
-        if (py_root / "tests").exists():
-            steps.append(("pytest", ["uv", "run", "--quiet", "pytest", "-q", "-x", "--maxfail=1"]))
-        for label, cmd in steps:
-            rc, out = run(cmd, timeout=170, cwd=py_root)
-            if rc not in (0, 5):  # 5 = pytest found no tests
-                problems.append(f"{label} failed:\n{tail(out)}")
-                break
-
-    if problems:
-        return block("Quality gate (constitution principle 9) failed. Fix it before finishing:\n" + "\n\n".join(problems))
+    for label, cmd in stop_plan(changed_paths(out)):
+        rc, out = run(cmd, timeout=240, cwd=API)
+        if rc not in (0, 5):  # 5 = pytest found no tests
+            return block("Quality gate (constitution principle 9) failed. Fix it before finishing:\n"
+                         f"{label} failed:\n{tail(out)}")
     return 0
 
 

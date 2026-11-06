@@ -116,3 +116,23 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
 - **A consequence while writing the tests and this log**: the new guard refused two commands of
   mine, Python heredocs that both opened files and quoted the settings path as data. It cannot tell
   data from a read; those were written with the file tools instead.
+
+## Item 1: the end-of-turn gate
+
+- The Stop hook looked for `pyproject.toml` at the root or in `backend/`, found neither, and so
+  never ran. It now checks `apps/api`. `stop_plan` (a pure function, so it is tested without running
+  anything) picks the checks from the working tree's changed paths (`git status --porcelain`,
+  renames by their new path): ruff and the format check on the changed apps/api files that still
+  exist, `mypy --strict`, the unit tests, and the property tests when `hds.payroll`,
+  `hds.scheduling` or the property tests changed. A changed hook runs the unit tests, which hold
+  the hook's tests. Every step uses `uv run --extra dev`. Never a database suite.
+- `stop_hook_active` lets Claude stop after one failed gate, so a failure cannot loop; the
+  existing `HDS_SKIP_STOP_GATE` still switches it off.
+- **Tests**: 9 unit tests (`test_harness_stop_gate.py`), which import the hook with
+  `CLAUDE_PROJECT_DIR` set, as Claude Code runs it. Eight failed first on the missing functions;
+  the loop guard already worked. One test was wrong at first: it looked for `tests/integration` in
+  every command, but ruff is rightly handed a changed integration test by path; it now checks the
+  pytest commands only.
+- **By hand**: on this branch's working tree the gate passed in 22 s; with a throwaway module that
+  imported `os` unused it blocked ("ruff failed: F401"), and with `stop_hook_active` it let Claude
+  stop. The throwaway module was removed.
