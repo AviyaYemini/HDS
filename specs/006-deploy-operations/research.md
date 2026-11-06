@@ -265,9 +265,9 @@ lines).
 
 ## R11. Backups: a daily `pg_dump`, encrypted by rclone, to the machine and Google Drive
 
-**Backup**: a CronJob runs at 02:30 in the organisation's zone, with `startingDeadlineSeconds:
-86400`, so a run missed while the machine slept happens when it wakes. It runs in the `hds-backup`
-image:
+**Backup**: a CronJob runs at 03:30 in the organisation's zone (not 02:30, which the clocks skip
+on the spring-forward day; review R83), with `startingDeadlineSeconds: 86400`, so a run missed
+while the machine slept happens when it wakes. It runs in the `hds-backup` image:
 
 1. `pg_dump --format=custom`, which is one consistent snapshot of the database (FR-012).
 2. A manifest: the migration version, the time, the row count of every table, the size and a

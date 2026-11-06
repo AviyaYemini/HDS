@@ -14,6 +14,8 @@ The local environment, the images, the Helm charts and the pinned versions. The 
 | `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
 | `helm/hds` | The application chart: the API, the worker, the web client, the migration hook, the ingress |
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
+| `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
+| `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
 | `helm/tests/assert.sh` | Lints, validates and checks the rendered charts (CI `chart` job, `make ci-local`) |
 
 ## The Helm charts
@@ -40,6 +42,16 @@ routes it.
 `helm/tests/assert.sh` runs `helm lint`, kubeconform (Kubernetes v1.37.1 schemas) and assertions
 on the rendered manifests: `hds` for `values-local.yaml` and `values-ci.yaml`, and `hds-postgres`
 with its defaults. Every tool runs from an image pinned in `VERSIONS.md`; only Docker is needed.
+
+## Backups
+
+Daily at 03:30, `backup.sh` dumps the database and writes it with a manifest (revision, row
+counts, SHA-256), encrypted by rclone crypt, to the `hds-backups` volume and to Drive; `prune.sh`
+then deletes what is past 30 days, never the newest valid backup. On Sundays the restore test
+restores the newest Drive copy into an empty database in its own pod, compares it with the
+manifest, migrates it and checks it with the code. Vault's own snapshot goes weekly, encrypted with
+age, through the plain remotes. The secrets are in the `hds-backup` Secret (from Vault). Restoring,
+a lost machine and the Drive set-up: [the restore runbook](../docs/runbooks/restore.md).
 
 ## The local environment
 

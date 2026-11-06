@@ -8,3 +8,7 @@ mail:
   backend: outbox
 ingress:
   host: hds.localhost
+# A throwaway age public key, so the snapshot job renders and is checked; its private key was not
+# kept, and no CI job takes a snapshot.
+vault:
+  snapshotRecipient: age16q9ew59lene00jp303rjfh0c7t8jt9agwsctp27kez526m6hhazsfuev0c

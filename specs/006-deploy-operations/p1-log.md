@@ -537,3 +537,43 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
 - The client-page test (R69) failed first under a mutant that adds `/pay`, a real page, to the API
   prefixes. The policy comment (R68), the rotation advice (R70) and the CronJob label path for Group
   H (R71) are corrected.
+
+## Group H: encrypted backups and the restore test (PR 3)
+
+- **T038** `infra/backup/tests/run.sh`, the CI `backup-restore` job: compose with the application's
+  database, an empty one, the API image and the backup image. The remotes are crypt over folders.
+  Every password comes from `openssl rand` at run time.
+  - All eight steps pass, plus 6b: a dump that is not stored leaves no manifest.
+  - The scripts were written before the test, not after it; the mutants below stand in for "fails
+    first".
+  - It found three faults of its own: compose options placed after the service, GNU `date` run on
+    the Mac, and `rclone move` treating its destination as a folder.
+- **T039 to T042**:
+  - The image: PostgreSQL 16.15's tools, rclone, jq and curl pinned by version, and age v1.3.2 by
+    checksum; uid 999.
+  - The rclone template, rendered by awk from ENVIRON, so no secret is ever an argument.
+  - backup.sh takes the dump and the counts in one exported snapshot, so a write in between changes
+    neither. The manifest is written last.
+  - prune.sh, restore-test.sh and restore.sh. restore.sh only restores: its cluster mode went with
+    R78.
+  - check_restore reads through the repositories in read-only transactions, and prints counts only.
+- **T043**: the backup (03:30, not 02:30, R83), the restore test (the native postgres sidecar first,
+  on loopback; hds-backup; then hds-api on the release's image) and Vault's snapshot, which has its
+  own ServiceAccount and no Role. The chart checks cover each rule.
+- **T044** `docs/runbooks/restore.md`: numbered steps with expected output. `make ops-restore`
+  arrives with Group I (T049b), and §1 says so.
+- **T045b**: `make ops-backup`, `ops-restore-test` and `ops-backups`, through
+  `scripts/ops/backup_jobs.sh`. They refuse while a Job is active, and are checked against a fake
+  kubectl. The reviewer's split, R76 to R79.
+- **Mutants**:
+  - T045's four all fail the test: the manifest written before the dump, prune deleting the newest,
+    the restore test using the local copy, and no checksum check.
+  - The order mutant survived at first: step 6b's size filter made rclone refuse both files.
+    rclone's filters refuse `copyto` outright, so the "stored" check guarded nothing and went; a
+    10 kB transfer limit now fails only the dump.
+  - Also failing their tests: check_restore without its ready check, with an empty restore
+    accepted, with a name printed, or with future shifts counted. Chart mutants: the sidecar not
+    native or not first, the check on the application's database, the backup without the client
+    label, the volume not kept. The helper ignoring a failure or an active Job, and prune stopped
+    by an unreadable manifest.
+- Reviews: /hds-review R72 to R76; /code-review high R80 to R89 (R88 won't-fix).

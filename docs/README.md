@@ -8,6 +8,12 @@
 | [`hds-api.md`](hds-api.md) | Written API overview: resource groups and conventions |
 | [`architecture-guide.md`](architecture-guide.md) | How the code is organised and why, with a request traced end to end |
 
+## Runbooks
+
+| Runbook | When |
+| --- | --- |
+| [`restore.md`](runbooks/restore.md) | Restoring a backup, recovering a lost machine, the Drive set-up, moving to S3 |
+
 ## Architecture decisions
 
 | ADR | Decision |

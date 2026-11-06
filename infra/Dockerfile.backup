@@ -1,0 +1,45 @@
+# The backup image (specs/006-deploy-operations research R11): the PostgreSQL 16 client tools of the
+# cluster's database image, rclone for the encrypted copies, jq and curl for the manifests and
+# Vault's API, and age for Vault's snapshot. Every base and binary is pinned (infra/VERSIONS.md).
+FROM rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5 AS rclone
+
+FROM postgres:16.15@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
+
+# Debian trixie's packages, pinned to the versions this image was built and tested with.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        jq=1.7.1-6+deb13u4 \
+        curl=8.14.1-2+deb13u7 \
+        ca-certificates=20250419+deb13u1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# age v1.3.2 from its GitHub release, checked against the SHA-256 recorded in infra/VERSIONS.md.
+ARG TARGETARCH
+RUN set -eu; \
+    case "$TARGETARCH" in \
+        amd64) sum=cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 ;; \
+        arm64) sum=6b8dc4333c53a5a57c9e5834e3a48f92605d7154014cd07269ff3327db5d37f4 ;; \
+        *) echo "no age build for $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/age.tar.gz \
+        "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-${TARGETARCH}.tar.gz"; \
+    echo "$sum  /tmp/age.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/age.tar.gz -C /tmp; \
+    install -m 0755 /tmp/age/age /usr/local/bin/age; \
+    rm -rf /tmp/age /tmp/age.tar.gz
+
+COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
+COPY infra/backup/*.sh infra/backup/rclone.conf.tmpl /opt/hds-backup/
+
+ARG HDS_VERSION=dev
+LABEL org.opencontainers.image.version="${HDS_VERSION}" \
+      org.opencontainers.image.source="https://github.com/AviyaYemini/HDS"
+# The scripts write only to /tmp and the backup volume; HOME is where rclone would keep its cache.
+ENV HDS_VERSION="${HDS_VERSION}" \
+    PATH="/opt/hds-backup:${PATH}" \
+    HOME=/tmp
+# The image's postgres user, not root; it owns nothing in the image.
+USER 999
+
+ENTRYPOINT []
+CMD ["backup.sh"]

@@ -126,7 +126,7 @@ for env in local ci; do
               else .[] | .namespaceSelector.matchLabels["kubernetes.io/metadata.name"] // "OTHER" end]
             | unique | join(" ")')"
     # Only the pods that use the database carry the label hds-postgres lets in; not the web.
-    expect "database clients" "api migrate worker" \
+    expect "database clients" "api backup migrate worker" \
         "$(yq "$f" '[(.spec.template.metadata.labels // .spec.jobTemplate.spec.template.metadata.labels)
             | select(.["hds/database-client"] == "true") | .["app.kubernetes.io/component"]]
             | sort | join(" ")')"
@@ -135,6 +135,70 @@ for env in local ci; do
     expect "DATABASE_URL names the database Service" "yes" \
         "$(yq "$f" "$c | .env[] | select(.name == \"DATABASE_URL\") | .value | test(\"@hds-postgres:5432/\") | select(.) | \"yes\"")"
 done
+
+# The backups (research R11, T043): the same rules for each of the three jobs.
+for env in local ci; do
+    f="hds-$env.yaml"
+    echo "== hds, values-$env.yaml: the backup jobs"
+    for job in backup restore-test; do
+        cj="select(.kind == \"CronJob\" and .metadata.name == \"hds-$job\")"
+        expect "$job deadline, no overlap, 3 runs kept" "86400 Forbid 3 3" \
+            "$(yq "$f" "$cj | .spec | [.startingDeadlineSeconds, .concurrencyPolicy, .successfulJobsHistoryLimit, .failedJobsHistoryLimit] | join(\" \")")"
+        expect "$job in the organisation's zone" "Asia/Jerusalem" "$(yq "$f" "$cj | .spec.timeZone")"
+    done
+    b='select(.kind == "CronJob" and .metadata.name == "hds-backup") | .spec'
+    expect "backup at 03:30, outside the spring-forward hour" "30 3 * * *" "$(yq "$f" "$b | .schedule")"
+    expect "backup prunes even when it fails, with no retry, within an hour" \
+        "sh -c backup.sh; status=\$?; prune.sh || status=1; exit \$status 0 3600" \
+        "$(yq "$f" "$b | .jobTemplate.spec | [(.template.spec.containers[0].command | join(\" \")), .backoffLimit, .activeDeadlineSeconds] | join(\" \")")"
+    bp="$b | .jobTemplate.spec.template.spec"
+    expect "backup reaches the database Service" "hds-postgres 5432" \
+        "$(yq "$f" "$bp | .containers[0].env | [(.[] | select(.name == \"PGHOST\") | .value), (.[] | select(.name == \"PGPORT\") | .value)] | join(\" \")")"
+    expect "backup's password from hds-api by name" "hds-api DATABASE_PASSWORD" \
+        "$(yq "$f" "$bp | .containers[0].env[] | select(.name == \"PGPASSWORD\") | .valueFrom.secretKeyRef | [.name, .key] | join(\" \")")"
+    expect "backup's remotes from hds-backup" "hds-backup" "$(yq "$f" "$bp | .containers[0].envFrom[0].secretRef.name")"
+    expect "local copies on the hds-backups volume" "hds-backups /backups" \
+        "$(yq "$f" "$bp | [(.volumes[] | select(.name == \"backups\") | .persistentVolumeClaim.claimName), (.containers[0].volumeMounts[] | select(.name == \"backups\") | .mountPath)] | join(\" \")")"
+    expect "the hds-backups volume outlives the release" "keep" \
+        "$(yq "$f" 'select(.kind == "PersistentVolumeClaim" and .metadata.name == "hds-backups") | .metadata.annotations["helm.sh/resource-policy"]')"
+    expect "backup image non-root" "999 true" \
+        "$(yq "$f" "$bp | [.securityContext.runAsUser, .containers[0].securityContext.readOnlyRootFilesystem] | join(\" \")")"
+    r='select(.kind == "CronJob" and .metadata.name == "hds-restore-test") | .spec'
+    expect "restore test on Sundays at 04:00, within two hours" "0 4 * * 0 7200" \
+        "$(yq "$f" "$r | [.schedule, .jobTemplate.spec.activeDeadlineSeconds] | join(\" \")")"
+    expect "the check runs as the API image's user" "10001" \
+        "$(yq "$f" "$r | .jobTemplate.spec.template.spec.containers[0].securityContext.runAsUser")"
+    rp="$r | .jobTemplate.spec.template.spec"
+    expect "the empty postgres is the first init container, a native sidecar" "postgres Always" \
+        "$(yq "$f" "$rp | .initContainers[0] | [.name, .restartPolicy] | join(\" \")")"
+    expect "the sidecar's startup probe is pg_isready" "pg_isready -h 127.0.0.1 -U hds" \
+        "$(yq "$f" "$rp | .initContainers[0].startupProbe.exec.command[2]")"
+    expect "the sidecar is the cluster's postgres, on loopback only" "postgres@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32 -c listen_addresses=127.0.0.1" \
+        "$(yq "$f" "$rp | .initContainers[0] | [.image, (.args | join(\" \"))] | join(\" \")")"
+    expect "then hds-backup runs restore-test.sh on the sidecar" "hds-backup restore-test.sh 127.0.0.1" \
+        "$(yq "$f" "$rp | .initContainers[1] | [.name, .command[0], (.env[] | select(.name == \"PGHOST\") | .value)] | join(\" \")")"
+    expect "then hds-api runs migrate and check_restore" "hds-api sh -c python -m hds.scripts.migrate && python -m hds.scripts.check_restore" \
+        "$(yq "$f" "$rp | .containers[0] | [.name, (.command | join(\" \"))] | join(\" \")")"
+    expect "on the release's own API image" "$(yq "$f" "$c | .image")" "$(yq "$f" "$rp | .containers[0].image")"
+    expect "the check reads the sidecar, not the application's database" "postgresql+asyncpg://hds@127.0.0.1:5432/hds" \
+        "$(yq "$f" "$rp | .containers[0].env[] | select(.name == \"DATABASE_URL\") | .value")"
+    expect "the restore test has no local copy" 0 \
+        "$(yq "$f" "$rp | [.volumes[] | select(.persistentVolumeClaim)] | length")"
+    expect "the restore test has no database-client label" null \
+        "$(yq "$f" "$r | .jobTemplate.spec.template.metadata.labels[\"hds/database-client\"]")"
+done
+echo "== hds, values-ci.yaml: Vault's snapshot"
+v='select(.kind == "CronJob" and .metadata.name == "hds-vault-snapshot") | .spec'
+vp="$v | .jobTemplate.spec.template.spec"
+expect "vault snapshot weekly, as its own ServiceAccount" "0 3 * * 0 hds-vault-snapshot vault-snapshot.sh" \
+    "$(yq hds-ci.yaml "[($v | .schedule), ($vp | .serviceAccountName), ($vp | .containers[0].command[0])] | join(\" \")")"
+expect "vault snapshot within 30 minutes" 1800 "$(yq hds-ci.yaml "$v | .jobTemplate.spec.activeDeadlineSeconds")"
+expect "vault snapshot to the public key in the values" "age16q9ew59lene00jp303rjfh0c7t8jt9agwsctp27kez526m6hhazsfuev0c" \
+    "$(yq hds-ci.yaml "$vp | .containers[0].env[] | select(.name == \"HDS_VAULT_RECIPIENT\") | .value")"
+expect "no Kubernetes permission for any job" 0 \
+    "$(yq hds-ci.yaml '[select(.kind == "Role" or .kind == "ClusterRole" or .kind == "RoleBinding" or .kind == "ClusterRoleBinding")] | length')"
+expect "no snapshot job without a recipient" 0 \
+    "$(yq hds-local.yaml '[select(.kind == "CronJob" and .metadata.name == "hds-vault-snapshot")] | length')"
 
 echo "== hds, values-local.yaml: the settings"
 lc="$api | .spec.template.spec.containers[] | select(.name == \"api\") | .env[]"

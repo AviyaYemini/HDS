@@ -8,6 +8,10 @@
 #   make ps, make logs [S=service]
 #   make hooks   install the git hooks (ruff, mypy, gitleaks, commitlint), once per clone
 #
+# The shared environment, with kubectl access to the cluster (contracts/ops.md section 5):
+#   make ops-backup        a backup now; make ops-restore-test, the restore test now
+#   make ops-backups       the backups on Drive, by name (Proposed)
+#
 # The compose file lives in infra/ and Compose reads a `.env` file from THE COMPOSE FILE'S folder
 # (infra/), not from here, so every target passes `--env-file .env` to use the one in the repository
 # root. Do not use `--project-directory .`: the compose file's relative paths (build context,
@@ -29,6 +33,7 @@ COMPOSE_READ := JWT_SECRET_KEY="$${JWT_SECRET_KEY:-unused-by-down}" $(COMPOSE)
 POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
 
 .PHONY: env up build down wipe ps logs hooks ci-local ci-local-db
+.PHONY: ops-backup ops-restore-test ops-backups
 
 # CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
 # interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
@@ -105,3 +110,14 @@ logs: .env
 .env:
 	@echo "No .env in the repository root. Run 'make env' first." >&2
 	@exit 1
+
+# The backups in the cluster (specs/006 T045b): each makes a Job from its CronJob, waits for it and
+# prints its logs; it refuses while one is still running.
+ops-backup:
+	scripts/ops/backup_jobs.sh run backup
+
+ops-restore-test:
+	scripts/ops/backup_jobs.sh run restore-test
+
+ops-backups:
+	scripts/ops/backup_jobs.sh list

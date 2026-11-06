@@ -1,0 +1,38 @@
+# rclone's remotes for the backups (specs/006-deploy-operations research R11). No secret is
+# written here: lib.sh fills each ${NAME} from the environment at run time (the hds-backup Secret,
+# from Vault) into a private copy that lives only as long as the run. The crypt passwords are
+# obscured on the way, as rclone expects.
+#
+# Moving the off-machine copy to S3 changes only the [offsite] remote: type s3, a bucket and its
+# keys. The crypt remotes, the scripts and the manifests stay as they are.
+
+# The machine: a path on the backup volume.
+[local]
+type = local
+
+# Off the machine: a Google Drive folder, with a token for the drive.file scope (rclone sees only
+# the files it made).
+[offsite]
+type = drive
+scope = drive.file
+client_id = ${HDS_DRIVE_CLIENT_ID}
+client_secret = ${HDS_DRIVE_CLIENT_SECRET}
+root_folder_id = ${HDS_DRIVE_FOLDER_ID}
+token = ${HDS_DRIVE_TOKEN}
+
+# The database backups go only through these: contents and names encrypted (NaCl secretbox).
+[local-crypt]
+type = crypt
+remote = local:${HDS_BACKUP_DIR}/db
+filename_encryption = standard
+directory_name_encryption = true
+password = ${HDS_CRYPT_PASSWORD_OBSCURED}
+password2 = ${HDS_CRYPT_SALT_OBSCURED}
+
+[offsite-crypt]
+type = crypt
+remote = offsite:${HDS_OFFSITE_PATH}/db
+filename_encryption = standard
+directory_name_encryption = true
+password = ${HDS_CRYPT_PASSWORD_OBSCURED}
+password2 = ${HDS_CRYPT_SALT_OBSCURED}

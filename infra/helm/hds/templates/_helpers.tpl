@@ -60,7 +60,7 @@ seccompProfile:
 The API image's settings, shared by the API, the worker and the migration Job. Inline rather than a
 ConfigMap: the migration Job is a pre-install hook, which runs before the chart's own objects exist.
 DATABASE_PASSWORD comes first, as DATABASE_URL refers to it; it must be URL-safe (hex, as made by
-`openssl rand -hex`).
+`openssl rand -hex`). The restore test passes databaseUrl, its own throwaway database, instead.
 */}}
 {{- define "hds.apiEnv" -}}
 {{- $v := .root.Values -}}
@@ -88,11 +88,16 @@ DATABASE_PASSWORD comes first, as DATABASE_URL refers to it; it must be URL-safe
 - name: THROTTLE_SECRET_KEY
   valueFrom:
     secretKeyRef: {name: hds-api, key: THROTTLE_SECRET_KEY, optional: true}
+{{- if .databaseUrl }}
+- name: DATABASE_URL
+  value: {{ .databaseUrl | quote }}
+{{- else }}
 - name: DATABASE_PASSWORD
   valueFrom:
     secretKeyRef: {name: hds-api, key: DATABASE_PASSWORD}
 - name: DATABASE_URL
   value: "postgresql+asyncpg://{{ $v.database.user }}:$(DATABASE_PASSWORD)@{{ $v.database.host }}:{{ $v.database.port }}/{{ $v.database.name }}"
+{{- end }}
 {{- end -}}
 
 {{/* The relay's settings, from the hds-smtp Secret, when mail goes over SMTP. */}}
@@ -121,4 +126,29 @@ envFrom:
 - name: outbox
   emptyDir: {}
 {{- end }}
+{{- end -}}
+
+
+{{/* The backup scripts' database and remote settings; the remotes' secrets are in hds-backup. */}}
+{{- define "hds.backupEnv" -}}
+{{- $v := .root.Values -}}
+- name: HDS_BACKUP_DIR
+  value: /backups
+- name: HDS_OFFSITE_PATH
+  value: {{ $v.backup.offsitePath | quote }}
+- name: HDS_RETENTION_DAYS
+  value: {{ $v.backup.retentionDays | quote }}
+{{- end -}}
+
+{{/* A backup-image container: non-root (the image's uid 999), /tmp writable, nothing else. */}}
+{{- define "hds.backupContainer" -}}
+image: {{ include "hds.image" (dict "root" .root "part" "backup") }}
+imagePullPolicy: {{ .root.Values.images.pullPolicy }}
+envFrom:
+  - secretRef:
+      name: hds-backup
+securityContext:
+  {{- include "hds.containerSecurity" . | nindent 2 }}
+resources:
+  {{- toYaml .root.Values.backup.resources | nindent 2 }}
 {{- end -}}
