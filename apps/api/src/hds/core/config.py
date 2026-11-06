@@ -7,22 +7,49 @@ never committed (Constitution VI). Validators here fail the process at start-up 
 letting an unsafe configuration run. ``ENVIRONMENT`` and ``JWT_SECRET_KEY`` have no defaults, so a
 deployment that forgets them stops instead of starting with a published key. Only the
 ``development`` and ``test`` environments may use a weak secret or the development mail outbox;
-every other value (``production``, ``staging``, ...) gets the strict checks.
+every other value (``production``, ``staging``, ...) gets the strict checks, which also refuse any
+key or database password published in this repository (``KNOWN_DEVELOPMENT_VALUES``).
 """
 
 import hashlib
 import hmac
+import os
 from pathlib import Path
 from typing import Self
 
 import email_validator
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 # The placeholder value that older configuration files and examples published. It is public,
 # not a secret: the settings use it only to REFUSE a signing key that equals it.
 PUBLISHED_PLACEHOLDER = "dev-secret-change-in-production"
 MIN_JWT_SECRET_BYTES = 32  # RFC 7518 §3.2: an HS256 key should be at least 256 bits
+
+#: Every key and password value this repository publishes in a configuration file:
+#: ``.env.example``, compose, the workflows, scripts, Makefiles, tool configs and the test settings
+#: (specs/006 FR-026). They are not secrets, so outside development none may be the signing key, the
+#: throttle key or the database password. Compared after trimming and lower-casing. A test reads
+#: those files and fails when one of their values is missing here, so add any new example value at
+#: the same time.
+KNOWN_DEVELOPMENT_VALUES: frozenset[str] = frozenset(
+    {
+        PUBLISHED_PLACEHOLDER,
+        "change-me",  # .env.example
+        "hds_dev",  # infra/docker-compose.yml default, and the default DATABASE_URL below
+        "ci-only-not-a-real-secret-0123456789",  # .github/workflows/ci.yml
+        "hds_test",  # .github/workflows/ci.yml
+        "hds_check",  # .github/workflows/ci.yml
+        "hds_scratch",  # .github/workflows/ci.yml
+        "hds_e2e",  # .github/workflows/ci.yml
+        "test-only-jwt-secret-0123456789-abcdef",  # apps/api/tests/conftest.py
+        "e2e-only-not-a-secret-0123456789-abcdefgh",  # apps/client/playwright.config.ts
+        "hds",  # apps/api/scripts/contract_cli.sh (the scratch database's password)
+        "unused-by-down",  # Makefile (the stand-in key for `make down`)
+    }
+)
 
 #: The only environments allowed to use a weak secret and the development mail outbox.
 DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
@@ -156,12 +183,9 @@ class Settings(BaseSettings):
             if self.MAIL_BACKEND != OUTBOX_BACKEND and self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:
                 raise ValueError("MAIL_BACKEND does not name a known mail backend")
             return self
+        # Also refuses PUBLISHED_PLACEHOLDER, which is on the list (compared ignoring case).
+        self._refuse_published_values()
         secret = self.JWT_SECRET_KEY.get_secret_value()
-        if secret == PUBLISHED_PLACEHOLDER:
-            raise ValueError(
-                "JWT_SECRET_KEY must be set to a real secret unless ENVIRONMENT is "
-                "development or test"
-            )
         if len(secret.encode()) < MIN_JWT_SECRET_BYTES:
             raise ValueError(
                 f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_BYTES} bytes "
@@ -179,6 +203,39 @@ class Settings(BaseSettings):
                 "available yet"
             )
         return self
+
+    def _refuse_published_values(self) -> None:
+        """Refuse a key or database password that this repository publishes (specs/006 FR-026).
+
+        The database password is read wherever the driver takes one: the URL's user part, its
+        ``password`` query option, and ``PGPASSWORD`` when the URL has none.
+
+        Raises:
+            ValueError: Naming the setting, never the value; also when ``DATABASE_URL`` cannot be
+                read, since its password cannot be checked then.
+        """
+        try:
+            url = make_url(self.DATABASE_URL)
+        except ArgumentError:
+            raise ValueError("DATABASE_URL is not a database URL SQLAlchemy can read") from None
+        option = url.query.get("password")
+        candidates: list[tuple[str, str | tuple[str, ...] | None]] = [
+            ("JWT_SECRET_KEY", self.JWT_SECRET_KEY.get_secret_value()),
+            (
+                "THROTTLE_SECRET_KEY",
+                self.THROTTLE_SECRET_KEY.get_secret_value() if self.THROTTLE_SECRET_KEY else None,
+            ),
+            ("DATABASE_URL", url.password),
+            ("DATABASE_URL", option),
+            ("PGPASSWORD", os.environ.get("PGPASSWORD")),
+        ]
+        for name, found in candidates:
+            for value in (found,) if isinstance(found, str) or found is None else found:
+                if value is not None and value.strip().lower() in KNOWN_DEVELOPMENT_VALUES:
+                    raise ValueError(
+                        f"{name} must not use a value published in this repository unless "
+                        "ENVIRONMENT is development or test; set a value of your own"
+                    )
 
 
 # ENVIRONMENT and JWT_SECRET_KEY are required and come from the environment, which the type

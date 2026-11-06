@@ -1,0 +1,106 @@
+# 006 decision log
+
+Standing rules: tests on the private database `hds_p3_test` only, one run at a time, after checking
+`pg_stat_activity`; no push and no pull request until PR 1 (Groups A to C) is ready; no edit to a
+committed migration; no test deleted or weakened, and every test change explained here. Each group:
+failing tests first, then code, mutation checks, the gates, /hds-review and /code-review high, this
+log and one commit. A reviewer session ("HDS helper") reviews each group before the next starts.
+
+## Stages
+
+- **Specify**: from the stored prompt; sections 9 and 10 are in `docs/hds-api.md`, not
+  `docs/hds-spec.md` (which ends at section 7).
+- **Clarify**: five answers (a cluster on the operator's Mac that installs published releases; at most
+  a day of data lost; an off-machine backup copy that the restore test uses; a message per failure; a
+  code-only rollback).
+- **Plan**: the owner chose an SMTP sender, Flux, and Google Drive now with S3 later. Traces came back
+  into scope as FR-008a (the original §9 and the plan prompt both ask for them).
+- **Tasks**: T001 to T067 in Groups A to M.
+- **Analyze and two reviewer rounds**: readiness fails only when the database is behind; worker
+  liveness counts a held job; Vault's snapshot is age-encrypted to a public key; the client address
+  lost on the Mac is an accepted limit; the manifest is compared before migrate; the compatibility test
+  applies the head's migrations; five pull requests (A–C, D–F, G–H, I–L, M).
+
+## Group A: pins and the secret checks (T001 to T006)
+
+- **T001 pins** (`infra/VERSIONS.md`): every tool is a release at least two weeks old on 2026-11-06,
+  so newer ones were passed over: Trivy v0.76.1 (not v0.76.2, one day old), k3s v1.37.1+k3s1 (not
+  v1.37.2, three days), Flux v2.9.6 (not v2.10.0, eleven days), uv 0.13.5, kube-prometheus-stack
+  92.11.0, OpenTelemetry 1.45.1/0.66b1 (not 1.45.2, eight days). Helm stays on 3 (v3.22.1), as the
+  plan names Helm 3, although Helm 4 exists. Images are pinned by tag and index digest. The PostgreSQL
+  image in compose and CI moved from the floating `16-alpine` to `16.15-alpine` by digest.
+  - The Python packages are recorded in `VERSIONS.md` but not yet added: each joins `pyproject.toml`
+    and the lock in the group that first imports it (C, D, E), so the image never carries unused
+    code (code review). T001's text says so now.
+- **T002 secret scan**: gitleaks over the whole history first found 11 hits, all four made-up values
+  in unit tests (`test_deployment_files`, `test_logging_redaction`, `test_mail_outbox`,
+  `test_throttle_keys`). `.gitleaks.toml` allows exactly those four values, anchored, and nothing else;
+  the history then scans clean. The failing proof: a throwaway worktree and branch with an AWS-format
+  key pair in `tmp/leak.txt`; the scan of that one commit exited 1 naming `tmp/leak.txt` line 2. The
+  branch and worktree were removed. The CI job scans only the commits a run adds (a pull request's,
+  or a push's), as the task says; it runs the image as the checkout's owner so git accepts the mount.
+  The pre-commit hook uses gitleaks' `gitleaks` id, pinned at v8.30.1; its `gitleaks-docker` id runs
+  an unpinned image, so it was not used.
+- **T003/T004 published values**: 17 tests. They failed first on the missing
+  `KNOWN_DEVELOPMENT_VALUES`. The published-values test reads `.env.example`, the compose file, every
+  workflow and `tests/conftest.py`; its parser first misread compose's `${VAR:-default}` and
+  `${VAR:?message}` and missed `setdefault("NAME", "value")`, and was fixed to read both. It finds
+  `change-me`, `ci-only-not-a-real-secret-0123456789`, `hds_check`, `hds_dev`, `hds_e2e`,
+  `hds_scratch`, `hds_test` and `test-only-jwt-secret-0123456789-abcdef`; all are on the list.
+  - **Changed tests, with the reason**: 24 existing unit tests in `test_settings_environment.py`,
+    `test_startup_and_cors.py` and `test_throttle_keys.py` started a production configuration on the
+    default `DATABASE_URL`, whose password `hds_dev` is now refused. A new fixture,
+    `distinct_database_password` in `tests/unit/conftest.py`, gives them a password the repository
+    does not publish, as `real_mail_backend` gets them past the mail check; each file applies it with
+    one `pytestmark` line. No assertion changed. No integration or concurrency test builds a
+    production configuration.
+- **T005 image**: `infra/tests/check_api_image.sh` failed first ("the image runs as root (uid 0)"),
+  then passed on the hardened `Dockerfile.api` (uid 10001, `HDS_VERSION` and the OCI version label,
+  `uv` copied from its pinned image instead of an unpinned `pip install uv`). The image still imports
+  `hds.main` and `hds.worker`. Only `/app/.dev-mail` is writable by the process. CI runs the script in
+  the `lint` job.
+- **T006 mutation checks**, each caught: dropping `hds_e2e` from the list (3 tests failed); comparing
+  without trimming and lower-casing (2 failed); running the check in development too (the suite failed
+  at import, since the test settings use a published key).
+- **Gates**: ruff, format, `mypy --strict src/ tests/` (339 files), interrogate 100%, the import graph
+  and pip-audit (no known vulnerabilities) all clean. `alembic check` on `hds_p3_test` reported an
+  index `idx_special_days_project` that no migration or model defines: a leftover in that long-lived
+  database, not from this change. On a fresh throwaway PostgreSQL container `alembic check` is clean,
+  which is what CI runs.
+- **/code-review high** found nine issues; all were checked and fixed:
+  1. The published-values list missed `e2e-only-not-a-secret-0123456789-abcdefgh`
+     (`apps/client/playwright.config.ts`), `hds` (`apps/api/scripts/contract_cli.sh`) and
+     `unused-by-down` (`Makefile`), because the test read a fixed list of files. It now reads every
+     tracked configuration file (YAML, shell, ini, toml, Makefiles, Dockerfiles, tool configs, the env
+     example and the test settings): 26 files. Test bodies, docs and source stay out, since they hold
+     made-up values that tests use as strong secrets.
+  2. An unreadable `DATABASE_URL` raised SQLAlchemy's `ArgumentError`, not a validation error; it is
+     now refused naming `DATABASE_URL`.
+  3. The `HDS_VERSION` build argument came before `uv sync`, so every new version reinstalled every
+     dependency; it now comes last.
+  4. The gitleaks range broke on a push with an all-zero or vanished `before`; it then scans the
+     pushed commit alone (`-1 <sha>`, checked locally).
+  5. The database password was read only from the URL's user part; the `password` query option and
+     `PGPASSWORD` are now checked too.
+  6. The separate placeholder check could no longer fire (the placeholder is on the list); removed.
+  7. CI's `setup-uv` installed whatever uv was newest; all eleven uses now pin 0.13.5.
+  8. Five runtime packages were added before any code used them; deferred (above).
+  9. The user had no home directory; it now has `/home/hds`, set as `HOME`.
+
+  Four new tests (URL option, `PGPASSWORD`, unreadable URL, the three new values) failed first, then
+  passed. Mutation checks, each caught: no query option, no `PGPASSWORD`, catching the wrong
+  exception, dropping the e2e key.
+- **Note**: `uv run`, after the lock was reverted, re-synced the environment (two packages:
+  `opentelemetry-api` and the project's own build) while the full suite ran in the background. No test
+  imports either.
+- **Full suite** on `hds_p3_test` (25 min): 2462 passed, 1 error. The error was in the setup of
+  `tests/concurrency/test_accept_locks.py::test_accepts_staff_lock_does_not_deadlock_with_a_keyed_assignment`:
+  seeding `employee@hds.test` hit `uq_users_email_ci`, rows left in the shared database. The file
+  alone passed, and the whole concurrency folder (60 tests) then passed; nothing in Group A touches
+  that seeding. Recorded as a one-off, not fixed here. The run started before the review fixes; those
+  touch only the production start-up check, and the unit suite after them passed (1022, then 21 in the
+  file with the compared-form test the reviewer suggested).
+- **Separate commit** `5fc1326` (not part of Group A): CI's unit job had failed on every push to
+  `main` since 002, because six hook tests ran the real hook in the checkout and the hook refuses
+  commits on `main`. Reproduced from a worktree on `main` (6 failed), fixed in the test only, and
+  green there and here (32 passed).

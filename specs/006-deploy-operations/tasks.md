@@ -30,21 +30,21 @@ Tests run on the private database `hds_p3_test`, one run at a time.
 **Goal**: every tool pinned; FR-025 and FR-026. **Independent test**: quickstart scenario 6, first
 three bullets.
 
-- [ ] T001 Pin versions in `infra/VERSIONS.md` (one table: tool or image, version, digest where an image, why) and use them everywhere they appear:
+- [X] T001 Pin versions in `infra/VERSIONS.md` (one table: tool or image, version, digest where an image, why) and use them everywhere they appear:
   - **images**: `python:3.12-slim`, `postgres:16`, `nginxinc/nginx-unprivileged`, `rclone/rclone`
   - **cluster**: age, k3d, k3s, Helm, Flux, Vault chart, Vault Secrets Operator chart, kube-prometheus-stack chart
   - **CI tools**: Trivy, gitleaks, ShellCheck, kubeconform
-  - **Python packages**: `prometheus-client`, the OpenTelemetry packages and `aiosmtpd`, added to `apps/api/pyproject.toml` and `uv.lock`, which commits the lockfile change (§10 Dependencies)
-- [ ] T002 [P] [US6] Failing test, a CI job `secrets` in `.github/workflows/ci.yml` that runs gitleaks over the pull request's commits. Prove it fails: run it locally on a throwaway branch carrying an AWS-format sample key in `tmp/leak.txt`, and check that the output names the file and the line. Then add the gitleaks hook to `.pre-commit-config.yaml`, plus `.gitleaks.toml` allowing only the published development placeholders, each listed by exact value with a comment (FR-025)
-- [ ] T003 [P] [US6] Failing tests `apps/api/tests/unit/test_settings_known_values.py`. With `ENVIRONMENT=production`, start-up is refused for:
+  - **Python packages**: `prometheus-client`, the OpenTelemetry packages and `aiosmtpd`, recorded here and each added to `apps/api/pyproject.toml` and `uv.lock` in the group that first imports it (C, D and E), so no image carries an unused dependency (§10 Dependencies)
+- [X] T002 [P] [US6] Failing test, a CI job `secrets` in `.github/workflows/ci.yml` that runs gitleaks over the pull request's commits. Prove it fails: run it locally on a throwaway branch carrying an AWS-format sample key in `tmp/leak.txt`, and check that the output names the file and the line. Then add the gitleaks hook to `.pre-commit-config.yaml`, plus `.gitleaks.toml` allowing only the published development placeholders, each listed by exact value with a comment (FR-025)
+- [X] T003 [P] [US6] Failing tests `apps/api/tests/unit/test_settings_known_values.py`. With `ENVIRONMENT=production`, start-up is refused for:
   - every password or key value published in `.env.example`, `infra/docker-compose.yml`, `.github/workflows/*.yml` and `apps/api/tests/conftest.py`, such as `hds_dev`, `hds_scratch`, `hds_e2e`, `change-me` and `ci-only-not-a-real-secret-0123456789`, whether it appears as `JWT_SECRET_KEY`, as `THROTTLE_SECRET_KEY` or as the password inside `DATABASE_URL`;
   - a value that only differs from one of those by case or surrounding space;
   - in every case the error names the setting and never the value.
 
   With `ENVIRONMENT=development` the same values start. A second test reads those files and fails if a value published there is missing from the refused list, so a new example value cannot slip through (FR-026)
-- [ ] T004 [US6] Add `KNOWN_DEVELOPMENT_VALUES` and the check to `apps/api/src/hds/core/config.py`, and parse the password from `DATABASE_URL` with SQLAlchemy's `make_url`. Update the module docstring and `apps/api/README.md` (Configuration)
-- [ ] T005 [P] Failing check, a CI step in the `lint` job: `docker build -f infra/Dockerfile.api` and then `docker run --rm --entrypoint id <image> -u` print a non-zero uid, and `docker inspect` shows the label `org.opencontainers.image.version` and the env `HDS_VERSION` equal to the build arg. Then harden `infra/Dockerfile.api`: a pinned base by digest, `ARG HDS_VERSION=dev`, a non-root user `hds` (uid 10001), `uv` installed from a pinned version, no `pip install uv` at an unpinned version, and `CMD` unchanged
-- [ ] T006 Mutation checks: drop one value from the list; compare without trimming; let the check run in development. Then the gates, both reviews, the log, and a commit `feat(api): refuse published development secrets outside development (006 Group A)`
+- [X] T004 [US6] Add `KNOWN_DEVELOPMENT_VALUES` and the check to `apps/api/src/hds/core/config.py`, and parse the password from `DATABASE_URL` with SQLAlchemy's `make_url`. Update the module docstring and `apps/api/README.md` (Configuration)
+- [X] T005 [P] Failing check, a CI step in the `lint` job: `docker build -f infra/Dockerfile.api` and then `docker run --rm --entrypoint id <image> -u` print a non-zero uid, and `docker inspect` shows the label `org.opencontainers.image.version` and the env `HDS_VERSION` equal to the build arg. Then harden `infra/Dockerfile.api`: a pinned base by digest, `ARG HDS_VERSION=dev`, a non-root user `hds` (uid 10001), `uv` installed from a pinned version, no `pip install uv` at an unpinned version, and `CMD` unchanged
+- [X] T006 Mutation checks: drop one value from the list; compare without trimming; let the check run in development. Then the gates, both reviews, the log, and a commit `feat(api): refuse published development secrets outside development (006 Group A)`
 
 ## Phase 2: Group B, the one-command local environment (US1, P1)
 

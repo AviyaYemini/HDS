@@ -7,6 +7,8 @@ Local development infrastructure. Nothing here is a production deployment.
 | `docker-compose.yml` | PostgreSQL 16 and the API, for local development |
 | `Dockerfile.api` | Builds the API image from `apps/api` |
 | `volumes/postgres` | PostgreSQL data directory (a bind mount) |
+| `VERSIONS.md` | Every pinned tool and image version, with digests; change a row and its uses together |
+| `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
 
 ## Usage
 

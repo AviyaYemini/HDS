@@ -24,3 +24,10 @@ repos:
         stages: [commit-msg]
         additional_dependencies:
           - "@commitlint/config-conventional"
+
+  # The secret scan of the staged change (specs/006 FR-025); CI's `secrets` job is the authority.
+  # Version as infra/VERSIONS.md. pre-commit builds it with Go, which it installs itself.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

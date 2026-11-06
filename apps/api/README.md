@@ -33,6 +33,15 @@ layer and what it must not import.
 Settings are read from the environment (and a `.env` file in development) by
 `hds.core.config`.
 
+Outside development (`ENVIRONMENT` other than `development` or `test`), start-up is also refused when
+`JWT_SECRET_KEY`, `THROTTLE_SECRET_KEY`, the database password (in `DATABASE_URL`, its `password`
+option, or `PGPASSWORD`) is a value this repository publishes in a configuration file: `.env.example`,
+compose, the workflows, scripts, Makefiles, tool configs and the test settings
+(`KNOWN_DEVELOPMENT_VALUES`, compared ignoring case and surrounding space). An unreadable
+`DATABASE_URL` is refused too. The error names
+the setting, never the value. Add any new example value to that list in the same change; a test
+fails until you do.
+
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `ENVIRONMENT` | **Required, no default.** `development` and `test` are development environments; any other value (`production`, `staging`, ...) turns on the strict secret, email and mail-backend checks | none |
@@ -40,7 +49,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `JWT_ALGORITHM` | Signing algorithm for access tokens; the verifier accepts only this one | `HS256` |
 | `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; outside development a real backend is required and none exists yet | `outbox` in development |
 | `MAIL_OUTBOX_PATH` | File the `outbox` backend appends to; each line holds the masked recipient, subject, purpose, expiry and the body with the token replaced by `[REDACTED]` | `apps/api/.dev-mail/outbox.jsonl` |
-| `DATABASE_URL` | Async SQLAlchemy URL | local development database |
+| `DATABASE_URL` | Async SQLAlchemy URL. Outside development its password must not be a published one | local development database |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
