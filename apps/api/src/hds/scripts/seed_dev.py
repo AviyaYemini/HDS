@@ -197,7 +197,8 @@ async def seed() -> None:
                 name="Night Watch",
                 type=ProjectType.security,
                 billing_rate=decimal.Decimal("75.0000"),
-                start_date=datetime.date.today(),
+                # A month back, so shifts that ended earlier today or yesterday fall inside it.
+                start_date=datetime.date.today() - datetime.timedelta(days=30),
                 is_deleted=False,
             )
             db.add(project)
