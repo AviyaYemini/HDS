@@ -35,7 +35,9 @@ def _project(**kw: object) -> MagicMock:
 
 
 def _svc(repo: AsyncMock) -> ProjectService:
-    return ProjectService(project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock())
+    return ProjectService(
+        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock(), pay_settings=AsyncMock()
+    )
 
 
 @pytest.mark.asyncio
@@ -53,7 +55,10 @@ async def test_create_project_with_valid_billing_rate() -> None:
     }
 
     await ProjectService(
-        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+        project_repo=repo,
+        client_repo=AsyncMock(),
+        site_repo=AsyncMock(),
+        pay_settings=AsyncMock(),
     ).create_project(actor, data)
 
     repo.create.assert_awaited_once_with(actor.organization_id, data)
@@ -94,7 +99,10 @@ async def test_create_project_end_equal_to_start_allowed() -> None:
     day = date(2026, 1, 1)
 
     await ProjectService(
-        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+        project_repo=repo,
+        client_repo=AsyncMock(),
+        site_repo=AsyncMock(),
+        pay_settings=AsyncMock(),
     ).create_project(
         _actor(),
         {
@@ -141,7 +149,10 @@ async def test_edit_project_not_found() -> None:
 
     with pytest.raises(NotFoundError):
         await ProjectService(
-            project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+            project_repo=repo,
+            client_repo=AsyncMock(),
+            site_repo=AsyncMock(),
+            pay_settings=AsyncMock(),
         ).edit_project(_actor(), uuid.uuid4(), {"name": "X"})
 
 
@@ -155,7 +166,10 @@ async def test_set_status_transitions(current: str, target: str) -> None:
     repo.update = AsyncMock(return_value=_project(status=target))
 
     await ProjectService(
-        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+        project_repo=repo,
+        client_repo=AsyncMock(),
+        site_repo=AsyncMock(),
+        pay_settings=AsyncMock(),
     ).set_status(actor, proj.id, target)
 
     repo.update.assert_awaited_once_with(proj.id, actor.organization_id, status=target)
@@ -169,7 +183,10 @@ async def test_soft_delete_project_by_admin() -> None:
     repo.get_by_id = AsyncMock(return_value=proj)
 
     await ProjectService(
-        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+        project_repo=repo,
+        client_repo=AsyncMock(),
+        site_repo=AsyncMock(),
+        pay_settings=AsyncMock(),
     ).soft_delete(actor, proj.id)
 
     repo.soft_delete.assert_awaited_once_with(proj.id, actor.organization_id)
@@ -181,7 +198,10 @@ async def test_soft_delete_project_by_manager_is_forbidden() -> None:
 
     with pytest.raises(ForbiddenError):
         await ProjectService(
-            project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock()
+            project_repo=repo,
+            client_repo=AsyncMock(),
+            site_repo=AsyncMock(),
+            pay_settings=AsyncMock(),
         ).soft_delete(_actor(UserRole.manager), uuid.uuid4())
 
     repo.soft_delete.assert_not_awaited()

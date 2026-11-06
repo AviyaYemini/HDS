@@ -93,6 +93,8 @@ async def add_project(client: AsyncClient, headers: dict[str, str]) -> Any:
 
 
 async def add_employee(client: AsyncClient, headers: dict[str, str]) -> Any:
+    # Created by an Admin: since 005 FR-001 only an Admin sets a default rate.
+    headers = await headers_for(client, "admin@hds.test")
     response = await client.post(
         "/api/v1/employees",
         json={
@@ -129,12 +131,17 @@ async def test_an_employees_optional_field_can_be_cleared(
 ) -> None:
     employee = await add_employee(async_client, manager)
     other = "default_hourly_rate" if field == "phone" else "phone"
+    # Clearing the rate is an Admin's change since 005 FR-001; a Manager clears the phone.
+    actor = manager if field == "phone" else await headers_for(async_client, "admin@hds.test")
 
     cleared = await async_client.patch(
-        f"/api/v1/employees/{employee['id']}", json={field: None}, headers=manager
+        f"/api/v1/employees/{employee['id']}", json={field: None}, headers=actor
     )
 
-    stored = await async_client.get(f"/api/v1/employees/{employee['id']}", headers=manager)
+    # Read back as an Admin: since 005 FR-022a a Manager is given no one's default rate but
+    # their own, so only an Admin's read shows that the other field was left alone.
+    admin = await headers_for(async_client, "admin@hds.test")
+    stored = await async_client.get(f"/api/v1/employees/{employee['id']}", headers=admin)
     assert cleared.status_code == 200, cleared.text
     assert stored.json()[field] is None
     assert stored.json()[other] == employee[other]

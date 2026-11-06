@@ -104,5 +104,17 @@
   "jobs.project_not_active": "A project the run named is no longer active; nothing was changed.",
   "schedule.not_ready": "The job has no proposal to decide on.",
   "schedule.proposal_closed": "The proposal was already accepted, discarded, or has expired.",
-  "schedule.proposal_out_of_date": "Something the proposal was made from has changed; generate it again."
+  "schedule.proposal_out_of_date": "Something the proposal was made from has changed; generate it again.",
+  "users.rate_admin_only": "Only an Admin can set an employee's pay rate.",
+  "projects.pay_settings_admin_only": "Only an Admin can set a project's pay settings.",
+  "pay.settings_invalid": "A pay setting is outside its allowed range.",
+  "pay.rest_window_invalid": "The weekly rest must end at a different weekday or time than it starts.",
+  "pay.project_ended": "An ended project's pay settings and special days can no longer change.",
+  "special_days.duplicate": "There is already a special day on that date.",
+  "special_days.name_required": "A special day needs a name.",
+  "project_managers.not_staff": "Only active managers and admins of the organisation can be assigned to a project.",
+  "pay.month_invalid": "Write the month as YYYY-MM, such as 2026-10.",
+  "reports.scope_invalid": "Choose exactly one of a project, a site or a group.",
+  "reports.start_required": "A report on a site or a group needs a start date.",
+  "reports.range_invalid": "A report covers 1 to 366 days and ends on or after its start."
 }

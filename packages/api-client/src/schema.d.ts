@@ -402,6 +402,30 @@ export interface paths {
         patch: operations["rename_group_api_v1_groups__id__patch"];
         trace?: never;
     };
+    "/api/v1/organisation/pay-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the premium defaults
+         * @description Manager or Admin. The organisation's premium defaults, which every project follows unless it sets its own value: normal lengths, overtime rates, the weekly rest and its rate, and the overtime increases on a rest or special day.
+         */
+        get: operations["read_defaults_api_v1_organisation_pay_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the premium defaults
+         * @description Admin. Change any default; every project that has not ended and follows it uses the new value, for its earlier shifts too. Lengths are 1 to 1440 minutes, rates 100 to 300 percent and increases above 0 and at most 200 points; a weekly rest whose ends meet is refused (422 `pay.rest_window_invalid`).
+         */
+        patch: operations["change_defaults_api_v1_organisation_pay_settings_patch"];
+        trace?: never;
+    };
     "/api/v1/organisation/scheduling": {
         parameters: {
             query?: never;
@@ -441,7 +465,7 @@ export interface paths {
         put?: never;
         /**
          * Create a project
-         * @description Manager or Admin. Create a project for a client and a site of the organisation. The billing rate must be greater than zero (`projects.billing_rate_invalid`) and the end date must not be before the start date (`projects.date_range_invalid`).
+         * @description Manager or Admin. Create a project for a client and a site of the organisation. The billing rate must be greater than zero (`projects.billing_rate_invalid`) and the end date must not be before the start date (`projects.date_range_invalid`). Only an Admin may send `pay_settings` (403 `projects.pay_settings_admin_only`).
          */
         post: operations["create_project_api_v1_projects_post"];
         delete?: never;
@@ -476,6 +500,54 @@ export interface paths {
          * @description Manager or Admin. Update name, billing rate, end date or status. The same rate and date rules as creation apply. An explicit null clears a field that allows it and is refused with 422 on a required one; an omitted field is left alone.
          */
         patch: operations["edit_project_api_v1_projects__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/managers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's managers
+         * @description Manager or Admin. The Managers and Admins assigned to the project, by name.
+         */
+        get: operations["list_managers_api_v1_projects__id__managers_get"];
+        /**
+         * Set a project's managers
+         * @description Admin. Replace the project's managers as a whole. Each must be an active Manager or Admin of the organisation (422 `project_managers.not_staff`). A Manager sees the project's pay only while assigned and the project's pay is open to Managers.
+         */
+        put: operations["replace_managers_api_v1_projects__id__managers_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/pay-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a project's pay settings
+         * @description Manager or Admin. Whether the project has pay, whether its assigned Managers see it, the premium settings in effect and which of them are the project's own.
+         */
+        get: operations["read_project_pay_api_v1_projects__id__pay_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a project's pay settings
+         * @description Admin. Switch pay on or off, open it to the project's Managers, or give a setting the project's own value (`null` returns it to the default). An ended project's settings are fixed (409 `pay.project_ended`).
+         */
+        patch: operations["change_project_pay_api_v1_projects__id__pay_settings_patch"];
         trace?: never;
     };
     "/api/v1/projects/{id}/publish": {
@@ -546,6 +618,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/special-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the special days a project is paid by
+         * @description Manager or Admin. The organisation's days and the project's own, by date; on a date both list, the project's wins. An ended project has only its own, copied when it ended.
+         */
+        get: operations["list_project_days_api_v1_projects__id__special_days_get"];
+        put?: never;
+        /**
+         * Add a project's special day
+         * @description Admin. A day for this project only, or this project's rate for an organisation day. One per project and date (409 `special_days.duplicate`); an ended project is fixed (409 `pay.project_ended`).
+         */
+        post: operations["add_project_day_api_v1_projects__id__special_days_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qualifications": {
         parameters: {
             query?: never;
@@ -592,6 +688,46 @@ export interface paths {
          * @description Manager or Admin. Change a qualification's name. A name already used by another qualification returns 409 (`qualifications.duplicate_name`).
          */
         patch: operations["rename_qualification_api_v1_qualifications__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/reports/hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hours and pay per employee or project
+         * @description Manager or Admin. Hours and shift counts from `from` to `to` (at most 366 days, 422 `reports.range_invalid`), grouped by employee or by project, with the grand totals. An Admin sees pay for every project with pay on; a Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere there is no pay figure at all, and pay totals cover only the lines shown with pay.
+         */
+        get: operations["hours_api_v1_reports_hours_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/work-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who worked at a project, site or group
+         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for exactly one of a project, a site or a group (422 `reports.scope_invalid`). For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site or a group needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
+         */
+        get: operations["work_log_api_v1_reports_work_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/schedule-jobs": {
@@ -838,6 +974,54 @@ export interface paths {
         patch: operations["edit_site_api_v1_sites__id__patch"];
         trace?: never;
     };
+    "/api/v1/special-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organisation's special days
+         * @description Manager or Admin. The organisation's special days by date, of one year if given.
+         */
+        get: operations["list_days_api_v1_special_days_get"];
+        put?: never;
+        /**
+         * Add a special day
+         * @description Admin. A date paid at its own rate (100 to 300 percent, 150.00 by default) for every project that has not ended. One day per date (409 `special_days.duplicate`).
+         */
+        post: operations["add_day_api_v1_special_days_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/special-days/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a special day
+         * @description Admin. Delete an organisation or project day; a project's own day on the same date stays. A day of an ended project is fixed (409 `pay.project_ended`).
+         */
+        delete: operations["delete_day_api_v1_special_days__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a special day
+         * @description Admin. Change an organisation or project day's date, name or rate. A day of an ended project is fixed (409 `pay.project_ended`); a date already taken is refused (409 `special_days.duplicate`).
+         */
+        patch: operations["change_day_api_v1_special_days__id__patch"];
+        trace?: never;
+    };
     "/auth/invite": {
         parameters: {
             query?: never;
@@ -1020,6 +1204,26 @@ export interface paths {
          * @description Change the signed-in user's own full name or phone. Any other field is refused with 403 (`profile.field_not_allowed`), so role, rate, email and activity cannot be changed here. An explicit null clears a field that allows it and is refused with 422 on a required one; an omitted field is left alone.
          */
         patch: operations["patch_me_me_patch"];
+        trace?: never;
+    };
+    "/me/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read my pay so far this month
+         * @description Employee, Manager or Admin. The caller's gross pay, before tax, for a month (`YYYY-MM`, the current one by default): each published shift that has ended, with its hours at each rate and its pay, and the totals. Draft shifts and shifts not yet ended are not counted. A shift belongs to the month it starts in at its site. 422 `pay.month_invalid`.
+         */
+        get: operations["my_pay_me_pay_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/me/shifts": {
@@ -1283,6 +1487,44 @@ export interface components {
             updated_at: string;
         };
         /**
+         * DayInEffectRead
+         * @description A day as a project's shifts are paid by it: the project's own, or the organisation's.
+         */
+        DayInEffectRead: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Rate Pct
+             * @example 125.00
+             */
+            rate_pct: string;
+            /**
+             * Source
+             * @description `project` or `organisation`.
+             */
+            source: string;
+        };
+        /**
+         * DaysInEffect
+         * @description The days a project's shifts are paid by, by date.
+         */
+        DaysInEffect: {
+            /** Items */
+            items: components["schemas"]["DayInEffectRead"][];
+        };
+        /**
          * EmployeeShare
          * @description A candidate's share of the range.
          */
@@ -1442,6 +1684,105 @@ export interface components {
         GroupWriteRequest: {
             /** Name */
             name: string;
+        };
+        /**
+         * HoursGroupRead
+         * @description One employee (rows per project) or one project (rows per employee).
+         */
+        HoursGroupRead: {
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Pay
+             * @description Left out where pay is not shown, and where every line shown with pay lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
+             */
+            pay?: string | null;
+            /** Rows */
+            rows: components["schemas"]["HoursRowRead"][];
+            /** Shifts */
+            shifts: number;
+            /**
+             * Shifts Missing Rate
+             * @description Shifts shown with pay that have a line missing a rate; 0 where pay is hidden.
+             */
+            shifts_missing_rate: number;
+        };
+        /**
+         * HoursReportRead
+         * @description Hours and shifts by employee or project; pay totals cover only the lines shown with pay.
+         */
+        HoursReportRead: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Group By
+             * @enum {string}
+             */
+            group_by: "employee" | "project";
+            /** Groups */
+            groups: components["schemas"]["HoursGroupRead"][];
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Pay
+             * @description Left out when no pay is shown or no line shown has a rate.
+             */
+            pay?: string | null;
+            /** Shifts */
+            shifts: number;
+            /** Shifts Missing Rate */
+            shifts_missing_rate: number;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
+         * HoursRowRead
+         * @description One employee at one project; ``pay`` only where the reader may see it.
+         */
+        HoursRowRead: {
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Pay
+             * @description Left out where pay is not shown, and where every line shown with pay lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
+             */
+            pay?: string | null;
+            /** Shifts */
+            shifts: number;
+            /**
+             * Shifts Missing Rate
+             * @description Shifts shown with pay that have a line missing a rate; 0 where pay is hidden.
+             */
+            shifts_missing_rate: number;
         };
         /**
          * IDListRequest
@@ -1625,6 +1966,35 @@ export interface components {
             password: string;
         };
         /**
+         * ManagerRead
+         * @description A Manager or Admin on the project.
+         */
+        ManagerRead: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * ManagersRequest
+         * @description The complete set of a project's managers; an empty list clears it.
+         */
+        ManagersRequest: {
+            /** User Ids */
+            user_ids: string[];
+        };
+        /**
+         * ManagersResponse
+         * @description A project's managers, by name.
+         */
+        ManagersResponse: {
+            /** Items */
+            items: components["schemas"]["ManagerRead"][];
+        };
+        /**
          * MyShift
          * @description One of the caller's published shifts: UTC instants and the site's IANA time zone.
          */
@@ -1707,6 +2077,22 @@ export interface components {
             items: components["schemas"]["NeedItem"][];
         };
         /**
+         * PartRead
+         * @description Hours paid at one rate, in percent of the base rate.
+         */
+        PartRead: {
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Rate Pct
+             * @example 125.00
+             */
+            rate_pct: string;
+        };
+        /**
          * PasswordResetConfirm
          * @description Reset token and the new password (at least 12 characters).
          */
@@ -1726,6 +2112,197 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /**
+         * PayLineRead
+         * @description One ended shift of the caller's, priced.
+         *
+         *     ``pay`` is left out when the project has pay switched off (``pay_enabled`` false) or when there
+         *     is no rate (``rate_missing``): missing pay is never shown as zero.
+         */
+        PayLineRead: {
+            /**
+             * Base Rate
+             * @description The hourly rate used, a decimal string.
+             */
+            base_rate: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** Parts */
+            parts: components["schemas"]["PartRead"][];
+            /**
+             * Pay
+             * @description Left out when there is no pay.
+             */
+            pay?: string | null;
+            /** Pay Enabled */
+            pay_enabled: boolean;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Rate Missing */
+            rate_missing: boolean;
+            /**
+             * Shift Id
+             * Format: uuid
+             */
+            shift_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Timezone
+             * @description The site's IANA time zone, to show the times as there.
+             */
+            timezone: string;
+        };
+        /**
+         * PayToDateRead
+         * @description The caller's pay for a month so far: each ended shift, and the totals of the lines shown.
+         */
+        PayToDateRead: {
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** Lines */
+            lines: components["schemas"]["PayLineRead"][];
+            /**
+             * Month
+             * @example 2026-10
+             */
+            month: string;
+            /**
+             * Pay
+             * @description The sum of the lines' pay. Left out when no line has pay and some line lacks a rate (then shifts_missing_rate is above 0): a missing rate is never shown as zero.
+             */
+            pay?: string | null;
+            /** Shifts Missing Rate */
+            shifts_missing_rate: number;
+        };
+        /**
+         * PremiumChanges
+         * @description Any of the defaults; omitted ones stay, ``null`` and unknown fields are refused (422).
+         */
+        PremiumChanges: {
+            /** Day Normal Minutes */
+            day_normal_minutes?: number;
+            /**
+             * Increase1 Points
+             * @example 25.00
+             */
+            increase1_points?: string;
+            /**
+             * Increase2 Points
+             * @example 25.00
+             */
+            increase2_points?: string;
+            /** Night Normal Minutes */
+            night_normal_minutes?: number;
+            /**
+             * Overtime1 Pct
+             * @example 125.00
+             */
+            overtime1_pct?: string;
+            /**
+             * Overtime2 Pct
+             * @example 125.00
+             */
+            overtime2_pct?: string;
+            /**
+             * Rest Pct
+             * @example 125.00
+             */
+            rest_pct?: string;
+            rest_window?: components["schemas"]["RestWindowBody"];
+            /** Tier1 Minutes */
+            tier1_minutes?: number;
+        };
+        /**
+         * PremiumOverrides
+         * @description A project's own values; ``null`` returns a setting to the organisation's default.
+         */
+        PremiumOverrides: {
+            /** Day Normal Minutes */
+            day_normal_minutes?: number | null;
+            /** Increase1 Points */
+            increase1_points?: string | null;
+            /** Increase2 Points */
+            increase2_points?: string | null;
+            /** Night Normal Minutes */
+            night_normal_minutes?: number | null;
+            /** Overtime1 Pct */
+            overtime1_pct?: string | null;
+            /** Overtime2 Pct */
+            overtime2_pct?: string | null;
+            /** Rest Pct */
+            rest_pct?: string | null;
+            rest_window?: components["schemas"]["RestWindowBody"] | null;
+            /** Tier1 Minutes */
+            tier1_minutes?: number | null;
+        };
+        /**
+         * PremiumSettings
+         * @description What a shift's hours are paid, in percent of the base rate.
+         *
+         *     Hours beyond the normal length (the night length on a night shift) are overtime: the first tier
+         *     at ``overtime1_pct``, the rest at ``overtime2_pct``. Hours in the weekly rest are paid at
+         *     ``rest_pct``; on a rest or special day, overtime adds ``increase1_points`` or
+         *     ``increase2_points`` to that day's rate.
+         */
+        PremiumSettings: {
+            /** Day Normal Minutes */
+            day_normal_minutes: number;
+            /**
+             * Increase1 Points
+             * @example 125.00
+             */
+            increase1_points: string;
+            /**
+             * Increase2 Points
+             * @example 125.00
+             */
+            increase2_points: string;
+            /** Night Normal Minutes */
+            night_normal_minutes: number;
+            /**
+             * Overtime1 Pct
+             * @example 125.00
+             */
+            overtime1_pct: string;
+            /**
+             * Overtime2 Pct
+             * @example 125.00
+             */
+            overtime2_pct: string;
+            /**
+             * Rest Pct
+             * @example 125.00
+             */
+            rest_pct: string;
+            rest_window: components["schemas"]["RestWindowRead"];
+            /** Tier1 Minutes */
+            tier1_minutes: number;
         };
         ProblemDetail: {
             /** @description Stable machine-readable error code. */
@@ -1760,6 +2337,8 @@ export interface components {
          * @description New project.
          *
          *     ``billing_rate`` must be greater than zero and ``end_date`` not before ``start_date``.
+         *     ``pay_settings`` (Admin only) sets the project's pay switches and its own premium values;
+         *     without it the project has pay, closed to Managers, and follows every default (005 FR-007).
          */
         ProjectCreateRequest: {
             /**
@@ -1776,6 +2355,7 @@ export interface components {
             end_date?: string | null;
             /** Name */
             name: string;
+            pay_settings?: components["schemas"]["ProjectPayChanges"] | null;
             /**
              * Site Id
              * Format: uuid
@@ -1795,6 +2375,33 @@ export interface components {
         ProjectListResponse: {
             /** Items */
             items: components["schemas"]["ProjectRead"][];
+        };
+        /**
+         * ProjectPayChanges
+         * @description A project's switches and overrides; omitted fields stay as they are.
+         */
+        ProjectPayChanges: {
+            /** Managers See Pay */
+            managers_see_pay?: boolean;
+            /** Pay Enabled */
+            pay_enabled?: boolean;
+            settings?: components["schemas"]["PremiumOverrides"];
+        };
+        /**
+         * ProjectPayRead
+         * @description A project's pay: whether it has pay, whether its Managers see it, and its settings.
+         *
+         *     ``settings`` holds the values in effect; ``own`` names those the project sets itself, the rest
+         *     following the organisation's defaults.
+         */
+        ProjectPayRead: {
+            /** Managers See Pay */
+            managers_see_pay: boolean;
+            /** Own */
+            own: string[];
+            /** Pay Enabled */
+            pay_enabled: boolean;
+            settings: components["schemas"]["PremiumSettings"];
         };
         /**
          * ProjectRead
@@ -1996,6 +2603,55 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * RestWindowBody
+         * @description The weekly rest, from a weekday and local time to a weekday and local time at the site.
+         *
+         *     Weekdays run from 0 (Sunday) to 6 (Saturday); the window is read forward from its start, and
+         *     its ends must differ (422 ``pay.rest_window_invalid``).
+         */
+        RestWindowBody: {
+            /**
+             * End Time
+             * @example 07:00
+             */
+            end_time: string;
+            /**
+             * End Weekday
+             * @description 0 Sunday to 6 Saturday.
+             */
+            end_weekday: number;
+            /**
+             * Start Time
+             * @example 07:00
+             */
+            start_time: string;
+            /**
+             * Start Weekday
+             * @description 0 Sunday to 6 Saturday.
+             */
+            start_weekday: number;
+        };
+        /**
+         * RestWindowRead
+         * @description The weekly rest; times are local at the site, written ``HH:MM:SS``.
+         */
+        RestWindowRead: {
+            /**
+             * End Time
+             * @example 07:00
+             */
+            end_time: string;
+            /** End Weekday */
+            end_weekday: number;
+            /**
+             * Start Time
+             * @example 07:00
+             */
+            start_time: string;
+            /** Start Weekday */
+            start_weekday: number;
         };
         /**
          * SchedulingSettings
@@ -2309,6 +2965,72 @@ export interface components {
             timezone?: string;
         };
         /**
+         * SpecialDayChange
+         * @description A day's date, name or rate; omitted fields stay, ``null`` and unknown fields are refused.
+         */
+        SpecialDayChange: {
+            /**
+             * Day
+             * Format: date
+             */
+            day?: string;
+            /** Name */
+            name?: string;
+            /**
+             * Rate Pct
+             * @example 125.00
+             */
+            rate_pct?: string;
+        };
+        /**
+         * SpecialDayCreate
+         * @description A date paid at its own rate (150.00 percent unless given), with a name.
+         */
+        SpecialDayCreate: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Name */
+            name: string;
+            /** Rate Pct */
+            rate_pct?: string | null;
+        };
+        /**
+         * SpecialDayList
+         * @description The organisation's days, by date.
+         */
+        SpecialDayList: {
+            /** Items */
+            items: components["schemas"]["SpecialDayRead"][];
+        };
+        /**
+         * SpecialDayRead
+         * @description A special day; ``project_id`` is set for a project's own day.
+         */
+        SpecialDayRead: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Rate Pct
+             * @example 125.00
+             */
+            rate_pct: string;
+        };
+        /**
          * TokenResponse
          * @description Token pair returned by sign-in and refresh.
          *
@@ -2534,6 +3256,61 @@ export interface components {
              * Format: date-time
              */
             deadline?: string;
+        };
+        /**
+         * WorkLogRead
+         * @description Who worked in the range, once per person and project, by name; never any pay.
+         */
+        WorkLogRead: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /** Rows */
+            rows: components["schemas"]["WorkLogRowRead"][];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
+         * WorkLogRowRead
+         * @description One person at one project within the range.
+         */
+        WorkLogRowRead: {
+            /**
+             * First Date
+             * Format: date
+             */
+            first_date: string;
+            /** Full Name */
+            full_name: string;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Shifts */
+            shifts: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * GroupRead
@@ -4701,6 +5478,104 @@ export interface operations {
             };
         };
     };
+    read_defaults_api_v1_organisation_pay_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PremiumSettings"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_defaults_api_v1_organisation_pay_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PremiumChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PremiumSettings"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     read_settings_api_v1_organisation_scheduling_get: {
         parameters: {
             query?: never;
@@ -5112,6 +5987,273 @@ export interface operations {
             };
         };
     };
+    list_managers_api_v1_projects__id__managers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagersResponse"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    replace_managers_api_v1_projects__id__managers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManagersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagersResponse"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_project_pay_api_v1_projects__id__pay_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_project_pay_api_v1_projects__id__pay_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPayChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     publish_api_v1_projects__id__publish_post: {
         parameters: {
             query?: never;
@@ -5441,6 +6583,147 @@ export interface operations {
             };
         };
     };
+    list_project_days_api_v1_projects__id__special_days_get: {
+        parameters: {
+            query?: {
+                /** @description Only the days of this year. */
+                year?: number | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaysInEffect"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    add_project_day_api_v1_projects__id__special_days_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialDayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDayRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_qualifications_api_v1_qualifications_get: {
         parameters: {
             query?: never;
@@ -5666,6 +6949,119 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    hours_api_v1_reports_hours_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                group_by: "employee" | "project";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoursReportRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    work_log_api_v1_reports_work_log_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                site_id?: string | null;
+                group_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkLogRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6744,6 +8140,270 @@ export interface operations {
             };
         };
     };
+    list_days_api_v1_special_days_get: {
+        parameters: {
+            query?: {
+                /** @description Only the days of this year. */
+                year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDayList"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    add_day_api_v1_special_days_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialDayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDayRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    delete_day_api_v1_special_days__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_day_api_v1_special_days__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialDayChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDayRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     create_invitation_auth_invite_post: {
         parameters: {
             query?: never;
@@ -7249,6 +8909,55 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    my_pay_me_pay_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayToDateRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */

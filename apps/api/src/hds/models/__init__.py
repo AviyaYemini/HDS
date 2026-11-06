@@ -15,12 +15,14 @@ from hds.models.invitation_token import InvitationToken
 from hds.models.login_throttle import LoginThrottle
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
+from hds.models.project_manager import ProjectManager
 from hds.models.qualification import Qualification, user_qualifications
 from hds.models.refresh_token import RefreshToken
 from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
+from hds.models.special_day import SpecialDay
 from hds.models.staffing_need import StaffingNeed
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
@@ -42,6 +44,8 @@ __all__ = [
     "Project",
     "ProjectType",
     "ProjectStatus",
+    "ProjectManager",
+    "SpecialDay",
     "InvitationToken",
     "ShiftType",
     "project_shift_types",

@@ -12,6 +12,9 @@ src/hds/
   services/        business rules and role checks
   repositories/    the only code that queries the database
   models/          SQLAlchemy tables and constraints
+  scheduling/      pure package: roster rules and the two solvers (004, ADR 011)
+  payroll/         pure package: pricing a shift with its premiums (005, ADR 012)
+  wiring.py        builds services for routers and the worker
   core/            settings, security, errors, i18n, logging, dependencies
   locales/         translation files keyed by error code
   scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records

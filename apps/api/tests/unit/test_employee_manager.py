@@ -42,6 +42,7 @@ def _svc(user_repo: AsyncMock | None = None) -> tuple[EmployeeService, AsyncMock
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
     return svc, user_repo, token_repo
 
@@ -133,8 +134,9 @@ async def test_create_employee_password_of_exactly_12_chars_accepted() -> None:
 async def test_create_employee_non_positive_hourly_rate_rejected(rate: Decimal) -> None:
     svc, user_repo, _ = _svc()
     with pytest.raises(DomainValidationError) as exc:
+        # An Admin: since 005 FR-001 a Manager may not send a rate at all.
         await svc.create_employee(
-            _make_user(role=UserRole.manager), {**_VALID, "default_hourly_rate": rate}
+            _make_user(role=UserRole.admin), {**_VALID, "default_hourly_rate": rate}
         )
     assert exc.value.code == "users.hourly_rate_invalid"
 
@@ -488,4 +490,42 @@ async def test_an_edit_of_a_client_accounts_role_is_refused(change: str) -> None
         await svc.edit_employee(actor, target.id, {"role": change})
 
     assert refused.value.code == "users.client_role_locked"
+    user_repo.update.assert_not_awaited()
+
+
+# ── the default rate is Admin only (005 T012a) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_manager_creating_an_employee_with_a_rate_is_refused() -> None:
+    svc, user_repo, _ = _svc()
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.create_employee(
+            _make_user(role=UserRole.manager), {**_VALID, "default_hourly_rate": Decimal("50")}
+        )
+    assert exc.value.code == "users.rate_admin_only"
+    user_repo.create_if_absent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_manager_creating_an_employee_without_a_rate_is_allowed() -> None:
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_email = AsyncMock(return_value=None)
+    user_repo.create_if_absent = AsyncMock(return_value=(_make_user(), True))
+    await svc.create_employee(
+        _make_user(role=UserRole.manager), {**_VALID, "default_hourly_rate": None}
+    )
+    user_repo.create_if_absent.assert_awaited_once()
+
+
+@pytest.mark.parametrize("rate", [Decimal("60"), None])
+@pytest.mark.asyncio
+async def test_a_manager_changing_or_clearing_a_rate_is_refused(rate: Decimal | None) -> None:
+    svc, user_repo, _ = _svc()
+    user_repo.get_by_id = AsyncMock(return_value=_make_user())
+    with pytest.raises(ForbiddenError) as exc:
+        await svc.edit_employee(
+            _make_user(role=UserRole.manager), uuid.uuid4(), {"default_hourly_rate": rate}
+        )
+    assert exc.value.code == "users.rate_admin_only"
     user_repo.update.assert_not_awaited()

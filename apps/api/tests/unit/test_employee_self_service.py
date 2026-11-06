@@ -42,6 +42,7 @@ async def test_update_own_profile_success() -> None:
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
     result = await svc.update_own_profile(user, {"full_name": "New Name", "phone": "+972501234567"})
 
@@ -62,6 +63,7 @@ async def test_update_own_profile_disallows_role_change() -> None:
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
     with pytest.raises(ForbiddenError) as exc_info:
@@ -82,6 +84,7 @@ async def test_update_own_profile_disallows_is_active_change() -> None:
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
     with pytest.raises(ForbiddenError) as exc_info:
@@ -102,6 +105,7 @@ async def test_get_profile_returns_user_with_hourly_rate() -> None:
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
     result = await svc.get_profile(user.id, user.organization_id)
@@ -124,6 +128,7 @@ async def test_update_own_profile_never_passes_forbidden_fields_to_repo(field: s
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
     with pytest.raises(ForbiddenError):
@@ -143,6 +148,7 @@ async def test_update_own_profile_passes_only_whitelisted_fields() -> None:
         group_repo=AsyncMock(),
         qualification_repo=AsyncMock(),
         client_repo=AsyncMock(),
+        project_manager_repo=AsyncMock(),
     )
 
     await svc.update_own_profile(user, {"full_name": "New", "phone": "123"})

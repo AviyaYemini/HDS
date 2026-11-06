@@ -33,7 +33,9 @@ def _project(client_id: uuid.UUID | None = None) -> MagicMock:
 
 
 def _svc(repo: AsyncMock) -> ProjectService:
-    return ProjectService(project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock())
+    return ProjectService(
+        project_repo=repo, client_repo=AsyncMock(), site_repo=AsyncMock(), pay_settings=AsyncMock()
+    )
 
 
 @pytest.mark.asyncio

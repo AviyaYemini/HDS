@@ -31,6 +31,8 @@ class ShiftView:
     shift: Shift
     timezone: str
     assignments: list[Assignment]
+    rate_shown: bool = True
+    """Whether the reader may see the shift's own ``pay_rate`` (005 FR-022a); services decide."""
 
 
 @dataclass(frozen=True)

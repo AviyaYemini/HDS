@@ -601,6 +601,14 @@ components:
         end_date:
           $ref: "#/components/schemas/ISODate"
           nullable: true
+        pay_settings:
+          description: >
+            Admin only (403 projects.pay_settings_admin_only): the project's pay switches and its
+            own premium values. Without it the project has pay, closed to Managers, and follows
+            every default (005).
+          anyOf:
+            - $ref: "#/components/schemas/ProjectPayChanges"
+            - type: "null"
 
     ProjectUpdateRequest:
       type: object
@@ -1314,6 +1322,307 @@ components:
             $ref: "#/components/schemas/MyShift"
 
   # ── Reusable responses ────────────────────────────────────────────────────
+    # ── Pay settings, special days and managers on projects (005) ───────────
+
+    Percent:
+      type: string
+      pattern: "^(?:(?:1[0-9]{2}|2[0-9]{2})(?:\\.[0-9]{1,2})?|300(?:\\.0{1,2})?)$"
+      description: A rate in percent of the base rate, 100 to 300, as a decimal string.
+      example: "125.00"
+
+    Points:
+      type: string
+      pattern: "^(?:(?!0+(?:\\.0+)?$)(?:[0-9]{1,2}|1[0-9]{2})(?:\\.[0-9]{1,2})?|200(?:\\.0{1,2})?)$"
+      description: Percentage points added to a day's rate for overtime, above 0 and at most 200.
+      example: "25.00"
+
+    Minutes:
+      type: integer
+      minimum: 1
+      maximum: 1440
+
+    RestWindow:
+      type: object
+      additionalProperties: false
+      description: >
+        The weekly rest, from a weekday (0 Sunday to 6 Saturday) and local time to a weekday and
+        local time at the site, read forward from its start; its ends must differ.
+      required: [start_weekday, start_time, end_weekday, end_time]
+      properties:
+        start_weekday: {type: integer, minimum: 0, maximum: 6}
+        start_time:
+          $ref: "#/components/schemas/LocalTime"
+        end_weekday: {type: integer, minimum: 0, maximum: 6}
+        end_time:
+          $ref: "#/components/schemas/LocalTime"
+
+    PremiumSettings:
+      type: object
+      description: >
+        What a shift's hours are paid, in percent of the base rate. Hours beyond the normal length
+        (the night length on a night shift) are overtime, the first tier at overtime1_pct and the
+        rest at overtime2_pct; hours in the weekly rest at rest_pct; on a rest or special day,
+        overtime adds increase1_points or increase2_points to the day's rate.
+      required: [day_normal_minutes, night_normal_minutes, tier1_minutes, overtime1_pct,
+                 overtime2_pct, rest_window, rest_pct, increase1_points, increase2_points]
+      properties:
+        day_normal_minutes: {type: integer}
+        night_normal_minutes: {type: integer}
+        tier1_minutes: {type: integer}
+        overtime1_pct: {$ref: "#/components/schemas/Percent"}
+        overtime2_pct: {$ref: "#/components/schemas/Percent"}
+        rest_window: {$ref: "#/components/schemas/RestWindow"}
+        rest_pct: {$ref: "#/components/schemas/Percent"}
+        increase1_points: {$ref: "#/components/schemas/Points"}
+        increase2_points: {$ref: "#/components/schemas/Points"}
+
+    PremiumChanges:
+      type: object
+      additionalProperties: false
+      description: Any of the defaults; omitted ones stay, null is refused.
+      properties:
+        day_normal_minutes: {$ref: "#/components/schemas/Minutes"}
+        night_normal_minutes: {$ref: "#/components/schemas/Minutes"}
+        tier1_minutes: {$ref: "#/components/schemas/Minutes"}
+        overtime1_pct: {$ref: "#/components/schemas/Percent"}
+        overtime2_pct: {$ref: "#/components/schemas/Percent"}
+        rest_window: {$ref: "#/components/schemas/RestWindow"}
+        rest_pct: {$ref: "#/components/schemas/Percent"}
+        increase1_points: {$ref: "#/components/schemas/Points"}
+        increase2_points: {$ref: "#/components/schemas/Points"}
+
+    PremiumOverrides:
+      type: object
+      additionalProperties: false
+      description: A project's own values; null returns a setting to the organisation's default.
+      properties:
+        day_normal_minutes: {anyOf: [{$ref: "#/components/schemas/Minutes"}, {type: "null"}]}
+        night_normal_minutes: {anyOf: [{$ref: "#/components/schemas/Minutes"}, {type: "null"}]}
+        tier1_minutes: {anyOf: [{$ref: "#/components/schemas/Minutes"}, {type: "null"}]}
+        overtime1_pct: {anyOf: [{$ref: "#/components/schemas/Percent"}, {type: "null"}]}
+        overtime2_pct: {anyOf: [{$ref: "#/components/schemas/Percent"}, {type: "null"}]}
+        rest_window: {anyOf: [{$ref: "#/components/schemas/RestWindow"}, {type: "null"}]}
+        rest_pct: {anyOf: [{$ref: "#/components/schemas/Percent"}, {type: "null"}]}
+        increase1_points: {anyOf: [{$ref: "#/components/schemas/Points"}, {type: "null"}]}
+        increase2_points: {anyOf: [{$ref: "#/components/schemas/Points"}, {type: "null"}]}
+
+    ProjectPayChanges:
+      type: object
+      additionalProperties: false
+      properties:
+        pay_enabled: {type: boolean}
+        managers_see_pay: {type: boolean}
+        settings: {$ref: "#/components/schemas/PremiumOverrides"}
+
+    ProjectPayRead:
+      type: object
+      description: >
+        Whether the project has pay, whether its assigned Managers see it, the settings in effect,
+        and which of them are the project's own (own); the rest follow the organisation.
+      required: [pay_enabled, managers_see_pay, settings, own]
+      properties:
+        pay_enabled: {type: boolean}
+        managers_see_pay: {type: boolean}
+        settings: {$ref: "#/components/schemas/PremiumSettings"}
+        own:
+          type: array
+          items: {type: string}
+
+    SpecialDayCreate:
+      type: object
+      required: [day, name]
+      properties:
+        day: {$ref: "#/components/schemas/ISODate"}
+        name: {type: string, minLength: 1, maxLength: 255}
+        rate_pct: {anyOf: [{$ref: "#/components/schemas/Percent"}, {type: "null"}]}
+
+    SpecialDayChange:
+      type: object
+      additionalProperties: false
+      properties:
+        day: {$ref: "#/components/schemas/ISODate"}
+        name: {type: string, minLength: 1, maxLength: 255}
+        rate_pct: {$ref: "#/components/schemas/Percent"}
+
+    SpecialDayRead:
+      type: object
+      required: [id, project_id, day, name, rate_pct]
+      properties:
+        id: {$ref: "#/components/schemas/UUIDv4"}
+        project_id:
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        day: {$ref: "#/components/schemas/ISODate"}
+        name: {type: string}
+        rate_pct: {$ref: "#/components/schemas/Percent"}
+
+    SpecialDayList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/SpecialDayRead"}
+
+    DayInEffect:
+      allOf:
+        - $ref: "#/components/schemas/SpecialDayRead"
+        - type: object
+          required: [source]
+          properties:
+            source: {type: string, enum: [project, organisation]}
+
+    DaysInEffect:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/DayInEffect"}
+
+    ManagersRequest:
+      type: object
+      additionalProperties: false
+      required: [user_ids]
+      properties:
+        user_ids:
+          type: array
+          maxItems: 1000
+          items: {$ref: "#/components/schemas/UUIDv4"}
+
+    ManagersResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, full_name]
+            properties:
+              id: {$ref: "#/components/schemas/UUIDv4"}
+              full_name: {type: string}
+
+    Amount:
+      type: string
+      pattern: "^[0-9]{1,10}\\.[0-9]{2}$"
+      description: A money amount with two decimals, never a JSON number (005).
+      example: "612.50"
+
+    Hours:
+      type: string
+      pattern: "^[0-9]{1,7}\\.[0-9]{2}$"
+      description: Hours with two decimals.
+      example: "7.50"
+
+    PayLine:
+      type: object
+      description: >
+        One ended shift of the caller's, priced. pay is left out when the project has pay switched
+        off (pay_enabled false) or there is no rate (rate_missing); missing pay is never zero.
+      required: [shift_id, project_id, project_name, date, starts_at, ends_at, hours, base_rate,
+                 rate_missing, pay_enabled, parts]
+      properties:
+        shift_id: {$ref: "#/components/schemas/UUIDv4"}
+        project_id: {$ref: "#/components/schemas/UUIDv4"}
+        project_name: {type: string}
+        date: {$ref: "#/components/schemas/ISODate"}
+        starts_at: {$ref: "#/components/schemas/ISODateTime"}
+        ends_at: {$ref: "#/components/schemas/ISODateTime"}
+        hours: {$ref: "#/components/schemas/Hours"}
+        base_rate:
+          anyOf:
+            - {type: string}
+            - {type: "null"}
+        rate_missing: {type: boolean}
+        pay_enabled: {type: boolean}
+        parts:
+          type: array
+          items:
+            type: object
+            required: [rate_pct, hours]
+            properties:
+              rate_pct: {$ref: "#/components/schemas/Percent"}
+              hours: {$ref: "#/components/schemas/Hours"}
+        pay: {$ref: "#/components/schemas/Amount"}
+
+    PayToDate:
+      type: object
+      description: The caller's gross pay for a month so far; totals are sums of the lines shown.
+      required: [month, lines, hours, pay, shifts_missing_rate]
+      properties:
+        month: {type: string, example: "2026-10"}
+        lines:
+          type: array
+          items: {$ref: "#/components/schemas/PayLine"}
+        hours: {$ref: "#/components/schemas/Hours"}
+        pay: {$ref: "#/components/schemas/Amount"}
+        shifts_missing_rate: {type: integer}
+
+    WorkLog:
+      type: object
+      description: Who worked in the range, once per person and project, by name; never any pay.
+      required: [from, to, rows]
+      properties:
+        from: {$ref: "#/components/schemas/ISODate"}
+        to: {$ref: "#/components/schemas/ISODate"}
+        rows:
+          type: array
+          items:
+            type: object
+            required: [user_id, full_name, project_id, project_name, shifts, hours, first_date,
+                       last_date]
+            properties:
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+              full_name: {type: string}
+              project_id: {$ref: "#/components/schemas/UUIDv4"}
+              project_name: {type: string}
+              shifts: {type: integer}
+              hours: {$ref: "#/components/schemas/Hours"}
+              first_date: {$ref: "#/components/schemas/ISODate"}
+              last_date: {$ref: "#/components/schemas/ISODate"}
+
+    HoursRow:
+      type: object
+      description: One employee at one project; pay only where the reader may see it.
+      required: [id, name, hours, shifts, shifts_missing_rate]
+      properties:
+        id: {$ref: "#/components/schemas/UUIDv4"}
+        name: {type: string}
+        hours: {$ref: "#/components/schemas/Hours"}
+        shifts: {type: integer}
+        shifts_missing_rate: {type: integer}
+        pay: {$ref: "#/components/schemas/Amount"}
+
+    HoursGroup:
+      allOf:
+        - $ref: "#/components/schemas/HoursRow"
+        - type: object
+          required: [rows]
+          properties:
+            rows:
+              type: array
+              items: {$ref: "#/components/schemas/HoursRow"}
+
+    HoursReport:
+      type: object
+      description: >
+        Hours and shifts by employee or project, with grand totals. pay appears only where the
+        reader may see it, and pay totals cover only the lines shown with pay.
+      required: [from, to, group_by, groups, hours, shifts, shifts_missing_rate]
+      properties:
+        from: {$ref: "#/components/schemas/ISODate"}
+        to: {$ref: "#/components/schemas/ISODate"}
+        group_by: {type: string, enum: [employee, project]}
+        groups:
+          type: array
+          items: {$ref: "#/components/schemas/HoursGroup"}
+        hours: {$ref: "#/components/schemas/Hours"}
+        shifts: {type: integer}
+        shifts_missing_rate: {type: integer}
+        pay: {$ref: "#/components/schemas/Amount"}
+
   responses:
     Unauthorized:
       description: Missing or invalid access token.
@@ -3598,6 +3907,482 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MyShiftList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Pay settings, special days and managers on projects (005) ──────────────
+  /organisation/pay-settings:
+
+    get:
+      operationId: pay_settings_read
+      summary: Read the premium defaults (Manager+)
+      description: >
+        The values every project follows unless it sets its own.
+      tags: [PaySettings]
+      responses:
+        "200":
+          description: The organisation's premium defaults.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PremiumSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    patch:
+      operationId: pay_settings_change
+      summary: Change the premium defaults (Admin)
+      description: >
+        Projects that follow a default follow the change, for their earlier shifts too; ended projects keep their values. 422 pay.rest_window_invalid when the rest window's ends meet.
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PremiumChanges"
+      responses:
+        "200":
+          description: The defaults as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PremiumSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /projects/{id}/pay-settings:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: project_pay_read
+      summary: Read a project's pay settings (Manager+)
+      description: >
+        The switches, the settings in effect and which are the project's own.
+      tags: [PaySettings]
+      responses:
+        "200":
+          description: The project's pay settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPayRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    patch:
+      operationId: project_pay_change
+      summary: Change a project's pay settings (Admin)
+      description: >
+        Switch pay on or off, open it to the project's Managers, or set the project's own values (null returns one to the default). 409 pay.project_ended once the project has ended.
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectPayChanges"
+      responses:
+        "200":
+          description: The project's pay settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPayRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /special-days:
+
+    get:
+      operationId: special_days_list
+      summary: List the organisation's special days (Manager+)
+      description: >
+        By date, of one year if given.
+      tags: [PaySettings]
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 9999}
+      responses:
+        "200":
+          description: The organisation's days.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecialDayList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    post:
+      operationId: special_days_create
+      summary: Add a special day (Admin)
+      description: >
+        A date paid at its own rate (100 to 300 percent, 150.00 by default) for every project that has not ended. 409 special_days.duplicate.
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialDayCreate"
+      responses:
+        "201":
+          description: The day.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecialDayRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /special-days/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    patch:
+      operationId: special_days_change
+      summary: Change a special day (Admin)
+      description: >
+        Date, name or rate. 409 pay.project_ended for a day of an ended project; 409 special_days.duplicate.
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialDayChange"
+      responses:
+        "200":
+          description: The day.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecialDayRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: special_days_delete
+      summary: Delete a special day (Admin)
+      description: >
+        A project's own day on the same date stays. 409 pay.project_ended for a day of an ended project.
+      tags: [PaySettings]
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /projects/{id}/special-days:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: project_days_list
+      summary: List the special days a project is paid by (Manager+)
+      description: >
+        The organisation's days and the project's own, by date; the project's wins on a date both list. An ended project has only its own.
+      tags: [PaySettings]
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 9999}
+      responses:
+        "200":
+          description: The days in effect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaysInEffect"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    post:
+      operationId: project_days_create
+      summary: Add a project's special day (Admin)
+      description: >
+        A day for this project only, or its own rate for an organisation day. 409 special_days.duplicate, pay.project_ended.
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialDayCreate"
+      responses:
+        "201":
+          description: The day.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecialDayRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /projects/{id}/managers:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: project_managers_list
+      summary: List a project's managers (Manager+)
+      description: >
+        The Managers and Admins assigned to the project, by name.
+      tags: [PaySettings]
+      responses:
+        "200":
+          description: The managers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    put:
+      operationId: project_managers_replace
+      summary: Set a project's managers (Admin)
+      description: >
+        Replace them as a whole; each must be an active Manager or Admin of the organisation (422 project_managers.not_staff).
+      tags: [PaySettings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManagersRequest"
+      responses:
+        "200":
+          description: The managers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagersResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Pay to date (005) ──────────────────────────────────────────────────────
+  /me/pay:
+
+    get:
+      operationId: my_pay_read
+      summary: Read my pay so far this month (Employee, Manager, Admin)
+      description: >
+        The caller's gross pay, before tax, for a month (YYYY-MM, the current one by default):
+        each published shift that has ended, with its hours at each rate and its pay, and the
+        totals. Draft shifts and shifts not yet ended are not counted; a shift belongs to the
+        month it starts in at its site. 422 pay.month_invalid.
+      tags: [PaySettings]
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^([1-9][0-9]{3}|0[1-9][0-9]{2}|00[1-9][0-9]|000[1-9])-(0[1-9]|1[0-2])$"
+      responses:
+        "200":
+          description: The caller's pay to date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayToDate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Reports (005) ──────────────────────────────────────────────────────────
+  /reports/work-log:
+
+    get:
+      operationId: reports_work_log
+      summary: Who worked at a project, site or group (Manager+)
+      description: >
+        Each person once per project with shift count, hours, and first and last date, for
+        exactly one of project_id, site_id, group_id (422 reports.scope_invalid). For a project
+        the range starts on its start date unless from is given; a site or group needs from (422
+        reports.start_required); to is today by default; at most 366 days (422
+        reports.range_invalid). Only published shifts that have ended count; no pay.
+      tags: [Reports]
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          schema: {$ref: "#/components/schemas/UUIDv4"}
+        - name: site_id
+          in: query
+          required: false
+          schema: {$ref: "#/components/schemas/UUIDv4"}
+        - name: group_id
+          in: query
+          required: false
+          schema: {$ref: "#/components/schemas/UUIDv4"}
+        - name: from
+          in: query
+          required: false
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: to
+          in: query
+          required: false
+          schema: {$ref: "#/components/schemas/ISODate"}
+      responses:
+        "200":
+          description: The work-log.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /reports/hours:
+
+    get:
+      operationId: reports_hours
+      summary: Hours and pay per employee or project (Manager+)
+      description: >
+        Hours and shift counts from from to to (at most 366 days, 422 reports.range_invalid),
+        grouped by employee or project. An Admin sees pay for every project with pay on; a
+        Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere
+        there is no pay figure at all.
+      tags: [Reports]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: to
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: group_by
+          in: query
+          required: true
+          schema: {type: string, enum: [employee, project]}
+      responses:
+        "200":
+          description: The hours report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HoursReport"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

@@ -88,6 +88,13 @@ class GroupRepository(OrgScopedRepository[Group]):
         """
         await self._delete_scoped(id, org_id)
 
+    async def member_ids(self, group_id: uuid.UUID) -> list[uuid.UUID]:
+        """The ids of a group's current members; callers check the group is theirs first."""
+        rows = await self.session.execute(
+            select(user_groups.c.user_id).where(user_groups.c.group_id == group_id)
+        )
+        return list(rows.scalars())
+
     async def get_groups_for_user(self, user_id: uuid.UUID, org_id: uuid.UUID) -> list[Group]:
         """List the groups a user belongs to within the organisation.
 

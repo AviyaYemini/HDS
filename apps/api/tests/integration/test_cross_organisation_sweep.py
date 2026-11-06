@@ -501,6 +501,92 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/requirements"),
         ),
     ],
+    "GET /api/v1/reports/work-log": [
+        Case(
+            "foreign project_id",
+            lambda w: req(f"/api/v1/reports/work-log?project_id={w.theirs.project.id}"),
+        ),
+        Case(
+            "foreign site_id",
+            lambda w: req(f"/api/v1/reports/work-log?site_id={w.theirs.site.id}&from=2026-10-01"),
+        ),
+        Case(
+            "foreign group_id",
+            lambda w: req(f"/api/v1/reports/work-log?group_id={w.theirs.group.id}&from=2026-10-01"),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/pay-settings": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/pay-settings"),
+        ),
+    ],
+    "PATCH /api/v1/projects/{id}/pay-settings": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/pay-settings", json={"pay_enabled": False}
+            ),
+            manager=(403, "users.admin_required"),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/special-days": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/special-days"),
+        ),
+    ],
+    "POST /api/v1/projects/{id}/special-days": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/special-days",
+                json={"day": "2027-09-11", "name": "Sneaky"},
+            ),
+            manager=(403, "users.admin_required"),
+        ),
+    ],
+    "PATCH /api/v1/special-days/{id}": [
+        Case(
+            "foreign special day id",
+            lambda w: req(
+                f"/api/v1/special-days/{w.theirs.special_day.id}",  # type: ignore[union-attr]
+                json={"rate_pct": "300.00"},
+            ),
+            manager=(403, "users.admin_required"),
+        ),
+    ],
+    "DELETE /api/v1/special-days/{id}": [
+        Case(
+            "foreign special day id",
+            lambda w: req(f"/api/v1/special-days/{w.theirs.special_day.id}"),  # type: ignore[union-attr]
+            manager=(403, "users.admin_required"),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/managers": [
+        Case(
+            "foreign project id", lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/managers")
+        ),
+    ],
+    "PUT /api/v1/projects/{id}/managers": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/managers", json={"user_ids": []}
+            ),
+            manager=(403, "users.admin_required"),
+        ),
+        Case(
+            "own project, foreign user: refused as not staff, revealing nothing",
+            lambda w: req(
+                f"/api/v1/projects/{w.mine.project.id}/managers",
+                json={"user_ids": [str(w.theirs.user.id)]},
+            ),
+            status=422,
+            code="project_managers.not_staff",
+            manager=(403, "users.admin_required"),
+        ),
+    ],
     "PUT /api/v1/projects/{id}/requirements": [
         Case(
             "foreign project id",

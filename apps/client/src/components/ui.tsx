@@ -45,13 +45,21 @@ export function Heading({ children }: { children: ReactNode }) {
 }
 
 /** Body text; `muted` for secondary lines. */
-export function Body({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  return <Text style={muted ? styles.muted : styles.body}>{children}</Text>;
+export function Body({ children, muted, testID }: { children: ReactNode; muted?: boolean; testID?: string }) {
+  return (
+    <Text testID={testID} style={muted ? styles.muted : styles.body}>
+      {children}
+    </Text>
+  );
 }
 
 /** Items side by side, start to end. */
-export function Row({ children }: { children: ReactNode }) {
-  return <View style={styles.row}>{children}</View>;
+export function Row({ children, testID }: { children: ReactNode; testID?: string }) {
+  return (
+    <View testID={testID} style={styles.row}>
+      {children}
+    </View>
+  );
 }
 
 /** A bordered block. */

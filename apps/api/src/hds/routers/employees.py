@@ -29,11 +29,12 @@ from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.routers.user_schemas import UserRead
-from hds.services.employee import EmployeeService
+from hds.services.employee import EmployeeService, shown_rate
 from hds.services.group import GroupService
 from hds.services.qualification import QualificationService
 
@@ -93,6 +94,13 @@ class QualificationRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _read(actor: User, user: User) -> UserRead:
+    """``user`` as ``actor`` may see them: the default rate only where the service allows it."""
+    return UserRead.model_validate(user).model_copy(
+        update={"default_hourly_rate": shown_rate(actor, user)}
+    )
+
+
 def _employee_svc(db: AsyncSession) -> EmployeeService:
     return EmployeeService(
         user_repo=UserRepository(db),
@@ -101,6 +109,7 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
         group_repo=GroupRepository(db),
         qualification_repo=QualificationRepository(db),
         client_repo=ClientRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
     )
 
 
@@ -139,7 +148,7 @@ async def list_employees(
         group_id=group_id,
         qualification_id=qualification_id,
     )
-    return UserListResponse(items=users, total=len(users))  # type: ignore[arg-type]
+    return UserListResponse(items=[_read(current_user, u) for u in users], total=len(users))
 
 
 @router.post(
@@ -160,7 +169,7 @@ async def create_employee(
     body: UserCreateRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> User:
+) -> UserRead:
     """Create an employee.
 
     Manager or Admin. Create an account with an initial password of at least 12 characters. The
@@ -170,7 +179,9 @@ async def create_employee(
     password-hashing queue is full; nothing is changed.
     """
     svc = _employee_svc(db)
-    return await svc.create_employee(actor=current_user, data=body.model_dump())
+    return _read(
+        current_user, await svc.create_employee(actor=current_user, data=body.model_dump())
+    )
 
 
 @router.get(
@@ -186,13 +197,13 @@ async def get_employee(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user_or_self),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> User:
+) -> UserRead:
     """Get an employee.
 
     Manager or Admin for any user in the organisation; every other role only for their own id
     (otherwise 403 `users.forbidden`).
     """
-    return await _employee_svc(db).get_employee(current_user, id)
+    return _read(current_user, await _employee_svc(db).get_employee(current_user, id))
 
 
 @router.patch(
@@ -214,7 +225,7 @@ async def edit_employee(
     body: UserUpdateRequest,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> User:
+) -> UserRead:
     """Edit an employee.
 
     Manager or Admin. Update name, phone, hourly rate or role. Only an Admin may change an Admin
@@ -226,7 +237,7 @@ async def edit_employee(
     """
     svc = _employee_svc(db)
     data = body.model_dump(exclude_unset=True)
-    return await svc.edit_employee(actor=current_user, target_id=id, data=data)
+    return _read(current_user, await svc.edit_employee(actor=current_user, target_id=id, data=data))
 
 
 @router.delete(
@@ -268,7 +279,7 @@ async def deactivate_employee(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> User:
+) -> UserRead:
     """Deactivate an employee.
 
     Manager or Admin. Block the user from signing in and end their sessions. Only an Admin may
@@ -277,7 +288,7 @@ async def deactivate_employee(
     (`users.pending_cannot_deactivate`) and stays pending.
     """
     svc = _employee_svc(db)
-    return await svc.deactivate(actor=current_user, target_id=id)
+    return _read(current_user, await svc.deactivate(actor=current_user, target_id=id))
 
 
 @router.post(
@@ -296,7 +307,7 @@ async def reactivate_employee(
     id: uuid.UUID,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> User:
+) -> UserRead:
     """Reactivate an employee.
 
     Manager or Admin. Allow a deactivated user to sign in again. Only an Admin may reactivate an
@@ -306,7 +317,7 @@ async def reactivate_employee(
     (`users.client_inactive`).
     """
     svc = _employee_svc(db)
-    return await svc.reactivate(actor=current_user, target_id=id)
+    return _read(current_user, await svc.reactivate(actor=current_user, target_id=id))
 
 
 @router.get(
