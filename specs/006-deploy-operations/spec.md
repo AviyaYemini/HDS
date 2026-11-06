@@ -243,6 +243,11 @@ outside.
   distribution of durations (§9 Observability).
 - **FR-008**: The metrics MUST include schedule jobs by state (queued, running, succeeded, failed) and
   how long they take (§10 Background jobs). **Proposed.**
+- **FR-008a**: Each schedule job MUST be followable as one trace from the request that queued it
+  through the worker that ran it, and every log line MUST carry the identifiers that join it to its
+  trace (§9 Observability: "a trace across API and worker for every schedule job"). A place to store
+  and browse traces is **Proposed** for a later feature; until then a trace is followed through the
+  logs.
 - **FR-009**: Health checks and metrics MUST contain no secrets and no personal data; metrics MUST NOT be
   reachable from outside the operators' network.
 - **FR-010**: Every running part MUST report the version it runs, so an operator can tell what is
@@ -340,6 +345,6 @@ outside.
   builds). This feature deploys the API, the worker and the web client.
 - Alert rules on metrics (error rates, slow requests) and dashboards are out of scope; only failures of
   backups, restore tests and deploys send a message (FR-010a).
-- Traces across the API and worker (§9 Observability) and the audit log are out of scope here; the
-  audit log is a later v1 feature.
+- The audit log is out of scope here; it is a later v1 feature. Traces are in scope (FR-008a): an
+  earlier draft left them out, and planning brought them back, as the original asks for them.
 - The existing local setup (a start command for the database and API) is extended, not replaced.
