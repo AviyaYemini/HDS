@@ -123,11 +123,93 @@ def test_text_inside_a_commit_message_is_not_scanned(command: str) -> None:
         'git commit -m "$(cat .env)"',  # command substitution inside the message really runs
         'git commit -m "`cat .env`"',
         'git commit -m "$(sudo ls)"',
-        'echo "cat .env"',  # outside a commit message the text is still matched
+        'sh -c "cat .env"',  # a string a shell runs is a command, not a mention
+        'eval "cat .env"',
     ],
 )
 def test_real_commands_next_to_or_inside_a_message_stay_blocked(command: str) -> None:
     assert blocked(command)
+
+
+# ── Reading a settings file is blocked; mentioning one is not (harness item 5) ──────────────────
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rsync -a --exclude .env src/ dst/",
+        "rsync -a --exclude=.env src/ dst/",
+        "git ls-files .env",
+        'grep -rn "\\.env" docs/',
+        "ls -la .env",
+        'echo "cat .env"',  # printed text, not a read (this case used to be blocked)
+        "docker compose -f infra/docker-compose.yml --env-file .env up -d",
+        'sed "s/^KEY=.*/KEY=new/" .env.example > .env',  # reads the example, writes the file
+        "cat > notes.md <<'EOF'\ncp .env apps/api/.env\nEOF",  # a heredoc written to a file
+        "python3 - <<'EOF'\ns = open('README.md').read()\ns += 'cp .env apps/api/.env'\nEOF",
+    ],
+)
+def test_a_mention_of_a_settings_file_is_not_blocked(command: str) -> None:
+    assert not blocked(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat .env*",
+        "cat < .env",
+        "less ./.env",
+        "head ../.env",
+        "rsync -a .env backup/",
+        "mv .env /tmp/settings",
+        "awk 1 .env",
+        "sed -n p .env.local",
+        "python3 -c \"print(open('.env').read())\"",
+        "python3 - <<'EOF'\nprint(open('.env').read())\nEOF",
+        "bash <<'EOF'\ncat .env\nEOF",
+        "docker run --rm -v $PWD:/repo alpine cat /repo/.env",
+        "cat > f <<EOF\n$(cat .env)\nEOF",  # an unquoted heredoc still runs its substitutions
+        "cat 'unbalanced .env",  # cannot be split into words: the old pattern decides
+    ],
+)
+def test_reading_or_copying_a_settings_file_is_blocked(command: str) -> None:
+    assert blocked(command)
+
+
+# ── gitleaks must redact, and never scan the whole folder (harness item 6) ───────────────────
+
+GITLEAKS_IMAGE = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb7"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gitleaks git --no-banner .",  # no --redact
+        f"docker run --rm -v $PWD:/repo -w /repo {GITLEAKS_IMAGE} git --no-banner -v .",
+        # The run that printed a key: dir with several paths scanned the whole folder.
+        f"docker run --rm -v $PWD:/repo -w /repo {GITLEAKS_IMAGE} dir --no-banner --redact "
+        "Makefile scripts infra README.md",
+        "gitleaks dir --redact .",
+        "gitleaks dir --redact",
+        f"docker run --rm -v $PWD:/repo {GITLEAKS_IMAGE} dir --redact /repo",
+        "gitleaks detect --no-git --redact --source .",
+    ],
+)
+def test_an_unredacted_or_whole_folder_gitleaks_run_is_blocked(command: str) -> None:
+    assert blocked(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gitleaks git --no-banner --redact --log-opts=origin/main..HEAD .",
+        f"docker run --rm -v $PWD:/repo:ro -w /repo {GITLEAKS_IMAGE} git --no-banner --redact .",
+        "gitleaks dir --redact apps/api/src",
+        "grep -n gitleaks .github/workflows/ci.yml",
+    ],
+)
+def test_a_redacted_commit_scan_or_a_narrow_dir_scan_is_allowed(command: str) -> None:
+    assert not blocked(command)
 
 
 def repository_on(branch: str, where: Path) -> Path:

@@ -214,14 +214,237 @@ DANGEROUS = [
     (r"\brm\s+-\w*r\w*f?\s+(/|~|\$HOME|\*|\.\s*$|\.\./)", "recursive delete of a broad path"),
     (r"\bsudo\b", "sudo is not allowed"),
     (r"(curl|wget)\b[^|;]*\|\s*(sudo\s+)?(ba|z)?sh\b", "piping downloads into a shell"),
-    # The (?!...) keeps .env.example and .env.sample readable: they hold placeholders and are the
-    # documented way to see the settings. Anything else starting with .env stays blocked.
-    (r"\b(cat|less|more|head|tail|grep|source|cp|scp)\b[^|;&]*\s\.env"
-     r"(?!\.(?:example|sample)(?:\s|$|[\"';|&)]))(\.local|\.production|\.prod)?\b",
-     "reading real .env files; use .env.example (principle 6)"),
     (r"\b(psql|sqlite3)\b.*\b(drop|truncate|delete\s+from|alter)\b",
      "manual schema or data changes; use an Alembic migration (principle 10)"),
 ]
+
+# ---- reading a real settings file (principle 6) ----
+# A command is blocked when it would READ or COPY a real settings file (.env, .env.local, ...), not
+# when it merely mentions one: an rsync --exclude, a heredoc written to a file, a grep over docs,
+# `git ls-files`. .env.example and .env.sample hold placeholders and stay readable.
+SETTINGS_WHY = "reading real .env files; use .env.example (principle 6)"
+# The old pattern, kept only as the fallback when a command cannot be split into words (unbalanced
+# quotes): then the guard is as strict as before, never looser.
+_SETTINGS_FALLBACK = re.compile(
+    r"\b(cat|less|more|head|tail|grep|source|cp|scp)\b[^|;&]*\s\.env"
+    r"(?!\.(?:example|sample)(?:\s|$|[\"';|&)]))(\.local|\.production|\.prod)?\b", re.I)
+# Commands that read a file named as an argument, or copy it somewhere it can be read.
+SETTINGS_READERS = frozenset({
+    "cat", "tac", "less", "more", "most", "head", "tail", "grep", "egrep", "fgrep", "rg", "ag",
+    "awk", "gawk", "sed", "cut", "sort", "uniq", "nl", "strings", "xxd", "od", "hexdump", "base64",
+    "bat", "view", "vi", "vim", "nano", "emacs", "diff", "cmp", "comm", "paste", "join", "tee",
+    "cp", "mv", "scp", "rsync", "tar", "zip", "gzip", "openssl", "jq", "yq", "source",
+})
+_INTERPRETERS = frozenset({"python", "python3", "node", "ruby", "perl"})
+_SHELLS = frozenset({"sh", "bash", "zsh", "dash"})
+# A settings file in code: a quoted path to one, read by open(), read_text() or a dotenv loader.
+_CODE_SETTINGS_PATH = re.compile(
+    r"""['"](?:[\w.~-]*/)*\.env(?:\.(?!example['"]|sample['"])[\w-]+)*['"]""")
+_CODE_READS = re.compile(r"\bopen\s*\(|read_text|read_bytes|dotenv|copyfile|shutil\.copy")
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
+
+
+def is_settings_file(word):
+    """Whether ``word`` names a real settings file, or a glob that would match one."""
+    name = word.rstrip("/").rsplit("/", 1)[-1]
+    if not name.startswith(".env"):
+        return False
+    if name in (".env.example", ".env.sample"):
+        return False
+    rest = name[len(".env"):]
+    return rest == "" or rest[0] == "." or any(c in rest for c in "*?[")
+
+
+def _substitutions(text):
+    """The commands inside ``$( ... )`` and backticks in ``text``, outside single quotes.
+
+    The shell runs them even inside double quotes, so they are always scanned.
+    """
+    found, i, quoted = [], 0, False
+    while i < len(text):
+        char = text[i]
+        if char == "'" and not quoted:
+            end = text.find("'", i + 1)
+            i = len(text) if end < 0 else end + 1
+            continue
+        if char == '"':
+            quoted = not quoted
+        elif text.startswith("$(", i):
+            depth, j = 1, i + 2
+            while j < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            found.append(text[i + 2 : j - 1])
+            i = j
+            continue
+        elif char == "`":
+            end = text.find("`", i + 1)
+            if end > 0:
+                found.append(text[i + 1 : end])
+                i = end + 1
+                continue
+        i += 1
+    return found
+
+
+def _split_heredocs(cmd):
+    """``cmd`` with its heredoc bodies taken out, and the bodies that are code.
+
+    A body fed to a shell or an interpreter is code and is returned with its kind; a body written
+    to a file (``cat > f <<EOF``) is data and dropped, except that an unquoted delimiter still runs
+    its ``$( ... )`` substitutions, which are kept.
+    """
+    lines, kept, code = cmd.split("\n"), [], []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        kept.append(line)
+        starts = list(_HEREDOC.finditer(line))
+        i += 1
+        for start in starts:
+            quoted, word = start.group(1), start.group(2)
+            body = []
+            while i < len(lines) and lines[i].strip() != word:
+                body.append(lines[i])
+                i += 1
+            i += 1  # the delimiter line
+            text = "\n".join(body)
+            before = re.split(r"[;&|(]", line[: start.start()])[-1].split()
+            words = [w for w in before if "=" not in w or w.startswith("-")]
+            first = words[0].rsplit("/", 1)[-1] if words else ""
+            if first in _SHELLS:
+                code.append(("shell", text))
+            elif first in _INTERPRETERS:
+                code.append(("code", text))
+            elif not quoted:
+                code.extend(("shell", s) for s in _substitutions(text))
+    return "\n".join(kept), code
+
+
+def _segments(text):
+    """``text`` split into simple commands, each a list of words; None if it cannot be split."""
+    try:
+        lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|()<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        words = list(lexer)
+    except ValueError:
+        return None
+    segments, current = [], []
+    for word in words:
+        if word and set(word) <= set(";&|()"):
+            segments.append(current)
+            current = []
+        else:
+            current.append(word)
+    segments.append(current)
+    return [s for s in segments if s]
+
+
+def _segment_reads_settings(words):
+    """Whether one simple command reads or copies a real settings file."""
+    for i, word in enumerate(words):
+        if word == "<" and i + 1 < len(words) and is_settings_file(words[i + 1]):
+            return True
+    # The command and every word that could be one (a reader after docker run, xargs, env, ...).
+    first = next((w for w in words if "=" not in w or w.startswith("-")), "")
+    previous = ""
+    reader_seen = False
+    for i, word in enumerate(words):
+        name = word.rsplit("/", 1)[-1]
+        if name in SETTINGS_READERS or (name == "." and word is first):
+            reader_seen = True
+        elif name in _SHELLS | {"eval"} and i + 2 < len(words) and words[i + 1] == "-c":
+            if reads_settings_file(words[i + 2]):
+                return True
+        elif name in _INTERPRETERS:
+            for flag, code in zip(words[i + 1 :], words[i + 2 :]):
+                if flag in ("-c", "-e") and _code_reads_settings(code):
+                    return True
+        if name == "eval" and reads_settings_file(" ".join(words[i + 1 :])):
+            return True
+        excluded = previous in ("--exclude", "--exclude-from", "--ignore") or word.startswith(
+            ("--exclude=", "--exclude-from=", "--ignore=", "--exclude-dir="))
+        written = previous in (">", ">>")
+        if reader_seen and not excluded and not written and is_settings_file(word):
+            return True
+        previous = word
+    return False
+
+
+def _code_reads_settings(code):
+    """Whether interpreter code opens or loads a real settings file."""
+    return bool(_CODE_SETTINGS_PATH.search(code) and _CODE_READS.search(code))
+
+
+def reads_settings_file(cmd):
+    """Whether running ``cmd`` would read or copy a real settings file (principle 6).
+
+    Mentions are fine; reads are not. Commit messages are stripped first by the caller.
+    """
+    plain, code = _split_heredocs(cmd)
+    for kind, body in code:
+        if kind == "code" and _code_reads_settings(body):
+            return True
+        if kind == "shell" and reads_settings_file(body):
+            return True
+    if any(reads_settings_file(inner) for inner in _substitutions(plain)):
+        return True
+    segments = _segments(plain)
+    if segments is None:  # cannot be split: as strict as the old pattern
+        return bool(_SETTINGS_FALLBACK.search(plain))
+    return any(_segment_reads_settings(words) for words in segments)
+
+
+# ---- gitleaks (the run that printed a signing key) ----
+_ROOT_PATHS = frozenset({".", "./", "/", "$PWD", "${PWD}", "/repo", "/mnt", "/src", "/work"})
+
+
+def gitleaks_problem(cmd):
+    """Why a gitleaks run in ``cmd`` is refused, or None.
+
+    Every run must redact what it finds (``--redact``), so no secret reaches the screen or a log.
+    A ``dir`` (or ``detect --no-git``) scan reads files that git ignores, such as real settings
+    files, so it must name exactly one path, and not the repository's root; scan commits with
+    ``gitleaks git`` instead.
+    """
+    if "gitleaks" not in cmd:
+        return None
+    segments = _segments(cmd)
+    if segments is None:
+        return "a gitleaks command that cannot be read is refused"
+    for words in segments:
+        # The gitleaks run: the binary as the command, or an image such as
+        # ghcr.io/gitleaks/gitleaks:v8@sha256:... anywhere (docker run). A bare "gitleaks" later in
+        # a command is an argument (grep gitleaks file), not a run.
+        at = next((i for i, w in enumerate(words)
+                   if (i == 0 and re.search(r"(^|/)gitleaks$", w))
+                   or re.search(r"/gitleaks(?:[:@].*)?$", w)), None)
+        if at is None:
+            continue
+        args = words[at + 1 :]
+        if not any(w == "--redact" or w.startswith("--redact=") for w in args):
+            return "gitleaks must run with --redact, so no secret it finds is printed"
+        sub = next((w for w in args if not w.startswith("-")), "")
+        if sub == "dir" or "--no-git" in args:
+            after = args[args.index(sub) + 1 :] if sub == "dir" else args
+            # Flags that take a value: their value is not a path.
+            valued = {"--config", "-c", "--report-path", "-r", "--report-format", "-f",
+                      "--baseline-path", "-b", "--log-level", "-l", "--max-target-megabytes",
+                      "--gitleaks-ignore-path", "-i"}
+            paths, words_left = [], iter(after)
+            for w in words_left:
+                if w in ("--source", "-s"):  # the path, given as a flag's value
+                    paths.append(next(words_left, ""))
+                elif w in valued:
+                    next(words_left, None)
+                elif not w.startswith("-") and w != "detect":
+                    paths.append(w)
+            if len(paths) != 1 or paths[0].rstrip("/") in {p.rstrip("/") for p in _ROOT_PATHS}:
+                return ("a gitleaks dir scan must name exactly one path below the repository root; "
+                        "it reads files git ignores, such as real settings files. Scan commits "
+                        "with `gitleaks git --redact` instead")
+    return None
 
 
 _MESSAGE_FLAG = re.compile(r"(?<![\w-])(?:-m|--message)(?:\s*=\s*|\s+|(?=[\"']))")
@@ -296,6 +519,11 @@ def pre_bash(d):
     for pattern, why in DANGEROUS:
         if re.search(pattern, scanned, re.I):
             return block(f"Blocked command: {why}.")
+    if reads_settings_file(scanned):
+        return block(f"Blocked command: {SETTINGS_WHY}.")
+    leak = gitleaks_problem(scanned)
+    if leak:
+        return block(f"Blocked command: {leak}.")
 
     if re.search(r"\bgit\s+commit\b", cmd):
         if git_branch() in ("main", "master") and not os.environ.get("HDS_ALLOW_MAIN"):

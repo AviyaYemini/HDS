@@ -86,3 +86,33 @@ session reviews; this session implements; nothing is pushed without the owner. O
 - **F4**: setup-uv stays at v10.3.0: v10.3.3 is eight days old, and the pins wait two weeks.
 - **Also caught by `make ci-local`**: once `ci_local_db.sh` was tracked, the published-values test
   found its throwaway password `check`. The script now makes a fresh random one each run.
+
+## Items 5 and 6: the settings-file guard and the gitleaks guard (one commit: one function)
+
+The owner approved items 1, 5, 6 and 7 directly (they change the hooks and commands under
+`.claude/`, which this session does not change on another session's request).
+
+- **Item 5**: the settings-file rule was one regex: a reading word, then `.env` anywhere after it,
+  heredoc text included. It is now `reads_settings_file` in `hds_hooks.py`, which splits the
+  command into words (`shlex`). Blocked: a reading or copying command (cat, less, head, grep, awk,
+  sed, cp, mv, rsync, tar, source, `.`, and others) with a real settings file after it, also behind
+  `docker run` or `xargs`; `< .env`; `$( ... )` and backticks wherever they are; `sh -c`, `bash -c`
+  and `eval` strings; interpreter code (`python -c`, a heredoc fed to `python` or `sh`) that opens a
+  quoted settings path. Not blocked: a name right after `--exclude`, a `>` target, `.env.example`
+  and `.env.sample`, a heredoc written to a file (except an unquoted one's substitutions), and plain
+  mentions (`git ls-files .env`, `ls`, `echo "cat .env"`, compose's `--env-file`). A command that
+  cannot be split falls back to the old regex, so the guard is never looser on a parse failure.
+- **Item 6**: `gitleaks_problem` refuses any gitleaks run (the binary as the command, or its image
+  anywhere) without `--redact`, and any `dir` or `--no-git` scan that does not name exactly one
+  path below the root (`.`, `/repo`, `$PWD` and the like count as the root). The run that printed
+  the key named four paths, and gitleaks scanned the whole folder.
+- **Tests** (unit, no database, branch-independent, through the real hook): 10 mentions pass, 14
+  reads block, 7 bad gitleaks runs block, 4 good ones pass; the existing cases still pass. One
+  existing case changed on purpose: `echo "cat .env"` was blocked as a mention and is now allowed;
+  `sh -c` and `eval` with the same text were added as blocked. Against the hook as committed at
+  HEAD, the new cases fail: 3 of 10 mentions wrongly blocked, 9 of 14 reads let through
+  (`less ./.env`, `rsync -a .env backup/`, a Python `open` of the file, `docker run ... cat
+  /repo/.env`), and all 7 bad gitleaks runs let through.
+- **A consequence while writing the tests and this log**: the new guard refused two commands of
+  mine, Python heredocs that both opened files and quoted the settings path as data. It cannot tell
+  data from a read; those were written with the file tools instead.
