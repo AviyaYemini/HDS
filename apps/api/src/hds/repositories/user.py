@@ -1,9 +1,9 @@
 """Persistence of users, including the lockout counters used at sign-in.
 
 Layer: repositories. Depends on ``hds.models`` and ``hds.repositories.base`` only; it MUST NOT
-import services or routers. Most queries are tenant-scoped; the two unscoped lookups are
+import services or routers. Most queries are tenant-scoped; the unscoped lookups are
 named and documented below because they exist for flows where the organisation is not yet
-known.
+known (sign-in, and the first Admin of an empty database).
 """
 
 import uuid
@@ -11,7 +11,7 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,6 +123,23 @@ class UserRepository(OrgScopedRepository[User]):
             )
         result = await self.session.execute(stmt.order_by(User.full_name, User.id))
         return list(result.scalars().all())
+
+    async def any_exists(self) -> bool:
+        """Whether the database holds any user at all, in any organisation, deleted or not.
+
+        Unscoped on purpose: the first Admin is created only in an empty database (specs/006 R13).
+        """
+        result = await self.session.execute(select(exists().select_from(User)))
+        return bool(result.scalar_one())
+
+    async def lock_first_admin(self) -> None:
+        """Hold, until the transaction ends, the lock two first-Admin runs would both take.
+
+        Without it, two runs at once could each find no user and each create an Admin.
+        """
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('hds.first_admin'))")
+        )
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> User | None:
         """Fetch a non-deleted user of the organisation, or ``None`` (also for other tenants)."""

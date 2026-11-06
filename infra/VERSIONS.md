@@ -60,7 +60,7 @@ an unused dependency. These are the versions to add.
 | --- | --- | --- |
 | `prometheus-client` | `0.26.0` | the metrics |
 | `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` | `1.45.1` | traces |
-| `opentelemetry-instrumentation-fastapi`, `opentelemetry-instrumentation-sqlalchemy` | `0.66b1` | traces |
+| `opentelemetry-instrumentation-fastapi`, `opentelemetry-instrumentation-sqlalchemy` | `0.66b1` | traces. The SQLAlchemy one declares SQLAlchemy below 2.1 only (0.66b2 too); `core/tracing.py` passes `skip_dep_check=True` on 2.1, proved by `tests/integration/test_sql_spans.py` (review R29). Drop it once a release declares 2.1 |
 | `aiosmtpd` (dev only) | `1.4.6` | a fake SMTP server for the tests |
 
 The OpenTelemetry packages are pinned exactly, because the SDK and its instrumentation are released

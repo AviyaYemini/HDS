@@ -285,3 +285,179 @@ Done before Group B, by agreement with the reviewer: B's quickstart and the comp
   api and web ids. Control: the same copy built directly with compose, without the switch,
   printed attestations and gave two different api ids. The harness then passed all 12 steps on the
   real tree (cold 28 s, warm 26 s); ShellCheck clean.
+
+## Group D: traces (T020 to T024)
+
+Branch `006-deploy-operations-d-f`, from main at `d2e9eda` (PR 9 merged). First, `0fca5af` adds T032a,
+the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
+
+- **Dependencies**: `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` 1.45.1, and
+  `opentelemetry-instrumentation-fastapi` and `-sqlalchemy` 0.66b1, exactly as `infra/VERSIONS.md`
+  pinned them in Group A. `opentelemetry-api` was already in the lock at 1.45.2, from a dev
+  dependency, and is now 1.45.1 to match the SDK. pip-audit runs in the gates.
+- **Failing first**: `test_tracing.py` failed on the missing `hds.core.tracing`. `test_migration_024`
+  ran only at the group's end, as the database rule says.
+- **T021**: migration 024 adds `schedule_jobs.trace_context VARCHAR(55)`, nullable, an expand step.
+  `alembic check` on a fresh throwaway PostgreSQL: no new operations; downgrade to 023 and up again:
+  fine. The long-lived `hds_p3_test` reports a stray `idx_special_days_project` that no migration
+  defines, a leftover from an earlier run, which ci_local_db.sh's comment warns about. Left alone.
+- **T023**: `core/tracing.py`:
+  - `configure` sets the provider once per process, instruments the app's engine, and instruments
+    each FastAPI app it is given; OTLP only when the endpoint is set (`span_processors`).
+  - The queue stores `current_traceparent()`. The worker runs each job in a `schedule_job.run`
+    span (consumer) from `continue_from(row)`; an empty context for null or malformed, so it never
+    joins an unrelated current span.
+  - The log filter adds `trace_id` and `span_id` inside a valid span. The worker now logs through
+    `configure_logging`, the API's JSON lines.
+- **Review R1 (the reading of "malformed")**: T022 said a malformed header stores null. Under the
+  instrumentation every request has a trace, continued or new, so the job stores the API's own
+  trace, and a malformed header is never stored. That follows FR-008a, so jobs queued by the app,
+  which sends no header, are traced too. The HDS helper agreed; T022, T024 and data-model.md were
+  amended in `db0cb6f`. Null: jobs before 024, or queued outside any trace.
+- **Review R3 and D1**: the probes are not traced (named in T023 now). The instrumentation
+  searches its patterns anywhere in the full URL, so they are anchored to the whole path:
+  `/api/v1/health-checks` was untraced before the fix. A test now checks three such routes.
+- **R2**: `apps/api/README.md` lists `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` and has a
+  Traces section.
+- **Mutation checks (T024)**, each run on `test_tracing.py` and restored:
+  - a new trace in the worker (`Context()` in place of `continue_from`): 2 failed;
+  - the traceparent check accepts any value: 9 failed;
+  - trace ids missing from logs: 3 failed;
+  - the queue drops the trace: 4 failed;
+  - a malformed row joins the current trace (`get_current()`): survived at first, as no test ran a
+    job inside a span. A test was added, and it then failed.
+- **`/code-review high` (R5 to R14)**: ten findings, unverified as that mode reports them. Eight
+  fixed, each with a test, and each test was seen to fail on a mutant of its fix:
+  - R5: a sampler drops a root client span, so SQL outside a request or a job (the poll every
+    5 s, the metrics' counts) is no one-span trace. Under `ParentBased`, statements inside stay.
+  - R6: the job span carries `hds.schedule_job.outcome`, and its status is error when failed.
+  - R7: `worker.main` shuts the provider down on the way out; Group F's SIGTERM handling makes
+    that path reachable.
+  - R8: `RedactingExporter` wraps the OTLP exporter. It strips query strings (seen in a probe:
+    `http.url` held `?search=Dana+Levi`) and redacts text attributes, events and the status.
+  - R9: the trace-context helpers moved to `hds.core.trace_context` (OpenTelemetry API only), so
+    the service no longer loads FastAPI, the instrumentation or the exporter.
+  - R10: `current_traceparent` uses the propagator's `inject`, and the log filter uses
+    `format_trace_id` and `format_span_id`.
+  - R11: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` turns export on too. `OTEL_SDK_DISABLED` is not in
+    contracts/ops.md and was not added.
+  - R14: the filter always sets both fields, `None` outside a span, so a hand-passed `extra`
+    never writes one.
+  - Won't-fix: R12, `tracestate` (the column is the traceparent alone, by data-model.md); R13,
+    the provider set on import (process-global by OpenTelemetry's design, nothing exported without
+    an endpoint).
+  - The ASGI send and receive spans are left out (`exclude_spans`), which halves a request's spans.
+
+## Group E: SMTP mail and the first Admin (T025 to T029)
+
+- **Dependency**: `aiosmtpd` 1.4.6 (dev only), as `infra/VERSIONS.md` pinned it in Group A; it
+  brings `atpublic` 9.0.0. pip-audit clean. The STARTTLS certificate for the tests is made by
+  `openssl` in pytest's temporary folder and trusted through the test's own TLS context, so no key
+  is stored and the certificate checks stay on; no `cryptography` dependency was added.
+- **Failing first**: `test_smtp_mail.py` and `test_settings_smtp.py` failed on the missing
+  `MailDeliveryError`; `test_create_admin.py` ran at the group's end, on `hds_p3_test`.
+- **T026**: `SmtpMailSender` uses `smtplib` in `asyncio.to_thread`, a 10 s timeout per step,
+  STARTTLS with the relay's certificate checked, and `MailDeliveryError` raised without its cause.
+  `smtp` is in `REAL_MAIL_BACKENDS`, with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+  `SMTP_PASSWORD` (`SecretStr`, also checked against the published values), `MAIL_FROM` and
+  `SMTP_STARTTLS`. `get_mail_sender` picks it, as for the outbox (R16; T026 amended).
+- **Existing guards that caught gaps**: the settings must be in `.env.example` and the README;
+  no `float` annotation (the timeout is an `int`); every hash follows `release_connection`; every
+  error code has an `en` and a `he` message.
+- **T028**: `FirstAdminService` (R15; T028 amended in `d84d58c`): it validates, then hashes with
+  the connection released, then takes `pg_advisory_xact_lock` and checks `any_exists`, then creates.
+  The script runs it in `unit_of_work` (a plain `session.begin()` conflicts with
+  `release_connection`'s commit). `--name` is optional (R17).
+- **Review R19 to R28 (`/code-review high`)**, each with a test seen failing first, except R23:
+  - R19: the name is checked first (1 to 255); a database error prints its type only.
+  - R20: `MAIL_FROM` must hold an address. R21: user name and password, both or neither.
+  - R22: `--help` exits 0. R24: the CA store is read on first delivery, in the thread.
+  - R26: `SMTP_STARTTLS=false` keeps the connection plain. R27: the README says the timeout is
+    per step and that port 465 is not supported. R28: `exists().select_from(User)`.
+  - R23: `main` disposes the engine, as every script does. No test: the run without it showed no
+    warning either, so the assertion I added checked nothing and was removed (its mutant lived).
+- **Mutation checks (T029 and the review)**, on the final code: STARTTLS skipped when not
+  offered, never used, the password in the error, the certificate unchecked, create_admin allowed
+  twice, STARTTLS off in production, and the R19 to R26 mutants were all killed. Equivalent: the
+  cause kept (the test relay's refusal quotes no secret); `from None` stays as a safeguard.
+- **Database tests** on `hds_p3_test` (free first): `test_create_admin`, `test_mail_after_commit`,
+  `test_delivery_after_response`: 23 passed.
+
+## Group F: the worker drains on shutdown (T030 to T032a)
+
+- **Failing first**: `test_worker_drain.py` runs the real worker as a process
+  (`tests/worker_process.py`, one stage slowed by 3 s, a marker file for when to signal). Before the
+  change the SIGTERM cases exited -15, killed mid-solve; the SIGKILL case passed, as it should.
+- **Found on the way (R29)**: the worker's log showed that the SQLAlchemy instrumentation 0.66b1
+  refuses SQLAlchemy 2.1.6 and instruments nothing, a Group D defect no test caught. Fixed in its
+  own commit after F, as the reviewer decided.
+- **T031**: SIGTERM or SIGINT sets `stopping`. The loop claims nothing more, finishes the solve
+  and stores it, or hands back a job not yet solving: checked before the build and again before
+  the solve. Then it exits 0. The ops server is a `uvicorn.Server` with a no-op `capture_signals`;
+  `serve` awaits the loop and only then stops the server. The grace-period note is in the module
+  docstring.
+- **Review decisions (R30 to R43)**, with T030, T031, T032a and data-model.md amended in
+  `4b91477`:
+  - R35, R41: a hand-back is `queued` again with its attempt given back, no lease or start, and
+    announced on the channel, so no clock and no attempt is spent; the next run is attempt 1. A
+    SIGKILL mid-solve still counts (attempt 2). 006's data-model.md refines 004's lifecycle; 004's
+    files are untouched.
+  - R30, R40: an ops server that ends on its own drains the worker, then exits non-zero.
+  - R31, R39: SIGINT drains too; a second signal takes the default action. A handed-back run is
+    not in the duration metric.
+  - R34: a hand-back that fails leaves the lease to run out and never fails the job. R37: checked
+    before the build. R38: a hand-back that finds the job reclaimed is logged as superseded.
+  - R36: the compose worker has `stop_grace_period: 90s`. R42: one stop waiter per loop.
+    R43: the drain tests clear `OTEL_*` from the worker's environment.
+  - R32: an `apps/api/README.md` "Worker shutdown" note. R33: CI's four postgres probes go over
+    TCP too.
+- **T032a**: compose's healthcheck is `pg_isready -h 127.0.0.1 -U ...`, with a deployment-files
+  test that fails on the socket probe. `docker compose config` is clean, and the probe answers on
+  the running database. The quickstart itself was not run here, because it would rebuild the
+  owner's running stack; CI's quickstart job runs it.
+- **Mutation checks**: all twelve were killed on the final code:
+  - T032's no release, exit before storing and claim after SIGTERM;
+  - uvicorn's `capture_signals` put back, which survived until R40 and is now killed by "exits 0";
+  - the attempt kept, the job left running, the hand-back not announced, built anyway, a release
+    error failing the job, superseded logged as handed back, a second signal ignored, and exit 0
+    after the ops server ends.
+- **Database tests** on `hds_p3_test` (free first): `test_worker_drain`, `test_worker`,
+  `test_worker_metrics` and `concurrency/test_worker_claims`, 16 passed.
+- An unpinned `koalaman/shellcheck:stable` was pulled by mistake for a manual check. No script
+  changed in F; `make ci-local` uses the pinned image.
+
+## Review R29: SQL spans on SQLAlchemy 2.1
+
+- Found in Group F's drain run: `opentelemetry-instrumentation-sqlalchemy` 0.66b1 declares
+  `sqlalchemy >= 1.0.0, < 2.1.0`, so on 2.1.6 it logged an error and instrumented nothing. No SQL
+  span existed since Group D, and no test ran a real statement under it.
+- The reviewer's decision, option (b): no release declares 2.1 support yet (0.66b2, eight days
+  old, still caps it), and SQLAlchemy stays at 2.1.6. `configure` passes `skip_dep_check=True`,
+  with the reason in a comment and a note in `infra/VERSIONS.md`; drop it once a release declares 2.1.
+- `tests/integration/test_sql_spans.py` runs real statements on `hds_p3_test` through an engine
+  the instrumentation wraps:
+  - a request's queries are spans inside its trace;
+  - a job's are under `schedule_job.run`;
+  - a sign-in address appears in no attribute (statements carry placeholders, never bound values);
+  - a statement outside any span starts no trace, while one inside a span is kept.
+- The tests failed first, with no SQL span. With `skip_dep_check` removed, all 4 fail.
+
+## The pre-push gate, and PR 2's Conventional Commits check
+
+- `make ci-local-db` over the whole branch (`hds_p3_test` free first): the migration check on a
+  fresh database was clean, and 1468 integration, contract and concurrency tests passed (the 2
+  deselected are the default timing and benchmark ones). This includes test_sql_spans,
+  test_worker_drain, test_create_admin and test_migration_024.
+- CI's secret scan on the pushed branch flagged the SMTP test's made-up token (generic-api-key).
+  Its exact value is allowlisted in `.gitleaks.toml` (`de892c9`); a redacted scan of the branch then
+  finds nothing, and nothing else was allowed.
+- `make ci-local` then failed only commitlint, on `884f31b`: its subject, T029's "SMTP mail backend
+  and a first-Admin command (006 Group E)", fails `subject-case` (the leading "SMTP" reads as
+  sentence case). CI's commitlint job lints every commit of a pull request, so **PR 2's
+  Conventional Commits check is red for that one commit**. By the owner's choice it is left as it
+  is: no reword and no force push. PR 2 merges by squash with a lower-case subject, so main never
+  carries that message (ledger R44).
+- The same rule would reject two subjects still to come, Group G's and Group K's in tasks.md;
+  both now start lower-case. Group E's line keeps the subject that was used.
+- Missed locally because this session's git hooks predate PR 9's `make hooks`, which installs the
+  commit-msg check, and the pre-bash hook does not check subject case.

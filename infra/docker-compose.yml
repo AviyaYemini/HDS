@@ -38,7 +38,9 @@ services:
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hds}"]
+      # Over TCP: on the first start the image's temporary set-up server answers on the socket
+      # only, and would report ready before the real one listens (T032a, PR 9's review).
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-hds}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -105,6 +107,9 @@ services:
       <<: *api-environment
       METRICS_PORT: "9100"
     command: ["python", "-m", "hds.worker"]
+    # On SIGTERM the worker finishes its solve (up to 60 s) and stores it; Docker's default 10 s
+    # would kill it first. 90 s, as the chart's terminationGracePeriodSeconds (review R36).
+    stop_grace_period: 90s
     ports:
       - "${WORKER_METRICS_PORT:-9101}:9100"
     volumes:

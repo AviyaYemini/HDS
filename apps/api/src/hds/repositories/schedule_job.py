@@ -135,6 +135,39 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
         job.proposal_state, job.decided_by, job.decided_at = state, by, at
         await self.session.flush()
 
+    async def release(self, id: uuid.UUID, attempt: int) -> bool:
+        """Put a job this run claimed but has not solved back in the queue (a worker stopping).
+
+        It is ``queued`` again with its attempt given back, as no solve ran, and no lease or start,
+        so it depends on no clock; workers are told on commit, as when it was first queued.
+        Nothing changes if another worker has claimed the job since (specs/006 FR-020,
+        data-model.md).
+
+        Returns:
+            Whether the job was still this run's.
+        """
+        result = await self.session.execute(
+            update(ScheduleJob)
+            .where(
+                ScheduleJob.id == id,
+                ScheduleJob.attempts == attempt,
+                ScheduleJob.status == "running",
+            )
+            .values(
+                status="queued",
+                attempts=ScheduleJob.attempts - 1,
+                lease_until=None,
+                started_at=None,
+            )
+            .returning(ScheduleJob.id)
+        )
+        released = result.first() is not None
+        if released and self.session.get_bind().dialect.name == "postgresql":
+            await self.session.execute(
+                text("SELECT pg_notify(:c, :i)"), {"c": CHANNEL, "i": str(id)}
+            )
+        return released
+
     async def finish(self, id: uuid.UUID, attempt: int, values: Mapping[str, Any]) -> bool:
         """Record the end of the run that claimed ``id`` as attempt ``attempt``.
 

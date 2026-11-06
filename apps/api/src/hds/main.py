@@ -17,6 +17,7 @@ from hds.core.logging import configure_logging
 from hds.core.metrics import HttpMetrics, MetricsMiddleware, serve
 from hds.core.openapi import install_openapi
 from hds.core.request_context import new_request_id, reset_request_id, set_request_id
+from hds.core.tracing import configure as configure_tracing
 
 
 def create_app(metrics_port: int | None = None) -> FastAPI:
@@ -27,9 +28,10 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     before the routers so their responses are documented. The OpenAPI document is served at
     ``/api/v1/openapi.json``.
 
-    The metrics middleware is added last, so it is outermost and sees every final status. Its
-    registry is served on the operations port by the lifespan, which uvicorn runs and the tests'
-    in-process client does not (specs/006 FR-007, FR-009).
+    The metrics middleware is added last, so it is the outermost of the app's own and sees every
+    final status. Its registry is served on the operations port by the lifespan, which uvicorn runs
+    and the tests' in-process client does not (specs/006 FR-007, FR-009). The trace
+    instrumentation wraps everything, so each request and its log lines are in a trace (FR-008a).
 
     Args:
         metrics_port: The operations port; ``METRICS_PORT`` by default, 0 for none.
@@ -105,6 +107,9 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     register_exception_handlers(application)
     install_openapi(application)
     application.add_middleware(MetricsMiddleware, metrics=metrics)
+    # Outermost of all, so every request, and every log line inside it, is in its trace: one
+    # continued from the request's traceparent, or a new one (specs/006 FR-008a).
+    configure_tracing("hds-api", app=application)
 
     from hds.routers.auth import router as auth_router
     from hds.routers.availability import router as availability_router

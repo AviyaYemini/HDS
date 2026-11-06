@@ -19,6 +19,12 @@ dependencies = [
     "tzdata>=2024.1",
     "ortools>=9.15",
     "prometheus-client>=0.26.0",
+    # Traces (specs/006 research R8). Pinned exactly: the SDK and its instrumentation are released
+    # together and must match (infra/VERSIONS.md).
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-instrumentation-fastapi==0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy==0.66b1",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +41,7 @@ dev = [
     "pip-audit>=2.7",
     "pyyaml>=6",
     "types-PyYAML>=6",
+    "aiosmtpd==1.4.6",
 ]
 
 [build-system]

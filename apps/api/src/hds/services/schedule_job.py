@@ -19,6 +19,7 @@ from typing import Any
 
 from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, DomainValidationError, NotFoundError
+from hds.core.trace_context import current_traceparent
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
 from hds.repositories.organisation import OrganisationRepository
@@ -66,6 +67,7 @@ class Claim:
     attempt: int
     settings: dict[str, int]
     lease_until: datetime | None = None
+    trace_context: str | None = None
 
 
 def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
@@ -162,7 +164,7 @@ class ScheduleJobService:
         self._now = now
 
     async def create(self, actor: User, data: dict[str, Any]) -> ScheduleJob:
-        """Ask for a roster (Manager or Admin); the job is queued.
+        """Ask for a roster (Manager or Admin); the job is queued with the current trace, if any.
 
         Args:
             actor: The caller.
@@ -207,6 +209,8 @@ class ScheduleJobService:
                     "min_rest_hours": org.min_rest_hours,
                     "max_weekly_hours": org.max_weekly_hours,
                 },
+                # The request's trace, so the worker's run of the job joins it (FR-008a).
+                "trace_context": current_traceparent(),
             },
         )
 
@@ -388,6 +392,7 @@ class ScheduleJobService:
             job.attempts,
             dict(job.settings),
             job.lease_until,
+            job.trace_context,
         )
 
     async def build(self, claim: Claim) -> Built:
@@ -422,6 +427,10 @@ class ScheduleJobService:
                 "finished_at": self._now(),
             },
         )
+
+    async def release(self, claim: Claim) -> bool:
+        """Give the claimed job back, unsolved (worker shutdown). The caller commits."""
+        return await self._jobs.release(claim.id, claim.attempt)
 
     async def fail(self, claim: Claim, code: str) -> bool:
         """Mark the claimed job failed with ``code`` (worker). The caller commits."""

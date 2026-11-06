@@ -18,4 +18,7 @@ regexes = [
   '''^3f1c9d7e-4a2b-4c55-9e0a-7b6d5c4e3f21$''',
   # apps/api/tests/unit/test_throttle_keys.py: a stand-in throttle key.
   '''^a-dedicated-throttle-secret-0123456789$''',
+  # apps/api/tests/unit/test_smtp_mail.py: a made-up one-time token the SMTP sender must deliver
+  # and never log (006 Group E).
+  '''^tok-9f8e7d6c5b4a39281706f5e4d3c2b1a0$''',
 ]

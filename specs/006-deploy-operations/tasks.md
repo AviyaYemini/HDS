@@ -121,26 +121,27 @@ three bullets.
 **Goal**: FR-008a. **Independent test**: queue a schedule job through the API, and the worker's log
 lines for it carry the API request's `trace_id`.
 
-- [ ] T020 [P] [US2] Failing tests `apps/api/tests/integration/test_migration_024.py`: upgrade from 023 and downgrade back. `schedule_jobs.trace_context` is `VARCHAR(55)`, nullable, and null on existing rows. Rule, quoted from data-model: "written once when the job is queued and never changed; null for jobs queued before the migration and for requests that carry no trace"
-- [ ] T021 [US2] Add the migration `apps/api/alembic/versions/024_schedule_job_trace_context.py`, which states what and why: one trace per job (§9), an expand step the previous release ignores (FR-016), and a downgrade that drops the column. Add the column to `apps/api/src/hds/models/schedule_job.py`, and keep `alembic check` clean
-- [ ] T022 [P] [US2] Failing tests `apps/api/tests/unit/test_tracing.py`, with an in-memory span exporter:
+- [X] T020 [P] [US2] Failing tests `apps/api/tests/integration/test_migration_024.py`: upgrade from 023 and downgrade back. `schedule_jobs.trace_context` is `VARCHAR(55)`, nullable, and null on existing rows. Rule, quoted from data-model: "written once when the job is queued and never changed; null for jobs queued before the migration and for requests that carry no trace"
+- [X] T021 [US2] Add the migration `apps/api/alembic/versions/024_schedule_job_trace_context.py`, which states what and why: one trace per job (§9), an expand step the previous release ignores (FR-016), and a downgrade that drops the column. Add the column to `apps/api/src/hds/models/schedule_job.py`, and keep `alembic check` clean
+- [X] T022 [P] [US2] Failing tests `apps/api/tests/unit/test_tracing.py`, with an in-memory span exporter:
   - **queuing**: a request carrying `traceparent: 00-<32 hex>-<16 hex>-01` that queues a job stores that trace in `trace_context`;
-  - **malformed**: a malformed header stores null;
+  - **malformed**: a malformed header is never stored: the job stores the new trace the API started for that request (review R1);
+  - **no trace**: a job queued outside any trace stores null;
   - **the worker**: running the job makes spans whose trace id equals the stored one, and a null starts a new trace;
   - **logs**: every JSON log line inside a request or a job has `trace_id` and `span_id`, while lines outside have neither;
   - **export**: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, no exporter is installed and nothing is sent (FR-008a)
-- [ ] T023 [US2] Add `apps/api/src/hds/core/tracing.py`: `configure(service_name)` sets up the provider, FastAPI and SQLAlchemy instrumentation, and OTLP over HTTP only when the endpoint is set. Add `current_traceparent()` and `continue_from(traceparent)`, which validates the format. Wire them in:
+- [X] T023 [US2] Add `apps/api/src/hds/core/tracing.py`: `configure(service_name)` sets up the provider, FastAPI and SQLAlchemy instrumentation, and OTLP over HTTP only when the endpoint is set. Add `current_traceparent()` and `continue_from(traceparent)`, which validates the format. The health probes (`/livez`, `/readyz`, `/health`) are not traced; they answer every few seconds (review R3). Wire them in:
   - **the queue**: `apps/api/src/hds/services/schedule_job.py` stores `current_traceparent()` when queuing;
   - **the worker**: `apps/api/src/hds/worker.py` wraps each job in a span continued from the row;
   - **logs**: `apps/api/src/hds/core/logging.py` adds `trace_id` and `span_id`.
-- [ ] T024 [US2] Mutation checks: a new trace in the worker; the header stored unvalidated; trace ids missing from logs. Then the gates, both reviews, the log, and a commit `feat(api): one trace per schedule job across the API and the worker (006 Group D)`
+- [X] T024 [US2] Mutation checks: a new trace in the worker; the traceparent check accepts any value; trace ids missing from logs. Then the gates, both reviews, the log, and a commit `feat(api): one trace per schedule job across the API and the worker (006 Group D)`
 
 ## Phase 5: Group E, SMTP mail and the first Admin (foundational for US3 and US4 messages, and for a production start)
 
 **Goal**: research R9 and R13. **Independent test**: with `ENVIRONMENT=production` and
 `MAIL_BACKEND=smtp` against a local `aiosmtpd`, the API starts and a password reset arrives.
 
-- [ ] T025 [P] Failing tests `apps/api/tests/unit/test_smtp_mail.py`, against an `aiosmtpd` controller on a free port:
+- [X] T025 [P] Failing tests `apps/api/tests/unit/test_smtp_mail.py`, against an `aiosmtpd` controller on a free port:
   - **delivery**: `SmtpMailSender.send` delivers one message with `From: MAIL_FROM` and the right recipient, subject and body, and uses STARTTLS. The test server offers STARTTLS with a throwaway certificate created at test time and never stored.
   - **refusals**: a server without STARTTLS is refused, and nothing is sent.
   - **errors**: connection and authentication errors raise a typed `MailDeliveryError`, carrying neither the password nor the token.
@@ -149,25 +150,26 @@ lines for it carry the API request's `trace_id`.
   Failing settings tests in `apps/api/tests/unit/test_settings_smtp.py`:
   - production with `MAIL_BACKEND=smtp` starts when `SMTP_HOST` and `MAIL_FROM` are set;
   - it is refused naming the setting without `SMTP_HOST` or `MAIL_FROM`, or with `SMTP_STARTTLS=false`.
-- [ ] T026 Add `SmtpMailSender` to `apps/api/src/hds/core/mail.py`, using `smtplib.SMTP` in `asyncio.to_thread` with `starttls()` required and a 10 s timeout. Register `smtp` in `REAL_MAIL_BACKENDS` in `apps/api/src/hds/core/config.py` and add the `SMTP_*` and `MAIL_FROM` settings, with the password as `SecretStr`. Pick the sender in `hds.wiring`, and keep `DeferredMailer` around it. Update the docstrings that say no real backend exists, `infra/README.md` and `apps/api/README.md`
-- [ ] T027 [P] Failing tests `apps/api/tests/integration/test_create_admin.py`, all using services and repositories:
-  - `python -m hds.scripts.create_admin --email a@example.com --organisation "Acme" --timezone Asia/Jerusalem`, with the password on stdin, creates the organisation and one Admin;
+- [X] T026 Add `SmtpMailSender` to `apps/api/src/hds/core/mail.py`, using `smtplib.SMTP` in `asyncio.to_thread` with `starttls()` required and a 10 s timeout. Register `smtp` in `REAL_MAIL_BACKENDS` in `apps/api/src/hds/core/config.py` and add the `SMTP_*` and `MAIL_FROM` settings, with the password as `SecretStr`. `get_mail_sender` in `core/mail.py` picks it, as it does the outbox, and `DeferredMailer` stays around it (review R16). Update the docstrings that say no real backend exists, `infra/README.md` and `apps/api/README.md`
+- [X] T027 [P] Failing tests `apps/api/tests/integration/test_create_admin.py`, all using services and repositories:
+  - `python -m hds.scripts.create_admin --email a@example.com --organisation "Acme" --timezone Asia/Jerusalem`, with an optional `--name` (default "Administrator", since a user needs a name; review R17) and the password on stdin, creates the organisation and one Admin;
   - it exits non-zero if any user exists, if the password fails the password rules, or if stdin is empty;
   - the password never appears in its output.
-- [ ] T028 Add `apps/api/src/hds/scripts/create_admin.py`, which uses the existing organisation and employee services
-- [ ] T029 Mutation checks: STARTTLS skipped; the password in the error; create_admin allowed twice. Then the gates, both reviews, the log, and a commit `feat(api): SMTP mail backend and a first-Admin command (006 Group E)`
+- [X] T028 Add `apps/api/src/hds/scripts/create_admin.py`, which uses `FirstAdminService` in `apps/api/src/hds/services/first_admin.py`. No organisation service exists, so that service reuses the employee rule `validate_initial_password` and the site rule `validate_timezone`, with `OrganisationRepository.create`, `UserRepository.any_exists` and `UserRepository.lock_first_admin` (review R15)
+- [X] T029 Mutation checks: STARTTLS skipped; the password in the error; create_admin allowed twice. Then the gates, both reviews, the log, and a commit `feat(api): SMTP mail backend and a first-Admin command (006 Group E)`
 
 ## Phase 6: Group F, the worker drains on shutdown (US5, P2)
 
 **Goal**: FR-020. **Independent test**: send SIGTERM to a worker in the middle of a job; the job ends
 once, and the worker exits within the grace period.
 
-- [ ] T030 [P] [US5] Failing tests `apps/api/tests/integration/test_worker_drain.py`, with real processes on the test database:
+- [X] T030 [P] [US5] Failing tests `apps/api/tests/integration/test_worker_drain.py`, with real processes on the test database:
   - **during a solve**: SIGTERM during a solve (the solver stubbed to take 3 s) lets it finish and store, and the process exits 0 with no new claim;
-  - **before the solve**: SIGTERM after claiming but before solving gives the lease back (`lease_until` set to now, attempts unchanged), and a second worker claims the job at once and stores it once;
+  - **before the solve**: SIGTERM after claiming but before solving hands the job back: `queued`, the attempt given back (0), `lease_until` and `started_at` null, announced on the `schedule_jobs` channel; a second worker claims it at once and stores it once, as attempt 1 (review R35, R41; data-model.md);
   - **lease expiry**: SIGKILL in the middle of a solve leaves the job to be reclaimed after its lease. The test then sets the job's `lease_until` in the past on the test database and starts a second worker, which reclaims it (the claim already takes running jobs past their lease) and stores it once; `attempts` is 2 (FR-020). No lease setting is added
-- [ ] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. The operations server (Group C) runs uvicorn in the same event loop, and uvicorn's `Server.serve()` installs its own SIGINT and SIGTERM handlers and re-raises the signal on exit, which today cancels the job loop mid-solve. Run it without that signal capture (a `Server` subclass with a no-op `capture_signals`), and do not cancel the job loop when the ops server ends: the loop decides. Add a T030 case: SIGTERM during a solve still lets it store, with the ops server running. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet built. Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
-- [ ] T032 [US5] Mutation checks: no release; exit before storing; claim after SIGTERM. Then the gates, both reviews, the log, and a commit `feat(worker): finish or hand back the current job on shutdown (006 Group F)`
+- [X] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. The operations server (Group C) runs uvicorn in the same event loop, and uvicorn's `Server.serve()` installs its own SIGINT and SIGTERM handlers and re-raises the signal on exit, which today cancels the job loop mid-solve. Run it without that signal capture (a `Server` subclass with a no-op `capture_signals`), and do not cancel the job loop when the ops server ends: the loop decides. Add a T030 case: SIGTERM during a solve still lets it store, with the ops server running. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet solved, checked before the build and again before the solve; a release that fails leaves the lease to expire and never fails the job. SIGINT drains like SIGTERM, and a second signal takes the default action (a forced exit). If the operations server ends on its own, the worker drains and then exits non-zero. A handed-back run is not observed in the job-duration metric, as a superseded one is not (review R30, R31, R34, R37, R39, R40). Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
+- [X] T032a [US1] Follow-up from PR 9's review (CodeRabbit): the `postgres` healthcheck in `infra/docker-compose.yml`, and the four postgres service healthchecks in `.github/workflows/ci.yml` (review R33), run `pg_isready` over the socket, which the image's first-start temporary server answers before it takes TCP, so `migrate` can start too early on the first `make up`. Probe over TCP (`pg_isready -h 127.0.0.1 -U ...`, and `--health-cmd "pg_isready -h 127.0.0.1"` in CI), as `scripts/ops/ci_local_db.sh` does. The compose worker gets `stop_grace_period: 90s`, the chart's grace (review R36). CI's quickstart job exercises it (FR-001)
+- [X] T032 [US5] Mutation checks: no release; exit before storing; claim after SIGTERM. Then the gates, both reviews, the log, and a commit `feat(worker): finish or hand back the current job on shutdown (006 Group F)`
 
 ## Phase 7: Group G, the Helm chart (foundational for US3, US4, US5)
 
@@ -185,7 +187,7 @@ once, and the worker exits within the grace period.
 - [ ] T034 [P] Failing test `apps/api/tests/unit/test_ingress_prefixes.py`: every route in `hds.main.app.routes` that is in the OpenAPI document, or is `/livez`, `/readyz` or `/health`, starts with a prefix listed in `infra/helm/hds/values.yaml` under `ingress.apiPrefixes`, or is one of the three health paths, which the ingress does not route (research R2)
 - [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, PostgreSQL StatefulSet and Service, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
 - [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). A database at a revision the code does not know (newer, for example the older image after a rollback) is left untouched and the command exits 0, rather than `alembic upgrade head` stopping on an unknown revision. Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
-- [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
+- [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): a Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
 
 ## Phase 8: Group H, backups and the restore test (US3, P1)
 
@@ -283,7 +285,7 @@ broken backup sends an e-mail (Group M).
   - the firing alerts from Alertmanager's API, reached through `kubectl port-forward`.
 
   Each failing item is marked `FAIL`. Test it against a k3d cluster in the `rolling-update` job (T059)
-- [ ] T058 Gates, ShellCheck, both reviews, the log, and a commit `feat(infra): Prometheus scraping and e-mailed failure alerts (006 Group K)`
+- [ ] T058 Gates, ShellCheck, both reviews, the log, and a commit `feat(infra): scrape with Prometheus and e-mail failure alerts (006 Group K)`
 
 ## Phase 12: Group L, the rolling-update proof (US5, P2)
 

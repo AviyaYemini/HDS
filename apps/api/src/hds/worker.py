@@ -12,17 +12,32 @@ It also serves an operations app on ``METRICS_PORT`` (specs/006 research R6, con
 ``/livez`` (the loop turned in the last 30 s, or a held job is inside its lease), ``/readyz`` (the
 database too) and ``/metrics`` (jobs by state, read from the table when scraped, and how long jobs
 took).
+
+On SIGTERM (or SIGINT) the worker drains (specs/006 FR-020, research R5): it claims nothing more,
+finishes the job it is solving and stores the result, or gives back the lease of a job it has
+claimed but not started solving, so the next worker takes it at once; then it exits 0. The chart's
+``terminationGracePeriodSeconds: 90`` must exceed the longest solve (``SCHEDULE_TIME_LIMIT_SECONDS``
+is at most 60) plus storing, or Kubernetes kills the worker mid-store; that job is then reclaimed
+once its lease ends. The operations server runs without uvicorn's own signal handling: the job loop
+decides when the process stops.
+
+Each run of a job is a span continued from the trace stored on the job when it was queued, so the
+job is one trace from the request to the worker (specs/006 FR-008a, research R8). The worker's
+logs are the API's JSON lines, which name that trace.
 """
 
 import asyncio
+import contextlib
 import logging
+import signal
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import uvicorn
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.applications import Starlette
@@ -30,8 +45,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from hds.core import trace_context, tracing
 from hds.core.config import get_settings
 from hds.core.health import WorkerPulse
+from hds.core.logging import configure_logging
 from hds.core.metrics import JobMetrics
 from hds.repositories.schedule_job import CHANNEL
 from hds.services.health import HealthService
@@ -54,14 +71,22 @@ class WorkerOps:
 
 
 async def run_once(
-    factory: async_sessionmaker[AsyncSession], ops: WorkerOps | None = None
+    factory: async_sessionmaker[AsyncSession],
+    ops: WorkerOps | None = None,
+    stopping: asyncio.Event | None = None,
 ) -> uuid.UUID | None:
-    """Claim and run one job; its id, or ``None`` when nothing was waiting.
+    """Claim and run one job; its id, or ``None`` when nothing was waiting or the worker stops.
+
+    Once ``stopping`` is set nothing more is claimed, and a job claimed but not yet solving is
+    handed back (``release``) instead of solved.
 
     A failure in building or solving marks the job failed (``jobs.solver_failed``) and changes
     nothing else; it never stops the worker. With ``ops``, the held job keeps the worker alive
-    until its lease ends, and the job's duration and outcome are recorded.
+    until its lease ends, and the job's duration and outcome are recorded. The run is one span,
+    continued from the trace the job was queued with, or a new trace when it has none.
     """
+    if stopping is not None and stopping.is_set():
+        return None  # no claim after SIGTERM
     async with factory() as session:
         claim = await job_service(session).claim()
         await session.commit()
@@ -71,14 +96,28 @@ async def run_once(
     if ops is not None and claim.lease_until is not None:
         ops.pulse.hold(claim.lease_until)
     outcome = "failed"  # also when storing the failure itself raises
+    span = trace_context.tracer().start_as_current_span(
+        trace_context.JOB_SPAN,
+        context=trace_context.continue_from(claim.trace_context),
+        kind=SpanKind.CONSUMER,
+        attributes={
+            "hds.schedule_job.id": str(claim.id),
+            "hds.schedule_job.attempt": claim.attempt,
+        },
+    )
     try:
-        outcome = await _run(factory, claim)
+        with span as current:
+            outcome = await _run(factory, claim, stopping)
+            # _run catches the failure itself, so the span is told how the job ended (review R6).
+            current.set_attribute("hds.schedule_job.outcome", outcome)
+            if outcome == "failed":
+                current.set_status(Status(StatusCode.ERROR, "the schedule job failed"))
     finally:
         if ops is not None:
             ops.pulse.release()
-            # A result thrown away because another worker reclaimed the job is not counted:
-            # that worker counts the job when it finishes.
-            if outcome != SUPERSEDED:
+            # A result thrown away because another worker reclaimed the job is not counted, nor
+            # one handed back unsolved: the worker that finishes the job counts it.
+            if outcome not in (SUPERSEDED, HANDED_BACK):
                 elapsed = timedelta(microseconds=(time.monotonic_ns() - started) / 1000)
                 ops.metrics.observe(outcome, elapsed)
     return claim.id
@@ -86,28 +125,36 @@ async def run_once(
 
 #: The outcome of a run whose result was thrown away because another worker had reclaimed the job.
 SUPERSEDED = "superseded"
+#: The outcome of a run stopped before its solve: the job's lease was given back (FR-020).
+HANDED_BACK = "handed_back"
 
 
-async def _run(factory: async_sessionmaker[AsyncSession], claim: Claim) -> str:
-    """Build, solve and store a claimed job.
+async def _run(
+    factory: async_sessionmaker[AsyncSession],
+    claim: Claim,
+    stopping: asyncio.Event | None = None,
+) -> str:
+    """Build, solve and store a claimed job, or hand it back if the worker stops before the solve.
 
     Returns:
-        ``succeeded``; ``failed`` once marked failed; or ``superseded`` when another worker had
-        reclaimed the job, so this result was not stored.
+        ``succeeded``; ``failed`` once marked failed; ``superseded`` when another worker had
+        reclaimed the job, so this result was not stored; or ``handed_back``.
     """
     limit = timedelta(seconds=get_settings().SCHEDULE_TIME_LIMIT_SECONDS)
+    if stopping is not None and stopping.is_set():
+        return await _hand_back(factory, claim)  # told to stop before the build (review R37)
     try:
         async with factory() as session:
             built = await job_service(session).build(claim)
             await session.rollback()
+    except Exception as error:
+        return await _fail(factory, claim, error)
+    if stopping is not None and stopping.is_set():
+        return await _hand_back(factory, claim)
+    try:
         result = await solve(claim, built, limit)
     except Exception as error:
-        code = error.code if isinstance(error, JobFailedError) else "jobs.solver_failed"
-        logger.exception("schedule job %s failed: %s", claim.id, code)
-        async with factory() as session:
-            await job_service(session).fail(claim, code)
-            await session.commit()
-        return "failed"
+        return await _fail(factory, claim, error)
     try:
         async with factory() as session:
             stored = await job_service(session).succeed(claim, built, result)
@@ -126,10 +173,48 @@ async def _run(factory: async_sessionmaker[AsyncSession], claim: Claim) -> str:
     return "succeeded"
 
 
+async def _fail(factory: async_sessionmaker[AsyncSession], claim: Claim, error: Exception) -> str:
+    """Mark the job failed for an error in building or solving it; ``failed``."""
+    code = error.code if isinstance(error, JobFailedError) else "jobs.solver_failed"
+    logger.exception("schedule job %s failed: %s", claim.id, code)
+    async with factory() as session:
+        await job_service(session).fail(claim, code)
+        await session.commit()
+    return "failed"
+
+
+async def _hand_back(factory: async_sessionmaker[AsyncSession], claim: Claim) -> str:
+    """Put an unsolved job back in the queue on shutdown; ``handed_back``, or ``superseded``.
+
+    Not started, so the next worker solves it at once, rather than this one holding the pod's
+    shutdown for a whole solve. Outside the solve's error handling: a hand-back that cannot be
+    stored leaves the lease to run out, and never fails a job that no solve touched (review R34).
+    """
+    try:
+        async with factory() as session:
+            released = await job_service(session).release(claim)
+            await session.commit()
+    except Exception:
+        logger.exception("schedule job %s could not be queued again; its lease runs out", claim.id)
+        return HANDED_BACK
+    if not released:
+        logger.warning("schedule job %s was claimed again before it could be queued", claim.id)
+        return SUPERSEDED
+    logger.info("schedule job %s handed back on shutdown", claim.id)
+    return HANDED_BACK
+
+
 async def run_forever(
-    factory: async_sessionmaker[AsyncSession], ops: WorkerOps | None = None
+    factory: async_sessionmaker[AsyncSession],
+    ops: WorkerOps | None = None,
+    stopping: asyncio.Event | None = None,
 ) -> None:
-    """Run jobs as they arrive, until cancelled; each turn of the loop beats ``ops.pulse``."""
+    """Run jobs as they arrive until ``stopping`` is set (or cancelled), then return.
+
+    Each turn of the loop beats ``ops.pulse``. The current job is finished or handed back first.
+    """
+    stopping = stopping or asyncio.Event()
+    stopped = asyncio.ensure_future(stopping.wait())  # one waiter for the whole loop (R42)
     wake = asyncio.Event()
     engine = factory.kw["bind"]
     async with engine.connect() as listener:
@@ -137,24 +222,26 @@ async def run_forever(
         driver = raw.driver_connection
         if driver is not None and hasattr(driver, "add_listener"):
             await driver.add_listener(CHANNEL, lambda *_: wake.set())
-        while True:
+        while not stopping.is_set():
             # Cleared before draining, so a job announced while the queue is being drained wakes
             # the next wait instead of being lost.
             wake.clear()
             if ops is not None:
                 ops.pulse.beat()
             try:
-                while await run_once(factory, ops) is not None:
+                while await run_once(factory, ops, stopping) is not None:
                     if ops is not None:
                         ops.pulse.beat()
             except Exception:
                 # A database error (a dropped connection, a failed commit) must not stop the
                 # worker: the job keeps its lease and is claimed again after it.
                 logger.exception("schedule worker step failed; carrying on")
-            try:
-                await asyncio.wait_for(wake.wait(), POLL_SECONDS)
-            except TimeoutError:
-                pass
+            woken = asyncio.ensure_future(wake.wait())
+            await asyncio.wait(
+                [woken, stopped], timeout=POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED
+            )
+            woken.cancel()
+    stopped.cancel()
 
 
 def ops_app(
@@ -214,10 +301,25 @@ def ops_app(
     )
 
 
-async def serve(factory: async_sessionmaker[AsyncSession], port: int) -> None:
-    """Run the job loop and, on ``port`` unless it is 0, the operations app, until cancelled.
+class _OpsServer(uvicorn.Server):
+    """uvicorn without its own signal handlers; the worker's handler decides when to stop.
 
-    The migration history is read first, so a broken image fails here at boot.
+    uvicorn's handlers re-raise SIGTERM when the server exits, which cancelled the job loop
+    mid-solve (T031).
+    """
+
+    @contextlib.contextmanager
+    def capture_signals(self) -> Iterator[None]:
+        """Install nothing."""
+        yield
+
+
+async def serve(factory: async_sessionmaker[AsyncSession], port: int) -> None:
+    """Run the job loop and, on ``port`` unless it is 0, the operations app, until SIGTERM.
+
+    The migration history is read first, so a broken image fails here at boot. On SIGTERM or
+    SIGINT the loop drains and returns, and only then is the operations server stopped. If the
+    operations server ends on its own, the loop is asked to stop too, and still finishes its job.
     """
     from hds.core.database import get_health_session_factory
 
@@ -229,26 +331,63 @@ async def serve(factory: async_sessionmaker[AsyncSession], port: int) -> None:
         async with factory() as session:
             return await job_service(session).counts_by_state()
 
-    tasks = [asyncio.create_task(run_forever(factory, ops))]
+    stopping = asyncio.Event()
+
+    def drain(signum: int) -> None:
+        """Stop claiming; the current job is finished or handed back. A second signal forces it.
+
+        The second one takes the signal's default action, as uvicorn does, so an operator can
+        still end a long solve; that job is then reclaimed after its lease (review R39).
+        """
+        if stopping.is_set():
+            loop.remove_signal_handler(signum)
+            signal.raise_signal(signum)
+            return
+        logger.info("%s: finishing the current job, then stopping", signal.Signals(signum).name)
+        stopping.set()
+
+    loop = asyncio.get_running_loop()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(signum, drain, signum)
+
+    jobs = asyncio.create_task(run_forever(factory, ops, stopping))
+    server: _OpsServer | None = None
+    ops_task: asyncio.Task[None] | None = None
+    ops_ended = False
     if port:
         health = health_service(get_health_session_factory(), check_migrations=False)
         app = ops_app(ops.pulse, health, counts, ops.metrics)
         config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
-        tasks.append(asyncio.create_task(uvicorn.Server(config).serve()))
-    done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    for task in tasks:
-        task.cancel()
-    for task in done:
-        task.result()
+        server = _OpsServer(config)
+        ops_task = asyncio.create_task(server.serve())
+        await asyncio.wait([jobs, ops_task], return_when=asyncio.FIRST_COMPLETED)
+        ops_ended = ops_task.done() and not stopping.is_set()
+        if ops_ended:
+            logger.error("the operations server stopped; finishing the current job, then stopping")
+            stopping.set()
+    await jobs  # the loop decides: never cancelled mid-job
+    if server is not None and ops_task is not None:
+        server.should_exit = True
+        await ops_task
+        if ops_ended:
+            # Without its probes the worker would be killed anyway; exit non-zero so the
+            # failure shows and the orchestrator restarts it (review R30, R40).
+            raise RuntimeError("the operations server stopped on its own; the worker drained")
 
 
 def main() -> None:
     """Start the worker, and its operations port, on the configured database."""
     from hds.core.database import get_session_factory
 
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
+    tracing.configure("hds-worker")
     logger.info("schedule worker started")
-    asyncio.run(serve(get_session_factory(), get_settings().METRICS_PORT))
+    try:
+        asyncio.run(serve(get_session_factory(), get_settings().METRICS_PORT))
+    finally:
+        # Batched spans are sent only on the way out: the last job's trace would lose its worker
+        # half (review R7). SIGTERM reaches this once the worker drains on it (006 Group F).
+        tracing.shutdown()
 
 
 if __name__ == "__main__":

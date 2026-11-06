@@ -73,8 +73,10 @@ alone; `make down`, `make ps` and `make logs` supply a stand-in. The variables a
 [`.env.example`](../.env.example). Never commit real secrets; production secrets come from the
 environment or a secret store.
 
-This stack is for development. Outside development the API also requires a real mail backend,
-and none exists yet, so it refuses to start there.
+This stack is for development, and its mail goes to the redacted outbox. Outside development the API
+requires the real mail backend, `MAIL_BACKEND=smtp`, with `SMTP_HOST` and `MAIL_FROM` set and
+STARTTLS on (`SMTP_STARTTLS`); the relay's password comes from the environment or Vault. See the
+configuration table in [`apps/api/README.md`](../apps/api/README.md).
 
 ## Notes
 

@@ -14,9 +14,25 @@ from hds.repositories.base import BaseRepository
 
 
 class OrganisationRepository(BaseRepository[Organisation]):
-    """Read access to organisations, which are the tenants themselves and so not scoped."""
+    """Access to organisations, which are the tenants themselves and so not scoped."""
 
     model = Organisation
+
+    async def create(self, name: str, timezone: str) -> Organisation:
+        """Insert an organisation with its defaults; the database adds its three shift types.
+
+        Args:
+            name: The organisation's name.
+            timezone: The IANA zone its times are shown in.
+
+        Returns:
+            The persisted organisation.
+        """
+        org = Organisation(id=uuid.uuid4(), name=name, timezone=timezone)
+        self.session.add(org)
+        await self.session.flush()
+        await self.session.refresh(org)
+        return org
 
     async def get_by_id(self, id: uuid.UUID) -> Organisation | None:
         """Fetch an organisation by id.

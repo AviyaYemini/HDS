@@ -14,6 +14,7 @@ key or database password published in this repository (``KNOWN_DEVELOPMENT_VALUE
 import hashlib
 import hmac
 import os
+import re
 from pathlib import Path
 from typing import Self
 
@@ -55,12 +56,20 @@ KNOWN_DEVELOPMENT_VALUES: frozenset[str] = frozenset(
 #: The only environments allowed to use a weak secret and the development mail outbox.
 DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
 
-#: Mail backends that really deliver messages. None exists yet, so a non-development
-#: environment cannot start until a provider feature registers one (specs/002 research D6).
-REAL_MAIL_BACKENDS: frozenset[str] = frozenset()
+#: The backend that delivers through an SMTP relay over STARTTLS (specs/006 research R9).
+SMTP_BACKEND = "smtp"
+
+#: Mail backends that really deliver messages; a non-development environment must use one
+#: (specs/002 research D6). SMTP is the first (specs/006 research R9).
+REAL_MAIL_BACKENDS: frozenset[str] = frozenset({SMTP_BACKEND})
 
 #: The development-only backend that stores a redacted record of each message in a local file.
 OUTBOX_BACKEND = "outbox"
+
+# A sender is an address, bare or as ``Name <address>``; anything else would go out as the null
+# sender ``MAIL FROM:<>`` (review R20).
+_ADDRESS = r"[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+"
+_SENDER = re.compile(rf"\s*(?:[^<>@]*<\s*{_ADDRESS}\s*>|{_ADDRESS})\s*")
 
 _DEFAULT_OUTBOX_PATH = str(Path(__file__).resolve().parents[3] / ".dev-mail" / "outbox.jsonl")
 
@@ -104,6 +113,13 @@ class Settings(BaseSettings):
         MAIL_BACKEND: How messages are delivered. Defaults to ``outbox`` in a development
             environment; outside development it must name a real backend.
         MAIL_OUTBOX_PATH: File the ``outbox`` backend appends its redacted records to.
+        SMTP_HOST: The relay for ``MAIL_BACKEND=smtp``; required with it.
+        SMTP_PORT: The relay's port, 587 (submission) by default.
+        SMTP_USERNAME: The relay sign-in; none signs in without one.
+        SMTP_PASSWORD: Its password, a secret: never logged, never in an error.
+        MAIL_FROM: The sender address of every message; required with ``MAIL_BACKEND=smtp``.
+        SMTP_STARTTLS: Whether the connection must be upgraded to TLS before anything is sent.
+            It must stay on outside development; off only for a local relay in development.
         HDS_VERSION: The version this process runs, baked into the image by its build (the
             commit SHA); reported by the health checks and the ``hds_build_info`` metric.
         METRICS_PORT: The operations port serving the metrics (and, for the worker, its health
@@ -114,8 +130,9 @@ class Settings(BaseSettings):
         ValueError: On construction (reported as a validation error that names the setting but
             never prints a setting's value): ``ENVIRONMENT`` or ``JWT_SECRET_KEY`` missing, or
             the secret empty;
-            ``CORS_ORIGINS`` containing ``*``; outside development, a placeholder or too-short
-            secret, or a missing or development-only mail backend.
+            ``CORS_ORIGINS`` containing ``*``; ``MAIL_BACKEND=smtp`` without ``SMTP_HOST`` or
+            ``MAIL_FROM``; outside development, a placeholder or too-short secret, a missing or
+            development-only mail backend, or ``SMTP_STARTTLS`` off.
     """
 
     ENVIRONMENT: str
@@ -143,6 +160,12 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
     MAIL_BACKEND: str | None = None
     MAIL_OUTBOX_PATH: str = _DEFAULT_OUTBOX_PATH
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = Field(default=587, gt=0, le=65535)
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: SecretStr | None = None
+    MAIL_FROM: str | None = None
+    SMTP_STARTTLS: bool = True
     HDS_VERSION: str = "dev"
     METRICS_PORT: int = Field(default=0, ge=0, le=65535)
 
@@ -190,6 +213,7 @@ class Settings(BaseSettings):
                 self.MAIL_BACKEND = OUTBOX_BACKEND
             if self.MAIL_BACKEND != OUTBOX_BACKEND and self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:
                 raise ValueError("MAIL_BACKEND does not name a known mail backend")
+            self._refuse_incomplete_smtp()
             return self
         # Also refuses PUBLISHED_PLACEHOLDER, which is on the list (compared ignoring case).
         self._refuse_published_values()
@@ -206,11 +230,36 @@ class Settings(BaseSettings):
             )
         if self.MAIL_BACKEND not in REAL_MAIL_BACKENDS:
             raise ValueError(
-                "MAIL_BACKEND must name a real mail backend unless ENVIRONMENT is development "
-                "or test; the 'outbox' backend is for development only and no real backend is "
-                "available yet"
+                "MAIL_BACKEND must name a real mail backend (smtp) unless ENVIRONMENT is "
+                "development or test; the 'outbox' backend is for development only"
+            )
+        self._refuse_incomplete_smtp()
+        if self.MAIL_BACKEND == SMTP_BACKEND and not self.SMTP_STARTTLS:
+            raise ValueError(
+                "SMTP_STARTTLS must be true unless ENVIRONMENT is development or test: mail "
+                "carries account links and must not cross the network in clear"
             )
         return self
+
+    def _refuse_incomplete_smtp(self) -> None:
+        """Refuse ``MAIL_BACKEND=smtp`` without its host, with no sender address, or half a sign-in.
+
+        Raises:
+            ValueError: Naming the setting at fault, never its value.
+        """
+        if self.MAIL_BACKEND != SMTP_BACKEND:
+            return
+        for name, value in (("SMTP_HOST", self.SMTP_HOST), ("MAIL_FROM", self.MAIL_FROM)):
+            if not (value or "").strip():
+                raise ValueError(f"{name} must be set when MAIL_BACKEND is smtp")
+        if not _SENDER.fullmatch(self.MAIL_FROM or ""):
+            raise ValueError("MAIL_FROM must be an address, bare or as 'Name <address>'")
+        has_password = self.SMTP_PASSWORD is not None and self.SMTP_PASSWORD.get_secret_value()
+        if bool(self.SMTP_USERNAME) != bool(has_password):
+            raise ValueError(
+                "SMTP_USERNAME and SMTP_PASSWORD must be set together, or neither for a relay "
+                "that needs no sign-in"
+            )
 
     def _refuse_published_values(self) -> None:
         """Refuse a key or database password that this repository publishes (specs/006 FR-026).
@@ -236,6 +285,10 @@ class Settings(BaseSettings):
             ("DATABASE_URL", url.password),
             ("DATABASE_URL", option),
             ("PGPASSWORD", os.environ.get("PGPASSWORD")),
+            (
+                "SMTP_PASSWORD",
+                self.SMTP_PASSWORD.get_secret_value() if self.SMTP_PASSWORD else None,
+            ),
         ]
         for name, found in candidates:
             for value in (found,) if isinstance(found, str) or found is None else found:
