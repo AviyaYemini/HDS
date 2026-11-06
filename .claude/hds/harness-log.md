@@ -235,3 +235,6 @@ HDS helper. The hook and ledger cases were added first and failed (8 of them), t
 - **Nitpicks**: `RunLock` is documented as single-use; `_acquire` closes its connection when the
   lock query raises.
 - CodeRabbit's eighth point, the recursive-search tests, was already fixed (above).
+- `_HEREDOC_START` (commit-message scanning) has the same `<<<` lookalike and is left as it is: it
+  runs only inside a `$(` in a quoted `-m`, and a message keeps every `$(` that survives
+  `_LITERAL_HEREDOC` in the scan, so a misread can only keep more text scanned, never hide any.
