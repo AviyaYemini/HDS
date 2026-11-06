@@ -2,9 +2,15 @@
 # named paths under apps/api, so nothing below reaches the image; this keeps secrets, the database
 # files and caches out of the context sent to the builder.
 .git/
-.env
-.env.*
-!.env.example
+# Settings files at any depth: a nested one (apps/client, say) would reach the web build, and Expo
+# bundles its EXPO_PUBLIC_ values into the page. No image needs the example file, so it goes too.
+#
+# No `!` exceptions anywhere in this file. A wildcard exception makes the builder walk every
+# excluded folder to look for matches, and on Linux infra/volumes/postgres belongs to the database's
+# user (mode 0700), so a build after the first `make up` fails with "permission denied" (CI run
+# 42200877912). A plain-path exception would be safe, but keep the rule simple: none.
+**/.env
+**/.env.*
 infra/volumes/
 **/.venv/
 **/__pycache__/
@@ -17,3 +23,9 @@ infra/volumes/
 **/node_modules/
 *.log
 .DS_Store
+# The client's own build and test outputs: the web image builds its export afresh.
+apps/client/dist/
+apps/client/coverage/
+apps/client/playwright-report/
+apps/client/test-results/
+apps/client/.jest-cache/

@@ -1,0 +1,21 @@
+# Secret scan configuration (specs/006-deploy-operations FR-025, T002).
+#
+# The built-in rules apply. The only exceptions are made-up values that unit tests use to prove a
+# secret is redacted or refused; each is listed by its exact value, so nothing shaped like them
+# slips through. Add an entry only for a value that is published on purpose and never used outside
+# tests, with a comment naming where it lives.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Made-up values used by unit tests; none is a real secret."
+regexes = [
+  # apps/api/tests/unit/test_deployment_files.py: a stand-in for a generated JWT key.
+  '''^a-generated-secret-0123456789abcdef$''',
+  # apps/api/tests/unit/test_logging_redaction.py: a token the redaction test must hide.
+  '''^abcdef123456$''',
+  # apps/api/tests/unit/test_mail_outbox.py: a one-time token the outbox must redact.
+  '''^3f1c9d7e-4a2b-4c55-9e0a-7b6d5c4e3f21$''',
+  # apps/api/tests/unit/test_throttle_keys.py: a stand-in throttle key.
+  '''^a-dedicated-throttle-secret-0123456789$''',
+]

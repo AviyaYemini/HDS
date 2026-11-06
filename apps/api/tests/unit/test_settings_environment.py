@@ -13,6 +13,9 @@ from pydantic import ValidationError
 from hds.core.config import PUBLISHED_PLACEHOLDER, Settings
 from tests.settings_support import make_settings
 
+# A production configuration needs a database password the repository does not publish (006).
+pytestmark = pytest.mark.usefixtures("distinct_database_password")
+
 STRONG = "strong-distinct-secret-value-0123456789abcdef"  # 44 bytes, not the placeholder
 SHORT = "short-distinct-secret"  # 21 bytes
 STRICT_ENVIRONMENTS = ["production", "staging", "qa", "PRODUCTION"]

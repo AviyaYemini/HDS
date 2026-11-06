@@ -1,0 +1,371 @@
+# Tasks: Deployment and operations
+
+**Input**: `specs/006-deploy-operations/`:
+- **spec.md**: US1 to US6, FR-001 to FR-027 with FR-008a and FR-010a, SC-001 to SC-008
+- **plan.md**: Groups A to M
+- **research.md**: R1 to R14
+- **data-model.md**, **contracts/ops.md** and **quickstart.md**, scenarios 1 to 6
+
+**Tests**: required (Constitution IV). Every rule gets a test, and each test is run and seen to fail
+for the right reason before the code that satisfies it exists. Infrastructure has tests too:
+- a CI job, or a script run by one, that fails before the change and passes after it;
+- `helm template` assertions for the chart.
+
+Tests run on the private database `hds_p3_test`, one run at a time.
+
+**Each group ends with**:
+1. mutation checks, where code was written;
+2. the gates: ruff, format, `mypy --strict src/ tests/`, interrogate, the import graph,
+   `alembic check`, plus ShellCheck and `helm lint` where they apply;
+3. `/hds-review` and `/code-review high`;
+4. the log (`p1-log.md`);
+5. a commit.
+
+**Organization**: one group per plan phase, in plan order. Each group ends green and is committed.
+
+## Format: `[ID] [P?] [Story] Description`
+
+## Phase 1: Group A, pins and the secret checks (setup; US6)
+
+**Goal**: every tool pinned; FR-025 and FR-026. **Independent test**: quickstart scenario 6, first
+three bullets.
+
+- [X] T001 Pin versions in `infra/VERSIONS.md` (one table: tool or image, version, digest where an image, why) and use them everywhere they appear:
+  - **images**: `python:3.12-slim`, `postgres:16`, `nginxinc/nginx-unprivileged`, `rclone/rclone`
+  - **cluster**: age, k3d, k3s, Helm, Flux, Vault chart, Vault Secrets Operator chart, kube-prometheus-stack chart
+  - **CI tools**: Trivy, gitleaks, ShellCheck, kubeconform
+  - **Python packages**: `prometheus-client`, the OpenTelemetry packages and `aiosmtpd`, recorded here and each added to `apps/api/pyproject.toml` and `uv.lock` in the group that first imports it (C, D and E), so no image carries an unused dependency (§10 Dependencies)
+- [X] T002 [P] [US6] Failing test, a CI job `secrets` in `.github/workflows/ci.yml` that runs gitleaks over the pull request's commits. Prove it fails: run it locally on a throwaway branch carrying an AWS-format sample key in `tmp/leak.txt`, and check that the output names the file and the line. Then add the gitleaks hook to `.pre-commit-config.yaml`, plus `.gitleaks.toml` allowing only the published development placeholders, each listed by exact value with a comment (FR-025)
+- [X] T003 [P] [US6] Failing tests `apps/api/tests/unit/test_settings_known_values.py`. With `ENVIRONMENT=production`, start-up is refused for:
+  - every password or key value published in `.env.example`, `infra/docker-compose.yml`, `.github/workflows/*.yml` and `apps/api/tests/conftest.py`, such as `hds_dev`, `hds_scratch`, `hds_e2e`, `change-me` and `ci-only-not-a-real-secret-0123456789`, whether it appears as `JWT_SECRET_KEY`, as `THROTTLE_SECRET_KEY` or as the password inside `DATABASE_URL`;
+  - a value that only differs from one of those by case or surrounding space;
+  - in every case the error names the setting and never the value.
+
+  With `ENVIRONMENT=development` the same values start. A second test reads those files and fails if a value published there is missing from the refused list, so a new example value cannot slip through (FR-026)
+- [X] T004 [US6] Add `KNOWN_DEVELOPMENT_VALUES` and the check to `apps/api/src/hds/core/config.py`, and parse the password from `DATABASE_URL` with SQLAlchemy's `make_url`. Update the module docstring and `apps/api/README.md` (Configuration)
+- [X] T005 [P] Failing check, a CI step in the `lint` job: `docker build -f infra/Dockerfile.api` and then `docker run --rm --entrypoint id <image> -u` print a non-zero uid, and `docker inspect` shows the label `org.opencontainers.image.version` and the env `HDS_VERSION` equal to the build arg. Then harden `infra/Dockerfile.api`: a pinned base by digest, `ARG HDS_VERSION=dev`, a non-root user `hds` (uid 10001), `uv` installed from a pinned version, no `pip install uv` at an unpinned version, and `CMD` unchanged
+- [X] T006 Mutation checks: drop one value from the list; compare without trimming; let the check run in development. Then the gates, both reviews, the log, and a commit `feat(api): refuse published development secrets outside development (006 Group A)`
+
+## Phase 2: Group B, the one-command local environment (US1, P1)
+
+**Goal**: FR-001 to FR-005, SC-001. **Independent test**: quickstart scenario 1.
+
+- [X] T007 [US1] Failing test, a CI job `quickstart` in `.github/workflows/ci.yml` and the script `scripts/ops/quickstart_check.sh`, which works from a clean checkout and fails at the first unmet step:
+  1. `make env` writes `.env` with a 64-hex-character `JWT_SECRET_KEY`.
+  2. A second `make env` exits non-zero and leaves the file unchanged.
+  3. `make up` (with `timeout 600`, under SC-001's 15 minutes) returns. Log how long it took.
+  4. `curl localhost:8000/readyz` reaches 200 within 120 s.
+  5. `curl localhost:8090/` returns HTML containing the app's root element.
+  6. Each sample account from `apps/api/src/hds/scripts/seed_dev.py` signs in through `POST /auth/login`.
+  7. A shift created through the API, then `make down` and `make up` (with `timeout 120`; log the time), is still there.
+  8. `make up` again, on the running stack, exits 0, creates no second organisation and restarts nothing (the port check skips this project's own running services).
+  9. With `JWT_SECRET_KEY=` emptied, `make up` exits non-zero with output naming `JWT_SECRET_KEY`.
+  10. `make wipe` with `yes` piped in deletes the data, and the next `make up` has only the seed.
+  11. `make down`; then, with port 8000 held by another process, `make up` exits non-zero naming `8000`, and `docker compose ps` shows nothing running (no half-started stack).
+  12. `make wipe`; then start only the database (`docker compose ... up -d postgres`) and create one of migration 001's tables by hand so 001 fails (the port check skips the running `postgres` service): `make up` exits non-zero, the API is not started, and the output shows the migration error. No repository file changes for this step.
+
+  It needs `/readyz`, so it runs after T013; until then it is expected to fail at step 4. Record that failure in the log (FR-001 to FR-005)
+- [X] T008 [P] [US1] `infra/Dockerfile.web`: a multi-stage build that runs `pnpm install --frozen-lockfile` and `pnpm --filter hds-client export:web` with `EXPO_PUBLIC_API_URL=""`, then copies `apps/client/dist` into the pinned `nginx-unprivileged`, listening on 8080 with an SPA fallback to `index.html`, configured in `infra/web/nginx.conf`. Locally the API is on another origin, so the compose build passes `EXPO_PUBLIC_API_URL=http://localhost:8000` as a build arg; the cluster image keeps it empty (research R2)
+- [X] T009 [US1] `infra/docker-compose.yml`:
+  - **`migrate`**: a one-shot service on the API image, running `alembic upgrade head && python -m hds.scripts.seed_dev`.
+  - **API and worker**: `api` and `worker` depend on `migrate: service_completed_successfully`. `api` has a healthcheck on `/readyz` and maps `9100:9100`; `worker` maps `9101:9100`.
+  - **`web`**: from `Dockerfile.web` at `8090:8080` (not 8081, the Expo dev server's port), depending on the API being healthy.
+  - **Comments**: remove the note that migrations are not run on start.
+  - **No new defaults** for secrets.
+- [X] T010 [US1] `Makefile`, with each target's comment saying what it keeps and what it deletes:
+  - **`env`**: writes `.env` from `.env.example` with a fresh `openssl rand -hex 32`; refuses if `.env` exists.
+  - **`up`**: first checks that ports 5432, 8000, 8090, 9100 and 9101 are free and, if one is taken, names it and starts nothing. A port whose service is already running in this compose project (`docker compose ps --status running --services`) is skipped, so `make up` on a running stack still works; then starts everything and waits for the API to be healthy.
+  - **`down`**: unchanged.
+  - **`wipe`**: asks `Delete the local database? [y/N]`, then runs `down -v` and removes `infra/volumes/postgres`.
+- [X] T011 [US1] Docs: the root `README.md` quickstart becomes the prerequisites (Docker, make), then `make env`, then `make up`, then the sample accounts and their roles. Rewrite the local section of `infra/README.md` for the new services and targets, and keep the proxy note
+- [X] T012 Gates, ShellCheck on `scripts/ops/quickstart_check.sh`, both reviews, the log, and a commit `feat(infra): start the whole system with one command (006 Group B)`
+
+## Phase 3: Group C, health, version and metrics (US2, P1)
+
+**Goal**: FR-006 to FR-010. **Independent test**: quickstart scenario 2.
+
+- [X] T013 [P] [US2] Failing tests `apps/api/tests/unit/test_health.py`, using a fake health repository:
+  - **ready**: `ready()` is ok when the ping succeeds and the revision is the code's head.
+  - **newer**: a revision the code's script history does not know counts as ready, because it is newer and FR-016 keeps the code working on it (this is what lets old pods serve during an upgrade and after a rollback).
+  - **database**: it reports `failing: ["database"]` when the ping raises or takes over 2 s; time is controlled, with no real waiting.
+  - **migrations**: it reports `failing: ["migrations"]` only when the database is behind: `alembic_version` empty or missing, or a revision in the code's own history that is not its head.
+  - **live**: `live()` never touches the repository.
+  - **bodies**: a body never contains the exception's text.
+
+  Failing integration tests `apps/api/tests/integration/test_health_endpoints.py`:
+  - `GET /livez`, `/readyz` and `/health` answer 200 with `{"status":"ok","version":...}`.
+  - With the database stopped (an engine pointed at a closed port), `/readyz` answers 503 `{"status":"not_ready","failing":["database"],...}` within 2.5 s, while `/livez` answers 200.
+  - None of the three is in `/api/v1/openapi.json`, and none needs authentication (FR-006, FR-009, FR-010).
+- [X] T014 [US2] Add `apps/api/src/hds/repositories/health.py` (`ping()` and `revision()`, which reads `alembic_version`) and `apps/api/src/hds/core/health.py` (`live()` and `ready(repo, history, limit=2.0)` using `asyncio.timeout`; `history` is the code's known revisions and its head, read from Alembic's `ScriptDirectory` once at start-up, and "behind" means a known revision that is not the head, or none). Add the routes in `apps/api/src/hds/main.py`, with `/health` answering as `/livez`. Add `HDS_VERSION` to `apps/api/src/hds/core/config.py`
+- [X] T015 [P] [US2] Failing tests `apps/api/tests/unit/test_metrics.py`:
+  - **labels**: after requests to `/api/v1/shifts/<uuid>`, a 404 path, `/auth/login` with a body and a query string containing an e-mail address, the registry holds `hds_http_requests_total` only with `route` values from the app's route templates or `unmatched`;
+  - **status**: the `status` label is the code;
+  - **duration**: the duration histogram has a sample per request;
+  - **no personal data**: no label value contains a UUID, an `@` or a `?`;
+  - **build info**: `hds_build_info{version}` is 1.
+
+  Failing integration test `apps/api/tests/integration/test_metrics_port.py`: the metrics answer on `METRICS_PORT` and `GET /metrics` on the public port is 404 (FR-007, FR-009)
+- [X] T016 [US2] Add `apps/api/src/hds/core/metrics.py`, a pure ASGI middleware that reads the matched route's `path_format` after routing, with its own `CollectorRegistry`. Start the metrics server on `METRICS_PORT` (default 9100) in the app's lifespan, but not under the test client's lifespan unless asked. Add `METRICS_PORT` to config
+- [X] T017 [P] [US2] Failing tests `apps/api/tests/unit/test_worker_ops.py`:
+  - **live**: the worker's ops app answers `/livez` 200 while the loop's heartbeat is under 30 s old, or while the worker holds a job still inside its lease; 503 when neither holds.
+  - **long solve**: `/livez` stays 200 through a 60 s solve (time controlled), and turns 503 once the held job passes its lease.
+  - **ready**: `/readyz` adds the database ping.
+  - **metrics**: `/metrics` has `hds_schedule_jobs{state}` for all four states, counted from the table through a fake repository, plus `hds_schedule_job_duration_seconds{outcome}` after a run.
+
+  Failing integration test `apps/api/tests/integration/test_worker_metrics.py`: with two queued jobs and one failed job, the gauge reads 2 and 1 (FR-006, FR-008)
+- [X] T018 [US2] Worker: in `apps/api/src/hds/worker.py`, serve a Starlette ops app with uvicorn on `METRICS_PORT` in the worker's event loop, and add a heartbeat set on each loop turn, plus the held job's `lease_until`, which liveness also accepts (research R6). Add `count_by_state()` to `apps/api/src/hds/repositories/schedule_job.py`, and observe the job duration in `run_once`
+- [X] T019 [US2] Mutation checks: label by path; skip the 2 s limit; ready ignores migrations; ready fails on an unknown (newer) revision; heartbeat never ages; liveness ignores the held job; metrics on the public port. Then the gates, both reviews, the log, and a commit `feat(api): live and ready checks, version and RED metrics (006 Group C)`
+
+## Phase 4: Group D, traces (US2, P1)
+
+**Goal**: FR-008a. **Independent test**: queue a schedule job through the API, and the worker's log
+lines for it carry the API request's `trace_id`.
+
+- [ ] T020 [P] [US2] Failing tests `apps/api/tests/integration/test_migration_024.py`: upgrade from 023 and downgrade back. `schedule_jobs.trace_context` is `VARCHAR(55)`, nullable, and null on existing rows. Rule, quoted from data-model: "written once when the job is queued and never changed; null for jobs queued before the migration and for requests that carry no trace"
+- [ ] T021 [US2] Add the migration `apps/api/alembic/versions/024_schedule_job_trace_context.py`, which states what and why: one trace per job (§9), an expand step the previous release ignores (FR-016), and a downgrade that drops the column. Add the column to `apps/api/src/hds/models/schedule_job.py`, and keep `alembic check` clean
+- [ ] T022 [P] [US2] Failing tests `apps/api/tests/unit/test_tracing.py`, with an in-memory span exporter:
+  - **queuing**: a request carrying `traceparent: 00-<32 hex>-<16 hex>-01` that queues a job stores that trace in `trace_context`;
+  - **malformed**: a malformed header stores null;
+  - **the worker**: running the job makes spans whose trace id equals the stored one, and a null starts a new trace;
+  - **logs**: every JSON log line inside a request or a job has `trace_id` and `span_id`, while lines outside have neither;
+  - **export**: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, no exporter is installed and nothing is sent (FR-008a)
+- [ ] T023 [US2] Add `apps/api/src/hds/core/tracing.py`: `configure(service_name)` sets up the provider, FastAPI and SQLAlchemy instrumentation, and OTLP over HTTP only when the endpoint is set. Add `current_traceparent()` and `continue_from(traceparent)`, which validates the format. Wire them in:
+  - **the queue**: `apps/api/src/hds/services/schedule_job.py` stores `current_traceparent()` when queuing;
+  - **the worker**: `apps/api/src/hds/worker.py` wraps each job in a span continued from the row;
+  - **logs**: `apps/api/src/hds/core/logging.py` adds `trace_id` and `span_id`.
+- [ ] T024 [US2] Mutation checks: a new trace in the worker; the header stored unvalidated; trace ids missing from logs. Then the gates, both reviews, the log, and a commit `feat(api): one trace per schedule job across the API and the worker (006 Group D)`
+
+## Phase 5: Group E, SMTP mail and the first Admin (foundational for US3 and US4 messages, and for a production start)
+
+**Goal**: research R9 and R13. **Independent test**: with `ENVIRONMENT=production` and
+`MAIL_BACKEND=smtp` against a local `aiosmtpd`, the API starts and a password reset arrives.
+
+- [ ] T025 [P] Failing tests `apps/api/tests/unit/test_smtp_mail.py`, against an `aiosmtpd` controller on a free port:
+  - **delivery**: `SmtpMailSender.send` delivers one message with `From: MAIL_FROM` and the right recipient, subject and body, and uses STARTTLS. The test server offers STARTTLS with a throwaway certificate created at test time and never stored.
+  - **refusals**: a server without STARTTLS is refused, and nothing is sent.
+  - **errors**: connection and authentication errors raise a typed `MailDeliveryError`, carrying neither the password nor the token.
+  - **logs**: no log line contains the token or the address in full.
+
+  Failing settings tests in `apps/api/tests/unit/test_settings_smtp.py`:
+  - production with `MAIL_BACKEND=smtp` starts when `SMTP_HOST` and `MAIL_FROM` are set;
+  - it is refused naming the setting without `SMTP_HOST` or `MAIL_FROM`, or with `SMTP_STARTTLS=false`.
+- [ ] T026 Add `SmtpMailSender` to `apps/api/src/hds/core/mail.py`, using `smtplib.SMTP` in `asyncio.to_thread` with `starttls()` required and a 10 s timeout. Register `smtp` in `REAL_MAIL_BACKENDS` in `apps/api/src/hds/core/config.py` and add the `SMTP_*` and `MAIL_FROM` settings, with the password as `SecretStr`. Pick the sender in `hds.wiring`, and keep `DeferredMailer` around it. Update the docstrings that say no real backend exists, `infra/README.md` and `apps/api/README.md`
+- [ ] T027 [P] Failing tests `apps/api/tests/integration/test_create_admin.py`, all using services and repositories:
+  - `python -m hds.scripts.create_admin --email a@example.com --organisation "Acme" --timezone Asia/Jerusalem`, with the password on stdin, creates the organisation and one Admin;
+  - it exits non-zero if any user exists, if the password fails the password rules, or if stdin is empty;
+  - the password never appears in its output.
+- [ ] T028 Add `apps/api/src/hds/scripts/create_admin.py`, which uses the existing organisation and employee services
+- [ ] T029 Mutation checks: STARTTLS skipped; the password in the error; create_admin allowed twice. Then the gates, both reviews, the log, and a commit `feat(api): SMTP mail backend and a first-Admin command (006 Group E)`
+
+## Phase 6: Group F, the worker drains on shutdown (US5, P2)
+
+**Goal**: FR-020. **Independent test**: send SIGTERM to a worker in the middle of a job; the job ends
+once, and the worker exits within the grace period.
+
+- [ ] T030 [P] [US5] Failing tests `apps/api/tests/integration/test_worker_drain.py`, with real processes on the test database:
+  - **during a solve**: SIGTERM during a solve (the solver stubbed to take 3 s) lets it finish and store, and the process exits 0 with no new claim;
+  - **before the solve**: SIGTERM after claiming but before solving gives the lease back (`lease_until` set to now, attempts unchanged), and a second worker claims the job at once and stores it once;
+  - **lease expiry**: SIGKILL in the middle of a solve leaves the job to be reclaimed after its lease. The test then sets the job's `lease_until` in the past on the test database and starts a second worker, which reclaims it (the claim already takes running jobs past their lease) and stores it once; `attempts` is 2 (FR-020). No lease setting is added
+- [ ] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. The operations server (Group C) runs uvicorn in the same event loop, and uvicorn's `Server.serve()` installs its own SIGINT and SIGTERM handlers and re-raises the signal on exit, which today cancels the job loop mid-solve. Run it without that signal capture (a `Server` subclass with a no-op `capture_signals`), and do not cancel the job loop when the ops server ends: the loop decides. Add a T030 case: SIGTERM during a solve still lets it store, with the ops server running. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet built. Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
+- [ ] T032 [US5] Mutation checks: no release; exit before storing; claim after SIGTERM. Then the gates, both reviews, the log, and a commit `feat(worker): finish or hand back the current job on shutdown (006 Group F)`
+
+## Phase 7: Group G, the Helm chart (foundational for US3, US4, US5)
+
+**Goal**: FR-016 to FR-019, and the base for Groups H to L. **Independent test**: the CI `chart` job.
+
+- [ ] T033 Failing test, a CI job `chart` with the script `infra/helm/tests/assert.sh`. It runs `helm lint` and kubeconform on `helm template` for `values-local.yaml` and `values-ci.yaml`, then asserts with `yq` on the rendered manifests:
+  - **API Deployment**: `replicas: 2`, `maxUnavailable: 0`, `maxSurge: 1`; readiness on `/readyz`, liveness on `/livez` and startup as in `contracts/ops.md` §1; `preStop` sleep 5; `terminationGracePeriodSeconds: 30`; runs as non-root with a read-only root filesystem; images referred to by digest when `image.digest` is set.
+  - **Worker Deployment**: `replicas: 1`, probes on port 9100, `terminationGracePeriodSeconds: 90`.
+  - **PodDisruptionBudget**: `minAvailable: 1` for the API.
+  - **Migration Job**: a `pre-install,pre-upgrade` hook running `alembic upgrade head` on the API image.
+  - **Ingress**: sends `/api`, `/auth` and `/me` to the API and `/` to the web, and routes neither `/metrics` nor port 9100.
+  - **NetworkPolicy**: lets only the `monitoring` namespace reach port 9100.
+  - **Settings**: `TRUSTED_PROXY_COUNT: "1"` and `ENVIRONMENT: production` for local; no Secret holds a literal value in either values file.
+  - **History**: `maxHistory` is documented as 10 for Flux.
+- [ ] T034 [P] Failing test `apps/api/tests/unit/test_ingress_prefixes.py`: every route in `hds.main.app.routes` that is in the OpenAPI document, or is `/livez`, `/readyz` or `/health`, starts with a prefix listed in `infra/helm/hds/values.yaml` under `ingress.apiPrefixes`, or is one of the three health paths, which the ingress does not route (research R2)
+- [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, PostgreSQL StatefulSet and Service, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
+- [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). A database at a revision the code does not know (newer, for example the older image after a rollback) is left untouched and the command exits 0, rather than `alembic upgrade head` stopping on an unknown revision. Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
+- [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
+
+## Phase 8: Group H, backups and the restore test (US3, P1)
+
+**Goal**: FR-011 to FR-014, SC-005, SC-006. **Independent test**: the CI `backup-restore` job, and
+quickstart scenario 3 in the cluster (Group M).
+
+- [ ] T038 [US3] Failing test, a CI job `backup-restore` with the script `infra/backup/tests/run.sh`, using compose with the backup image. The two rclone remotes are crypt over local directories, standing in for the machine and for Drive, with throwaway passwords. The script fails at the first unmet step:
+  1. It seeds and creates known shifts, then runs `backup.sh`, which writes a `.dump` and a `.manifest.json` to both remotes. The manifest has every field in data-model.md, and its `sha256` matches the dump.
+  2. The underlying directories hold no readable table name or e-mail address, which `grep` checks.
+  3. `restore-test.sh` restores the offsite copy into a fresh `postgres:16` container and passes.
+  4. A changed row count in the manifest makes `restore-test.sh` fail, naming the table; a changed `alembic_revision` in the manifest makes it fail, naming both revisions. This comparison runs before `migrate`.
+  5. A corrupted offsite dump makes `restore-test.sh` fail on the checksum.
+  6. An unreachable offsite remote makes `backup.sh` exit non-zero, and the local copy exists.
+  7. `prune.sh`, run with a fake date 31 days on, deletes the expired backups but keeps the newest valid one, even when it is expired. With ten `vault-*.snap.age` files on each side, it keeps the newest 8 and never deletes the newest one.
+  8. `restore.sh` into a database with data refuses without `CONFIRM=replace`, and with it, restores and the shifts match.
+
+  (FR-011 to FR-014)
+- [ ] T039 [P] [US3] Add `infra/Dockerfile.backup`, built from the pinned `postgres:16` with the pinned rclone binary copied from `rclone/rclone`, `jq`, `curl` and the pinned `age`, running as non-root. Add `infra/backup/rclone.conf.tmpl`, which defines the plain remotes `local` (a path on the backup volume) and `offsite` (type `drive` now; `s3` later, which changes only this remote), and `local-crypt` and `offsite-crypt` as crypt over them, with names encrypted and is filled from environment variables at run time. No secret goes in the template (research R11)
+- [ ] T040 [US3] Add `infra/backup/backup.sh`. It runs `pg_dump --format=custom`, computes the row counts, the revision and the SHA-256, and writes the dump and then the manifest to `local-crypt:` and `offsite-crypt:`. If either fails it exits non-zero. Add `infra/backup/prune.sh`, which deletes past `expires_on` and never deletes the newest backup whose checksum verifies. It also keeps the newest 8 `vault-*.snap.age` files on `local:` and `offsite:` (they have no manifest) and never deletes the newest one. Both scripts are POSIX `sh` with `set -eu` and log no secret
+- [ ] T041 [P] [US3] Failing tests `apps/api/tests/integration/test_check_restore.py`: `python -m hds.scripts.check_restore`, run after `migrate`, against a restored database exits 0. It takes no manifest: the revision and row-count comparison happens before `migrate`, in `restore-test.sh` (T038 step 4), because a migration may change both. A backup from an older revision restores, migrates and then passes; a backup at a revision the code does not know passes without migrating. It runs the `ready()` checks and loads the organisation, its users and the last month's shifts through the repositories, it writes nothing (the test checks no row changes), and its output holds no personal data
+- [ ] T042 [US3] Add `apps/api/src/hds/scripts/check_restore.py`, and `infra/backup/restore-test.sh`, which downloads the newest offsite backup, verifies it, runs `pg_restore` into the sidecar database, compares the revision and row counts with the manifest, runs `python -m hds.scripts.migrate` on the copy, then runs `check_restore` (research R11). Add `infra/backup/restore.sh`, which refuses a database with data unless `CONFIRM=replace` is set. It scales the API and the worker to 0 before restoring, runs `migrate` after the restore, and only then scales them back, so an older backup leaves no pods that never become ready; the scaling happens only when it runs in the cluster
+- [ ] T043 [US3] Chart templates `infra/helm/hds/templates/backup-cronjob.yaml` and `restore-test-cronjob.yaml`:
+  - **backup**: 02:30, `timeZone` set from values.
+  - **restore test**: Sundays 04:00, with an empty `postgres:16` as a native sidecar (an init container with `restartPolicy: Always`), listed **before** the `hds-backup` init container and with a `startupProbe` on `pg_isready`, because Kubernetes waits only for a native sidecar's startup probe before starting the next init container. The download, checksum, `pg_restore` and manifest comparison run in an `hds-backup` init container; `migrate` and `check_restore` then run in an `hds-api` container on the same image as the release, so the check uses the running code.
+  - **both**: `startingDeadlineSeconds: 86400`, `concurrencyPolicy: Forbid`, history limits of 3, and a PVC `hds-backups` for `local-crypt`.
+
+  Add `vault-snapshot-cronjob.yaml`, which runs weekly and takes a raft snapshot through Vault's HTTP API with `curl` (the image needs no vault binary), encrypts it with `age` to the **public** key in the chart values (`vault.snapshotRecipient`, not a secret), and writes `vault-<UTC time>.snap.age` through the plain `offsite:` remote and the plain local volume, **not** through `offsite-crypt:`, whose password lives in Vault (research R11). It runs under its own ServiceAccount (T052). Extend `infra/helm/tests/assert.sh` with these values, including that the postgres sidecar is the first init container and has a `pg_isready` startup probe
+- [ ] T044 [US3] Add `docs/runbooks/restore.md`:
+  - restoring a named backup in the running cluster;
+  - restoring after losing the machine: a new cluster, then Vault from its snapshot (downloaded from Drive in a browser, decrypted with the age private key, restored with the unseal keys), then the database from Drive. The recovery kit kept outside the machine is the unseal keys, the age private key and the Google account;
+  - the Drive OAuth set-up, including the 7-day expiry warning for apps left in testing (research R11);
+  - moving the offsite copy to S3 by changing the `offsite` remote only.
+
+  The steps are numbered with expected output, so the procedure takes under an hour (SC-005)
+- [ ] T045 [US3] Mutation checks on the scripts: the manifest written before the dump; prune deleting the newest; the restore test using the local copy; no checksum check. Then ShellCheck, the gates, both reviews, the log, and a commit `feat(infra): encrypted daily backups with a weekly restore test (006 Group H)`
+
+## Phase 9: Group I, release and Flux (US4, P2)
+
+**Goal**: FR-015, FR-018, FR-021 to FR-023, SC-002, SC-008. **Independent test**: quickstart scenario 4
+(Group M); in CI, the release workflow's dry run.
+
+- [ ] T046 [US4] Failing test, a workflow `.github/workflows/release.yml` with a `workflow_dispatch` dry-run input that builds and scans but does not push. Prove both gates fail on purpose:
+  - a branch that pins a base image with a known critical CVE makes the Trivy step exit non-zero;
+  - a sample key placed in the image makes the Trivy secret step exit non-zero.
+
+  Record both runs in the log
+- [ ] T047 [US4] Fill in `.github/workflows/release.yml`:
+  - **Trigger**: `on: workflow_run` for `CI`, only when `conclusion == 'success'` and the branch is `main`, with `concurrency: { group: release, cancel-in-progress: false }`.
+  - **Build**: build `hds-api`, `hds-web` and `hds-backup` for `linux/amd64,linux/arm64` with `HDS_VERSION` set to the SHA.
+  - **Scan**: run Trivy for vulnerabilities (HIGH and CRITICAL fail) and for secrets.
+  - **Publish**: push to `ghcr.io/${{ github.repository_owner }}` tagged with the SHA. Then `helm package` with `--app-version <sha> --version 0.1.<run_number>` and the image digests written into values, and `helm push` to `oci://ghcr.io/<owner>/charts`.
+  - **Permissions**: `packages: write` and `contents: read` only.
+- [ ] T048 [P] [US4] Add `infra/flux/clusters/local/`:
+  - `kustomization.yaml`;
+  - `oci-repository.yaml`, with `semver: ">=0.1.0"` and `interval: 5m`;
+  - `helm-release.yaml`, with `install.remediation.retries: 0`, `upgrade.remediation.retries: 0`, `upgrade.remediation.strategy: rollback`, `timeout: 10m`, `maxHistory: 10`, and `values-local` from a ConfigMap;
+  - `alertmanager-provider.yaml` and `alert.yaml`, which forward `HelmRelease` errors to Alertmanager (FR-010a, FR-018).
+
+  A CI step validates them with kubeconform and Flux's CRD schemas
+- [ ] T049 [US4] `scripts/ops/rollback.sh` and `scripts/ops/resume.sh`, called by `make ops-rollback` and `make ops-resume`:
+  - **rollback**: `flux suspend helmrelease hds`, then `helm rollback hds` to the previous revision with `--wait`, then print the version now running. It never runs a migration downgrade (FR-021).
+  - **resume**: `flux resume`.
+
+  Add them to `Makefile`, and add `docs/runbooks/operations.md` §Deploys
+- [ ] T050 [US4] Mutation checks: release on a failed CI; no concurrency group; rollback without suspend. Then the gates, ShellCheck, both reviews, the log, and a commit `feat(infra): publish scanned releases to GHCR for Flux to install (006 Group I)`
+
+## Phase 10: Group J, Vault and the Vault Secrets Operator (US6, P1)
+
+**Goal**: FR-024, FR-027. **Independent test**: quickstart scenario 6, last bullet (Group M); in CI, the
+chart assertions.
+
+- [ ] T051 [US6] Failing assertions in `infra/helm/tests/assert.sh`:
+  - with `vault.enabled=true` the chart renders a `VaultConnection`, a `VaultAuth` (Kubernetes auth, role `hds`), and one `VaultStaticSecret` per path in data-model.md (`hds/api`, `hds/smtp`, `hds/backup`, `hds/registry`), each with `refreshAfter: 60s` and `rolloutRestartTargets` naming the Deployments that read it;
+  - with `vault.enabled=false` (CI) none renders, and the chart expects the Secrets to exist.
+- [ ] T052 [US6] Add `infra/helm/hds/templates/vault-secrets.yaml`, and add `infra/cluster/vault-values.yaml`, which is one node with integrated storage (raft) on a PVC, the injector off and the UI off. Add `infra/cluster/vault-policy.hcl`, which gives read-only access to `hds/*` for the `hds` role, and `infra/cluster/vault-snapshot-policy.hcl` with only `path "sys/storage/raft/snapshot" { capabilities = ["read"] }`, bound to a Kubernetes-auth role `vault-snapshot` for the snapshot job's own ServiceAccount, with a short token TTL. Add `infra/cluster/vso-values.yaml`
+- [ ] T053 [US6] `scripts/ops/unseal.sh` (`make ops-unseal`) reads the unseal key from the terminal without echo and runs `vault operator unseal`. Add `docs/runbooks/operations.md` §Vault: run init once, keep the unseal key and root token in a password manager, put them in no file, revoke the root token after set-up, generate the age key pair once (the public key into the values, the private key into the password manager with the unseal keys), and write each path's keys with the commands listed. Note that while Vault is sealed after a restart the snapshot job fails and `HdsVaultSnapshotFailed` fires, as a reminder to unseal
+- [ ] T054 [US6] Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): secrets from Vault through the Vault Secrets Operator (006 Group J)`
+
+## Phase 11: Group K, monitoring and failure messages (US2, US3, US4)
+
+**Goal**: FR-007 to FR-010a. **Independent test**: the `promtool` rule tests in CI; in the cluster, a
+broken backup sends an e-mail (Group M).
+
+- [ ] T055 [P] [US3] Failing rule tests `infra/cluster/alerts/tests.yaml`, run with `promtool test rules` in the `chart` job. Each alert in `contracts/ops.md` §3 fires on its series:
+  - a failed `hds-backup` Job;
+  - `kube_cronjob_status_last_successful_time` older than 26 h for the backup and 8 d for the restore test;
+  - a failed `hds-restore-test` or `vault-snapshot` Job.
+
+  `HdsBackupMissing` and `HdsRestoreTestMissing` carry `for: 1h`: a case where the series turns stale and recovers within the hour (the Mac waking after a day off and the catch-up run finishing) sends nothing. Each one stays quiet on healthy series, and no rule uses `hds_http_*` (Clarifications: no rules on error rates)
+- [ ] T056 [US3] Add `infra/helm/hds/templates/prometheus-rules.yaml` (the five job alerts, the two "missing" ones with `for: 1h`) and `servicemonitors.yaml` (the API and the worker on port 9100). Add `infra/cluster/monitoring-values.yaml` for kube-prometheus-stack: Grafana off; Alertmanager with one e-mail receiver using `smarthost`, `auth_username` and `auth_password` from the `hds-smtp` Secret, `require_tls: true`, and `to` from `OPERATOR_EMAILS`; message templates naming the alert, the object, the time and the summary only (FR-010a)
+- [ ] T057 [US2] `scripts/ops/status.sh` (`make ops-status`) prints:
+  - per Deployment, ready over desired and the image version;
+  - the last successful and the last failed backup and restore test;
+  - the last three `helm history` rows;
+  - the firing alerts from Alertmanager's API, reached through `kubectl port-forward`.
+
+  Each failing item is marked `FAIL`. Test it against a k3d cluster in the `rolling-update` job (T059)
+- [ ] T058 Gates, ShellCheck, both reviews, the log, and a commit `feat(infra): Prometheus scraping and e-mailed failure alerts (006 Group K)`
+
+## Phase 12: Group L, the rolling-update proof (US5, P2)
+
+**Goal**: FR-016, FR-017, FR-019, SC-003. **Independent test**: the CI `rolling-update` and
+`compatibility` jobs.
+
+- [ ] T059 [US5] Failing test, a CI job `rolling-update` with the script `infra/tests/rolling_update.sh`:
+  1. Create a k3d cluster from `infra/cluster/k3d.yaml`.
+  2. Build the images at the pull request's base commit and the head, and import them with `k3d image import`. The head's API image gets one extra throwaway additive migration (a nullable column on a scratch table) on top, built only in this job, so every run upgrades across a migration even when the pull request has none.
+  3. Create the `hds-*` Secrets from throwaway values, and install the chart at the base with `values-ci.yaml` (`ENVIRONMENT=production`, SMTP pointed at an in-cluster fake server).
+  4. Create the first Admin.
+  5. Start `infra/tests/load.py`, which runs for the whole upgrade: 20 requests a second, signed-in reads and writes, plus a refresh every 30 s.
+  6. Queue a schedule job, then run `helm upgrade --wait` to the head.
+  7. Stop the load.
+
+  The job fails on:
+  - any response other than the expected one, and any connection error;
+  - the signed-in session no longer refreshing;
+  - the schedule job not ending `succeeded` with exactly one result;
+  - `make ops-status` reporting `FAIL`.
+
+  It also runs the Playwright smoke journeys against the upgraded cluster's ingress, and checks the hop we control (ADR 007, research R14): two pods inside the cluster, with different pod addresses, call Traefik's Service and fail sign-in, and their failures count separately; a third request with a forged `X-Forwarded-For` is still counted under its own pod's address
+- [ ] T060 [US5] Add `infra/tests/load.py` (httpx, using only API dependencies already present, which prints totals and the failures) and `infra/cluster/k3d.yaml` (one server, ports 8080:80 and 8443:443, local-path)
+- [ ] T061 [P] [US5] Failing test, a CI job `compatibility` with the script `infra/tests/compat.sh`: check out the base commit into a temporary worktree, copy the head's `apps/api/alembic/versions/` over the base's (keeping the base's `env.py`), and run the base's integration tests with the base's code, skipping the base's own `test_migration_*` tests, which pin the old head. After the run, assert that `alembic_version` holds the head's revision. Files are copied rather than a conftest switch added, because the base has no such switch until this feature merges. A change that drops or renames a column the base uses fails here (FR-016). Prove it on a throwaway branch with a migration that renames `shifts.headcount`, and record the failing run in the log
+- [ ] T062 [US5] Gates, ShellCheck, both reviews, the log, and a commit `test(infra): prove zero-downtime updates and old-new compatibility (006 Group L)`
+
+## Phase 13: Group M, the shared environment end to end (US1 to US6; run with the owner)
+
+**Goal**: quickstart scenarios 3, 4 and 6 on the real machine, and SC-002 to SC-008.
+
+- [ ] T063 Add `scripts/ops/cluster.sh` (`make ops-cluster`), which runs once per machine and is safe to run again:
+  1. It checks for k3d, kubectl, helm, flux, vault and rclone, naming any that is missing.
+  2. It creates the k3d cluster.
+  3. It installs Flux (only the source, helm and notification controllers), Vault, the Vault Secrets Operator and kube-prometheus-stack from the pinned charts, with the values in `infra/cluster/`.
+  4. It applies `infra/flux/clusters/local/`.
+  5. It prints the next steps: init and unseal Vault, write the secrets, create the first Admin.
+- [ ] T064 With the owner, on their machine:
+  1. `make ops-cluster`, then Vault init and unseal, then write the `hds/*` paths: the SMTP relay, the Drive token from `rclone authorize drive` with scope `drive.file`, and the crypt passwords.
+  2. Decide whether the GHCR packages are public or private. If private, add `hds/registry`.
+  3. Merge to `main` and watch the first deploy arrive within 30 minutes (SC-002).
+  4. `make ops-create-admin`.
+  5. `make ops-backup` and `make ops-restore-test`, then check that the Drive folder holds only encrypted names.
+  6. Break the Drive token and see the `HdsBackupFailed` e-mail, then restore the token.
+  7. `make ops-rollback`, then `make ops-resume`, timed (SC-008).
+  8. Rotate `JWT_SECRET_KEY` and stay signed in.
+
+  Record each outcome, with times, in the log
+- [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys, Vault with the operator, the private metrics port, traces through the job row, the SMTP relay, backups through rclone, Vault's snapshot through age, and the accepted limit that the client's address is lost before Traefik on a Mac (research R14; revisiting it with the cloud move is Proposed), with the rejected alternatives from research.md. Add the same limit to the proxy note in `infra/README.md`. Add it to the index in `docs/`
+- [ ] T066 [P] Update `docs/hds-api.md` §9 with an operations note linking the runbooks, and §12 decision 8 as settled (a local k3d cluster). Also add `apps/api/README.md` for the new settings, `infra/README.md` for the shared environment, the `docs/` index, and `.env.example` for the new optional settings, leaving secrets empty
+- [ ] T067 Final gates on the whole branch, the Markdown link check, `/hds-review`, `/code-review high`, the log, and a commit `docs(spec): close 006`
+
+## Dependencies
+
+- **A** comes first: it pins every tool and image the other groups use.
+- **B** (US1) needs `/readyz` from **C**. Do T007 to T011 after T014, or accept the expected failure at step 4 until then.
+- **C**, then **D** (US2), each need only A.
+- **E** needs only A. It must land before **G**'s `values-ci` (production needs SMTP) and before **K**.
+- **F** (US5) needs only A.
+- **G** needs C (the probes), E and F (the grace period). It blocks H's CronJobs, J, K and L.
+- **H** (US3): its scripts and the `backup-restore` job need only A and B. The CronJob templates need G.
+- **I** (US4) needs G.
+- **J** (US6) needs G.
+- **K** needs G, H and I.
+- **L** (US5) needs G, F and K's `status.sh`.
+- **M** needs all of the above, and the owner.
+
+## Parallel opportunities
+
+- **In A**: T002, T003 and T005 touch different files.
+- **In C**: T013, T015 and T017 are three test files; T014 and T016 then run in sequence, because both edit `main.py`.
+- **Across groups**: E (T025 to T028) and F (T030 to T031) can run beside C and D, since they touch other files.
+- **In H**: T039 and T041 run beside T038's script.
+- **In I**: T048 (Flux files) runs beside T047.
+- **In M**: T065 and T066 can be written while the owner sets up accounts.
+
+## Implementation strategy
+
+- **MVP**: Groups A to C. With them a developer starts everything with one command, and the parts
+  report their health, version and metrics. This is US1 and the core of US2.
+- **Next**: D, E and F make the API production-ready, adding traces, real mail and a clean shutdown.
+- **Then**: G to L build and prove the shared environment in CI, without the owner's machine.
+- **Finally**: M turns it on for real.
+- Each group is committed on its own and leaves `main` deployable.
+- **Pull requests** (Constitution IX): five, each squash-merged and started from the updated `main`:
+  A–C (kept together: B's quickstart needs C's `/readyz`), D–F, G–H, I–L and M.

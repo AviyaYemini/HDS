@@ -18,6 +18,9 @@ from pydantic import SecretStr
 from hds.services.throttle import SignInThrottle, hash_key
 from tests.settings_support import make_settings
 
+# A production configuration needs a database password the repository does not publish (006).
+pytestmark = pytest.mark.usefixtures("distinct_database_password")
+
 ADDRESS = "someone@hds.test"
 
 

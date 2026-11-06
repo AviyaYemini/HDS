@@ -33,6 +33,15 @@ layer and what it must not import.
 Settings are read from the environment (and a `.env` file in development) by
 `hds.core.config`.
 
+Outside development (`ENVIRONMENT` other than `development` or `test`), start-up is also refused when
+`JWT_SECRET_KEY`, `THROTTLE_SECRET_KEY`, the database password (in `DATABASE_URL`, its `password`
+option, or `PGPASSWORD`) is a value this repository publishes in a configuration file: `.env.example`,
+compose, the workflows, scripts, Makefiles, tool configs and the test settings
+(`KNOWN_DEVELOPMENT_VALUES`, compared ignoring case and surrounding space). An unreadable
+`DATABASE_URL` is refused too. The error names
+the setting, never the value. Add any new example value to that list in the same change; a test
+fails until you do.
+
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `ENVIRONMENT` | **Required, no default.** `development` and `test` are development environments; any other value (`production`, `staging`, ...) turns on the strict secret, email and mail-backend checks | none |
@@ -40,7 +49,7 @@ Settings are read from the environment (and a `.env` file in development) by
 | `JWT_ALGORITHM` | Signing algorithm for access tokens; the verifier accepts only this one | `HS256` |
 | `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; outside development a real backend is required and none exists yet | `outbox` in development |
 | `MAIL_OUTBOX_PATH` | File the `outbox` backend appends to; each line holds the masked recipient, subject, purpose, expiry and the body with the token replaced by `[REDACTED]` | `apps/api/.dev-mail/outbox.jsonl` |
-| `DATABASE_URL` | Async SQLAlchemy URL | local development database |
+| `DATABASE_URL` | Async SQLAlchemy URL. Outside development its password must not be a published one | local development database |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
@@ -56,7 +65,28 @@ Settings are read from the environment (and a `.env` file in development) by
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limits set to `0`: otherwise every user shares the proxy's address, so one bad window locks everyone out of sign-in and silently stops reset mail for everyone, with only a warning in the log. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `SCHEDULE_TIME_LIMIT_SECONDS` | How long the schedule worker's solver may search before it returns its best roster, 1 to 60 (004) | `20` |
+| `HDS_VERSION` | The version the process reports in `/livez`, `/readyz` and the `hds_build_info` metric; the image build sets it to the commit | `dev` |
+| `METRICS_PORT` | The operations port: the API's `/metrics`, and the worker's `/livez`, `/readyz` and `/metrics`. Never the public port. `0` serves none; compose and the chart set `9100`, and give each process on one host its own. A taken port stops start-up naming this setting | `0` |
 | `TEST_DATABASE_URL` | Tests only; a database to use and keep, whose name must end in `_test`. Unset, each run creates its own `hds_run_<process id>_test` and drops it at the end | a database per run |
+
+## Health and metrics
+
+These are for probes and operators, not the client, so none is in the OpenAPI document and none
+needs a sign-in (specs/006-deploy-operations, contracts/ops.md):
+
+| Where | Path | Answers |
+| --- | --- | --- |
+| API, public port | `GET /livez` | 200 while the process runs; it touches nothing else |
+| API, public port | `GET /readyz` | 200 when the database answers within 2 s and is not behind the code's migrations; else 503 with `failing` (`database` or `migrations`) |
+| API, public port | `GET /health` | the same as `/livez`, kept for existing probes |
+| API, `METRICS_PORT` | `GET /metrics` | `hds_http_requests_total`, `hds_http_request_duration_seconds` (by route template), `hds_build_info` |
+| Worker, `METRICS_PORT` | `/livez`, `/readyz`, `/metrics` | alive while its loop turns or a held job is inside its lease; `hds_schedule_jobs{state}`, `hds_schedule_job_duration_seconds` |
+
+"Behind" means `alembic_version` is empty or holds an older revision this code knows. A revision the
+code does not know is newer and counts as ready, so old pods keep serving during an upgrade and
+after a rollback. The ready check opens connections of its own, never the request pool, so a busy
+pool cannot take every pod out of service together. The worker's readiness is the database only.
+The migration history is read at start-up: a missing or two-headed history stops the process.
 
 ## Common tasks
 

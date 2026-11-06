@@ -1,8 +1,13 @@
-FROM python:3.12-slim
+# The API image: the API, the schedule worker and the migrations share it, so their code cannot drift
+# (specs/006-deploy-operations research R2). Every base is pinned by tag and digest; the versions
+# are listed in infra/VERSIONS.md. infra/tests/check_api_image.sh checks the hardening below.
+FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
+
+FROM python:3.12.16-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
+
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
-
-RUN pip install uv
 
 COPY apps/api/pyproject.toml apps/api/uv.lock* ./
 
@@ -17,5 +22,22 @@ COPY apps/api/src ./src
 # Migrations ship with the image so `alembic upgrade head` works inside the container.
 COPY apps/api/alembic.ini ./alembic.ini
 COPY apps/api/alembic ./alembic
+
+# Run as an unprivileged user (uid 10001, no login shell). The code and dependencies stay owned by
+# root, so the process cannot change them. Only the development mail outbox and the user's own
+# home are writable; the home lets tools that cache under ~ (uv, for one) work in the container.
+RUN useradd --system --uid 10001 --create-home --home-dir /home/hds --shell /usr/sbin/nologin hds \
+    && mkdir -p /app/.dev-mail \
+    && chown hds /app/.dev-mail
+
+# The commit this image was built from; the release workflow passes the full SHA. Reported by
+# /livez and the hds_build_info metric (FR-010). Declared last: an ARG reaches every later RUN as an
+# environment variable, so before `uv sync` each new version would reinstall every dependency.
+ARG HDS_VERSION=dev
+LABEL org.opencontainers.image.version="${HDS_VERSION}" \
+      org.opencontainers.image.source="https://github.com/AviyaYemini/HDS"
+ENV HDS_VERSION="${HDS_VERSION}" \
+    HOME=/home/hds
+USER 10001
 
 CMD ["uvicorn", "hds.main:app", "--host", "0.0.0.0", "--port", "8000"]

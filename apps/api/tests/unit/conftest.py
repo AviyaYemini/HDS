@@ -23,6 +23,19 @@ def real_mail_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "REAL_MAIL_BACKENDS", frozenset({"test-smtp"}), raising=False)
 
 
+@pytest.fixture
+def distinct_database_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give production configurations a database password this repository does not publish.
+
+    Outside development the settings refuse every published password, including ``hds_dev`` in
+    the default ``DATABASE_URL`` (specs/006 FR-026). Tests of the other start-up rules use this
+    fixture to get past that check, as ``real_mail_backend`` gets them past the mail check.
+    """
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+asyncpg://hds:a-distinct-unit-test-password-0123@db:5432/hds"
+    )
+
+
 class FakeSession:
     """A stand-in for ``AsyncSession`` that records commits and rollbacks in order.
 

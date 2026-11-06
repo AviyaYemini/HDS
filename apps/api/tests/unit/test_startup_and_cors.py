@@ -11,6 +11,9 @@ from hds.core.config import PUBLISHED_PLACEHOLDER
 from hds.main import create_app
 from tests.settings_support import make_settings
 
+# A production configuration needs a database password the repository does not publish (006).
+pytestmark = pytest.mark.usefixtures("distinct_database_password")
+
 
 def test_default_cors_origins() -> None:
     assert make_settings().CORS_ORIGINS == ["http://localhost:3000", "http://localhost:8081"]

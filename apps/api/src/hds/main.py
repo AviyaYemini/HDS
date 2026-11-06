@@ -5,17 +5,21 @@ it except the ASGI server, the OpenAPI export script and the tests. Run it with
 ``uvicorn hds.main:app``.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from hds.core.config import configure_email_validation, get_settings
 from hds.core.error_handler import register_exception_handlers
 from hds.core.logging import configure_logging
+from hds.core.metrics import HttpMetrics, MetricsMiddleware, serve
 from hds.core.openapi import install_openapi
 from hds.core.request_context import new_request_id, reset_request_id, set_request_id
 
 
-def create_app() -> FastAPI:
+def create_app(metrics_port: int | None = None) -> FastAPI:
     """Build and configure the application.
 
     Order matters: logging and e-mail validation are configured first, CORS and the request-id
@@ -23,18 +27,56 @@ def create_app() -> FastAPI:
     before the routers so their responses are documented. The OpenAPI document is served at
     ``/api/v1/openapi.json``.
 
+    The metrics middleware is added last, so it is outermost and sees every final status. Its
+    registry is served on the operations port by the lifespan, which uvicorn runs and the tests'
+    in-process client does not (specs/006 FR-007, FR-009).
+
+    Args:
+        metrics_port: The operations port; ``METRICS_PORT`` by default, 0 for none.
+
     Returns:
         A new ``FastAPI`` instance; tests call this to get an app per test run.
     """
     configure_logging()
     configure_email_validation(get_settings())
 
+    metrics = HttpMetrics(version=get_settings().HDS_VERSION)
+    port = get_settings().METRICS_PORT if metrics_port is None else metrics_port
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Read the migrations, serve the metrics on the operations port, and stop them at exit.
+
+        Both fail start-up loudly: a broken migration history with ``load_migrations``' error, a
+        taken operations port with one naming ``METRICS_PORT``.
+        """
+        from hds.wiring import migrations
+
+        migrations()
+        try:
+            app.state.metrics_server = serve(metrics.registry, port)
+        except OSError as error:
+            raise RuntimeError(
+                f"METRICS_PORT {port} cannot be bound ({error.strerror}); set a free port, or 0"
+            ) from error
+        try:
+            yield
+        finally:
+            if app.state.metrics_server is not None:
+                server, thread = app.state.metrics_server
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
     application = FastAPI(
         title="HDS API",
         version="0.1.0",
         docs_url="/docs",
         openapi_url="/api/v1/openapi.json",
+        lifespan=lifespan,
     )
+    application.state.metrics = metrics
+    application.state.metrics_server = None
 
     application.add_middleware(
         CORSMiddleware,
@@ -62,24 +104,14 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(application)
     install_openapi(application)
-
-    @application.get("/health", include_in_schema=False)
-    async def health() -> dict[str, str]:
-        """Report liveness for container and load-balancer probes.
-
-        Deliberately excluded from the OpenAPI document and open to anyone: it touches no
-        database, so it says the process is up, not that the database is reachable.
-
-        Returns:
-            ``{"status": "ok"}``.
-        """
-        return {"status": "ok"}
+    application.add_middleware(MetricsMiddleware, metrics=metrics)
 
     from hds.routers.auth import router as auth_router
     from hds.routers.availability import router as availability_router
     from hds.routers.clients import router as clients_router
     from hds.routers.employees import router as employees_router
     from hds.routers.groups import router as groups_router
+    from hds.routers.health import router as health_router
     from hds.routers.invitations import router as invitations_router
     from hds.routers.me import router as me_router
     from hds.routers.me_shifts import router as me_shifts_router
@@ -97,6 +129,7 @@ def create_app() -> FastAPI:
     from hds.routers.sites import router as sites_router
     from hds.routers.special_days import router as special_days_router
 
+    application.include_router(health_router)
     application.include_router(auth_router)
     application.include_router(invitations_router)
     application.include_router(me_router)

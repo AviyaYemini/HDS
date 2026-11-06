@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 
 from hds.models.schedule_job import ScheduleJob
 from hds.repositories.base import OrgScopedRepository
@@ -74,6 +74,17 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
             query.order_by(ScheduleJob.created_at.desc(), ScheduleJob.id.desc()).limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_by_state(self) -> dict[str, int]:
+        """How many jobs are in each state, across every organisation (for the worker's metrics).
+
+        Only counts leave this method: no job, organisation or person is named, so an operator's
+        metric holds no tenant data.
+        """
+        found = await self.session.execute(
+            select(ScheduleJob.status, func.count()).group_by(ScheduleJob.status)
+        )
+        return {str(status): int(count) for status, count in found.all()}
 
     async def claim(
         self, now: datetime, lease: timedelta, max_attempts: int
