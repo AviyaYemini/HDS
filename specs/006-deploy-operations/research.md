@@ -259,8 +259,8 @@ image:
 2. A manifest: the migration version, the time, the row count of every table, the size and a
    SHA-256.
 3. Two copies through rclone `crypt` remotes:
-   - `local-crypt:`, over a persistent volume on the machine
-   - `offsite-crypt:`, over a Google Drive folder
+   - `local-crypt:`, over the plain `local:` remote, a persistent volume on the machine
+   - `offsite-crypt:`, over the plain `offsite:` remote, a Google Drive folder
    - Encryption is NaCl secretbox under a password from Vault, so Drive holds only ciphertext and
      encrypted names (FR-012).
 4. If the off-machine copy fails, the Job fails, which raises the alert (R9). The local copy is
@@ -279,8 +279,9 @@ dies with the pod. The test:
 4. Runs `python -m hds.scripts.migrate` on the throwaway copy, as a real restore would. A backup
    taken under an older release is brought to the code's head; a backup at a revision the code does
    not know (newer, for example after a rollback) is left as it is.
-5. Runs `python -m hds.scripts.check_restore` from the API image against the copy. This read-only
-   script runs the `ready()` checks and loads the organisation, its users and the last month's
+5. Runs `python -m hds.scripts.check_restore` from the API image against the copy. It takes no
+   manifest, since step 3 already compared it before any migration could change the revision or row
+   counts. This read-only script runs the `ready()` checks and loads the organisation, its users and the last month's
    shifts through the repositories. No check account is needed, so no fake user ever enters the
    real data.
 6. Fails, and so alerts, on any difference.
@@ -300,7 +301,9 @@ needed to open the thing that restores Vault.
   **public** key held in the chart values. It is not a secret, so the cluster can write snapshots
   but never read them. The private key stays outside the machine.
 - **Storage**: the file `vault-<UTC time>.snap.age` goes through the plain `offsite:` remote (not
-  `offsite-crypt:`), and likewise to the plain local volume.
+  `offsite-crypt:`), and likewise to the plain `local:` remote.
+- **Retention**: the newest 8 weekly snapshots are kept on each side, and the newest is never
+  deleted; `prune.sh` does this, since the snapshots have no manifest.
 - **Why age is enough**: Vault's storage is already encrypted by its barrier, so a snapshot is
   unreadable without the unseal keys. age makes FR-012's "encrypted" explicit for one small file. A
   crypt password in a Kubernetes Secret would put the key in the cluster, which data-model.md rules

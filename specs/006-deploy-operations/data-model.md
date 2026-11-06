@@ -52,6 +52,13 @@ Manifest fields:
 - **States**: running, then valid in both places (success); valid only locally (failure, so the
   alert fires); or nothing written (failure).
 
+### Vault snapshot
+
+`vault-<UTC yyyymmddTHHMMSSZ>.snap.age`: a raft snapshot encrypted with age to the public key in the
+chart values, written weekly to the plain `local:` and `offsite:` remotes (not the crypt ones, whose
+password lives in Vault). It has no manifest. The newest 8 are kept on each side, and the newest is
+never deleted (research R11).
+
 ### Restore test result
 
 This is the Kubernetes Job status of the `restore-test` CronJob. It runs weekly, and the last three
