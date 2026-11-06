@@ -198,6 +198,20 @@ refuses "pruning with no valid backup" "offsite-crypt: no backup verifies; nothi
 ok "offsite-crypt still holds $before_prune"
 rcl rcat "offsite-crypt:$name.dump" < "$work/files/good.dump"
 
+step "7c: a backup that cannot be downloaded stops pruning in its place, deleting nothing"
+# Break the stored ciphertext of the machine's only dump underneath the crypt layer: rclone then
+# fails to decrypt it, which must stop pruning, never count as a bad backup (review R96).
+stored=$(rcl backend encode local-crypt: "$local_only.dump")
+cp "$work/local/db/$stored" "$work/files/stored.dump"
+printf 'XXXXXXXX' | dd of="$work/local/db/$stored" bs=1 seek=100 conv=notrunc 2> /dev/null
+before_prune=$(rcl lsf local-crypt: | sort | tr '\n' ' ')
+refuses "a dump that cannot be downloaded" "could not be downloaded; nothing is pruned there" \
+    backup_run -e HDS_NOW="$((later + 31 * 86400))" prune.sh
+[ "$(rcl lsf local-crypt: | sort | tr '\n' ' ')" = "$before_prune" ] \
+    || fail "local-crypt lost files: $(rcl lsf local-crypt: | tr '\n' ' ')"
+ok "local-crypt still holds $before_prune"
+cp "$work/files/stored.dump" "$work/local/db/$stored"
+
 step "8: restore.sh refuses a database with data unless CONFIRM=replace"
 refuses "a database with data" "holds data; nothing was changed" backup_run restore.sh "$name"
 [ "$(sql "$SHIFTS")" = "$shifts_at_backup" ] || fail "the refused restore changed the shifts"

@@ -589,3 +589,6 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   **R92**: the lost-machine restore picks its backup by name, with the new cluster's backups
   suspended until it is done. **R93**: the Vault role is `vault-snapshot`, as T052 names it.
   **R94**: the snapshot job no longer needs the crypt keys. **R95**: noted for Group J in T052.
+- The reviewer approved bb37450, with two notes. R96: step 7c breaks a stored ciphertext so a
+  download fails; a mutant that counts a failed download as a bad backup now fails it. R97: T048
+  leaves Flux's drift detection off, so runbook §2's suspended CronJob stays suspended.

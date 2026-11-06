@@ -245,7 +245,7 @@ quickstart scenario 3 in the cluster (Group M).
   - **Scan**: run Trivy for vulnerabilities (HIGH and CRITICAL fail) and for secrets.
   - **Publish**: push to `ghcr.io/${{ github.repository_owner }}` tagged with the SHA. Then `helm package` with `--app-version <sha> --version 0.1.<run_number>` and the image digests written into values, and `helm push` to `oci://ghcr.io/<owner>/charts`.
   - **Permissions**: `packages: write` and `contents: read` only.
-- [ ] T048 [P] [US4] Add `infra/flux/clusters/local/`:
+- [ ] T048 [P] [US4] Add `infra/flux/clusters/local/`: Leave helm-controller's drift detection off for `hds` (`driftDetection.mode` unset or `disabled`): runbook §2 step 7 suspends the `hds-backup` CronJob with `kubectl patch`, which drift correction would undo on the next reconcile (review R97)
   - `kustomization.yaml`;
   - `oci-repository.yaml`, with `semver: ">=0.1.0"` and `interval: 5m`;
   - `helm-release-postgres.yaml`, the `hds-postgres` release, installed first (research R3, amended);
