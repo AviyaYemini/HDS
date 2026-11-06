@@ -5,12 +5,11 @@ FROM rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110b
 
 FROM postgres:16.15@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
 
-# Debian trixie's packages, pinned to the versions this image was built and tested with.
+# Debian trixie's packages, at the versions trixie and trixie-security carry when the image is
+# built. The archive keeps only the newest, so a version pin would break the build at the next
+# security update (review R91); the digest-pinned base fixes the suite.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        jq=1.7.1-6+deb13u4 \
-        curl=8.14.1-2+deb13u7 \
-        ca-certificates=20250419+deb13u1 \
+    && apt-get install -y --no-install-recommends jq curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # age v1.3.2 from its GitHub release, checked against the SHA-256 recorded in infra/VERSIONS.md.

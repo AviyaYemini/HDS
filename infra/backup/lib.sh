@@ -42,11 +42,17 @@ work_dir() {
 
 # Render rclone.conf.tmpl into the work folder: each ${NAME} from the environment, the crypt
 # passwords obscured first. awk reads the values from ENVIRON, so none is ever an argument.
+# `rclone_config plain` is for Vault's snapshot, which uses only the plain remotes: the crypt keys
+# are then neither needed nor rendered (research R11, review R94).
 rclone_config() {
-    [ -n "${HDS_CRYPT_PASSWORD:-}" ] || fail "HDS_CRYPT_PASSWORD is not set"
-    [ -n "${HDS_CRYPT_SALT:-}" ] || fail "HDS_CRYPT_SALT is not set"
-    HDS_CRYPT_PASSWORD_OBSCURED=$(printf '%s' "$HDS_CRYPT_PASSWORD" | rclone obscure -)
-    HDS_CRYPT_SALT_OBSCURED=$(printf '%s' "$HDS_CRYPT_SALT" | rclone obscure -)
+    if [ "${1:-}" = plain ]; then
+        HDS_CRYPT_PASSWORD_OBSCURED="" HDS_CRYPT_SALT_OBSCURED=""
+    else
+        [ -n "${HDS_CRYPT_PASSWORD:-}" ] || fail "HDS_CRYPT_PASSWORD is not set"
+        [ -n "${HDS_CRYPT_SALT:-}" ] || fail "HDS_CRYPT_SALT is not set"
+        HDS_CRYPT_PASSWORD_OBSCURED=$(printf '%s' "$HDS_CRYPT_PASSWORD" | rclone obscure -)
+        HDS_CRYPT_SALT_OBSCURED=$(printf '%s' "$HDS_CRYPT_SALT" | rclone obscure -)
+    fi
     export HDS_CRYPT_PASSWORD_OBSCURED HDS_CRYPT_SALT_OBSCURED
     awk '{
         while (match($0, /\$\{[A-Z0-9_]+\}/)) {

@@ -577,3 +577,15 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
     label, the volume not kept. The helper ignoring a failure or an active Job, and prune stopped
     by an unreadable manifest.
 - Reviews: /hds-review R72 to R76; /code-review high R80 to R89 (R88 won't-fix).
+
+## The reviewer's check of Group H (d0866bd): R90 to R95
+
+- **R90**: prune.sh would delete every expired backup in a place where none verified. A failed
+  download also counted as "does not verify", because the pipeline's status was jq's. A machine off
+  for 30 days plus one Drive quota error would have emptied Drive. A failed download now stops that
+  place, and no valid backup means nothing is deleted there. Step 7b covers it: the mutant without
+  the guard fails, and the clean run passes.
+- **R91**: the apt version pins would break the build at trixie's next security update; dropped.
+  **R92**: the lost-machine restore picks its backup by name, with the new cluster's backups
+  suspended until it is done. **R93**: the Vault role is `vault-snapshot`, as T052 names it.
+  **R94**: the snapshot job no longer needs the crypt keys. **R95**: noted for Group J in T052.

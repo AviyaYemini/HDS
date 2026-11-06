@@ -16,7 +16,7 @@ set -eu
 : "${VAULT_ADDR:?VAULT_ADDR is not set}" "${HDS_VAULT_RECIPIENT:?HDS_VAULT_RECIPIENT is not set}"
 
 work_dir
-rclone_config
+rclone_config plain
 
 if [ -z "${VAULT_TOKEN:-}" ]; then
     : "${HDS_VAULT_ROLE:?set VAULT_TOKEN or HDS_VAULT_ROLE}"

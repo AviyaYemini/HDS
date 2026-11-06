@@ -186,6 +186,18 @@ for place in local:/backups/vault offsite:/offsite/hds/vault; do
 done
 ok "the newest 8 Vault snapshots are kept on each side"
 
+step "7b: when no backup in a place verifies, pruning there deletes nothing and fails"
+# Every dump on Drive is now corrupt (one backup there, all past expiry): with nothing to keep,
+# deleting the expired ones would leave Drive empty (review R90).
+before_prune=$(rcl lsf offsite-crypt: | sort | tr '\n' ' ')
+rcl rcat "offsite-crypt:$name.dump" < "$work/files/bad.dump"
+refuses "pruning with no valid backup" "offsite-crypt: no backup verifies; nothing is pruned there" \
+    backup_run -e HDS_NOW="$((later + 31 * 86400))" prune.sh
+[ "$(rcl lsf offsite-crypt: | sort | tr '\n' ' ')" = "$before_prune" ] \
+    || fail "offsite-crypt lost files: $(rcl lsf offsite-crypt: | tr '\n' ' ')"
+ok "offsite-crypt still holds $before_prune"
+rcl rcat "offsite-crypt:$name.dump" < "$work/files/good.dump"
+
 step "8: restore.sh refuses a database with data unless CONFIRM=replace"
 refuses "a database with data" "holds data; nothing was changed" backup_run restore.sh "$name"
 [ "$(sql "$SHIFTS")" = "$shifts_at_backup" ] || fail "the refused restore changed the shifts"

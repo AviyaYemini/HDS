@@ -33,11 +33,13 @@ The backup image (`infra/Dockerfile.backup`) also pins, on the `postgres:16.15` 
 | --- | --- | --- | --- |
 | age (`age-v1.3.2-linux-amd64.tar.gz`) | `v1.3.2` | `sha256:cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10` | Vault's snapshot, on amd64 |
 | age (`age-v1.3.2-linux-arm64.tar.gz`) | `v1.3.2` | `sha256:6b8dc4333c53a5a57c9e5834e3a48f92605d7154014cd07269ff3327db5d37f4` | Vault's snapshot, on arm64 |
-| Debian `jq` | `1.7.1-6+deb13u4` | apt | the manifests |
-| Debian `curl` | `8.14.1-2+deb13u7` | apt | the age download at build time, Vault's API |
-| Debian `ca-certificates` | `20250419+deb13u1` | apt | TLS to Drive and GitHub |
+| Debian `jq`, `curl`, `ca-certificates` | trixie's at build time | apt | the manifests; the age download and Vault's API; TLS |
 
-The age checksums were taken from the GitHub release files on 2026-11-06.
+The age checksums were taken from the GitHub release files on 2026-11-06. The three Debian packages
+are not pinned: they follow trixie's security updates whenever the image is built, since Debian's
+archive keeps only the newest version and a pin would stop the build at the next update (review
+R91). The base image's digest fixes the suite. Built on 2026-11-06 they were jq `1.7.1-6+deb13u4`,
+curl `8.14.1-2+deb13u7` and ca-certificates `20250419+deb13u1`.
 
 ## Cluster
 

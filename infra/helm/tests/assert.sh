@@ -192,6 +192,8 @@ v='select(.kind == "CronJob" and .metadata.name == "hds-vault-snapshot") | .spec
 vp="$v | .jobTemplate.spec.template.spec"
 expect "vault snapshot weekly, as its own ServiceAccount" "0 3 * * 0 hds-vault-snapshot vault-snapshot.sh" \
     "$(yq hds-ci.yaml "[($v | .schedule), ($vp | .serviceAccountName), ($vp | .containers[0].command[0])] | join(\" \")")"
+expect "vault snapshot signs in as the role T052 names" vault-snapshot \
+    "$(yq hds-ci.yaml "$vp | .containers[0].env[] | select(.name == \"HDS_VAULT_ROLE\") | .value")"
 expect "vault snapshot within 30 minutes" 1800 "$(yq hds-ci.yaml "$v | .jobTemplate.spec.activeDeadlineSeconds")"
 expect "vault snapshot to the public key in the values" "age16q9ew59lene00jp303rjfh0c7t8jt9agwsctp27kez526m6hhazsfuev0c" \
     "$(yq hds-ci.yaml "$vp | .containers[0].env[] | select(.name == \"HDS_VAULT_RECIPIENT\") | .value")"

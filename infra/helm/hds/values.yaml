@@ -117,6 +117,6 @@ restoreTest:
 vault:
   address: http://vault.vault.svc:8200
   # The Vault Kubernetes-auth role bound to the hds-vault-snapshot ServiceAccount (Group J).
-  role: hds-vault-snapshot
+  role: vault-snapshot
   snapshotSchedule: "0 3 * * 0"
   snapshotRecipient: ""

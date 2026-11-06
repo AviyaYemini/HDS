@@ -26,11 +26,11 @@ machine cannot be recovered. Check where each one is now, before you need them.
 
    Expected: one `hds-<time>.dump` and one `hds-<time>.manifest.json` per day, for 30 days.
 
-2. Pick the backup by its time, `hds-20261105T003000Z` say, and restore it. `make ops-restore`
+2. Pick the backup by its time, `hds-20261105T033000Z` say, and restore it. `make ops-restore`
    suspends Flux for its whole run, so no release can start mid-restore, and resumes it at the end:
 
    ```bash
-   make ops-restore BACKUP=hds-20261105T003000Z
+   make ops-restore BACKUP=hds-20261105T033000Z
    ```
 
    Expected, since the database has data: it refuses and changes nothing.
@@ -42,15 +42,15 @@ machine cannot be recovered. Check where each one is now, before you need them.
 3. Replace it, knowing that everything after the backup's time is lost:
 
    ```bash
-   make ops-restore BACKUP=hds-20261105T003000Z CONFIRM=replace
+   make ops-restore BACKUP=hds-20261105T033000Z CONFIRM=replace
    ```
 
    Expected: the API and the worker stop, the backup is restored and migrated, and they start
    again with their earlier replica counts. The restore's own lines are:
 
    ```text
-   restore.sh: hds-20261105T003000Z: downloaded from offsite-crypt; the checksum matches
-   restore.sh: hds-20261105T003000Z: restored into hds on hds-postgres; run migrate next
+   restore.sh: hds-20261105T033000Z: downloaded from offsite-crypt; the checksum matches
+   restore.sh: hds-20261105T033000Z: restored into hds on hds-postgres; run migrate next
    ```
 
    T049b settles the whole output.
@@ -118,24 +118,39 @@ machine cannot be recovered. Check where each one is now, before you need them.
    ```
 
 7. Let Flux install the rest (hds-postgres, then hds). The Vault Secrets Operator fills the
-   Secrets (`hds-api`, `hds-smtp`, `hds-backup`) from the restored Vault.
+   Secrets (`hds-api`, `hds-smtp`, `hds-backup`) from the restored Vault. This works because
+   Vault's Kubernetes auth holds only the cluster's address, `kubernetes_host`, and reads the CA
+   and the reviewer token from its own pod (Group J, review R95). A snapshot carrying the old
+   cluster's CA would keep every sign-in out.
 
-   Expected: `kubectl -n hds get secrets hds-api hds-backup` lists both. The database is new and
-   empty, and the API's pods are ready once the migration hook has run.
-
-8. Restore the newest backup from Drive. The database is empty, so no `CONFIRM` is needed:
+   As soon as the CronJob exists, stop the new cluster's backups until step 10. A backup of the
+   new, empty database would otherwise become the newest one on Drive, and the restore test would
+   fail on it:
 
    ```bash
-   make ops-restore BACKUP=$(make -s ops-backups | sed -n 's/\.manifest\.json$//p' | sort | tail -n 1)
+   kubectl -n hds patch cronjob hds-backup -p '{"spec":{"suspend":true}}'
+   ```
+
+   Expected: `kubectl -n hds get secrets hds-api hds-backup` lists both, and `kubectl -n hds get
+   cronjob hds-backup` shows `SUSPEND True`. The database is new and empty, and the API's pods
+   are ready once the migration hook has run.
+
+8. Restore the newest backup from before the loss, by its name. The database is empty, so no
+   `CONFIRM` is needed:
+
+   ```bash
+   make ops-backups                                   # pick the last name before the loss
+   make ops-restore BACKUP=hds-20261105T033000Z
    ```
 
    Expected: the output of section 1, step 3.
 
 9. Check the service, as in section 1, step 4, and sign in as a known user.
 
-10. Take a backup now, and check it reached both places:
+10. Start the backups again, take one now, and check it reached both places:
 
     ```bash
+    kubectl -n hds patch cronjob hds-backup -p '{"spec":{"suspend":false}}'
     make ops-backup
     ```
 

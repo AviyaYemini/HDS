@@ -22,11 +22,18 @@ today=$(date -u -d "@$(now)" +%Y-%m-%d)
 oldest_kept=$(date -u -d "@$(($(now) - HDS_RETENTION_DAYS * 86400))" +%Y%m%dT%H%M%SZ)
 failed=""
 
-# Whether the backup NAME on REMOTE has a dump matching its manifest.
+# valid REMOTE NAME: 0 when the dump matches its manifest, 1 when it does not (or is missing), and
+# 2 when either file could not be downloaded. A failed download (a Drive quota error, say) must
+# never pass for a bad backup: that would let every expired backup there be deleted. The files go
+# to the work folder first, so rclone's own status is seen, not a pipeline's. Each download
+# overwrites the last.
 valid() {
-    want=$(rclone cat "$1:$2.manifest.json" 2>/dev/null | jq -r .sha256) || return 1
-    got=$(rclone cat "$1:$2.dump" 2>/dev/null | sha256sum | cut -d ' ' -f 1) || return 1
-    [ -n "$want" ] && [ "$want" = "$got" ]
+    printf '%s\n' "$listing" | grep -qxF "$2.dump" || return 1
+    rclone copyto "$1:$2.manifest.json" "$HDS_WORK/check.json" || return 2
+    rclone copyto "$1:$2.dump" "$HDS_WORK/check.dump" || return 2
+    want=$(jq -er .sha256 "$HDS_WORK/check.json" 2>/dev/null) || return 1
+    got=$(sha256sum "$HDS_WORK/check.dump" | cut -d ' ' -f 1)
+    [ "$want" = "$got" ]
 }
 
 # Whether date A (yyyy-mm-dd) is before date B.
@@ -48,9 +55,19 @@ prune_backups() {
     names=$(printf '%s\n' "$listing" | sed -n 's/\.manifest\.json$//p' | sort -r)
     keep=""
     for name in $names; do
-        if valid "$remote" "$name"; then keep=$name; break; fi
-        log "$remote: $name does not verify"
+        result=0
+        valid "$remote" "$name" || result=$?
+        case $result in
+            0) keep=$name; break ;;
+            1) log "$remote: $name does not verify" ;;
+            *) log "$remote: $name could not be downloaded; nothing is pruned there"; return 1 ;;
+        esac
     done
+    if [ -z "$keep" ] && [ -n "$names" ]; then
+        # With no backup to keep, the expired ones are all there is: delete none of them.
+        log "$remote: no backup verifies; nothing is pruned there"
+        return 1
+    fi
     [ -n "$keep" ] && log "$remote: keeping $keep, the newest valid backup"
     for name in $names; do
         [ "$name" = "$keep" ] && continue
