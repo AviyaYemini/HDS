@@ -41,6 +41,7 @@ dev = [
     "pip-audit>=2.7",
     "pyyaml>=6",
     "types-PyYAML>=6",
+    "aiosmtpd==1.4.6",
 ]
 
 [build-system]

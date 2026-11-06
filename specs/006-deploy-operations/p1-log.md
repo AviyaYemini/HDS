@@ -347,3 +347,38 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
     the provider set on import (process-global by OpenTelemetry's design, nothing exported without
     an endpoint).
   - The ASGI send and receive spans are left out (`exclude_spans`), which halves a request's spans.
+
+## Group E: SMTP mail and the first Admin (T025 to T029)
+
+- **Dependency**: `aiosmtpd` 1.4.6 (dev only), as `infra/VERSIONS.md` pinned it in Group A; it
+  brings `atpublic` 9.0.0. pip-audit clean. The STARTTLS certificate for the tests is made by
+  `openssl` in pytest's temporary folder and trusted through the test's own TLS context, so no key
+  is stored and the certificate checks stay on; no `cryptography` dependency was added.
+- **Failing first**: `test_smtp_mail.py` and `test_settings_smtp.py` failed on the missing
+  `MailDeliveryError`; `test_create_admin.py` ran at the group's end, on `hds_p3_test`.
+- **T026**: `SmtpMailSender` uses `smtplib` in `asyncio.to_thread`, a 10 s timeout per step,
+  STARTTLS with the relay's certificate checked, and `MailDeliveryError` raised without its cause.
+  `smtp` is in `REAL_MAIL_BACKENDS`, with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+  `SMTP_PASSWORD` (`SecretStr`, also checked against the published values), `MAIL_FROM` and
+  `SMTP_STARTTLS`. `get_mail_sender` picks it, as for the outbox (R16; T026 amended).
+- **Existing guards that caught gaps**: the settings must be in `.env.example` and the README;
+  no `float` annotation (the timeout is an `int`); every hash follows `release_connection`; every
+  error code has an `en` and a `he` message.
+- **T028**: `FirstAdminService` (R15; T028 amended in `d84d58c`): it validates, then hashes with
+  the connection released, then takes `pg_advisory_xact_lock` and checks `any_exists`, then creates.
+  The script runs it in `unit_of_work` (a plain `session.begin()` conflicts with
+  `release_connection`'s commit). `--name` is optional (R17).
+- **Review R19 to R28 (`/code-review high`)**, each with a test seen failing first, except R23:
+  - R19: the name is checked first (1 to 255); a database error prints its type only.
+  - R20: `MAIL_FROM` must hold an address. R21: user name and password, both or neither.
+  - R22: `--help` exits 0. R24: the CA store is read on first delivery, in the thread.
+  - R26: `SMTP_STARTTLS=false` keeps the connection plain. R27: the README says the timeout is
+    per step and that port 465 is not supported. R28: `exists().select_from(User)`.
+  - R23: `main` disposes the engine, as every script does. No test: the run without it showed no
+    warning either, so the assertion I added checked nothing and was removed (its mutant lived).
+- **Mutation checks (T029 and the review)**, on the final code: STARTTLS skipped when not
+  offered, never used, the password in the error, the certificate unchecked, create_admin allowed
+  twice, STARTTLS off in production, and the R19 to R26 mutants were all killed. Equivalent: the
+  cause kept (the test relay's refusal quotes no secret); `from None` stays as a safeguard.
+- **Database tests** on `hds_p3_test` (free first): `test_create_admin`, `test_mail_after_commit`,
+  `test_delivery_after_response`: 23 passed.

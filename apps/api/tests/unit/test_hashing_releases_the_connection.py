@@ -18,6 +18,7 @@ EXPECTED = {
     ("invitation.py", "reset_password"): 1,
     ("employee.py", "create_employee"): 1,
     ("client.py", "create_client_user"): 1,
+    ("first_admin.py", "create"): 1,  # the first Admin (specs/006 R13)
 }
 
 

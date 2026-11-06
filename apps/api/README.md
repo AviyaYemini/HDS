@@ -17,7 +17,7 @@ src/hds/
   wiring.py        builds services for routers and the worker
   core/            settings, security, errors, i18n, logging, dependencies
   locales/         translation files keyed by error code
-  scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records
+  scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records, create_admin
   tools/           check_imports (the layering checker)
 alembic/           database migrations
 tests/             unit, integration, contract and performance tests
@@ -47,8 +47,12 @@ fails until you do.
 | `ENVIRONMENT` | **Required, no default.** `development` and `test` are development environments; any other value (`production`, `staging`, ...) turns on the strict secret, email and mail-backend checks | none |
 | `JWT_SECRET_KEY` | **Required, no default.** Signs access tokens. Outside development it must be at least 32 bytes and not the published placeholder; it is never empty | none |
 | `JWT_ALGORITHM` | Signing algorithm for access tokens; the verifier accepts only this one | `HS256` |
-| `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; outside development a real backend is required and none exists yet | `outbox` in development |
+| `MAIL_BACKEND` | How messages are delivered. `outbox` (development only) writes a redacted record; `smtp` delivers through a relay over STARTTLS and is the one real backend, which outside development is required | `outbox` in development |
 | `MAIL_OUTBOX_PATH` | File the `outbox` backend appends to; each line holds the masked recipient, subject, purpose, expiry and the body with the token replaced by `[REDACTED]` | `apps/api/.dev-mail/outbox.jsonl` |
+| `SMTP_HOST`, `SMTP_PORT` | The relay for `MAIL_BACKEND=smtp`; the host is required with it. Submission with STARTTLS, usually port 587; port 465 (TLS from the first byte) is not supported. Each message is sent in a thread, with a 10 s timeout on each step of the conversation | none, `587` |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | The relay sign-in, both or neither (neither: the relay needs none). The password is a secret, from the environment or Vault: never logged, never in an error, and refused outside development if the repository publishes it | none |
+| `MAIL_FROM` | The sender of every message, as `Name <address>` or an address; required with `MAIL_BACKEND=smtp`, and refused if it holds no address | none |
+| `SMTP_STARTTLS` | Upgrade to TLS before signing in or sending, checking the relay's certificate. A relay that does not offer it is refused and nothing is sent. Must be `true` outside development; `false`, for a local relay, keeps the connection plain | `true` |
 | `DATABASE_URL` | Async SQLAlchemy URL. Outside development its password must not be a published one | local development database |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
@@ -116,7 +120,22 @@ uv run python -m hds.scripts.seed_dev            # development data
 uv run python -m hds.scripts.export_openapi      # print the OpenAPI document
 uv run python -m hds.scripts.dev_issue_link EMAIL invite   # development only: show a token once
 uv run python -m hds.scripts.purge_expired_records         # bulk clean; nothing depends on scheduling it
+uv run python -m hds.scripts.create_admin --email EMAIL --organisation NAME --timezone ZONE  # once
 ```
+
+`create_admin` makes the organisation and its first Admin in an empty database, for an
+environment that has no seed (specs/006 research R13); it refuses once any user exists. It reads
+the password from standard input, at a hidden prompt in a terminal. To pipe it in without leaving
+it in the shell's history:
+
+```bash
+read -rs PW && printf '%s\n' "$PW" | uv run python -m hds.scripts.create_admin \
+  --email admin@example.org --organisation "Acme" --timezone Asia/Jerusalem [--name "Dana Levi"]
+unset PW
+```
+
+Exit status 0 is created, 1 refused (users exist, or a bad password, address, name or zone), 2 bad
+usage. The password is never printed, and the address is shown masked.
 
 `ENVIRONMENT` and `JWT_SECRET_KEY` must be set for every command that starts the application or
 reads its settings (`uvicorn`, `seed_dev`, `export_openapi`, `dev_issue_link`, the tests); a
