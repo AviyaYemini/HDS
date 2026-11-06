@@ -19,6 +19,8 @@ Chosen on 2026-11-06 (specs/006-deploy-operations, T001).
 | `postgres` | `16.15-alpine` | `sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139` | the database in compose and in CI |
 | `postgres` | `16.15` | `sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32` | the database in the cluster, the backup image's client tools, the restore-test sidecar |
 | `nginxinc/nginx-unprivileged` | `1.30.6-alpine` | `sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03` | serving the web build (`infra/Dockerfile.web`) |
+| `node` | `22.23.4-bookworm-slim` | `sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d` | building the web export (`infra/Dockerfile.web`); Node 22, as CI and `package.json` |
+| `koalaman/shellcheck` | `v0.11.0` | `sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d` | the CI ShellCheck step |
 | `ghcr.io/gitleaks/gitleaks` | `v8.30.1` | `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f` | the CI `secrets` job |
 | `rclone/rclone` | `1.75.2` | `sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5` | the rclone binary copied into the backup image |
 

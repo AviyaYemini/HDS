@@ -338,7 +338,7 @@ Drive and S3, and its crypt remote does the encryption, so the move to S3 is a c
 - **Compose services**:
   - a `migrate` one-shot service (`alembic upgrade head`, then the idempotent `seed_dev`), which the
     API and the worker wait for with `service_completed_successfully` (FR-002)
-  - a `web` service serving the web export built at image build time, at `http://localhost:8081`
+  - a `web` service serving the web export built at image build time, at `http://localhost:8090` (8081 is the Expo dev server's)
 - **Prerequisites**: only Docker and make.
 - **Stopping and wiping** (FR-004): `make down` keeps the data, and `make wipe` asks before it
   deletes `infra/volumes/postgres`.

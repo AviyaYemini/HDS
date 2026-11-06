@@ -1,29 +1,52 @@
 # Infrastructure
 
-Local development infrastructure. Nothing here is a production deployment.
+The local environment, the images and the pinned versions. Nothing here is a production deployment
+yet; the shared environment (specs/006-deploy-operations) adds the chart and the cluster files.
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yml` | PostgreSQL 16 and the API, for local development |
-| `Dockerfile.api` | Builds the API image from `apps/api` |
-| `volumes/postgres` | PostgreSQL data directory (a bind mount) |
+| `docker-compose.yml` | The local environment: PostgreSQL, the migrate step, the API, the worker, the web client |
+| `Dockerfile.api` | The API image (the API, the worker and the migrations share it); runs as uid 10001 |
+| `Dockerfile.web` | The web image: the Expo web export, served by an unprivileged nginx |
+| `web/nginx.conf` | nginx for the web image: the app for every path that is not a file |
+| `volumes/postgres` | PostgreSQL data directory (a bind mount); `make wipe` deletes it |
 | `VERSIONS.md` | Every pinned tool and image version, with digests; change a row and its uses together |
 | `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
 
-## Usage
+## The local environment
 
-Run from the repository root; the compose file is not in the root, so pass it explicitly.
+Use the `make` targets from the repository root (the root [README](../README.md#quick-start) has the
+whole list): `make env` once, then `make up`, `make down`, `make wipe`, `make build`.
 
-```bash
-docker compose -f infra/docker-compose.yml up -d postgres        # database only
-docker compose -f infra/docker-compose.yml up --build           # database and API
-docker compose -f infra/docker-compose.yml exec api alembic upgrade head
-docker compose -f infra/docker-compose.yml down                  # data in volumes/ is kept
-```
+What `make up` does, in order:
 
-PostgreSQL listens on port 5432 and the API on 8000. The API container mounts
-`apps/api/src`, so code changes are visible in it, but its command does not enable reload;
-restart the container to pick them up.
+1. Checks that its host ports are free (`scripts/ops/ports_free.sh`), skipping any port held by this
+   project's own running service. A taken port stops it before anything starts, naming the port.
+2. Starts PostgreSQL and waits for it.
+3. Runs the one-shot `migrate` service: `alembic upgrade head`, then the development seed, which adds
+   nothing that is already there. The API and the worker wait for it to succeed, so a failing
+   migration leaves them stopped, and `make up` prints the migration's log.
+4. Starts the API (healthy when `/readyz` answers 200), the worker (healthy when its `/readyz` on
+   port 9100 answers) and, once the API is healthy, the web client.
+
+`make up` builds the images each time, so a pull that changes the client, a dependency or a Dockerfile
+is picked up; a build whose inputs did not change yields the same image (provenance is off), so a
+running stack is left as it is. The API's `src/` and `alembic/` are also mounted into the migrate,
+API and worker containers, so a code or migration change needs only `make down && make up`. Images
+are named after the compose project (`infra-api:local`, `infra-web:local`). The port check needs
+`nc` (netcat).
+
+| Host port | Service | Variable |
+| --- | --- | --- |
+| 5432 | PostgreSQL | `POSTGRES_PORT` |
+| 8000 | API | `API_PORT` |
+| 8090 | Web client (not 8081, which the Expo dev server uses) | `WEB_PORT` |
+| 9100 | API metrics | `API_METRICS_PORT` |
+| 9101 | Worker health and metrics | `WORKER_METRICS_PORT` |
+
+`scripts/ops/quickstart_check.sh` checks the whole quickstart from a clean checkout (CI's `quickstart`
+job). It wipes the database, so it runs only with `QUICKSTART_THROWAWAY=1`. To run it on your own
+machine beside your stack, use a fresh clone with its own `COMPOSE_PROJECT_NAME` and other ports.
 
 ## Before adding a proxy or ingress
 
@@ -35,18 +58,18 @@ See [ADR 007](../docs/adr/007-sign-in-abuse-controls.md).
 
 ## Configuration
 
-Compose takes these from the environment of the shell that runs it:
+Compose reads these from the root `.env` (which `make env` writes) or from the shell:
 
 | Variable | Default |
 | --- | --- |
 | `POSTGRES_DB`, `POSTGRES_USER` | `hds` |
-| `POSTGRES_PASSWORD` | a development value |
-| `JWT_SECRET_KEY` | **none, required**: compose stops when it is unset or empty |
+| `POSTGRES_PASSWORD` | the value in `.env` (a development value) |
+| `JWT_SECRET_KEY` | **none, required**: compose stops when it is unset or empty, naming it |
+| the port variables above | the ports above |
 
-The API container is started with `ENVIRONMENT=development`, set in the compose file. Generate a
-secret with `openssl rand -hex 32` and export it before any `docker compose` command, for example
-`export JWT_SECRET_KEY="$(openssl rand -hex 32)"`. Compose reads the whole file, so the variable
-is needed even when you start only PostgreSQL. The variables are listed in
+The API and worker containers run with `ENVIRONMENT=development` and `METRICS_PORT=9100`, set in the
+compose file. Compose reads the whole file, so `JWT_SECRET_KEY` is needed even to start PostgreSQL
+alone; `make down`, `make ps` and `make logs` supply a stand-in. The variables are listed in
 [`.env.example`](../.env.example). Never commit real secrets; production secrets come from the
 environment or a secret store.
 
@@ -55,5 +78,6 @@ and none exists yet, so it refuses to start there.
 
 ## Notes
 
-- Migrations are not run on container start. Apply them with the `exec` command above.
-- The image installs locked, non-development dependencies only, so test tools are not in it.
+- The images install locked, non-development dependencies only, so test tools are not in them.
+- The web bundle calls the API at `http://localhost:$API_PORT`, baked in at build time; the
+  cluster's web image is built with an empty URL and calls the API on its own origin.

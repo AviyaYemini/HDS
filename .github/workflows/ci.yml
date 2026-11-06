@@ -22,6 +22,25 @@ jobs:
         working-directory: apps/api
       # The API image runs as non-root and carries its version (specs/006 T005).
       - run: infra/tests/check_api_image.sh
+      # The operations scripts, POSIX sh (specs/006). Version as infra/VERSIONS.md.
+      - name: ShellCheck
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            scripts/ops/*.sh infra/tests/*.sh
+
+  quickstart:
+    name: Quickstart from a clean checkout (make env, make up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # The whole local environment from nothing, as the README says, then restart, wipe, a taken
+      # port and a failing migration (specs/006 FR-001 to FR-005, SC-001). It wipes the database,
+      # which on a runner is a throwaway one.
+      - run: scripts/ops/quickstart_check.sh
+        env:
+          QUICKSTART_THROWAWAY: "1"
 
   secrets:
     name: Secret scan (gitleaks)

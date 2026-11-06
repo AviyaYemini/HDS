@@ -23,7 +23,7 @@ make up           # everything, from nothing
 
 Expected:
 - `curl -s localhost:8000/readyz` answers `{"status":"ok",…}`.
-- `http://localhost:8081` shows the sign-in screen, and every sample account in the README signs in.
+- `http://localhost:8090` shows the sign-in screen, and every sample account in the README signs in.
 
 Then:
 - `make down && make up`: the shifts created before are still there.

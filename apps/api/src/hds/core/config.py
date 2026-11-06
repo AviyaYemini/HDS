@@ -48,6 +48,7 @@ KNOWN_DEVELOPMENT_VALUES: frozenset[str] = frozenset(
         "e2e-only-not-a-secret-0123456789-abcdefgh",  # apps/client/playwright.config.ts
         "hds",  # apps/api/scripts/contract_cli.sh (the scratch database's password)
         "unused-by-down",  # Makefile (the stand-in key for `make down`)
+        "dev1234!",  # the development seed's password (seed_dev.py, quickstart_check.sh)
     }
 )
 

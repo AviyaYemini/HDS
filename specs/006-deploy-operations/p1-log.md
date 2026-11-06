@@ -189,3 +189,74 @@ Done before Group B, by agreement with the reviewer: B's quickstart and the comp
   One full suite on the final PR 1 tree, after Group B, is the gate before the push.
 - **Gates**: ruff, format, `mypy --strict src/ tests/` (351 files), interrogate 100%, the import
   graph and pip-audit clean. The worker smoke test passed again on the final code.
+
+## Group B: the one-command local environment (T007 to T012)
+
+- **Where the check runs**: `make wipe` deletes `infra/volumes/postgres`, which in this checkout holds
+  the developer's own database and `hds_p3_test`, and their stack runs from it. So the quickstart
+  check never ran here. A harness in the scratchpad copied the tree as a clean checkout has it
+  (`git ls-files -co --exclude-standard`: tracked and new files, nothing git ignores) and ran it there
+  under `COMPOSE_PROJECT_NAME=hds-quickstart` on other ports. The script also refuses to run without
+  `QUICKSTART_THROWAWAY=1`. The developer's `infra-*` containers were untouched throughout.
+- **To make that possible**, the compose host ports are variables with the old defaults
+  (`POSTGRES_PORT`, `API_PORT`, `WEB_PORT`, `API_METRICS_PORT`, `WORKER_METRICS_PORT`), and image
+  names carry the compose project (`infra-api:local`), so two stacks never share one.
+- **Failing first**: the check stopped at step 1 (`make env` did not exist).
+- **What the runs found, and the fixes**:
+  1. Right after `make down`, Docker Desktop still held the stack's ports for a moment, so the port
+     check refused `make up` (step 7). It now gives a taken port up to 5 s to free itself.
+  2. A second `make up` recreated the API (step 8): `up --build` rebuilt the API image, and its ID
+     changes on every build although every layer is identical (only the config differs). `make up`
+     now builds only missing images; `make build` rebuilds. The code and migrations are mounted, so
+     a code change needs no build.
+  3. The check's own port holder could not bind while Docker still held the port; it now retries and
+     signals when it listens.
+  4. A harness bug, not the change: a failed run left the throwaway stack up, and the harness's
+     `compose down` failed silently (compose refuses any command without `JWT_SECRET_KEY`), so the
+     next run deleted the folder under a running database. The harness now removes the project's
+     containers by their compose label first.
+
+  Then all 12 steps passed: cold `make up` 34 s, warm 30 s (with Docker's build cache).
+- **Step 7** creates a qualification, not a shift as T007 says: it proves the same thing (data
+  survives a restart) with one call.
+- **Mutation check**: with the port check disabled (in the throwaway copy only), step 11 fails
+  ("make up started with port 18000 taken").
+- **Hook blocks**, each fixed at the cause, not worked around: an rsync line that excluded the
+  settings file by name (replaced by `git ls-files`, which needs no exclusion list); a README edit
+  that quotes a copy of the settings file (made with the file tools, since it reads no file); this
+  log entry, for the same reason; and a broad `rm -rf` of the scratchpad copy (left in place).
+- **A mistake of mine**: a `gitleaks dir` run meant for four paths scanned the whole folder, without
+  `--redact`, and printed the developer's local signing key from their git-ignored settings file into
+  the session. It is a development key, never committed. The owner has been told to rotate it. From
+  now on gitleaks runs only in `git` mode, on commits, with `--redact`.
+- **The published-values test** first read the Makefile's `sed` pattern (`.*/JWT_SECRET_KEY=`) as a
+  value. After the code review it skips only sed, regex and format patterns (`.*`, `[...]`, `{6`,
+  `%s`), not every value starting with punctuation; a new test pins both sides.
+- **/code-review high** (10 findings), all fixed:
+  1. The quickstart script publishes the seed's password `Dev1234!` as an assignment, which the
+     published-values test would catch once committed; `dev1234!` is now on the refused list.
+  2. and 3. Without `--build`, `make up` kept stale images after a pull (the client bundle, the API's
+     dependencies, a changed `API_PORT` baked into the bundle). The cause of the earlier recreate was
+     BuildKit's provenance record, which carries a new build reference each time: with provenance on,
+     two builds of the same tree gave two ids; with `--provenance=false`, the same id
+     (`SOURCE_DATE_EPOCH` alone did not help). Both builds now set `provenance: false`, and `make up`
+     builds again, recreating nothing when nothing changed (step 8 checks this).
+  4. Without `nc` every port looked free; `ports_free.sh` now refuses, saying it needs netcat.
+  5. The web container took 8081, the Expo dev server's port, and CORS allowed only it. It is now on
+     8090, and CORS keeps the dev origins 8081 and 3000 too.
+  6. The parser fix above.
+  7. A failed `make up` printed only the migrate log; it now prints every service's state and recent
+     logs.
+  8. Only migrate mounted `alembic/`; the API and worker, which read the history at start-up, now
+     mount it too, as the README says.
+  9. Step 8 and step 12 hard-coded the database user and name; they follow `POSTGRES_USER` and
+     `POSTGRES_DB`.
+  10. The API image was built once per service; only `api` builds it now (`pull_policy: never` on the
+      others), and a cold run shows one build and no pull attempts.
+
+  The quickstart then passed all 12 steps again: cold 21 s, warm 20 s.
+- **Full suite on the PR 1 tree** (A, B and C, before B's review fixes): 2512 passed in 28 min. B's
+  review fixes touched one Python line (a list entry) and one test; the unit and property suites
+  after them: 1065 passed.
+- **Gates**: ShellCheck (pinned image) clean on all four scripts; ruff, format, `mypy --strict` (351
+  files), interrogate 100%; the compose and Makefile changes covered by the quickstart run.

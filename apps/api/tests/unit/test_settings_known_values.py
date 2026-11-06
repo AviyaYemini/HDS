@@ -185,6 +185,7 @@ _DEFAULT = re.compile(r"""\$\{\w*(?:PASSWORD|SECRET_KEY)\w*:-(?P<value>[^}]+)\}"
 _ARGUMENTS = re.compile(
     r"""["']\w*(?:PASSWORD|SECRET_KEY)\w*["']\s*,\s*["'](?P<value>[^"']+)["']"""
 )
+_EXPRESSION = re.compile(r"""\.\*|\[[^\]]*\]|\{\d|%s""")
 _EXPANSION = re.compile(r"""\$\{[^}]*\}""")
 _URL = re.compile(r"""[a-z+]+://[^:/@\s]+:(?P<value>[^@\s$]+)@""")
 
@@ -203,7 +204,9 @@ def published_values() -> set[str]:
             found.update(m["value"] for m in _ASSIGNMENT.finditer(plain))
             for m in _URL.finditer(line):
                 found.add(make_url(m[0] + "h/d").password or "")
-    return {v for v in found if v and not v.startswith("$")}
+    # A sed or regex pattern (``.*``, ``[0-9a-f]{64}``) or a format (``%s``) is an expression in a
+    # script, not a published example value; every other value is checked, whatever it starts with.
+    return {v for v in found if v and not v.startswith("$") and not _EXPRESSION.search(v)}
 
 
 def test_every_value_the_repository_publishes_is_on_the_refused_list() -> None:
@@ -223,3 +226,16 @@ def test_every_value_the_repository_publishes_is_on_the_refused_list() -> None:
 def test_every_listed_value_is_already_in_its_compared_form() -> None:
     # Values are compared after strip() and lower(); a capital or a space would never match.
     assert all(value == value.strip().lower() for value in KNOWN_DEVELOPMENT_VALUES)
+
+
+def test_the_reader_skips_script_patterns_but_not_values_starting_with_punctuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sample = tmp_path / "sample.sh"
+    sample.write_text(
+        "POSTGRES_PASSWORD=_hds_local\n"
+        'sed "s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$key/"\n'
+        "grep -Eq '^JWT_SECRET_KEY=[0-9a-f]{64}$' file\n"
+    )
+    monkeypatch.setattr("tests.unit.test_settings_known_values.PUBLISHING_FILES", [sample])
+    assert published_values() == {"_hds_local"}

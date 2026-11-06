@@ -17,3 +17,9 @@ infra/volumes/
 **/node_modules/
 *.log
 .DS_Store
+# The client's own build and test outputs: the web image builds its export afresh.
+apps/client/dist/
+apps/client/coverage/
+apps/client/playwright-report/
+apps/client/test-results/
+apps/client/.jest-cache/

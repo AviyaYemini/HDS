@@ -50,12 +50,12 @@ three bullets.
 
 **Goal**: FR-001 to FR-005, SC-001. **Independent test**: quickstart scenario 1.
 
-- [ ] T007 [US1] Failing test, a CI job `quickstart` in `.github/workflows/ci.yml` and the script `scripts/ops/quickstart_check.sh`, which works from a clean checkout and fails at the first unmet step:
+- [X] T007 [US1] Failing test, a CI job `quickstart` in `.github/workflows/ci.yml` and the script `scripts/ops/quickstart_check.sh`, which works from a clean checkout and fails at the first unmet step:
   1. `make env` writes `.env` with a 64-hex-character `JWT_SECRET_KEY`.
   2. A second `make env` exits non-zero and leaves the file unchanged.
   3. `make up` (with `timeout 600`, under SC-001's 15 minutes) returns. Log how long it took.
   4. `curl localhost:8000/readyz` reaches 200 within 120 s.
-  5. `curl localhost:8081/` returns HTML containing the app's root element.
+  5. `curl localhost:8090/` returns HTML containing the app's root element.
   6. Each sample account from `apps/api/src/hds/scripts/seed_dev.py` signs in through `POST /auth/login`.
   7. A shift created through the API, then `make down` and `make up` (with `timeout 120`; log the time), is still there.
   8. `make up` again, on the running stack, exits 0, creates no second organisation and restarts nothing (the port check skips this project's own running services).
@@ -65,20 +65,20 @@ three bullets.
   12. `make wipe`; then start only the database (`docker compose ... up -d postgres`) and create one of migration 001's tables by hand so 001 fails (the port check skips the running `postgres` service): `make up` exits non-zero, the API is not started, and the output shows the migration error. No repository file changes for this step.
 
   It needs `/readyz`, so it runs after T013; until then it is expected to fail at step 4. Record that failure in the log (FR-001 to FR-005)
-- [ ] T008 [P] [US1] `infra/Dockerfile.web`: a multi-stage build that runs `pnpm install --frozen-lockfile` and `pnpm --filter hds-client export:web` with `EXPO_PUBLIC_API_URL=""`, then copies `apps/client/dist` into the pinned `nginx-unprivileged`, listening on 8080 with an SPA fallback to `index.html`, configured in `infra/web/nginx.conf`. Locally the API is on another origin, so the compose build passes `EXPO_PUBLIC_API_URL=http://localhost:8000` as a build arg; the cluster image keeps it empty (research R2)
-- [ ] T009 [US1] `infra/docker-compose.yml`:
+- [X] T008 [P] [US1] `infra/Dockerfile.web`: a multi-stage build that runs `pnpm install --frozen-lockfile` and `pnpm --filter hds-client export:web` with `EXPO_PUBLIC_API_URL=""`, then copies `apps/client/dist` into the pinned `nginx-unprivileged`, listening on 8080 with an SPA fallback to `index.html`, configured in `infra/web/nginx.conf`. Locally the API is on another origin, so the compose build passes `EXPO_PUBLIC_API_URL=http://localhost:8000` as a build arg; the cluster image keeps it empty (research R2)
+- [X] T009 [US1] `infra/docker-compose.yml`:
   - **`migrate`**: a one-shot service on the API image, running `alembic upgrade head && python -m hds.scripts.seed_dev`.
   - **API and worker**: `api` and `worker` depend on `migrate: service_completed_successfully`. `api` has a healthcheck on `/readyz` and maps `9100:9100`; `worker` maps `9101:9100`.
-  - **`web`**: from `Dockerfile.web` at `8081:8080`, depending on the API being healthy.
+  - **`web`**: from `Dockerfile.web` at `8090:8080` (not 8081, the Expo dev server's port), depending on the API being healthy.
   - **Comments**: remove the note that migrations are not run on start.
   - **No new defaults** for secrets.
-- [ ] T010 [US1] `Makefile`, with each target's comment saying what it keeps and what it deletes:
+- [X] T010 [US1] `Makefile`, with each target's comment saying what it keeps and what it deletes:
   - **`env`**: writes `.env` from `.env.example` with a fresh `openssl rand -hex 32`; refuses if `.env` exists.
-  - **`up`**: first checks that ports 5432, 8000, 8081, 9100 and 9101 are free and, if one is taken, names it and starts nothing. A port whose service is already running in this compose project (`docker compose ps --status running --services`) is skipped, so `make up` on a running stack still works; then starts everything and waits for the API to be healthy.
+  - **`up`**: first checks that ports 5432, 8000, 8090, 9100 and 9101 are free and, if one is taken, names it and starts nothing. A port whose service is already running in this compose project (`docker compose ps --status running --services`) is skipped, so `make up` on a running stack still works; then starts everything and waits for the API to be healthy.
   - **`down`**: unchanged.
   - **`wipe`**: asks `Delete the local database? [y/N]`, then runs `down -v` and removes `infra/volumes/postgres`.
-- [ ] T011 [US1] Docs: the root `README.md` quickstart becomes the prerequisites (Docker, make), then `make env`, then `make up`, then the sample accounts and their roles. Rewrite the local section of `infra/README.md` for the new services and targets, and keep the proxy note
-- [ ] T012 Gates, ShellCheck on `scripts/ops/quickstart_check.sh`, both reviews, the log, and a commit `feat(infra): start the whole system with one command (006 Group B)`
+- [X] T011 [US1] Docs: the root `README.md` quickstart becomes the prerequisites (Docker, make), then `make env`, then `make up`, then the sample accounts and their roles. Rewrite the local section of `infra/README.md` for the new services and targets, and keep the proxy note
+- [X] T012 Gates, ShellCheck on `scripts/ops/quickstart_check.sh`, both reviews, the log, and a commit `feat(infra): start the whole system with one command (006 Group B)`
 
 ## Phase 3: Group C, health, version and metrics (US2, P1)
 

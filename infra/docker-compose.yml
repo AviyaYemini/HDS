@@ -1,3 +1,31 @@
+# The local environment: everything HDS needs, started by `make up` from the repository root
+# (specs/006-deploy-operations US1). Nothing here is a production deployment.
+#
+# Host ports come from the environment, with these defaults, so a second stack (the quickstart
+# check) can run beside a developer's own: POSTGRES_PORT 5432, API_PORT 8000, WEB_PORT 8090,
+# API_METRICS_PORT 9100, WORKER_METRICS_PORT 9101.
+
+# Images are named per compose project, so the quickstart check's stack never shares one with yours.
+# Only the api service builds the API image; migrate and the worker run the same image. Provenance is
+# off so a build whose inputs did not change yields the very same image, and `make up --build`
+# recreates nothing; with provenance on, every build gets a new id.
+x-api-image: &api-image
+  image: ${COMPOSE_PROJECT_NAME:-infra}-api:local
+  pull_policy: never
+
+x-api-build: &api-build
+  context: ..
+  dockerfile: infra/Dockerfile.api
+  provenance: false
+
+x-api-environment: &api-environment
+  # Stated, never defaulted: the settings refuse to start without an explicit environment.
+  ENVIRONMENT: development
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hds}:${POSTGRES_PASSWORD:-hds_dev}@postgres:5432/${POSTGRES_DB:-hds}
+  # No default on purpose: compose stops when this is unset or empty, so the stack can never
+  # run with a signing key that is published in this repository.
+  JWT_SECRET_KEY: "${JWT_SECRET_KEY:?set JWT_SECRET_KEY, generate one with: openssl rand -hex 32}"
+
 services:
   postgres:
     image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
@@ -6,7 +34,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-hds}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hds_dev}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -15,38 +43,96 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.api
+  # One-shot: brings the database to the current version, then loads the development seed, which
+  # adds nothing that is already there (FR-002). The API and the worker wait for it to succeed, so a
+  # failing migration leaves them stopped, and `make up` shows this service's log.
+  migrate:
+    <<: *api-image
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      # Stated, never defaulted: the settings refuse to start without an explicit environment.
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hds}:${POSTGRES_PASSWORD:-hds_dev}@postgres:5432/${POSTGRES_DB:-hds}
-      # No default on purpose: compose stops when this is unset or empty, so the stack can never
-      # run with a signing key that is published in this repository.
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?set JWT_SECRET_KEY, generate one with: openssl rand -hex 32}"
-    ports:
-      - "8000:8000"
+    environment: *api-environment
+    command: ["sh", "-c", "alembic upgrade head && python -m hds.scripts.seed_dev"]
     volumes:
       - ../apps/api/src:/app/src
+      - ../apps/api/alembic:/app/alembic
+    restart: "no"
+
+  api:
+    <<: *api-image
+    build: *api-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *api-environment
+      METRICS_PORT: "9100"
+      # The web container, plus the defaults: the Expo dev server (8081) and Playwright (3000).
+      CORS_ORIGINS: '["http://localhost:${WEB_PORT:-8090}", "http://localhost:8081", "http://localhost:3000"]'
+    ports:
+      - "${API_PORT:-8000}:8000"
+      - "${API_METRICS_PORT:-9100}:9100"
+    # Code and migrations mounted, so a change needs only a restart; the API reads the migration
+    # history at start-up for its ready check.
+    volumes:
+      - ../apps/api/src:/app/src
+      - ../apps/api/alembic:/app/alembic
+    # Ready, not merely alive: the database answers and is at the code's migrations (FR-006). The
+    # image has no curl, so Python asks.
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import sys, urllib.request; sys.exit(urllib.request.urlopen('http://localhost:8000/readyz', timeout=3).status != 200)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   worker:
     # The schedule worker (004): the API's image, running the jobs the API queues. More than one
     # may run; each claims a job with FOR UPDATE SKIP LOCKED.
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.api
+    <<: *api-image
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hds}:${POSTGRES_PASSWORD:-hds_dev}@postgres:5432/${POSTGRES_DB:-hds}
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?set JWT_SECRET_KEY, generate one with: openssl rand -hex 32}"
+      <<: *api-environment
+      METRICS_PORT: "9100"
     command: ["python", "-m", "hds.worker"]
+    ports:
+      - "${WORKER_METRICS_PORT:-9101}:9100"
     volumes:
       - ../apps/api/src:/app/src
+      - ../apps/api/alembic:/app/alembic
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import sys, urllib.request; sys.exit(urllib.request.urlopen('http://localhost:9100/readyz', timeout=3).status != 200)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # The web client, built from the Expo web export (infra/Dockerfile.web). The bundle calls the API
+  # on its own host port, since locally the two are on different origins.
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+      provenance: false
+      args:
+        EXPO_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+    image: ${COMPOSE_PROJECT_NAME:-infra}-web:local
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8090}:8080"
