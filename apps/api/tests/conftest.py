@@ -54,7 +54,8 @@ from hds.main import app
 from hds.models.base import Base
 from hds.models.organisation import Organisation
 from hds.models.user import User, UserRole
-from tests.run_database import database_url, process_exists, stale_databases
+from tests.run_database import allowed_database, database_url, process_exists, stale_databases
+from tests.run_lock import RunLock
 
 # Allow the reserved ``.test`` domain used by the seeded fixtures.
 email_validator.TEST_ENVIRONMENT = True
@@ -68,10 +69,15 @@ _API_DIR = Path(__file__).resolve().parent.parent
 
 
 def _assert_safe_test_db(url: str) -> str:
-    """Refuse to run against anything that is not a dedicated *_test database."""
+    """Refuse to run against anything that is not a dedicated *_test database.
+
+    Then only ``hds_p3_test`` or a run's own database outside CI, and also CI's own in CI
+    (``tests.run_database.allowed_database``).
+    """
     name = make_url(url).database or ""
     if not name.endswith("_test"):
         raise RuntimeError(f"TEST_DATABASE_URL must point at a '*_test' database, got {name!r}")
+    allowed_database(name, in_ci=bool(os.environ.get("CI")))
     return name
 
 
@@ -119,8 +125,20 @@ def migrated_test_db() -> Generator[str, None, None]:
     """Create the test database, run Alembic migrations to head once and drop it at the end.
 
     A database that was named with ``TEST_DATABASE_URL`` is kept. Databases left by killed runs are
-    dropped here, so nothing depends on a run ending cleanly.
+    dropped here, so nothing depends on a run ending cleanly. The run holds an advisory lock on its
+    database for the whole session, so a second run on it stops at once instead of colliding.
     """
+    _assert_safe_test_db(TEST_DATABASE_URL)
+    lock = RunLock(TEST_DATABASE_URL)
+    lock.acquire()
+    try:
+        yield from _migrated()
+    finally:
+        lock.release()
+
+
+def _migrated() -> Generator[str, None, None]:
+    """Prepare and migrate the run's database, and drop it afterwards unless it was named."""
     asyncio.run(_prepare_database(TEST_DATABASE_URL, _NAMED_DATABASE))
     env = {**os.environ, "DATABASE_URL": TEST_DATABASE_URL}
     try:
