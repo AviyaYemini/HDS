@@ -60,10 +60,12 @@ make_within() {
     return "$status"
 }
 
-step "1. make env writes .env with a fresh 64-hex-character key"
+step "1. make env writes .env with a fresh 64-hex-character key, readable by its owner alone"
 rm -f .env
 make env
 grep -Eq '^JWT_SECRET_KEY=[0-9a-f]{64}$' .env || fail ".env has no 64-hex-character JWT_SECRET_KEY"
+# shellcheck disable=SC2012  # ls -l is the portable way to read a mode on both macOS and Linux
+[ "$(ls -l .env | cut -c1-10)" = "-rw-------" ] || fail ".env is readable by others: $(ls -l .env | cut -c1-10)"
 
 step "2. a second make env refuses and leaves .env unchanged"
 before=$(cat .env)

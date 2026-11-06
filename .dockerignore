@@ -2,9 +2,11 @@
 # named paths under apps/api, so nothing below reaches the image; this keeps secrets, the database
 # files and caches out of the context sent to the builder.
 .git/
-.env
-.env.*
-!.env.example
+# Settings files at any depth: a nested one (apps/client, say) would reach the web build, and Expo
+# bundles its EXPO_PUBLIC_ values into the page.
+**/.env
+**/.env.*
+!**/.env.example
 infra/volumes/
 **/.venv/
 **/__pycache__/

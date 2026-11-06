@@ -23,11 +23,12 @@ POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258
 
 .PHONY: env up build down wipe ps logs
 
-# Write .env from .env.example with a fresh JWT_SECRET_KEY. Refuses when .env exists, so it can
-# never replace a key you already use. Deletes nothing.
+# Write .env from .env.example with a fresh JWT_SECRET_KEY, readable by you alone (umask 077, so
+# mode 0600). Refuses when .env exists, so it can never replace a key you already use. Deletes
+# nothing.
 env:
 	@if [ -e .env ]; then echo "make env: .env exists; it was left as it is." >&2; exit 1; fi
-	@key="$$(openssl rand -hex 32)" && \
+	@umask 077 && key="$$(openssl rand -hex 32)" && \
 		sed "s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$$key/" .env.example > .env && \
 		echo "make env: wrote .env with a new JWT_SECRET_KEY."
 

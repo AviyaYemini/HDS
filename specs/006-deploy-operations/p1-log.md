@@ -260,3 +260,10 @@ Done before Group B, by agreement with the reviewer: B's quickstart and the comp
   after them: 1065 passed.
 - **Gates**: ShellCheck (pinned image) clean on all four scripts; ruff, format, `mypy --strict` (351
   files), interrogate 100%; the compose and Makefile changes covered by the quickstart run.
+- **The reviewer's Group B review**: a build without any cache (`build --no-cache --pull`, as CI
+  starts) took 42 s on this Mac, well inside step 3's 600 s. Two fixes: `make env` writes the
+  settings file with umask 077 (mode 0600), which step 1 now checks; and the dockerignore excludes
+  settings files at any depth (`**/`), so a nested one never reaches the web build, whose bundle
+  would carry its `EXPO_PUBLIC_` values. ShellCheck clean; the quickstart passed all 12 steps again.
+  To watch in CI: the runner's Compose version (`--wait` with a one-shot service, `build.provenance`)
+  and that `nc` is present.
