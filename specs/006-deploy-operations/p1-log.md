@@ -285,3 +285,65 @@ Done before Group B, by agreement with the reviewer: B's quickstart and the comp
   api and web ids. Control: the same copy built directly with compose, without the switch,
   printed attestations and gave two different api ids. The harness then passed all 12 steps on the
   real tree (cold 28 s, warm 26 s); ShellCheck clean.
+
+## Group D: traces (T020 to T024)
+
+Branch `006-deploy-operations-d-f`, from main at `d2e9eda` (PR 9 merged). First, `0fca5af` adds T032a,
+the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
+
+- **Dependencies**: `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` 1.45.1, and
+  `opentelemetry-instrumentation-fastapi` and `-sqlalchemy` 0.66b1, exactly as `infra/VERSIONS.md`
+  pinned them in Group A. `opentelemetry-api` was already in the lock at 1.45.2, from a dev
+  dependency, and is now 1.45.1 to match the SDK. pip-audit runs in the gates.
+- **Failing first**: `test_tracing.py` failed on the missing `hds.core.tracing`. `test_migration_024`
+  ran only at the group's end, as the database rule says.
+- **T021**: migration 024 adds `schedule_jobs.trace_context VARCHAR(55)`, nullable, an expand step.
+  `alembic check` on a fresh throwaway PostgreSQL: no new operations; downgrade to 023 and up again:
+  fine. The long-lived `hds_p3_test` reports a stray `idx_special_days_project` that no migration
+  defines, a leftover from an earlier run, which ci_local_db.sh's comment warns about. Left alone.
+- **T023**: `core/tracing.py`:
+  - `configure` sets the provider once per process, instruments the app's engine, and instruments
+    each FastAPI app it is given; OTLP only when the endpoint is set (`span_processors`).
+  - The queue stores `current_traceparent()`. The worker runs each job in a `schedule_job.run`
+    span (consumer) from `continue_from(row)`; an empty context for null or malformed, so it never
+    joins an unrelated current span.
+  - The log filter adds `trace_id` and `span_id` inside a valid span. The worker now logs through
+    `configure_logging`, the API's JSON lines.
+- **Review R1 (the reading of "malformed")**: T022 said a malformed header stores null. Under the
+  instrumentation every request has a trace, continued or new, so the job stores the API's own
+  trace, and a malformed header is never stored. That follows FR-008a, so jobs queued by the app,
+  which sends no header, are traced too. The HDS helper agreed; T022, T024 and data-model.md were
+  amended in `db0cb6f`. Null: jobs before 024, or queued outside any trace.
+- **Review R3 and D1**: the probes are not traced (named in T023 now). The instrumentation
+  searches its patterns anywhere in the full URL, so they are anchored to the whole path:
+  `/api/v1/health-checks` was untraced before the fix. A test now checks three such routes.
+- **R2**: `apps/api/README.md` lists `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` and has a
+  Traces section.
+- **Mutation checks (T024)**, each run on `test_tracing.py` and restored:
+  - a new trace in the worker (`Context()` in place of `continue_from`): 2 failed;
+  - the traceparent check accepts any value: 9 failed;
+  - trace ids missing from logs: 3 failed;
+  - the queue drops the trace: 4 failed;
+  - a malformed row joins the current trace (`get_current()`): survived at first, as no test ran a
+    job inside a span. A test was added, and it then failed.
+- **`/code-review high` (R5 to R14)**: ten findings, unverified as that mode reports them. Eight
+  fixed, each with a test, and each test was seen to fail on a mutant of its fix:
+  - R5: a sampler drops a root client span, so SQL outside a request or a job (the poll every
+    5 s, the metrics' counts) is no one-span trace. Under `ParentBased`, statements inside stay.
+  - R6: the job span carries `hds.schedule_job.outcome`, and its status is error when failed.
+  - R7: `worker.main` shuts the provider down on the way out; Group F's SIGTERM handling makes
+    that path reachable.
+  - R8: `RedactingExporter` wraps the OTLP exporter. It strips query strings (seen in a probe:
+    `http.url` held `?search=Dana+Levi`) and redacts text attributes, events and the status.
+  - R9: the trace-context helpers moved to `hds.core.trace_context` (OpenTelemetry API only), so
+    the service no longer loads FastAPI, the instrumentation or the exporter.
+  - R10: `current_traceparent` uses the propagator's `inject`, and the log filter uses
+    `format_trace_id` and `format_span_id`.
+  - R11: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` turns export on too. `OTEL_SDK_DISABLED` is not in
+    contracts/ops.md and was not added.
+  - R14: the filter always sets both fields, `None` outside a span, so a hand-passed `extra`
+    never writes one.
+  - Won't-fix: R12, `tracestate` (the column is the traceparent alone, by data-model.md); R13,
+    the provider set on import (process-global by OpenTelemetry's design, nothing exported without
+    an endpoint).
+  - The ASGI send and receive spans are left out (`exclude_spans`), which halves a request's spans.

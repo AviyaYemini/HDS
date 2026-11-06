@@ -1,0 +1,22 @@
+# Review ledger: 006-deploy-operations
+
+Every finding of a review of this feature (/hds-review, /code-review, the reviewer session), one
+row each. Status is `open`, `fixed` or `won't-fix`; a fixed row names the commit, a won't-fix row
+says why in the finding. A group is done only when no row is open. /hds-status shows the count.
+
+| ID | Source | Finding | Status | Fix commit |
+| --- | --- | --- | --- | --- |
+| R1 | /hds-review | Outside tasks.md: T022 says "a malformed header stores null", but `apps/api/tests/unit/test_tracing.py:133` and `core/tracing.py` store the API's own new trace for a malformed header (the instrumentation starts one); null is stored only outside any trace. It follows FR-008a (every job one trace from its request), yet it contradicts T022 and `data-model.md:20`. Confirm it, then amend T022 and data-model.md in a docs(spec) commit, or store the validated header instead | open | |
+| R2 | /hds-review | Principle XI.7: `apps/api/README.md:69` (the settings table) lists no `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_SERVICE_NAME`, and nothing says that log lines now carry `trace_id` and `span_id` or that the worker logs JSON. Add both settings (contracts/ops.md:121) and a short "Traces" note in the same commit | open | |
+| R3 | /hds-review | Outside tasks.md: `apps/api/src/hds/core/tracing.py:37` leaves `/livez`, `/readyz` and `/health` untraced, which neither T023 nor research R8 names. Confirm it as an implementation detail and record it in the log, or remove it | open | |
+| R4 | HDS helper (D1) | `apps/api/src/hds/core/tracing.py:37`: the instrumentation searches `excluded_urls` anywhere in the full URL, so `/health` also left `/api/v1/health-checks` untraced. Anchor the probes to the whole path, with a test that a longer route is still traced | open | |
+| R5 | /code-review high | `apps/api/src/hds/core/tracing.py:85`: SQL run outside any span (the worker's claim poll every 5 s, the job counts on each scrape) starts a one-span trace of its own; the probe noise again. Drop root spans of kind client with a sampler; the job and request spans keep their SQL children | open | |
+| R6 | /code-review high | `apps/api/src/hds/worker.py:92`: `_run` catches the failure, so a failed job's `schedule_job.run` span ends with no error status. Set the outcome as an attribute and the status to error unless it succeeded | open | |
+| R7 | /code-review high | `apps/api/src/hds/core/tracing.py:57`: batched spans are flushed only at exit, which SIGTERM skips today. Shut the provider down in `worker.main`; Group F's SIGTERM handling makes that path reachable | open | |
+| R8 | /code-review high | `apps/api/src/hds/core/tracing.py:87`: spans carry the URL with its query string (`http.url`, seen: `?search=Dana+Levi`) and exception text, which the log redaction never sees. Redact at export: strip queries, run `redact` on string attributes, events and the status | open | |
+| R9 | /code-review high | `apps/api/src/hds/services/schedule_job.py:22`: the service imports `hds.core.tracing`, which loads FastAPI, the instrumentation and the exporter. Split the trace-context helpers (OpenTelemetry API only) into `hds.core.trace_context` | open | |
+| R10 | /code-review high | `apps/api/src/hds/core/tracing.py:99`: `current_traceparent` formats the header by hand, and the log filter repeats it; use the propagator's `inject` and `format_trace_id`/`format_span_id` | open | |
+| R11 | /code-review high | `apps/api/src/hds/core/tracing.py:55`: only `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, which the exporter honours, is ignored. Accept either. `OTEL_SDK_DISABLED` is not in contracts/ops.md and is not added | open | |
+| R12 | /code-review high | `apps/api/src/hds/core/tracing.py:117`: `tracestate` is not kept with the job. Won't-fix: the column is the `traceparent` alone, `VARCHAR(55)`, by data-model.md; no vendor state is in use | won't-fix | |
+| R13 | /code-review high | `apps/api/src/hds/core/tracing.py:86`: importing `hds.main` sets the process's provider and instruments the engine. Won't-fix: the OpenTelemetry provider is process-global by design, `configure` is idempotent, and nothing is exported without an endpoint | won't-fix | |
+| R14 | /code-review high | `apps/api/src/hds/core/logging.py:333`: the formatter copies `trace_id`/`span_id` from any record, so `extra={"trace_id": ...}` outside a span writes one. The filter sets both, `None` outside a span, and the formatter writes only real ones | open | |

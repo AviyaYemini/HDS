@@ -67,6 +67,8 @@ fails until you do.
 | `SCHEDULE_TIME_LIMIT_SECONDS` | How long the schedule worker's solver may search before it returns its best roster, 1 to 60 (004) | `20` |
 | `HDS_VERSION` | The version the process reports in `/livez`, `/readyz` and the `hds_build_info` metric; the image build sets it to the commit | `dev` |
 | `METRICS_PORT` | The operations port: the API's `/metrics`, and the worker's `/livez`, `/readyz` and `/metrics`. Never the public port. `0` serves none; compose and the chart set `9100`, and give each process on one host its own. A taken port stops start-up naming this setting | `0` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Where spans go, over OTLP (HTTP), for example `http://collector:4318`; `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` also works. Unset, spans are made, so the logs can name them, and dropped; nothing is sent | unset |
+| `OTEL_SERVICE_NAME` | The service name on the spans; the chart sets it | `hds-api` / `hds-worker` |
 | `TEST_DATABASE_URL` | Tests only; a database to use and keep, whose name must end in `_test`. Unset, each run creates its own `hds_run_<process id>_test` and drops it at the end | a database per run |
 
 ## Health and metrics
@@ -87,6 +89,22 @@ code does not know is newer and counts as ready, so old pods keep serving during
 after a rollback. The ready check opens connections of its own, never the request pool, so a busy
 pool cannot take every pod out of service together. The worker's readiness is the database only.
 The migration history is read at start-up: a missing or two-headed history stops the process.
+
+## Traces
+
+Each schedule job is one trace, from the request that queued it through the worker that ran it
+(specs/006 FR-008a, research R8). A request continues the caller's `traceparent` when it is valid
+and starts a new trace otherwise; the job stores that trace (`schedule_jobs.trace_context`), and the
+worker runs the job in a span continued from it, or in a new trace when the job has none. The
+health probes are not traced.
+
+Every log line inside a request or a job carries `trace_id` and `span_id` next to `request_id`, so
+a trace can be followed through the logs; lines outside both carry neither. The worker writes the
+same JSON lines as the API. No trace store is deployed: without `OTEL_EXPORTER_OTLP_ENDPOINT`
+(or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) nothing is exported. What is exported is redacted first,
+as the logs are: URLs lose their query strings, and text attributes, exception events and error
+messages go through the log redaction. A SQL statement outside a request or a job (the worker's
+poll) starts no trace, and a failed job's span is marked as an error.
 
 ## Common tasks
 

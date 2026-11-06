@@ -12,6 +12,10 @@ It also serves an operations app on ``METRICS_PORT`` (specs/006 research R6, con
 ``/livez`` (the loop turned in the last 30 s, or a held job is inside its lease), ``/readyz`` (the
 database too) and ``/metrics`` (jobs by state, read from the table when scraped, and how long jobs
 took).
+
+Each run of a job is a span continued from the trace stored on the job when it was queued, so the
+job is one trace from the request to the worker (specs/006 FR-008a, research R8). The worker's
+logs are the API's JSON lines, which name that trace.
 """
 
 import asyncio
@@ -23,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import uvicorn
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.applications import Starlette
@@ -30,8 +35,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from hds.core import trace_context, tracing
 from hds.core.config import get_settings
 from hds.core.health import WorkerPulse
+from hds.core.logging import configure_logging
 from hds.core.metrics import JobMetrics
 from hds.repositories.schedule_job import CHANNEL
 from hds.services.health import HealthService
@@ -60,7 +67,8 @@ async def run_once(
 
     A failure in building or solving marks the job failed (``jobs.solver_failed``) and changes
     nothing else; it never stops the worker. With ``ops``, the held job keeps the worker alive
-    until its lease ends, and the job's duration and outcome are recorded.
+    until its lease ends, and the job's duration and outcome are recorded. The run is one span,
+    continued from the trace the job was queued with, or a new trace when it has none.
     """
     async with factory() as session:
         claim = await job_service(session).claim()
@@ -71,8 +79,22 @@ async def run_once(
     if ops is not None and claim.lease_until is not None:
         ops.pulse.hold(claim.lease_until)
     outcome = "failed"  # also when storing the failure itself raises
+    span = trace_context.tracer().start_as_current_span(
+        trace_context.JOB_SPAN,
+        context=trace_context.continue_from(claim.trace_context),
+        kind=SpanKind.CONSUMER,
+        attributes={
+            "hds.schedule_job.id": str(claim.id),
+            "hds.schedule_job.attempt": claim.attempt,
+        },
+    )
     try:
-        outcome = await _run(factory, claim)
+        with span as current:
+            outcome = await _run(factory, claim)
+            # _run catches the failure itself, so the span is told how the job ended (review R6).
+            current.set_attribute("hds.schedule_job.outcome", outcome)
+            if outcome == "failed":
+                current.set_status(Status(StatusCode.ERROR, "the schedule job failed"))
     finally:
         if ops is not None:
             ops.pulse.release()
@@ -246,9 +268,15 @@ def main() -> None:
     """Start the worker, and its operations port, on the configured database."""
     from hds.core.database import get_session_factory
 
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
+    tracing.configure("hds-worker")
     logger.info("schedule worker started")
-    asyncio.run(serve(get_session_factory(), get_settings().METRICS_PORT))
+    try:
+        asyncio.run(serve(get_session_factory(), get_settings().METRICS_PORT))
+    finally:
+        # Batched spans are sent only on the way out: the last job's trace would lose its worker
+        # half (review R7). SIGTERM reaches this once the worker drains on it (006 Group F).
+        tracing.shutdown()
 
 
 if __name__ == "__main__":

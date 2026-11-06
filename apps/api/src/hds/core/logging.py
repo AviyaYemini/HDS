@@ -1,6 +1,6 @@
 """Structured JSON logging with redaction of secrets and personal data.
 
-Layer: core. Depends on ``hds.core.request_context`` only.
+Layer: core. Depends on ``hds.core.request_context`` and the OpenTelemetry API only.
 
 Logs go to stdout as one JSON object per line. Redaction runs on the final text of a record, after
 the format arguments have been substituted, so it does not matter whether a secret arrived in the
@@ -22,6 +22,8 @@ import json
 import logging
 import re
 from collections.abc import Callable
+
+from opentelemetry import trace
 
 from hds.core.request_context import get_request_id
 
@@ -51,6 +53,8 @@ _STRING_PREFIX = re.compile(r"""[bBrRuU]{1,2}["']""")
 _WRAPPER = re.compile(r"""[\w.]++\(""")
 _NOTHING_AFTER = re.compile(r"""["')\]}]++[ \t]*+(?:\n|\Z)""")
 _CLOSERS = {"[": "]", "(": ")", "{": "}"}
+# What a line inside a span carries, besides the request id (specs/006 FR-008a).
+_TRACE_FIELDS = ("trace_id", "span_id")
 # How far a wrapper is followed. Past this it is not a wrapper, or "a( a( a( ..." is quadratic.
 _WRAPPER_REACH = 2000
 
@@ -272,7 +276,11 @@ def redact(text: str) -> str:
 
 
 class SensitiveDataFilter(logging.Filter):
-    """Redact every record's final message and stamp it with the request id."""
+    """Redact every record's final message and stamp it with the request id and its trace.
+
+    Inside a span (a request, or a worker's run of a job) the record also gets ``trace_id`` and
+    ``span_id``, which join the line to its trace (specs/006 FR-008a); outside one it gets neither.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Rewrite the record so its text is redacted; always keep it.
@@ -289,6 +297,12 @@ class SensitiveDataFilter(logging.Filter):
             Always ``True``: records are rewritten, never dropped.
         """
         record.request_id = get_request_id()
+        # Always set, None outside a span, so a value passed by hand in ``extra`` never stands in
+        # for the current span's (review R14).
+        span_context = trace.get_current_span().get_span_context()
+        inside = span_context.is_valid
+        record.trace_id = trace.format_trace_id(span_context.trace_id) if inside else None
+        record.span_id = trace.format_span_id(span_context.span_id) if inside else None
         try:
             text = record.getMessage()
         except (TypeError, ValueError, KeyError):
@@ -311,13 +325,14 @@ class JsonFormatter(logging.Formatter):
             record: The log record to render.
 
         Returns:
-            JSON text with time, level, request id, logger, message and, when present, the
-            formatted exception.
+            JSON text with time, level, request id, the trace and span ids inside a span,
+            logger, message and, when present, the formatted exception.
         """
         entry = {
             "time": self.formatTime(record),
             "level": record.levelname,
             "request_id": getattr(record, "request_id", "-"),
+            **{k: v for k in _TRACE_FIELDS if (v := getattr(record, k, None)) is not None},
             "logger": record.name,
             "message": record.getMessage(),
         }

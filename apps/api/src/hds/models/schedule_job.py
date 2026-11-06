@@ -68,6 +68,9 @@ class ScheduleJob(TimestampedBase):
     proposal_state: Mapped[str | None] = mapped_column(String(16))
     decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The W3C traceparent of the request that queued the job, so the worker continues its trace;
+    # written once when queued, null when there was no trace (migration 024, specs/006 R8).
+    trace_context: Mapped[str | None] = mapped_column(String(55))
 
     __table_args__ = (
         CheckConstraint("last_day >= first_day", name="ck_schedule_jobs_order"),
