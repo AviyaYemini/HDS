@@ -10,8 +10,8 @@ jobs:
     name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -34,12 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      # The versions, so a failure in the steps below shows which Docker and Compose built it.
+      - run: docker version && docker compose version
       # The whole local environment from nothing, as the README says, then restart, wipe, a taken
       # port and a failing migration (specs/006 FR-001 to FR-005, SC-001). It wipes the database,
       # which on a runner is a throwaway one.
-      # The versions, so a failure in the steps below shows which Docker and Compose built it.
-      - run: docker version && docker compose version
       - run: scripts/ops/quickstart_check.sh
         env:
           QUICKSTART_THROWAWAY: "1"
@@ -48,7 +48,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Scans only the commits this run adds: a pull request's own commits, or a push's. A secret
@@ -78,8 +78,8 @@ jobs:
     name: Docstring coverage (interrogate, Constitution XI)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -91,7 +91,7 @@ jobs:
     name: Markdown link check (Constitution XI)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Offline mode checks relative links and anchors only, so the job stays deterministic
       # and does not fail when a third-party site is down.
       - uses: lycheeverse/lychee-action@v2
@@ -103,8 +103,8 @@ jobs:
     name: Dependency audit (pip-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -117,7 +117,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: wagoid/commitlint-github-action@v6
@@ -126,8 +126,8 @@ jobs:
     name: Type check (mypy --strict, src and tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -139,8 +139,8 @@ jobs:
     name: Import graph (Constitution II)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -158,8 +158,8 @@ jobs:
       # Examples per generation property (004 SC-002); 200 locally.
       HDS_GENERATE_EXAMPLES: "1000"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -195,8 +195,8 @@ jobs:
       ENVIRONMENT: test
       HDS_SCHEMATHESIS_EXAMPLES: "100"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -230,8 +230,8 @@ jobs:
       JWT_SECRET_KEY: ci-only-not-a-real-secret-0123456789
       ENVIRONMENT: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -266,8 +266,8 @@ jobs:
       # window could not even sign in.
       LOGIN_RATE_LIMIT_PER_NETWORK: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -296,13 +296,13 @@ jobs:
     name: Client (ESLint, tsc, Jest with coverage, generated-client drift)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev
@@ -340,13 +340,13 @@ jobs:
     env:
       E2E_DATABASE_URL: postgresql+asyncpg://hds:hds_e2e@localhost:5432/hds_e2e_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: 0.13.5  # infra/VERSIONS.md
       - run: uv sync --extra dev

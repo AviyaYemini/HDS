@@ -1,29 +1,39 @@
+# Local hooks, installed with `make hooks` (pre-commit 4.7.0). CI is the authority; these catch the
+# same faults before a commit. ruff and mypy run the project's own versions through uv, from
+# apps/api's lockfile, so a hook can never disagree with CI over a tool's version.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.4
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff check (apps/api)
+        entry: sh -c 'cd apps/api && uv run --extra dev ruff check src tests'
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
       - id: ruff-format
-        args: [--check]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
-    hooks:
+        name: ruff format --check (apps/api)
+        entry: sh -c 'cd apps/api && uv run --extra dev ruff format --check src tests'
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
       - id: mypy
-        args: [--strict, apps/api/src/]
-        additional_dependencies:
-          - "pydantic>=2"
-          - "sqlalchemy[mypy]>=2"
-          - "fastapi"
+        name: mypy --strict (apps/api)
+        entry: sh -c 'cd apps/api && uv run --extra dev mypy --strict src tests'
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
 
-  - repo: https://github.com/conventional-changelog/commitlint
-    rev: v19.3.0
+  # commitlint itself publishes no pre-commit hook (the earlier entry here could never install);
+  # this one runs it on a Node that pre-commit downloads, so the machine needs no Node of its own.
+  # Same rules as CI's commitlint job (commitlint.config.mjs, config-conventional).
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.27.0
     hooks:
       - id: commitlint
         stages: [commit-msg]
+        language_version: 22.23.4  # the Node of CI and infra/VERSIONS.md, never an older system one
         additional_dependencies:
-          - "@commitlint/config-conventional"
+          - "@commitlint/config-conventional@21.2.4"
 
   # The secret scan of the staged change (specs/006 FR-025); CI's `secrets` job is the authority.
   # Version as infra/VERSIONS.md. pre-commit builds it with Go, which it installs itself.

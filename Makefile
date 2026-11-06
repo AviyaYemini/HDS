@@ -6,6 +6,7 @@
 #   make down    stop everything; the database is KEPT
 #   make wipe    stop everything and DELETE the local database, after asking
 #   make ps, make logs [S=service]
+#   make hooks   install the git hooks (ruff, mypy, gitleaks, commitlint), once per clone
 #
 # The compose file lives in infra/ and Compose reads a `.env` file from THE COMPOSE FILE'S folder
 # (infra/), not from here, so every target passes `--env-file .env` to use the one in the repository
@@ -27,7 +28,29 @@ COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 COMPOSE_READ := JWT_SECRET_KEY="$${JWT_SECRET_KEY:-unused-by-down}" $(COMPOSE)
 POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
 
-.PHONY: env up build down wipe ps logs
+.PHONY: env up build down wipe ps logs hooks ci-local ci-local-db
+
+# CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
+# interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
+# ShellCheck, the Markdown links, gitleaks and commitlint over origin/main..HEAD, and the client.
+ci-local:
+	scripts/ops/ci_local.sh
+
+# Opt in, slow (about 25 minutes): the migration check on a throwaway database, then the
+# integration, contract and concurrency suites on hds_p3_test (scripts/ops/ci_local_db.sh).
+ci-local-db:
+	scripts/ops/ci_local_db.sh
+
+# Install the git hooks from .pre-commit-config.yaml: on each commit ruff, ruff format, mypy and the
+# gitleaks scan of the staged change; on each message commitlint. Run once per clone. CI stays the
+# authority; `git commit --no-verify` skips the hooks when you mean to.
+# pre-commit, pinned (infra/VERSIONS.md), is installed as a uv tool: the git hook it writes runs
+# that tool's Python, which stays put. A uvx run would leave the hook pointing into uv's cache, and
+# `uv cache clean` would then break every commit.
+hooks:
+	uv tool install pre-commit==4.7.0
+	"$$(uv tool dir --bin)/pre-commit" install --install-hooks --hook-type pre-commit \
+		--hook-type commit-msg
 
 # Write .env from .env.example with a fresh JWT_SECRET_KEY, readable by you alone (umask 077, so
 # mode 0600). Refuses when .env exists, so it can never replace a key you already use. Deletes

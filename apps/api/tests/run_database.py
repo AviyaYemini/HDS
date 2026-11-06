@@ -8,6 +8,7 @@ stale.
 Covers: none directly; helpers for F26.
 """
 
+import hashlib
 import os
 import re
 from collections.abc import Callable, Iterable
@@ -17,6 +18,42 @@ from sqlalchemy.engine import make_url
 DEFAULT_SERVER = "postgresql+asyncpg://hds:hds_dev@localhost:5432/postgres"
 #: A database of a run. The ``run`` marker keeps a name somebody chose out of it: these get dropped.
 RUN_DATABASE = re.compile(r"hds_run_(\d+)(?:_\w+)?_test")
+
+
+#: The one named database a developer's runs may use; everything else is a run's own.
+PRIVATE_DATABASE = "hds_p3_test"
+#: The named databases CI's workflows set for pytest (.github/workflows/ci.yml).
+CI_DATABASES = frozenset({"hds_test"})
+
+
+def allowed_database(name: str, *, in_ci: bool) -> None:
+    """Refuse a database a test run must not use (the harness's test-database guard).
+
+    Outside CI a run may use only ``hds_p3_test`` or a database of its own (``hds_run_<pid>...``):
+    never ``hds_test``, which the project's test rules reserve for CI, and never the development
+    database ``hds``. CI may also use the database its workflow sets.
+
+    Args:
+        name: The database the run is about to use.
+        in_ci: Whether this is CI (the ``CI`` environment variable).
+
+    Raises:
+        RuntimeError: Naming the database and what is allowed.
+    """
+    if name == PRIVATE_DATABASE or RUN_DATABASE.fullmatch(name):
+        return
+    if in_ci and name in CI_DATABASES:
+        return
+    allowed = f"{PRIVATE_DATABASE} or a run's own hds_run_<pid>_test"
+    if in_ci:
+        allowed += f", or in CI {', '.join(sorted(CI_DATABASES))}"
+    raise RuntimeError(f"tests may not use the database {name!r}; use {allowed}")
+
+
+def lock_key(name: str) -> int:
+    """The advisory-lock key a run holds for database ``name``: a stable signed 64-bit number."""
+    digest = hashlib.sha256(f"hds-test-run:{name}".encode()).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
 
 
 def run_database_name(pid: int) -> str:

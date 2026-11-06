@@ -90,6 +90,7 @@ async def test_a_failed_job_gives_its_place_back_and_its_error_reaches_the_calle
     assert gate.ran == 1
 
 
+@pytest.mark.wall_clock
 async def test_a_job_that_hangs_is_stopped_and_gives_its_place_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -92,4 +92,5 @@ addopts = "-m 'not timing and not benchmark'"
 markers = [
     "timing: statistical timing check, skipped unless selected with -m timing",
     "benchmark: solver comparison and SC-001's time limit, skipped unless selected with -m benchmark",
+    "wall_clock: a hard time limit that a busy machine can miss; run everywhere except the end-of-turn gate",
 ]

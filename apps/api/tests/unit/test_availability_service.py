@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
+
 from hds.models.user import UserRole
 from hds.services.availability import AvailabilityService, _applies_between, _clash
 
@@ -28,6 +30,7 @@ def entry(**values: Any) -> Any:
     return SimpleNamespace(**{**base, **values})
 
 
+@pytest.mark.wall_clock
 def test_a_clash_check_over_centuries_is_quick() -> None:
     """Weekdays repeat every seven days, so the check never walks the whole overlap."""
     # Both on Sundays, so the check gets past the weekday test and reaches the date walk.
