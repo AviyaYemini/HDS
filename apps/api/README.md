@@ -94,6 +94,15 @@ after a rollback. The ready check opens connections of its own, never the reques
 pool cannot take every pod out of service together. The worker's readiness is the database only.
 The migration history is read at start-up: a missing or two-headed history stops the process.
 
+## Worker shutdown
+
+On SIGTERM or SIGINT the schedule worker drains (specs/006 FR-020): it claims nothing more, and the
+job it holds is finished and stored, or, if its solve has not started, handed back to the queue
+with its attempt given back, so the next worker takes it at once. It then exits 0. A second signal
+forces the exit; that job is reclaimed after its lease. If the operations server stops on its own,
+the worker drains the same way and exits non-zero. The chart's `terminationGracePeriodSeconds: 90`
+(and compose's `stop_grace_period: 90s`) must exceed the longest solve, 60 s, plus storing.
+
 ## Traces
 
 Each schedule job is one trace, from the request that queued it through the worker that ran it

@@ -382,3 +382,46 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   cause kept (the test relay's refusal quotes no secret); `from None` stays as a safeguard.
 - **Database tests** on `hds_p3_test` (free first): `test_create_admin`, `test_mail_after_commit`,
   `test_delivery_after_response`: 23 passed.
+
+## Group F: the worker drains on shutdown (T030 to T032a)
+
+- **Failing first**: `test_worker_drain.py` runs the real worker as a process
+  (`tests/worker_process.py`, one stage slowed by 3 s, a marker file for when to signal). Before the
+  change the SIGTERM cases exited -15, killed mid-solve; the SIGKILL case passed, as it should.
+- **Found on the way (R29)**: the worker's log showed that the SQLAlchemy instrumentation 0.66b1
+  refuses SQLAlchemy 2.1.6 and instruments nothing, a Group D defect no test caught. Fixed in its
+  own commit after F, as the reviewer decided.
+- **T031**: SIGTERM or SIGINT sets `stopping`. The loop claims nothing more, finishes the solve
+  and stores it, or hands back a job not yet solving: checked before the build and again before
+  the solve. Then it exits 0. The ops server is a `uvicorn.Server` with a no-op `capture_signals`;
+  `serve` awaits the loop and only then stops the server. The grace-period note is in the module
+  docstring.
+- **Review decisions (R30 to R43)**, with T030, T031, T032a and data-model.md amended in
+  `4b91477`:
+  - R35, R41: a hand-back is `queued` again with its attempt given back, no lease or start, and
+    announced on the channel, so no clock and no attempt is spent; the next run is attempt 1. A
+    SIGKILL mid-solve still counts (attempt 2). 006's data-model.md refines 004's lifecycle; 004's
+    files are untouched.
+  - R30, R40: an ops server that ends on its own drains the worker, then exits non-zero.
+  - R31, R39: SIGINT drains too; a second signal takes the default action. A handed-back run is
+    not in the duration metric.
+  - R34: a hand-back that fails leaves the lease to run out and never fails the job. R37: checked
+    before the build. R38: a hand-back that finds the job reclaimed is logged as superseded.
+  - R36: the compose worker has `stop_grace_period: 90s`. R42: one stop waiter per loop.
+    R43: the drain tests clear `OTEL_*` from the worker's environment.
+  - R32: an `apps/api/README.md` "Worker shutdown" note. R33: CI's four postgres probes go over
+    TCP too.
+- **T032a**: compose's healthcheck is `pg_isready -h 127.0.0.1 -U ...`, with a deployment-files
+  test that fails on the socket probe. `docker compose config` is clean, and the probe answers on
+  the running database. The quickstart itself was not run here, because it would rebuild the
+  owner's running stack; CI's quickstart job runs it.
+- **Mutation checks**: all twelve were killed on the final code:
+  - T032's no release, exit before storing and claim after SIGTERM;
+  - uvicorn's `capture_signals` put back, which survived until R40 and is now killed by "exits 0";
+  - the attempt kept, the job left running, the hand-back not announced, built anyway, a release
+    error failing the job, superseded logged as handed back, a second signal ignored, and exit 0
+    after the ops server ends.
+- **Database tests** on `hds_p3_test` (free first): `test_worker_drain`, `test_worker`,
+  `test_worker_metrics` and `concurrency/test_worker_claims`, 16 passed.
+- An unpinned `koalaman/shellcheck:stable` was pulled by mistake for a manual check. No script
+  changed in F; `make ci-local` uses the pinned image.

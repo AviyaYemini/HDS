@@ -179,7 +179,7 @@ jobs:
           POSTGRES_USER: hds
           POSTGRES_PASSWORD: hds_test
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h 127.0.0.1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -219,7 +219,7 @@ jobs:
           POSTGRES_USER: hds
           POSTGRES_PASSWORD: hds_check
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h 127.0.0.1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -252,7 +252,7 @@ jobs:
           POSTGRES_USER: hds
           POSTGRES_PASSWORD: hds_scratch
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h 127.0.0.1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -331,7 +331,7 @@ jobs:
           POSTGRES_USER: hds
           POSTGRES_PASSWORD: hds_e2e
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -h 127.0.0.1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

@@ -428,6 +428,10 @@ class ScheduleJobService:
             },
         )
 
+    async def release(self, claim: Claim) -> bool:
+        """Give the claimed job back, unsolved (worker shutdown). The caller commits."""
+        return await self._jobs.release(claim.id, claim.attempt)
+
     async def fail(self, claim: Claim, code: str) -> bool:
         """Mark the claimed job failed with ``code`` (worker). The caller commits."""
         return await self._jobs.finish(

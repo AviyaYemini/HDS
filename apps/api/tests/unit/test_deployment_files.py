@@ -88,3 +88,19 @@ def test_example_settings_and_the_readme_mention_every_setting() -> None:
     for name in Settings.model_fields:
         assert name in example, f"{name} is not in .env.example (not even as a comment)"
         assert f"`{name}`" in readme, f"{name} is not in the configuration table of apps/api/README"
+
+
+def test_the_database_is_reported_healthy_only_once_it_takes_tcp() -> None:
+    # T032a (PR 9's review): on the first start the image's set-up server answers on the socket
+    # only, so a socket probe let `migrate` start before the real server listened.
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    probe = " ".join(compose["services"]["postgres"]["healthcheck"]["test"])
+    assert "pg_isready" in probe
+    assert "-h 127.0.0.1" in probe
+
+
+def test_the_worker_has_time_to_finish_a_solve_when_compose_stops_it() -> None:
+    # Review R36: Docker's default 10 s is shorter than a solve (up to 60 s) plus storing; the
+    # chart gives 90 s, and compose matches it.
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    assert compose["services"]["worker"]["stop_grace_period"] == "90s"
