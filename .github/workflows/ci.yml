@@ -38,6 +38,8 @@ jobs:
       # The whole local environment from nothing, as the README says, then restart, wipe, a taken
       # port and a failing migration (specs/006 FR-001 to FR-005, SC-001). It wipes the database,
       # which on a runner is a throwaway one.
+      # The versions, so a failure in the steps below shows which Docker and Compose built it.
+      - run: docker version && docker compose version
       - run: scripts/ops/quickstart_check.sh
         env:
           QUICKSTART_THROWAWAY: "1"

@@ -267,3 +267,21 @@ Done before Group B, by agreement with the reviewer: B's quickstart and the comp
   would carry its `EXPO_PUBLIC_` values. ShellCheck clean; the quickstart passed all 12 steps again.
   To watch in CI: the runner's Compose version (`--wait` with a one-shot service, `build.provenance`)
   and that `nc` is present.
+
+## PR 8's CI
+
+- **Run 42200877912, step 7**: "permission denied" on `infra/volumes/postgres` while loading the
+  build context. The `!**/` exception added in the review fix made the builder walk every excluded
+  folder, and on Linux the database's data folder is 0700 and belongs to its own user. Fixed in
+  `6b1ee04`: the dockerignore has no exceptions at all (no image needs the example file). macOS does
+  not enforce that folder's ownership the same way, so the harness could not reproduce it.
+- **Run 42201726100, step 8**: "make up restarted the running API". The api and web manifests and
+  configs were identical on every build, but the runner's Compose builds through bake and attached a
+  provenance attestation anyway, so the manifest list, which is the image id under the containerd
+  store, changed each time. The fix: `export BUILDX_NO_DEFAULT_ATTESTATIONS := 1` in the Makefile;
+  `provenance: false` stays in the compose file, and the CI job prints `docker version` and
+  `docker compose version` before the check. Local proof in a throwaway copy with both
+  `provenance: false` lines removed: two `make build` runs printed no attestation and gave the same
+  api and web ids. Control: the same copy built directly with compose, without the switch,
+  printed attestations and gave two different api ids. The harness then passed all 12 steps on the
+  real tree (cold 28 s, warm 26 s); ShellCheck clean.

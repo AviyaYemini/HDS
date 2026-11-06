@@ -15,6 +15,12 @@
 # Host ports default to 5432, 8000, 8090, 9100 and 9101; set POSTGRES_PORT, API_PORT, WEB_PORT,
 # API_METRICS_PORT or WORKER_METRICS_PORT to move one.
 
+# No default provenance attestation on any build. Some Compose versions (CI's, which builds through
+# bake) ignore the compose file's `build.provenance: false`, and the attestation gives every build a
+# new image id, so `make up --build` recreated the running stack (CI run 42201726100). This buildx
+# switch turns it off whichever way Compose builds; the compose file keeps `provenance: false` too.
+export BUILDX_NO_DEFAULT_ATTESTATIONS := 1
+
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 # Commands that only read the stack's state still parse the compose file, which insists on
 # JWT_SECRET_KEY; a stand-in fills in when none is set. It is never used to start anything.
