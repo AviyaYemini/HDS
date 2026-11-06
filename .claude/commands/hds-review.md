@@ -1,6 +1,6 @@
 ---
-description: Review the current changes against the HDS constitution and the original spec
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*)
+description: Review the current changes against the HDS constitution and the original spec, and record the findings in the feature's review ledger
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Read, Edit(specs/**/review-ledger.md), Write(specs/**/review-ledger.md)
 ---
 
 Review the uncommitted changes and the commits on this branch (`git diff HEAD`, `git status`, `git log main..HEAD` if a main branch exists) against `.specify/memory/constitution.md` and `docs/hds-spec.md`.
@@ -11,4 +11,6 @@ Check each of the ten constitution principles and report only violations, each w
 - the change matches the active feature's `tasks.md` and nothing outside it;
 - every user-facing string is externalised.
 
-Finish with a verdict: ready to commit, or the list of blockers. Do not edit any files.
+Then record the findings in the active feature's review ledger, `review-ledger.md` in the feature's folder (named in `.specify/feature.json`). Create it from `.claude/hds/review-ledger-template.md` if it does not exist. Add one row per new finding: the next free `R<n>` id, source `/hds-review`, the finding with its file and line, status `open`, and an empty fix commit. Do not repeat a finding already in the ledger. Edit nothing else: neither the code nor any other file.
+
+Finish with a verdict: ready to commit, or the list of blockers, and the ledger's open count.

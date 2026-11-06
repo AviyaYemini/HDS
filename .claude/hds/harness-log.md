@@ -136,3 +136,19 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
 - **By hand**: on this branch's working tree the gate passed in 22 s; with a throwaway module that
   imported `os` unused it blocked ("ruff failed: F401"), and with `stop_hook_active` it let Claude
   stop. The throwaway module was removed.
+
+## Item 7: the review ledger
+
+- `specs/<feature>/review-ledger.md`, from `.claude/hds/review-ledger-template.md`: one row per
+  finding (id, source, finding, status open, fixed or won't-fix, fix commit).
+- `/hds-review` now records its findings there, adding a row per new finding and creating the file
+  from the template if needed; it still edits nothing else. Its allowed tools gain `Read` and
+  `Edit`/`Write` limited to `specs/**/review-ledger.md`.
+- `/hds-status` shows "Review ledger: N open of M", and while any row is open its next step says to
+  close them first. The working agreement (`.claude/hds/CLAUDE.hds.md`) gains one line: a group is
+  done only when no row is open. The owner approved this with item 7.
+- **Tests**: 5 unit tests (`test_harness_review_ledger.py`): open rows counted whatever their case,
+  no ledger is nothing open, the status line and whether it holds the group, the template's empty
+  table. They failed first on the missing functions and the missing template.
+- No ledger was created for 006 here: its findings so far are in `specs/006-deploy-operations/
+  p1-log.md`. The next `/hds-review` starts it.

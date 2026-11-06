@@ -135,6 +135,35 @@ def count_tasks(tasks_md):
 
 
 # ------------------------------------------------------------ session start
+LEDGER_NAME = "review-ledger.md"
+_LEDGER_STATUSES = ("open", "fixed", "won't-fix")
+
+
+def ledger_counts(path):
+    """How many findings in a review ledger are open, and how many it holds: ``(open, total)``.
+
+    The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``) whose fourth column
+    is the status: open, fixed or won't-fix, in any case. No file counts as ``(0, 0)``.
+    """
+    if not path.exists():
+        return 0, 0
+    open_rows = total = 0
+    for line in path.read_text(errors="ignore").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 5 or cells[3].lower() not in _LEDGER_STATUSES:
+            continue
+        total += 1
+        open_rows += cells[3].lower() == "open"
+    return open_rows, total
+
+
+def ledger_line(path):
+    """The status line for a review ledger, and whether its open rows hold the group back."""
+    open_rows, total = ledger_counts(path)
+    rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+    return f"- Review ledger: {open_rows} open of {total} ({rel})", open_rows > 0
+
+
 def status_text():
     lines = ["HDS 2.0 project status"]
     b = git_branch() or "(no git)"
@@ -157,6 +186,11 @@ def status_text():
             lines.append(f"- Tasks: {done}/{total} done")
             nxt = "/speckit-implement (one phase at a time, commit after each)" if done < total else \
                   "all tasks done: run /hds-review, commit, open a PR, then start the next feature"
+        ledger, held = ledger_line(fd / LEDGER_NAME)
+        lines.append(ledger)
+        if held:
+            nxt = "close the open review-ledger rows first (a group is done only with none open); " \
+                  "then " + nxt
         lines.append(f"- Next step: {nxt}")
     lines += [
         "Rules in force (constitution): original spec wins; layered backend; scheduling package is pure;",
