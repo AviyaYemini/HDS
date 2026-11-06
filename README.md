@@ -68,8 +68,8 @@ Markdown links, and gitleaks and commitlint over `origin/main..HEAD` (`CI_LOCAL_
 start); the client's checks run in the pinned Node image, so no Node is needed. `make ci-local-db`
 adds the migration check on a throwaway database and the database suites on `hds_p3_test`.
 
-`make hooks` installs the git hooks from `.pre-commit-config.yaml`, with pre-commit 4.7.0 through
-`uvx`. Each commit then runs ruff, ruff format and `mypy --strict` on `apps/api` (the project's own
+`make hooks` installs pre-commit 4.7.0 as a uv tool (`uv tool install`, so it outlives
+`uv cache clean`), then the git hooks from `.pre-commit-config.yaml`. Each commit then runs ruff, ruff format and `mypy --strict` on `apps/api` (the project's own
 versions) and the gitleaks scan of the staged change; each message runs commitlint, with the rules
 CI uses. pre-commit downloads the Node and Go they need. CI stays the authority, and
 `git commit --no-verify` skips the hooks when you mean to.

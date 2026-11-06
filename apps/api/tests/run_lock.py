@@ -23,7 +23,11 @@ from tests.run_database import lock_key
 
 
 class RunLock:
-    """The advisory lock of one test run on one database."""
+    """The advisory lock of one test run on one database.
+
+    Single-use: ``acquire`` once, ``release`` once. Its loop's thread cannot be started again, so
+    a released or refused lock is not taken a second time; make a new RunLock instead.
+    """
 
     def __init__(self, url: str) -> None:
         """Prepare the lock for the database in ``url``; nothing connects until ``acquire``."""
@@ -60,7 +64,13 @@ class RunLock:
     async def _acquire(self) -> None:
         """Connect and try the lock; on refusal, close and raise."""
         self._connection = await asyncpg.connect(self._dsn)
-        if not await self._connection.fetchval("SELECT pg_try_advisory_lock($1)", self._key):
+        try:
+            locked = await self._connection.fetchval("SELECT pg_try_advisory_lock($1)", self._key)
+        except BaseException:
+            await self._connection.close()
+            self._connection = None
+            raise
+        if not locked:
             await self._connection.close()
             self._connection = None
             raise RuntimeError(

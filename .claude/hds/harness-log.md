@@ -25,7 +25,8 @@ session reviews; this session implements; nothing is pushed without the owner. O
 
 ## Item 2: the git hooks
 
-- `make hooks` installs the pre-commit and commit-msg hooks with pre-commit 4.7.0 through `uvx`.
+- `make hooks` installs the pre-commit and commit-msg hooks with pre-commit 4.7.0, a uv tool (it
+  was `uvx` until CodeRabbit C5).
 - The config was stale and partly broken, so installing it as it stood would have failed or fought
   CI: ruff 0.4.4 and mypy 1.10 (src only, without the project's packages) against the project's
   ruff 0.17.3 and mypy 2.4. And the commitlint entry pointed at commitlint's own repository, which
@@ -209,3 +210,28 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
   there), once with `apps/client/.env` (blocked, from the root and from `apps/` alike) and once
   without (allowed): ten tests in place of four. The other guard cases name their files or search
   `docs/`, which holds no settings file anywhere, so none depends on the checkout's files.
+
+## CodeRabbit on PR 9 (C1–C7)
+
+Each finding was checked against the code first; the three hook findings were reproduced by the
+HDS helper. The hook and ledger cases were added first and failed (8 of them), then passed.
+
+- **C1, gitleaks partial redaction**: `--redact` is a percentage (default 100) and the last one
+  wins, so `--redact=0` printed whole secrets and `--redact=50` half. The last redact option must
+  now be a bare `--redact` or `--redact=100`; `--redact=0`, `=50`, `=0100`, `=` and
+  `--redact --redact=0` are refused.
+- **C2, heredoc detection**: `_HEREDOC` took the `<<` of `<<<` and of `$((1<<3))` for a heredoc
+  and dropped the lines after it as a body, so `cat .env` on the next line passed. It now needs a
+  `<<` with no `<` or word character before it and no `<` after; a real `<<-EOF` still works.
+- **C3, ledger parsing**: the status is the second-to-last cell, so a `|` in a finding's text no
+  longer shifts it.
+- **C4**: the commitlint hook pins `language_version: 22.23.4`.
+- **C5**: `make hooks` installs pre-commit with `uv tool install pre-commit==4.7.0`; the hook's
+  Python no longer lives in uv's cache, which `uv cache clean` would empty.
+- **C6**: `ci_local_db.sh` probes over TCP (`pg_isready -h 127.0.0.1`). **Follow-up for 006 PR 2**:
+  `infra/docker-compose.yml:41` has the same socket-only probe.
+- **C7**: the client container in `ci_local.sh` hands `/repo` back to the host's user in an EXIT
+  trap, so on Linux the scratch folder's `rm -rf` can delete what it wrote, pass or fail.
+- **Nitpicks**: `RunLock` is documented as single-use; `_acquire` closes its connection when the
+  lock query raises.
+- CodeRabbit's eighth point, the recursive-search tests, was already fixed (above).

@@ -98,8 +98,12 @@ printf '#!/bin/sh\ncat /tools/openapi.json\n' > "$scratch/tools/uv"
 chmod +x "$scratch/tools/uv"
 docker run --rm -v "$scratch/repo:/repo" -v "$scratch/tools:/tools:ro" \
     -v hds-pnpm-store:/pnpm-store -w /repo -e CI=1 \
+    -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     -e PATH="/tools:/usr/local/bin:/usr/bin:/bin" "$NODE_IMAGE" sh -c '
         set -e
+        # The container runs as root; on Linux what it writes would be root-owned, and the rm -rf
+        # of $scratch could not delete it. Hand the files back, whether the checks pass or fail.
+        trap "chown -R \"\$HOST_UID:\$HOST_GID\" /repo || true" EXIT
         corepack enable
         pnpm config set store-dir /pnpm-store >/dev/null
         pnpm install --frozen-lockfile --reporter=silent

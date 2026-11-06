@@ -30,7 +30,9 @@ docker run -d --rm --name "$container" -e POSTGRES_USER=hds -e POSTGRES_PASSWORD
     -e POSTGRES_DB=hds_check -p "127.0.0.1:$CHECK_PORT:5432" "$POSTGRES_IMAGE" >/dev/null
 trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
 tries=0
-until docker exec "$container" pg_isready -U hds -q; do
+# Over TCP: the image's first-start temporary server answers on the socket only, so a socket probe
+# can pass before the real server listens.
+until docker exec "$container" pg_isready -h 127.0.0.1 -U hds -q; do
     tries=$((tries + 1))
     [ "$tries" -lt 30 ] || { echo "the throwaway database never became ready" >&2; exit 1; }
     sleep 1

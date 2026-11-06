@@ -47,7 +47,7 @@ Chosen on 2026-11-06 (specs/006-deploy-operations, T001).
 | kubeconform | `v0.8.0` | 2026-06-04 | validating rendered manifests |
 | lychee (`lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d`) | `0.24.2` | 2026-05-01 | the Markdown link check in `make ci-local` |
 | commitlint (`@commitlint/cli`, `@commitlint/config-conventional`) | `21.2.2`, `21.2.4` | 2026-08-13, 2026-10-18 | commitlint in `make ci-local` |
-| pre-commit | `4.7.0` | 2026-10-12 | the local git hooks (`make hooks`), run through `uvx` |
+| pre-commit | `4.7.0` | 2026-10-12 | the local git hooks (`make hooks`), installed as a uv tool |
 | commitlint-pre-commit-hook | `v9.27.0` | 2026-09-20 | the local commit-message hook (commitlint 21, `@commitlint/config-conventional` 21.2.4) |
 
 ## Python packages

@@ -41,14 +41,16 @@ ci-local:
 ci-local-db:
 	scripts/ops/ci_local_db.sh
 
-# pre-commit, pinned (infra/VERSIONS.md), run through uvx so nothing is installed globally.
-PRE_COMMIT := uvx --from pre-commit==4.7.0 pre-commit
-
 # Install the git hooks from .pre-commit-config.yaml: on each commit ruff, ruff format, mypy and the
 # gitleaks scan of the staged change; on each message commitlint. Run once per clone. CI stays the
 # authority; `git commit --no-verify` skips the hooks when you mean to.
+# pre-commit, pinned (infra/VERSIONS.md), is installed as a uv tool: the git hook it writes runs
+# that tool's Python, which stays put. A uvx run would leave the hook pointing into uv's cache, and
+# `uv cache clean` would then break every commit.
 hooks:
-	$(PRE_COMMIT) install --install-hooks --hook-type pre-commit --hook-type commit-msg
+	uv tool install pre-commit==4.7.0
+	"$$(uv tool dir --bin)/pre-commit" install --install-hooks --hook-type pre-commit \
+		--hook-type commit-msg
 
 # Write .env from .env.example with a fresh JWT_SECRET_KEY, readable by you alone (umask 077, so
 # mode 0600). Refuses when .env exists, so it can never replace a key you already use. Deletes
