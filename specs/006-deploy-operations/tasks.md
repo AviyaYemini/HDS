@@ -187,7 +187,7 @@ once, and the worker exits within the grace period.
 - [ ] T034 [P] Failing test `apps/api/tests/unit/test_ingress_prefixes.py`: every route in `hds.main.app.routes` that is in the OpenAPI document, or is `/livez`, `/readyz` or `/health`, starts with a prefix listed in `infra/helm/hds/values.yaml` under `ingress.apiPrefixes`, or is one of the three health paths, which the ingress does not route (research R2)
 - [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, PostgreSQL StatefulSet and Service, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
 - [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). A database at a revision the code does not know (newer, for example the older image after a rollback) is left untouched and the command exits 0, rather than `alembic upgrade head` stopping on an unknown revision. Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
-- [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
+- [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): a Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
 
 ## Phase 8: Group H, backups and the restore test (US3, P1)
 
@@ -285,7 +285,7 @@ broken backup sends an e-mail (Group M).
   - the firing alerts from Alertmanager's API, reached through `kubectl port-forward`.
 
   Each failing item is marked `FAIL`. Test it against a k3d cluster in the `rolling-update` job (T059)
-- [ ] T058 Gates, ShellCheck, both reviews, the log, and a commit `feat(infra): Prometheus scraping and e-mailed failure alerts (006 Group K)`
+- [ ] T058 Gates, ShellCheck, both reviews, the log, and a commit `feat(infra): scrape with Prometheus and e-mail failure alerts (006 Group K)`
 
 ## Phase 12: Group L, the rolling-update proof (US5, P2)
 

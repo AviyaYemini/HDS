@@ -441,3 +441,23 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   - a sign-in address appears in no attribute (statements carry placeholders, never bound values);
   - a statement outside any span starts no trace, while one inside a span is kept.
 - The tests failed first, with no SQL span. With `skip_dep_check` removed, all 4 fail.
+
+## The pre-push gate, and PR 2's Conventional Commits check
+
+- `make ci-local-db` over the whole branch (`hds_p3_test` free first): the migration check on a
+  fresh database was clean, and 1468 integration, contract and concurrency tests passed (the 2
+  deselected are the default timing and benchmark ones). This includes test_sql_spans,
+  test_worker_drain, test_create_admin and test_migration_024.
+- CI's secret scan on the pushed branch flagged the SMTP test's made-up token (generic-api-key).
+  Its exact value is allowlisted in `.gitleaks.toml` (`de892c9`); a redacted scan of the branch then
+  finds nothing, and nothing else was allowed.
+- `make ci-local` then failed only commitlint, on `884f31b`: its subject, T029's "SMTP mail backend
+  and a first-Admin command (006 Group E)", fails `subject-case` (the leading "SMTP" reads as
+  sentence case). CI's commitlint job lints every commit of a pull request, so **PR 2's
+  Conventional Commits check is red for that one commit**. By the owner's choice it is left as it
+  is: no reword and no force push. PR 2 merges by squash with a lower-case subject, so main never
+  carries that message (ledger R44).
+- The same rule would reject two subjects still to come, Group G's and Group K's in tasks.md;
+  both now start lower-case. Group E's line keeps the subject that was used.
+- Missed locally because this session's git hooks predate PR 9's `make hooks`, which installs the
+  commit-msg check, and the pre-bash hook does not check subject case.
