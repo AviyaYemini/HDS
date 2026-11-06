@@ -18,6 +18,7 @@ from fastapi import BackgroundTasks, Depends
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import ORMExecuteState, Session, SessionTransaction
+from sqlalchemy.pool import NullPool
 
 from hds.core.config import settings
 
@@ -26,6 +27,12 @@ logger = logging.getLogger("hds.database")
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# The ready checks' own engine, with no pool: a check opens one connection and closes it. Sharing
+# the request pool would make every pod report the database down together whenever that pool is
+# busy, turning a slow spell into an outage (specs/006 research R6). The URL is the same database.
+_health_engine = create_async_engine(settings.DATABASE_URL, echo=False, poolclass=NullPool)
+HealthSessionLocal = async_sessionmaker(_health_engine, expire_on_commit=False)
 
 #: Key under which the queue of after-commit actions is stored in ``session.info``.
 _AFTER_COMMIT = "hds.after_commit"
@@ -69,6 +76,17 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
         The shared session factory.
     """
     return AsyncSessionLocal
+
+
+def get_health_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return the factory the ready checks use: the same database, never the request pool.
+
+    A dependency, so tests can point the checks at their own database.
+
+    Returns:
+        The health checks' session factory.
+    """
+    return HealthSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

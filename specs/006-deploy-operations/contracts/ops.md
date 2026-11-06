@@ -41,7 +41,12 @@ reachable only inside the cluster. Locally they answer on `localhost:8000`.
 | `GET /readyz` | as `/livez`, and the database answers within 2 s |
 | `GET /metrics` | always |
 
-The worker's bodies have the same shape as the API's.
+The worker's bodies have the same shape as the API's. When its loop is stuck, both answer 503 with
+`"failing": ["worker_loop"]`. Its readiness checks the database only, not the migrations: the
+migrate Job has already run before new pods start.
+
+The API's ready check uses connections of its own (no pool), never the request pool, so a busy
+pool cannot make every pod report the database down together.
 
 ### Probes in the chart
 
@@ -107,7 +112,7 @@ New or changed settings of the API and the worker. The existing ones are in `app
 | Variable | Default | Rule |
 | --- | --- | --- |
 | `HDS_VERSION` | `dev` | baked into the image by the build |
-| `METRICS_PORT` | `9100` | the operations port |
+| `METRICS_PORT` | `0` (off) | the operations port; compose and the chart set `9100`, so a process started by hand never fights over it; a taken port stops start-up naming `METRICS_PORT` |
 | `MAIL_BACKEND` | `outbox` in development | `smtp` is now a real backend |
 | `SMTP_HOST`, `SMTP_PORT` | none, `587` | required when `MAIL_BACKEND=smtp` |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | none | the password is a secret, never logged |

@@ -84,7 +84,7 @@ three bullets.
 
 **Goal**: FR-006 to FR-010. **Independent test**: quickstart scenario 2.
 
-- [ ] T013 [P] [US2] Failing tests `apps/api/tests/unit/test_health.py`, using a fake health repository:
+- [X] T013 [P] [US2] Failing tests `apps/api/tests/unit/test_health.py`, using a fake health repository:
   - **ready**: `ready()` is ok when the ping succeeds and the revision is the code's head.
   - **newer**: a revision the code's script history does not know counts as ready, because it is newer and FR-016 keeps the code working on it (this is what lets old pods serve during an upgrade and after a rollback).
   - **database**: it reports `failing: ["database"]` when the ping raises or takes over 2 s; time is controlled, with no real waiting.
@@ -96,8 +96,8 @@ three bullets.
   - `GET /livez`, `/readyz` and `/health` answer 200 with `{"status":"ok","version":...}`.
   - With the database stopped (an engine pointed at a closed port), `/readyz` answers 503 `{"status":"not_ready","failing":["database"],...}` within 2.5 s, while `/livez` answers 200.
   - None of the three is in `/api/v1/openapi.json`, and none needs authentication (FR-006, FR-009, FR-010).
-- [ ] T014 [US2] Add `apps/api/src/hds/repositories/health.py` (`ping()` and `revision()`, which reads `alembic_version`) and `apps/api/src/hds/core/health.py` (`live()` and `ready(repo, history, limit=2.0)` using `asyncio.timeout`; `history` is the code's known revisions and its head, read from Alembic's `ScriptDirectory` once at start-up, and "behind" means a known revision that is not the head, or none). Add the routes in `apps/api/src/hds/main.py`, with `/health` answering as `/livez`. Add `HDS_VERSION` to `apps/api/src/hds/core/config.py`
-- [ ] T015 [P] [US2] Failing tests `apps/api/tests/unit/test_metrics.py`:
+- [X] T014 [US2] Add `apps/api/src/hds/repositories/health.py` (`ping()` and `revision()`, which reads `alembic_version`) and `apps/api/src/hds/core/health.py` (`live()` and `ready(repo, history, limit=2.0)` using `asyncio.timeout`; `history` is the code's known revisions and its head, read from Alembic's `ScriptDirectory` once at start-up, and "behind" means a known revision that is not the head, or none). Add the routes in `apps/api/src/hds/main.py`, with `/health` answering as `/livez`. Add `HDS_VERSION` to `apps/api/src/hds/core/config.py`
+- [X] T015 [P] [US2] Failing tests `apps/api/tests/unit/test_metrics.py`:
   - **labels**: after requests to `/api/v1/shifts/<uuid>`, a 404 path, `/auth/login` with a body and a query string containing an e-mail address, the registry holds `hds_http_requests_total` only with `route` values from the app's route templates or `unmatched`;
   - **status**: the `status` label is the code;
   - **duration**: the duration histogram has a sample per request;
@@ -105,16 +105,16 @@ three bullets.
   - **build info**: `hds_build_info{version}` is 1.
 
   Failing integration test `apps/api/tests/integration/test_metrics_port.py`: the metrics answer on `METRICS_PORT` and `GET /metrics` on the public port is 404 (FR-007, FR-009)
-- [ ] T016 [US2] Add `apps/api/src/hds/core/metrics.py`, a pure ASGI middleware that reads the matched route's `path_format` after routing, with its own `CollectorRegistry`. Start the metrics server on `METRICS_PORT` (default 9100) in the app's lifespan, but not under the test client's lifespan unless asked. Add `METRICS_PORT` to config
-- [ ] T017 [P] [US2] Failing tests `apps/api/tests/unit/test_worker_ops.py`:
+- [X] T016 [US2] Add `apps/api/src/hds/core/metrics.py`, a pure ASGI middleware that reads the matched route's `path_format` after routing, with its own `CollectorRegistry`. Start the metrics server on `METRICS_PORT` (default 9100) in the app's lifespan, but not under the test client's lifespan unless asked. Add `METRICS_PORT` to config
+- [X] T017 [P] [US2] Failing tests `apps/api/tests/unit/test_worker_ops.py`:
   - **live**: the worker's ops app answers `/livez` 200 while the loop's heartbeat is under 30 s old, or while the worker holds a job still inside its lease; 503 when neither holds.
   - **long solve**: `/livez` stays 200 through a 60 s solve (time controlled), and turns 503 once the held job passes its lease.
   - **ready**: `/readyz` adds the database ping.
   - **metrics**: `/metrics` has `hds_schedule_jobs{state}` for all four states, counted from the table through a fake repository, plus `hds_schedule_job_duration_seconds{outcome}` after a run.
 
   Failing integration test `apps/api/tests/integration/test_worker_metrics.py`: with two queued jobs and one failed job, the gauge reads 2 and 1 (FR-006, FR-008)
-- [ ] T018 [US2] Worker: in `apps/api/src/hds/worker.py`, serve a Starlette ops app with uvicorn on `METRICS_PORT` in the worker's event loop, and add a heartbeat set on each loop turn, plus the held job's `lease_until`, which liveness also accepts (research R6). Add `count_by_state()` to `apps/api/src/hds/repositories/schedule_job.py`, and observe the job duration in `run_once`
-- [ ] T019 [US2] Mutation checks: label by path; skip the 2 s limit; ready ignores migrations; ready fails on an unknown (newer) revision; heartbeat never ages; liveness ignores the held job; metrics on the public port. Then the gates, both reviews, the log, and a commit `feat(api): live and ready checks, version and RED metrics (006 Group C)`
+- [X] T018 [US2] Worker: in `apps/api/src/hds/worker.py`, serve a Starlette ops app with uvicorn on `METRICS_PORT` in the worker's event loop, and add a heartbeat set on each loop turn, plus the held job's `lease_until`, which liveness also accepts (research R6). Add `count_by_state()` to `apps/api/src/hds/repositories/schedule_job.py`, and observe the job duration in `run_once`
+- [X] T019 [US2] Mutation checks: label by path; skip the 2 s limit; ready ignores migrations; ready fails on an unknown (newer) revision; heartbeat never ages; liveness ignores the held job; metrics on the public port. Then the gates, both reviews, the log, and a commit `feat(api): live and ready checks, version and RED metrics (006 Group C)`
 
 ## Phase 4: Group D, traces (US2, P1)
 
@@ -166,7 +166,7 @@ once, and the worker exits within the grace period.
   - **during a solve**: SIGTERM during a solve (the solver stubbed to take 3 s) lets it finish and store, and the process exits 0 with no new claim;
   - **before the solve**: SIGTERM after claiming but before solving gives the lease back (`lease_until` set to now, attempts unchanged), and a second worker claims the job at once and stores it once;
   - **lease expiry**: SIGKILL in the middle of a solve leaves the job to be reclaimed after its lease. The test then sets the job's `lease_until` in the past on the test database and starts a second worker, which reclaims it (the claim already takes running jobs past their lease) and stores it once; `attempts` is 2 (FR-020). No lease setting is added
-- [ ] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet built. Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
+- [ ] T031 [US5] In `apps/api/src/hds/worker.py`, handle SIGTERM by stopping the claim loop and finishing the current job. The operations server (Group C) runs uvicorn in the same event loop, and uvicorn's `Server.serve()` installs its own SIGINT and SIGTERM handlers and re-raises the signal on exit, which today cancels the job loop mid-solve. Run it without that signal capture (a `Server` subclass with a no-op `capture_signals`), and do not cancel the job loop when the ops server ends: the loop decides. Add a T030 case: SIGTERM during a solve still lets it store, with the ops server running. Add `release(id, attempt)` to `apps/api/src/hds/repositories/schedule_job.py` for a job claimed but not yet built. Add a comment saying the chart's `terminationGracePeriodSeconds: 90` must exceed the longest solve (60 s) plus storing
 - [ ] T032 [US5] Mutation checks: no release; exit before storing; claim after SIGTERM. Then the gates, both reviews, the log, and a commit `feat(worker): finish or hand back the current job on shutdown (006 Group F)`
 
 ## Phase 7: Group G, the Helm chart (foundational for US3, US4, US5)

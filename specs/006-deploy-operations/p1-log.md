@@ -104,3 +104,88 @@ log and one commit. A reviewer session ("HDS helper") reviews each group before 
   `main` since 002, because six hook tests ran the real hook in the checkout and the hook refuses
   commits on `main`. Reproduced from a worktree on `main` (6 failed), fixed in the test only, and
   green there and here (32 passed).
+
+## Group C: health, version and metrics (T013 to T019)
+
+Done before Group B, by agreement with the reviewer: B's quickstart and the compose healthcheck need
+`/readyz`, and tasks.md allows this order ("Do T007 to T011 after T014").
+
+- **Layers**: the "behind" rule and the worker's pulse are in `core/health.py`; the two reads
+  (`SELECT 1`, `alembic_version`) in `repositories/health.py`; the 2-second check in
+  `services/health.py`; `wiring.health` builds it on `get_session_factory`, so the tests' database
+  override reaches it; `routers/health.py` serves `/livez`, `/readyz` and `/health`. The inline
+  `/health` in `main.py` moved to the router, with the same answer plus the version.
+- **Tests first**: `test_health.py` (10), `test_health_endpoints.py` (5), `test_metrics.py` (7),
+  `test_metrics_port.py` (2), `test_worker_ops.py` (4), `test_worker_metrics.py` (1) each failed
+  first on the missing modules, then passed.
+- **The 2-second limit** is tested with the limit shrunk to 0.05 s rather than a 2-second wait; the
+  integration test proves a refused connection answers 503 within 2.5 s.
+- **Metrics**: a pure ASGI middleware, outermost, labels by `scope["route"].path_format` (set by
+  Starlette while routing) or `unmatched`. Each app has its own registry. The lifespan serves it on
+  `METRICS_PORT` with `prometheus_client`'s server; the tests set `METRICS_PORT=0` in
+  `tests/conftest.py`, and `test_metrics_port.py` starts a server on a free port through the real
+  lifespan. `create_app` takes `metrics_port` for that test.
+- **Worker**: `Claim` now carries `lease_until`; `run_once` holds it on the pulse while the job runs
+  and records the duration and outcome; the solve and store moved, unchanged, into `_run`, which
+  returns the outcome. `serve()` runs the job loop and the operations app (uvicorn, Starlette) in one
+  event loop. Smoke-tested against `hds_p3_test` on port 19101: `/livez` 200, `/readyz` 200,
+  `/metrics` with all four states and the version.
+- **Dependency**: `prometheus-client` 0.26.0 added now, as VERSIONS.md says.
+- **Mutation checks**, each caught: label by path (3 failed); no time limit (1); ignore migrations
+  (4); an unknown revision counted as behind (1); the heartbeat never ages (2); the held job ignored
+  (1); no metrics server (1). A first attempt went wrong: the backups were keyed by file name, and
+  `core/health.py` and `services/health.py` share one, so the restore copied the service module
+  over the core one (and zsh did not split the test list, so that run tested nothing). The core
+  module was rewritten from this session's text, its tests passed again, and the checks were rerun
+  with a bash script that keys backups by path and verifies every restore.
+- **/code-review high** (10 findings) and the reviewer's Group C review (4) overlapped; fixed:
+  1. `/livez` and `/health` went through the full health service, so the migration history loaded
+     lazily on the first probe and any fault there made liveness 500. They now answer from the
+     version alone; the history is read in the API's lifespan and in `worker.serve()`, so a missing
+     or two-headed history stops the process at boot (a new test).
+  2. `METRICS_PORT` defaulted to 9100, so a second process on one host (a local uvicorn beside
+     compose, the Playwright web server, `contract_cli.sh`) could not start. The default is now 0
+     (off); compose and the chart set 9100. A taken port stops start-up with an error naming
+     `METRICS_PORT` (a new test).
+  3. The ready check shared the request pool, so a busy pool would take every pod out together.
+     It now has its own NullPool engine (`get_health_session_factory`); the tests override it beside
+     `get_session_factory`. A new test holds a one-connection request pool and `/readyz` still
+     answers 200.
+  4. A result thrown away because another worker reclaimed the job counted as `succeeded`, and a
+     failure whose storing raised was not counted. Now `superseded` is not counted and the default
+     outcome is `failed` (three unit tests, `test_worker_outcomes.py`).
+  5. The worker's `/readyz` also checked migrations, against the contract; it now checks the
+     database only (`check_migrations=False`).
+  6. The 2-second limit covered closing the session, which can hang on a dead socket. The reads now
+     run in a task that is abandoned at the limit (a new test with a close that hangs 30 s answers
+     within 1 s; before the fix it took 30 s).
+  7. Every `ProgrammingError` read as "no version table"; only SQLSTATE 42P01 does now, so a
+     permission fault reports `database` (checked against the real driver first).
+  8. The worker's stuck answer used a status outside the contract; it is now `not_ready` with
+     `failing: ["worker_loop"]`.
+  9. Alembic's own `CommandError` for two heads is now converted to the documented `RuntimeError`.
+  10. `counts_by_state` repeated the state list; it now returns the table's counts and
+      `JobMetrics.set_counts` fills absent states with 0.
+  11. The health service is now built once per factory (`lru_cache`).
+
+  Declined: serving the API's metrics with uvicorn as the worker does. `prometheus_client`'s own
+  server in a thread is the library's documented way, needs no second ASGI server in the API
+  process, and is shut down in the lifespan. Deferred to Group F, as the reviewer asked: uvicorn's
+  signal capture in the worker's ops server (now written into T031).
+  Mutation checks on these, each caught: waiting for the cleanup (2 failed, and the run took 65 s);
+  every `ProgrammingError` read as missing (1); migrations always checked (1); the heads error not
+  converted (1); superseded counted (survived at first: the test looked only at `succeeded` and
+  `failed`; strengthened to "no observation at all", then caught); an unstored failure uncounted
+  (1); the old worker body (1).
+- **`float` is banned in `src`** (`test_time_money_invariants.py` rejects the name anywhere, not
+  only on money). Durations are now `timedelta` (the ready limit, the stale window, `observe()`)
+  and clocks `perf_counter_ns` and `monotonic_ns`; the tests keep `float` (the scan covers `src`
+  only). `.env.example` gains `HDS_VERSION` (`test_deployment_files.py` wants every setting there).
+- **Test runs**: the full suite started before the review fixes was stopped at 23% (no failure so
+  far), as the reviewer proposed: it tested the old code, and its subprocess-based tests would pick
+  up the edited files. Instead, on the final code: unit and property suites 1062 passed (the two
+  redaction timing cases that ran slow beside the full suite passed alone, 93 in their file); the
+  Group C database tests (health, metrics port, worker metrics, worker, schedule jobs) 36 passed.
+  One full suite on the final PR 1 tree, after Group B, is the gate before the push.
+- **Gates**: ruff, format, `mypy --strict src/ tests/` (351 files), interrogate 100%, the import
+  graph and pip-audit clean. The worker smoke test passed again on the final code.

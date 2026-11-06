@@ -65,7 +65,28 @@ fails until you do.
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API. At `0` the forwarded header is ignored. Behind a proxy it **must** be set, or the network limits set to `0`: otherwise every user shares the proxy's address, so one bad window locks everyone out of sign-in and silently stops reset mail for everyone, with only a warning in the log. A wrong value cannot be detected at start-up | `0` |
 | `HASH_CONCURRENCY`, `HASH_QUEUE_LIMIT` | Password hashes that may run at once in one worker, and that may wait. Past that a request is refused with 503 `service.busy` and `Retry-After` | `2`, `8` |
 | `SCHEDULE_TIME_LIMIT_SECONDS` | How long the schedule worker's solver may search before it returns its best roster, 1 to 60 (004) | `20` |
+| `HDS_VERSION` | The version the process reports in `/livez`, `/readyz` and the `hds_build_info` metric; the image build sets it to the commit | `dev` |
+| `METRICS_PORT` | The operations port: the API's `/metrics`, and the worker's `/livez`, `/readyz` and `/metrics`. Never the public port. `0` serves none; compose and the chart set `9100`, and give each process on one host its own. A taken port stops start-up naming this setting | `0` |
 | `TEST_DATABASE_URL` | Tests only; a database to use and keep, whose name must end in `_test`. Unset, each run creates its own `hds_run_<process id>_test` and drops it at the end | a database per run |
+
+## Health and metrics
+
+These are for probes and operators, not the client, so none is in the OpenAPI document and none
+needs a sign-in (specs/006-deploy-operations, contracts/ops.md):
+
+| Where | Path | Answers |
+| --- | --- | --- |
+| API, public port | `GET /livez` | 200 while the process runs; it touches nothing else |
+| API, public port | `GET /readyz` | 200 when the database answers within 2 s and is not behind the code's migrations; else 503 with `failing` (`database` or `migrations`) |
+| API, public port | `GET /health` | the same as `/livez`, kept for existing probes |
+| API, `METRICS_PORT` | `GET /metrics` | `hds_http_requests_total`, `hds_http_request_duration_seconds` (by route template), `hds_build_info` |
+| Worker, `METRICS_PORT` | `/livez`, `/readyz`, `/metrics` | alive while its loop turns or a held job is inside its lease; `hds_schedule_jobs{state}`, `hds_schedule_job_duration_seconds` |
+
+"Behind" means `alembic_version` is empty or holds an older revision this code knows. A revision the
+code does not know is newer and counts as ready, so old pods keep serving during an upgrade and
+after a rollback. The ready check opens connections of its own, never the request pool, so a busy
+pool cannot take every pod out of service together. The worker's readiness is the database only.
+The migration history is read at start-up: a missing or two-headed history stops the process.
 
 ## Common tasks
 

@@ -43,8 +43,11 @@ os.environ["LOGIN_RATE_LIMIT_PER_NETWORK"] = "0"
 # The same for reset requests; test_reset_request_limit.py turns the limit on for itself.
 os.environ["RESET_REQUEST_LIMIT_PER_ADDRESS"] = "0"
 os.environ["RESET_REQUEST_LIMIT_PER_NETWORK"] = "0"
+# No metrics server in tests: an app started through its lifespan (TestClient) would bind the
+# operations port, and runs at once would fight over it. test_metrics_port.py asks for one.
+os.environ["METRICS_PORT"] = "0"
 
-from hds.core.database import get_db, get_session_factory
+from hds.core.database import get_db, get_health_session_factory, get_session_factory
 from hds.core.mail import get_mail_sender
 from hds.core.security import hash_password
 from hds.main import app
@@ -192,12 +195,14 @@ async def test_db(migrated_test_db: str) -> AsyncGenerator[AsyncSession, None]:
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_session_factory] = lambda: session_factory
+    app.dependency_overrides[get_health_session_factory] = lambda: session_factory
     try:
         async with session_factory() as session:
             yield session
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(get_session_factory, None)
+        app.dependency_overrides.pop(get_health_session_factory, None)
         tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
         async with engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

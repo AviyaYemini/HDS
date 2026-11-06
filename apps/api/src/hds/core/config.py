@@ -103,6 +103,11 @@ class Settings(BaseSettings):
         MAIL_BACKEND: How messages are delivered. Defaults to ``outbox`` in a development
             environment; outside development it must name a real backend.
         MAIL_OUTBOX_PATH: File the ``outbox`` backend appends its redacted records to.
+        HDS_VERSION: The version this process runs, baked into the image by its build (the
+            commit SHA); reported by the health checks and the ``hds_build_info`` metric.
+        METRICS_PORT: The operations port serving the metrics (and, for the worker, its health
+            checks), never the public port (specs/006 FR-009). 0, the default, serves none:
+            compose and the chart set 9100, so a process started by hand never fights over it.
 
     Raises:
         ValueError: On construction (reported as a validation error that names the setting but
@@ -137,6 +142,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8081"]
     MAIL_BACKEND: str | None = None
     MAIL_OUTBOX_PATH: str = _DEFAULT_OUTBOX_PATH
+    HDS_VERSION: str = "dev"
+    METRICS_PORT: int = Field(default=0, ge=0, le=65535)
 
     # hide_input_in_errors keeps the raw environment, secret included, out of the error text:
     # without it a failed start prints the whole input dictionary. extra="ignore" lets the one

@@ -65,6 +65,7 @@ class Claim:
     solver: str
     attempt: int
     settings: dict[str, int]
+    lease_until: datetime | None = None
 
 
 def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
@@ -363,6 +364,13 @@ class ScheduleJobService:
 
     # ------------------------------------------------------------------ the worker's steps
 
+    async def counts_by_state(self) -> dict[str, int]:
+        """How many jobs are in each state; a state with none is absent (the worker's metrics).
+
+        ``JobMetrics.set_counts`` reports an absent state as 0, so the states are listed once.
+        """
+        return await self._jobs.count_by_state()
+
     async def claim(self) -> Claim | None:
         """Claim the next job (worker); ``None`` when there is none. The caller commits."""
         job, lost = await self._jobs.claim(self._now(), LEASE, MAX_ATTEMPTS)
@@ -379,6 +387,7 @@ class ScheduleJobService:
             job.solver,
             job.attempts,
             dict(job.settings),
+            job.lease_until,
         )
 
     async def build(self, claim: Claim) -> Built:

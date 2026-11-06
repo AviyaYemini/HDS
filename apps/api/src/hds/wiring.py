@@ -6,13 +6,20 @@ neither the database nor a repository (Constitution II); the worker and the test
 builders.
 """
 
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from functools import cache, lru_cache
 
-from hds.core.database import get_unit_of_work
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from hds.core.config import get_settings
+from hds.core.database import get_health_session_factory, get_unit_of_work
+from hds.core.health import Migrations, load_migrations
 from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
+from hds.repositories.health import HealthRepository
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import PayReportRepository, ReportShiftRepository
@@ -26,6 +33,7 @@ from hds.repositories.site import SiteRepository
 from hds.repositories.special_day import SpecialDayRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.repositories.user import UserRepository
+from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
 from hds.services.pay import PayService
 from hds.services.pay_settings import PaySettingsService
@@ -168,3 +176,49 @@ def reports(
         site_repo=SiteRepository(db),
         group_repo=GroupRepository(db),
     )
+
+
+@cache
+def migrations() -> Migrations:
+    """The code's migration history, read once per process.
+
+    The API's lifespan and the worker call it at start-up, so an image whose history is missing or
+    has two heads fails at boot with ``load_migrations``' error, not on its first ready check.
+    """
+    return load_migrations()
+
+
+@lru_cache(maxsize=8)
+def health_service(
+    factory: async_sessionmaker[AsyncSession], *, check_migrations: bool = True
+) -> HealthService:
+    """The health service on ``factory``, built once per factory.
+
+    Each ready check opens and closes its own session on ``factory``, which should be the health
+    checks' own (``get_health_session_factory``), never the request pool.
+
+    Args:
+        factory: Where each check opens its session.
+        check_migrations: Whether a database behind the code is not ready (the API's rule; the
+            worker's readiness is the database only).
+    """
+
+    @asynccontextmanager
+    async def open_probe() -> AsyncIterator[HealthRepository]:
+        """A health repository on a session of its own, closed when the check ends."""
+        async with factory() as session:
+            yield HealthRepository(session)
+
+    return HealthService(
+        open_probe,
+        migrations(),
+        version=get_settings().HDS_VERSION,
+        check_migrations=check_migrations,
+    )
+
+
+def health(
+    factory: async_sessionmaker[AsyncSession] = Depends(get_health_session_factory),
+) -> HealthService:
+    """FastAPI dependency: the API's health service, on the health checks' own connections."""
+    return health_service(factory)
