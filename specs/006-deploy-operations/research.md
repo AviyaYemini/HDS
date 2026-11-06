@@ -211,8 +211,9 @@ lines).
 
 **Decision**:
 
-- **Vault**: one Vault server (standalone, file storage on a persistent volume) runs in a `vault`
-  namespace from HashiCorp's chart.
+- **Vault**: one Vault server runs in a `vault` namespace from HashiCorp's chart, as a single node
+  with integrated storage (raft) on a persistent volume. Raft is chosen over file storage because it
+  can take snapshots (`vault operator raft snapshot save`).
 - **Unsealing**: it starts sealed after each restart, and the operator unseals it with
   `make ops-unseal`, which reads the key from the operator's password manager. The unseal keys and
   root token never enter the repository or the cluster.
@@ -273,7 +274,7 @@ written procedure, and it covers a lost machine too: a new cluster, Vault restor
 backup, then the database from Drive.
 
 **Vault's own data**: Vault holds the backup password, so it is backed up as well. A weekly
-encrypted snapshot of Vault's file storage goes to the same two places under a separate password.
+encrypted raft snapshot of Vault goes to the same two places under a separate password.
 The operator keeps that password, with the unseal keys, outside the machine.
 
 **Google Drive**:

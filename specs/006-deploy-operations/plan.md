@@ -53,7 +53,7 @@ Helm chart, Flux and Actions.
 - PostgreSQL 16, unchanged. Migration 024 adds `schedule_jobs.trace_context`.
 - Backups go to a local-path persistent volume and a Google Drive folder, through rclone crypt
   (research R11).
-- Vault keeps its own file storage on a persistent volume.
+- Vault keeps its own integrated storage (raft) on a persistent volume.
 
 **Testing**:
 - **Kept**: pytest, Hypothesis, Schemathesis, Jest and Playwright.
