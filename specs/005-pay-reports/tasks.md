@@ -90,7 +90,7 @@ The review of PR 7 found 15 issues; the spec's Session 2026-11-05 (review of PR 
 - [X] T042 Rate hiding in `services/roster.py` (pay visibility shared with the reports in one service function) and `services/employee.py`; demotion removes project assignments; `ProjectService.soft_delete` freezes pay first, and `Pricing` treats a deleted project as fixed; migration 023 freezes projects deleted before 005; contract, `docs/hds-api.md` and drift check; commit `fix(api): hide rates outside reports and fix the review's report findings (005 Group H)`
 - [X] T043 [P] Failing Jest tests: the hours report shows a missing-rate count on each row and group and "rate missing" instead of a pay figure; My pay shows each shift's start, end and base rate; My pay shows no total, never 0.00, when every line lacks a rate (FR-004, found by the re-review)
 - [X] T044 Add the site's `timezone` to each pay line, so My pay shows start and end at the site; `Row` takes a `testID`; regenerate `packages/api-client`; `HoursReportScreen.tsx` and `MyPayScreen.tsx`; strings in `en` and `he`; client gates green; commit `fix(client): show missing rates in the hours report and times and rates in my pay (005 Group H)`
-- [ ] T045 ADR 012 and `docs/hds-api.md` amended (rates outside reports, open-start work-log, deleting freezes); API and client gates; reword the commits commitlint refuses and push with `--force-with-lease`
+- [x] T045 ADR 012 and `docs/hds-api.md` amended (rates outside reports, open-start work-log, deleting freezes); API and client gates; reword the commits commitlint refuses and push with `--force-with-lease`
 
 ## Dependencies
 
