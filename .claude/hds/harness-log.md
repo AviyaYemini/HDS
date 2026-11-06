@@ -198,3 +198,14 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
   `make ci-local` pass no `-m`, so they still run all 16. The existing `timing` marker was not
   reused: it means statistical checks skipped everywhere unless chosen, which would drop these from
   CI too. `test_login_equal_work` counts work rather than time and stays unmarked.
+
+## PR 9's CI
+
+- **Run 42219366070, unit tests**: four guard cases failed in CI, all recursive searches
+  (`grep -rn JWT_SECRET_KEY .`, `grep -R ...`, `rg --hidden ...`, `rg -uu ... .`). The guard
+  blocks a recursive search only when a settings file sits below the searched folder; this Mac's
+  checkout has one, CI's has none (it is git-ignored), so the tests depended on the machine. The
+  hook was right. The cases now run in a project folder of their own (`CLAUDE_PROJECT_DIR` points
+  there), once with `apps/client/.env` (blocked, from the root and from `apps/` alike) and once
+  without (allowed): ten tests in place of four. The other guard cases name their files or search
+  `docs/`, which holds no settings file anywhere, so none depends on the checkout's files.

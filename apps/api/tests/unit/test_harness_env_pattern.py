@@ -190,16 +190,50 @@ def test_a_mention_of_a_settings_file_is_not_blocked(command: str) -> None:
         "echo JWT_SECRET_KEY=x > .env",
         "echo x >> .env.local",
         "printf x | tee .env",
-        # A search that would print a real key (review G2).
-        "grep -rn JWT_SECRET_KEY .",
-        "grep -R JWT_SECRET_KEY",
-        "rg --hidden JWT_SECRET_KEY",
-        "rg -uu JWT_SECRET_KEY .",
         "find . -name .env -exec cat {} +",
     ],
 )
 def test_reading_or_copying_a_settings_file_is_blocked(command: str) -> None:
     assert blocked(command)
+
+
+# A recursive search reaches a settings file only if one exists below it, so these cases run in a
+# project folder of their own, with and without one: the real checkout's files must not decide them
+# (CI's checkout has no settings file, a developer's has one).
+RECURSIVE_SEARCHES = [
+    "grep -rn JWT_SECRET_KEY .",
+    "grep -R JWT_SECRET_KEY",
+    "rg --hidden JWT_SECRET_KEY",
+    "rg -uu JWT_SECRET_KEY .",
+    "grep -rn JWT_SECRET_KEY apps/",
+]
+
+
+def project_with(tmp_path: Path, settings_file: str | None) -> Path:
+    """A project folder with an app below it, and a settings file there when named."""
+    project = tmp_path / "project"
+    (project / "apps" / "client").mkdir(parents=True)
+    (project / "README.md").write_text("JWT_SECRET_KEY is documented here\n")
+    if settings_file:
+        (project / settings_file).write_text("JWT_SECRET_KEY=a-real-key\n")
+    return project
+
+
+@pytest.mark.parametrize("command", RECURSIVE_SEARCHES)
+def test_a_recursive_search_that_would_reach_a_settings_file_is_blocked(
+    command: str, tmp_path: Path
+) -> None:
+    # The settings file below apps/ is reached from the root and from apps/ alike.
+    project = project_with(tmp_path, "apps/client/.env")
+    assert run_hook(command, project, HDS_ALLOW_MAIN="1") == 2
+
+
+@pytest.mark.parametrize("command", RECURSIVE_SEARCHES)
+def test_a_recursive_search_with_no_settings_file_below_it_is_allowed(
+    command: str, tmp_path: Path
+) -> None:
+    project = project_with(tmp_path, None)
+    assert run_hook(command, project, HDS_ALLOW_MAIN="1") == 0
 
 
 # Commands the old pattern blocked although they read no real settings file, which the new guard
