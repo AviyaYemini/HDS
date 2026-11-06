@@ -186,8 +186,9 @@ once, and the worker exits within the grace period.
   - **NetworkPolicy**: lets only the `monitoring` namespace reach port 9100.
   - **Settings**: `TRUSTED_PROXY_COUNT: "1"` and `ENVIRONMENT: production` for local; no Secret holds a literal value in either values file.
   - **History**: `maxHistory` is documented as 10 for Flux.
+  - **`hds-postgres`** (research R3, amended): the same lint and kubeconform, and: no Secret holds a literal value; the StatefulSet runs as non-root with `pg_isready` probes over TCP; its NetworkPolicy lets in only the hds pods; the password comes from `hds-api`'s `DATABASE_PASSWORD` by name. The hds chart's `DATABASE_URL` names the Service from its values.
 - [ ] T034 [P] Failing test `apps/api/tests/unit/test_ingress_prefixes.py`: every route in `hds.main.app.routes` that is in the OpenAPI document, or is `/livez`, `/readyz` or `/health`, starts with a prefix listed in `infra/helm/hds/values.yaml` under `ingress.apiPrefixes`, or is one of the three health paths, which the ingress does not route (research R2)
-- [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, PostgreSQL StatefulSet and Service, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
+- [ ] T035 Add `infra/helm/hds/`: `Chart.yaml`, `values.yaml`, `values-local.yaml`, `values-ci.yaml`, and the templates for the API, worker, web, migration Job, Ingress, PodDisruptionBudget, NetworkPolicy, ServiceAccounts and `_helpers.tpl`; its values name the database Service. Add `infra/helm/hds-postgres/` (research R3, amended): `Chart.yaml`, `values.yaml`, and the templates for the PostgreSQL StatefulSet, its Service and a NetworkPolicy that lets in only the hds pods. Secrets are referred to by name (`hds-api`, `hds-smtp`, `hds-backup`, `hds-registry`) and never defined in values. The PostgreSQL password comes from `hds-api`'s `DATABASE_PASSWORD`
 - [ ] T036 [P] Failing test `apps/api/tests/integration/test_migrate_lock.py`: two `python -m hds.scripts.migrate` processes started together on one database both exit 0, the upgrade runs once, and the second waits on the advisory lock (FR-016). A database at a revision the code does not know (newer, for example the older image after a rollback) is left untouched and the command exits 0, rather than `alembic upgrade head` stopping on an unknown revision. Then add `apps/api/src/hds/scripts/migrate.py`, which takes `pg_advisory_lock` and runs `alembic upgrade head`, and is the migration Job's command
 - [ ] T037 Gates, `helm lint`, both reviews, the log, and a commit `feat(infra): a Helm chart with rolling updates, probes and a locked migration hook (006 Group G)`
 
@@ -214,7 +215,7 @@ quickstart scenario 3 in the cluster (Group M).
 - [ ] T043 [US3] Chart templates `infra/helm/hds/templates/backup-cronjob.yaml` and `restore-test-cronjob.yaml`:
   - **backup**: 02:30, `timeZone` set from values.
   - **restore test**: Sundays 04:00, with an empty `postgres:16` as a native sidecar (an init container with `restartPolicy: Always`), listed **before** the `hds-backup` init container and with a `startupProbe` on `pg_isready`, because Kubernetes waits only for a native sidecar's startup probe before starting the next init container. The download, checksum, `pg_restore` and manifest comparison run in an `hds-backup` init container; `migrate` and `check_restore` then run in an `hds-api` container on the same image as the release, so the check uses the running code.
-  - **both**: `startingDeadlineSeconds: 86400`, `concurrencyPolicy: Forbid`, history limits of 3, and a PVC `hds-backups` for `local-crypt`.
+  - **both**: `startingDeadlineSeconds: 86400`, `concurrencyPolicy: Forbid`, history limits of 3, and a PVC `hds-backups` for `local-crypt`. The backup reaches the database through the Service the hds values name, which the `hds-postgres` release provides (research R3, amended).
 
   Add `vault-snapshot-cronjob.yaml`, which runs weekly and takes a raft snapshot through Vault's HTTP API with `curl` (the image needs no vault binary), encrypts it with `age` to the **public** key in the chart values (`vault.snapshotRecipient`, not a secret), and writes `vault-<UTC time>.snap.age` through the plain `offsite:` remote and the plain local volume, **not** through `offsite-crypt:`, whose password lives in Vault (research R11). It runs under its own ServiceAccount (T052). Extend `infra/helm/tests/assert.sh` with these values, including that the postgres sidecar is the first init container and has a `pg_isready` startup probe
 - [ ] T044 [US3] Add `docs/runbooks/restore.md`:
@@ -245,7 +246,8 @@ quickstart scenario 3 in the cluster (Group M).
 - [ ] T048 [P] [US4] Add `infra/flux/clusters/local/`:
   - `kustomization.yaml`;
   - `oci-repository.yaml`, with `semver: ">=0.1.0"` and `interval: 5m`;
-  - `helm-release.yaml`, with `install.remediation.retries: 0`, `upgrade.remediation.retries: 0`, `upgrade.remediation.strategy: rollback`, `timeout: 10m`, `maxHistory: 10`, and `values-local` from a ConfigMap;
+  - `helm-release-postgres.yaml`, the `hds-postgres` release, installed first (research R3, amended);
+  - `helm-release.yaml`, with `dependsOn` the `hds-postgres` release, `install.remediation.retries: 0`, `upgrade.remediation.retries: 0`, `upgrade.remediation.strategy: rollback`, `timeout: 10m`, `maxHistory: 10`, and `values-local` from a ConfigMap;
   - `alertmanager-provider.yaml` and `alert.yaml`, which forward `HelmRelease` errors to Alertmanager (FR-010a, FR-018).
 
   A CI step validates them with kubeconform and Flux's CRD schemas
