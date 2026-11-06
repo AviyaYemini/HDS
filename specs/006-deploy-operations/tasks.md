@@ -125,15 +125,16 @@ lines for it carry the API request's `trace_id`.
 - [ ] T021 [US2] Add the migration `apps/api/alembic/versions/024_schedule_job_trace_context.py`, which states what and why: one trace per job (§9), an expand step the previous release ignores (FR-016), and a downgrade that drops the column. Add the column to `apps/api/src/hds/models/schedule_job.py`, and keep `alembic check` clean
 - [ ] T022 [P] [US2] Failing tests `apps/api/tests/unit/test_tracing.py`, with an in-memory span exporter:
   - **queuing**: a request carrying `traceparent: 00-<32 hex>-<16 hex>-01` that queues a job stores that trace in `trace_context`;
-  - **malformed**: a malformed header stores null;
+  - **malformed**: a malformed header is never stored: the job stores the new trace the API started for that request (review R1);
+  - **no trace**: a job queued outside any trace stores null;
   - **the worker**: running the job makes spans whose trace id equals the stored one, and a null starts a new trace;
   - **logs**: every JSON log line inside a request or a job has `trace_id` and `span_id`, while lines outside have neither;
   - **export**: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, no exporter is installed and nothing is sent (FR-008a)
-- [ ] T023 [US2] Add `apps/api/src/hds/core/tracing.py`: `configure(service_name)` sets up the provider, FastAPI and SQLAlchemy instrumentation, and OTLP over HTTP only when the endpoint is set. Add `current_traceparent()` and `continue_from(traceparent)`, which validates the format. Wire them in:
+- [ ] T023 [US2] Add `apps/api/src/hds/core/tracing.py`: `configure(service_name)` sets up the provider, FastAPI and SQLAlchemy instrumentation, and OTLP over HTTP only when the endpoint is set. Add `current_traceparent()` and `continue_from(traceparent)`, which validates the format. The health probes (`/livez`, `/readyz`, `/health`) are not traced; they answer every few seconds (review R3). Wire them in:
   - **the queue**: `apps/api/src/hds/services/schedule_job.py` stores `current_traceparent()` when queuing;
   - **the worker**: `apps/api/src/hds/worker.py` wraps each job in a span continued from the row;
   - **logs**: `apps/api/src/hds/core/logging.py` adds `trace_id` and `span_id`.
-- [ ] T024 [US2] Mutation checks: a new trace in the worker; the header stored unvalidated; trace ids missing from logs. Then the gates, both reviews, the log, and a commit `feat(api): one trace per schedule job across the API and the worker (006 Group D)`
+- [ ] T024 [US2] Mutation checks: a new trace in the worker; the traceparent check accepts any value; trace ids missing from logs. Then the gates, both reviews, the log, and a commit `feat(api): one trace per schedule job across the API and the worker (006 Group D)`
 
 ## Phase 5: Group E, SMTP mail and the first Admin (foundational for US3 and US4 messages, and for a production start)
 

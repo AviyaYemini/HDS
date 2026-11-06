@@ -14,10 +14,13 @@ in Helm and Flux, and job outcomes in Kubernetes.
 | --- | --- | --- | --- |
 | `trace_context` | `VARCHAR(55)` | yes | The W3C `traceparent` of the request that queued the job, so the worker continues its trace (research R8) |
 
-- **Rules**: the column is written once when the job is queued and never changed. It is null for
-  jobs queued before the migration, and for requests that carry no trace; the worker then starts a
-  new trace. The value is validated against the `traceparent` format, `00-<32 hex>-<16 hex>-<2 hex>`,
-  and a malformed value is stored as null. It holds no personal data.
+- **Rules**: the column is written once when the job is queued and never changed. It holds the
+  trace of the request that queued the job: continued from the request's `traceparent` when that is
+  valid, and otherwise the new trace the API started for the request, so a malformed header is never
+  stored (review R1). It is null for jobs queued before the migration and for jobs queued outside
+  any trace; the worker then starts a new trace. The value is checked against the `traceparent`
+  format, `00-<32 hex>-<16 hex>-<2 hex>`, both when stored and when the worker reads it, and a
+  malformed value is never stored or continued. It holds no personal data.
 - **Migration**: 024 adds the nullable column, which is an expand step. The previous release ignores
   the column, so the two run side by side (FR-016), and the downgrade drops it.
 
