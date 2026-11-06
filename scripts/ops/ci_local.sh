@@ -53,7 +53,11 @@ step "the API image"
 infra/tests/check_api_image.sh
 
 step "ShellCheck"
-docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" scripts/ops/*.sh infra/tests/*.sh
+docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" scripts/ops/*.sh infra/tests/*.sh \
+    infra/helm/tests/*.sh
+
+step "Helm charts: lint, kubeconform and the rendered-manifest checks"
+infra/helm/tests/assert.sh
 
 step "Markdown links (offline, as CI)"
 # Only tracked Markdown, as a clean checkout has it: node_modules and caches hold their own.

@@ -32,7 +32,8 @@ POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258
 
 # CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
 # interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
-# ShellCheck, the Markdown links, gitleaks and commitlint over origin/main..HEAD, and the client.
+# ShellCheck, the Helm charts, the Markdown links, gitleaks and commitlint over origin/main..HEAD,
+# and the client.
 ci-local:
 	scripts/ops/ci_local.sh
 

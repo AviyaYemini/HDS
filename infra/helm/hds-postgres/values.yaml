@@ -1,0 +1,35 @@
+# PostgreSQL for HDS (specs/006-deploy-operations research R3, amended). No secret is set here: the
+# password is read by name from the hds-api Secret's DATABASE_PASSWORD (Vault, Group J).
+
+image:
+  # infra/VERSIONS.md: postgres 16.15 (the cluster's database), by tag and digest.
+  repository: postgres
+  tag: "16.15"
+  digest: sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
+
+database:
+  name: hds
+  user: hds
+  port: 5432
+  # The Secret and key the password is read from; never a value.
+  passwordSecret:
+    name: hds-api
+    key: DATABASE_PASSWORD
+
+storage:
+  size: 5Gi
+  # Empty: the cluster's default class (k3s: local-path).
+  storageClassName: ""
+
+# The pods that may connect: the hds release gives this label to its API, worker, migration and
+# backup pods only (hds.databaseClient), never to the web.
+clients:
+  matchLabels:
+    hds/database-client: "true"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi

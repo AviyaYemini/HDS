@@ -1,0 +1,10 @@
+apiVersion: v2
+name: hds
+description: >-
+  HDS 2.0: the API, the schedule worker, the web client, the migration Job and their ingress
+  (specs/006-deploy-operations research R3, amended). PostgreSQL is the hds-postgres release.
+type: application
+# The release workflow sets version 0.1.<run number> and appVersion to the commit (research R4).
+version: 0.1.0
+appVersion: "dev"
+kubeVersion: ">=1.33.0-0"

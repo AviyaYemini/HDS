@@ -472,3 +472,50 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   A unit test, with `serve()` raising `SystemExit` mid-job, and a held-port case in
   `test_worker_drain` both failed first and fail again with the wrapper removed. All 6 drain tests
   pass on `hds_p3_test`.
+
+## Group G: the Helm charts and the locked migration (PR 3)
+
+- **The split** (`c69ddaf`, ledger R47): a single chart could not install, since its `pre-install`
+  migration hook ran before Helm created the database. By the owner's choice PostgreSQL is now its
+  own chart and release, `infra/helm/hds-postgres`, and `hds` reaches it through the Service named
+  in its values.
+- **T033** `infra/helm/tests/assert.sh`, the CI `chart` job, and a step in `make ci-local`: helm
+  lint `--strict`, kubeconform `-strict` against the pinned Kubernetes v1.37.1 schemas, and yq
+  assertions on both charts for both values files. Helm, kubeconform and yq run from images
+  pinned by digest (`infra/VERSIONS.md`); nothing is installed. It failed first on the missing
+  charts, and now passes with 48 resources valid.
+- **Mutants**: each chart rule was broken in a template, then restored.
+  - Caught: maxUnavailable 1, no preStop, `/metrics` routed, the hook moved to post-install, a
+    digest ignored, worker grace 30, the API allowed root, postgres open to every namespace, postgres
+    probed over the socket, a Secret in a template, and a literal password in `values-local.yaml`.
+  - **One survived: 9100 opened to every source.** The check read only rules that had a `from`
+    list, but a rule without `from` admits everyone, and one without `ports` covers every port. The
+    check now counts both, and the mutant and a rule open to every port and source both fail.
+  - The values-file rule ("no Secret holds a literal value in either values file") was missing from
+    the first draft and was added: no key named like a secret holds a scalar.
+- **T034** `test_ingress_prefixes.py`: every path in the OpenAPI document starts with one of
+  `ingress.apiPrefixes`, apart from the health paths, which the ingress does not route. It failed
+  on the missing values file; it passes now. It reads the document, not `app.routes` (review R50).
+- **T036** `hds.scripts.migrate`: `pg_try_advisory_lock`, otherwise a logged blocking wait;
+  then it leaves a newer revision alone, does nothing at head, or runs `alembic upgrade head`. The
+  test holds the lock first, so both processes are certain to wait. Mutants (no lock wait, the newer
+  revision upgraded, the upgrade run twice) all fail it. Both tests pass on `hds_p3_test` at group end.
+- Gates: ruff, format, mypy --strict, interrogate 100%, the import graph, pip-audit, 1252 unit
+  tests, ShellCheck on `infra/helm/tests/*.sh`. /hds-review: R48 to R51 (README entries for
+  `migrate` and the charts, and the T033/T034 wording), all fixed here.
+- /code-review high: R52 to R62.
+  - **R52** would have failed every check in CI and was invisible here: yq ran as the image's own
+    user, which cannot read the runner's 0700 temporary folder on Linux, while Docker Desktop on
+    macOS ignores ownership. **R53**: such a failure printed nothing, and the checks expecting
+    nothing then passed. Both are fixed.
+  - Chart: the database now gets a TCP startup probe (R54) and `PGPORT` (R57). Database access has
+    a label of its own, which the web pods lack (R56). The README gives the order for rotating the
+    password (R55). `hds-postgres` is rendered once (R60). Mutants for each new rule fail.
+  - `migrate`: it retries its first connection (6 × 5 s) and gives separate messages for "could not
+    be reached" and "failed on the database"; a bare `InterfaceError` now exits 1 (R58). Its new
+    unit tests failed first. Mutants (no retry, start-up not waited for, one message for both, the
+    `InterfaceError` escaping) all fail them; "no retry" survived until a test went through
+    `migrate()` itself.
+  - `test_migrate_lock` counts lock waits in its own database only and kills a timed-out child (R59).
+  - Won't-fix: one yq container per check (R61, so each failure stays named), and the shared test
+    helpers (R62, the same pattern as migration tests 021 to 024).

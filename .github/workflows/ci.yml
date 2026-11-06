@@ -27,7 +27,17 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            scripts/ops/*.sh infra/tests/*.sh
+            scripts/ops/*.sh infra/tests/*.sh infra/helm/tests/*.sh
+
+  chart:
+    name: Helm charts (lint, kubeconform, rendered-manifest checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # Both charts, hds and hds-postgres, for values-local.yaml and values-ci.yaml (specs/006
+      # T033). Helm, kubeconform and yq run from images pinned in infra/VERSIONS.md.
+      - run: infra/helm/tests/assert.sh
 
   quickstart:
     name: Quickstart from a clean checkout (make env, make up)

@@ -1,0 +1,21 @@
+# Only the database's clients reach it (research R3, amended): the hds release's API, worker,
+# migration Job and backup jobs carry the label; the web pods do not.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "hds-postgres.name" . }}
+  labels:
+    {{- include "hds-postgres.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "hds-postgres.selector" . | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.clients.matchLabels | nindent 14 }}
+      ports:
+        - port: {{ .Values.database.port }}
+          protocol: TCP

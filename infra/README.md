@@ -1,7 +1,7 @@
 # Infrastructure
 
-The local environment, the images and the pinned versions. Nothing here is a production deployment
-yet; the shared environment (specs/006-deploy-operations) adds the chart and the cluster files.
+The local environment, the images, the Helm charts and the pinned versions. The shared environment
+(specs/006-deploy-operations) adds the cluster files next; nothing deploys the charts yet.
 
 | File | Purpose |
 | --- | --- |
@@ -12,6 +12,32 @@ yet; the shared environment (specs/006-deploy-operations) adds the chart and the
 | `volumes/postgres` | PostgreSQL data directory (a bind mount); `make wipe` deletes it |
 | `VERSIONS.md` | Every pinned tool and image version, with digests; change a row and its uses together |
 | `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
+| `helm/hds` | The application chart: the API, the worker, the web client, the migration hook, the ingress |
+| `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
+| `helm/tests/assert.sh` | Lints, validates and checks the rendered charts (CI `chart` job, `make ci-local`) |
+
+## The Helm charts
+
+Two charts, each its own release (specs/006 research R3, amended). `hds-postgres` holds the
+database, so it exists before the `hds` release's `pre-install` migration hook runs, and its data
+is never touched by an app upgrade or rollback. `hds` reaches it through the Service named in its
+values (`database.host`).
+
+Neither chart defines a Secret; both read them by name: `hds-api` (`JWT_SECRET_KEY`,
+`DATABASE_PASSWORD`, which the database's password also comes from, and the optional
+`THROTTLE_SECRET_KEY`), `hds-smtp` (the relay's settings, when `mail.backend` is `smtp`),
+`hds-backup` and `hds-registry`. `DATABASE_PASSWORD` goes into the database URL, so it must be
+URL-safe (`openssl rand -hex 32`). PostgreSQL takes it only when it first creates the database;
+to change it later, set the role's password first (`ALTER ROLE hds PASSWORD ...` in the pod), then
+the Secret, then restart the API and the worker. In the other order, the next migration hook cannot
+sign in and the upgrade stops. Only the API, worker, migration and backup pods carry the
+`hds/database-client` label that the database's NetworkPolicy lets in; the web pods do not. The
+operations port 9100 is reachable only from the `monitoring` namespace, and the ingress never
+routes it.
+
+`helm/tests/assert.sh` runs `helm lint`, kubeconform (Kubernetes v1.37.1 schemas) and assertions
+on the rendered manifests: `hds` for `values-local.yaml` and `values-ci.yaml`, and `hds-postgres`
+with its defaults. Every tool runs from an image pinned in `VERSIONS.md`; only Docker is needed.
 
 ## The local environment
 
