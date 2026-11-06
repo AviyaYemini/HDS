@@ -10,8 +10,10 @@ Covers: none directly; the harness's end-of-turn gate (.claude/hds/harness-log.m
 """
 
 import importlib.util
+import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -120,3 +122,84 @@ def test_changed_paths_are_read_from_porcelain_status_including_renames(hooks: M
         "apps/api/tests/unit/test_b.py",
         "apps/api/src/c.py",
     ]
+
+
+def recorder(calls: list[list[str]]) -> Callable[..., tuple[int, str]]:
+    """A stand-in for the hook's run() that records each command and succeeds."""
+
+    def run(cmd: list[str], **_: object) -> tuple[int, str]:
+        calls.append(cmd)
+        return 0, ""
+
+    return run
+
+
+# ── Only this session's edits, within one deadline (review G4) ─────────────────────────────────
+
+
+def test_edits_are_recorded_per_session_and_cleared(
+    hooks: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hooks, "STATE_DIR", tmp_path / "state")
+    hooks.record_edit("session-a", "apps/api/src/hds/core/config.py")
+    hooks.record_edit("session-a", "apps/api/src/hds/core/config.py")
+    hooks.record_edit("session-b", "apps/api/src/hds/main.py")
+    assert hooks.session_edits("session-a") == ["apps/api/src/hds/core/config.py"]
+    assert hooks.session_edits("session-b") == ["apps/api/src/hds/main.py"]
+    hooks.clear_edits("session-a")
+    assert hooks.session_edits("session-a") == []
+    assert hooks.session_edits("session-b") == ["apps/api/src/hds/main.py"]
+
+
+def test_a_session_with_no_edits_runs_nothing(
+    hooks: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hooks, "STATE_DIR", tmp_path / "state")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(hooks, "run", recorder(calls))
+    assert hooks.stop({"session_id": "quiet-session"}) == 0
+    assert calls == []  # not even git status: another session's changes are not this one's
+
+
+def test_the_gate_checks_this_session_s_edits_and_clears_them_on_a_pass(
+    hooks: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hooks, "STATE_DIR", tmp_path / "state")
+    hooks.record_edit("busy-session", "apps/api/src/hds/core/config.py")
+    timeouts: list[float] = []
+
+    def fake_run(cmd: list[str], timeout: float = 30, cwd: object = None) -> tuple[int, str]:
+        timeouts.append(timeout)
+        return 0, ""
+
+    monkeypatch.setattr(hooks, "run", fake_run)
+    assert hooks.stop({"session_id": "busy-session"}) == 0
+    assert len(timeouts) == 4  # ruff, format, mypy, unit tests
+    assert all(t <= hooks.STOP_BUDGET_SECONDS for t in timeouts)
+    assert hooks.session_edits("busy-session") == []
+
+
+def test_a_failing_gate_keeps_the_edits_for_the_next_turn(
+    hooks: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hooks, "STATE_DIR", tmp_path / "state")
+    hooks.record_edit("failing-session", "apps/api/src/hds/core/config.py")
+    monkeypatch.setattr(hooks, "run", lambda cmd, timeout=30, cwd=None: (1, "F401"))
+    assert hooks.stop({"session_id": "failing-session"}) == 2
+    assert hooks.session_edits("failing-session") == ["apps/api/src/hds/core/config.py"]
+
+
+def test_the_steps_share_one_deadline_inside_the_hook_s_timeout(hooks: ModuleType) -> None:
+    settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
+    timeout = settings["hooks"]["Stop"][0]["hooks"][0]["timeout"]
+    assert hooks.STOP_BUDGET_SECONDS < timeout
+
+
+def test_without_a_session_the_whole_tree_is_read_with_new_folders_listed(
+    hooks: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[list[str]] = []
+    monkeypatch.setattr(hooks, "run", recorder(seen))
+    hooks.stop({})
+    assert seen and seen[0][:3] == ["git", "status", "--porcelain"]
+    assert "--untracked-files=all" in seen[0]

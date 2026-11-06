@@ -152,3 +152,31 @@ The owner approved items 1, 5, 6 and 7 directly (they change the hooks and comma
   table. They failed first on the missing functions and the missing template.
 - No ledger was created for 006 here: its findings so far are in `specs/006-deploy-operations/
   p1-log.md`. The next `/hds-review` starts it.
+
+## Review fixes (items 1, 5 and 6)
+
+- **G1, the guard let through what the old one blocked**: a shell's script now comes after any flag
+  cluster holding `c` (`-lc`, `-ec`), with `-o <option>` skipped; a heredoc is code when any word on
+  its line, before or after `<<`, is a shell or interpreter (`cat <<EOF | sh`, `uv run python -`,
+  `docker run -i img python -`); `>` and `>>` onto a real settings file block, as `<` does, since
+  `pre_edit` already refuses the Write and Edit tools there (`tee` already did). A regression
+  corpus, over 200 commands built from the old pattern's readers and files in common forms, must
+  stay blocked by the new guard except a short, named list of intended mentions.
+- **G2, a search that prints a key**: a recursive grep, or an rg reading ignored or hidden files,
+  blocks unless it excludes `.env*` or no folder it searches holds a settings file (a bounded walk
+  that skips node_modules, .git and .venv, and gives up as "yes" past 20000 entries). The reviewer
+  suggested blocking every recursive grep over a folder; this is narrower, because a subfolder with
+  no settings file cannot leak one, and `grep -rn` over `docs/` or `apps/api/src` is an everyday
+  search. `git grep` reads tracked files only. `find ... -exec` over a settings file blocks too.
+- **G3**: assignments and wrappers (`time`, `env`, `command`, `nice`, `nohup`, `xargs`, `timeout`
+  and its duration) are skipped before the command word, for gitleaks and for `.`.
+- **G4, the gate read the shared tree**: post-edit records each path a Write or Edit changes under
+  `.git/hds-hooks/edits-<session id>`, and the gate checks only those, clearing them when it passes
+  and keeping them when it fails. A session with no edits runs nothing, not even `git status`.
+  Edits made through Bash are not recorded, so they are not gated; CI and `make ci-local` remain the
+  authority. Without a session id the gate reads the tree with `--untracked-files=all`. All steps
+  share one 270 s deadline, under the hook's 300 s.
+- **Tests**: 20 new guard cases and the corpus failed first, then passed; 6 new gate tests failed
+  first (one was wrong at first, a fragile parse of settings.json, now read as JSON). The unit suite:
+  1152 passed. Recording checked live: this session's post-edit wrote `.claude/hooks/hds_hooks.py`
+  to its file.

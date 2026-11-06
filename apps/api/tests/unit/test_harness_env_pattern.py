@@ -8,11 +8,13 @@ the way Claude Code does: a JSON command on standard input, exit status 2 meanin
 Covers: none directly; tooling guard for Constitution VI.
 """
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -144,7 +146,10 @@ def test_real_commands_next_to_or_inside_a_message_stay_blocked(command: str) ->
         "ls -la .env",
         'echo "cat .env"',  # printed text, not a read (this case used to be blocked)
         "docker compose -f infra/docker-compose.yml --env-file .env up -d",
-        'sed "s/^KEY=.*/KEY=new/" .env.example > .env',  # reads the example, writes the file
+        "grep -rn JWT_SECRET_KEY --exclude='.env*' .",  # a recursive grep that leaves them out
+        "git grep -n JWT_SECRET_KEY",  # tracked files only
+        "grep -rn JWT_SECRET_KEY docs/",  # a folder that holds no settings file
+        "rg JWT_SECRET_KEY",  # rg skips git-ignored files by default
         "cat > notes.md <<'EOF'\ncp .env apps/api/.env\nEOF",  # a heredoc written to a file
         "python3 - <<'EOF'\ns = open('README.md').read()\ns += 'cp .env apps/api/.env'\nEOF",
     ],
@@ -170,10 +175,90 @@ def test_a_mention_of_a_settings_file_is_not_blocked(command: str) -> None:
         "docker run --rm -v $PWD:/repo alpine cat /repo/.env",
         "cat > f <<EOF\n$(cat .env)\nEOF",  # an unquoted heredoc still runs its substitutions
         "cat 'unbalanced .env",  # cannot be split into words: the old pattern decides
+        # A shell's script after any flag cluster with c, and -o options (review G1).
+        "bash -lc 'cat .env'",
+        "sh -ec 'cat .env'",
+        "bash -o pipefail -c 'cat .env'",
+        "ssh host bash -c 'cat .env'",
+        # A heredoc piped into a shell, or fed to an interpreter behind uv run or docker run.
+        "cat <<'EOF' | sh\ncat .env\nEOF",
+        "uv run python - <<'EOF'\nprint(open('.env').read())\nEOF",
+        "docker run -i img python - <<'EOF'\nprint(open('.env').read())\nEOF",
+        # Writing over a real settings file, as pre_edit already refuses for Write and Edit.
+        "cat .env.example > .env",
+        'sed "s/^KEY=.*/KEY=new/" .env.example > .env',
+        "echo JWT_SECRET_KEY=x > .env",
+        "echo x >> .env.local",
+        "printf x | tee .env",
+        # A search that would print a real key (review G2).
+        "grep -rn JWT_SECRET_KEY .",
+        "grep -R JWT_SECRET_KEY",
+        "rg --hidden JWT_SECRET_KEY",
+        "rg -uu JWT_SECRET_KEY .",
+        "find . -name .env -exec cat {} +",
     ],
 )
 def test_reading_or_copying_a_settings_file_is_blocked(command: str) -> None:
     assert blocked(command)
+
+
+# Commands the old pattern blocked although they read no real settings file, which the new guard
+# lets through on purpose. Every other command the old pattern blocks must stay blocked, so a later
+# rewrite cannot quietly loosen the guard (review G1).
+INTENDED_MENTIONS = {
+    "grep -n x .env.example",  # the example file, which stays readable
+}
+
+
+def old_pattern_corpus() -> list[str]:
+    """Commands built from the readers and files the old pattern knew, in common forms."""
+    readers = ["cat", "less", "more", "head", "tail", "grep x", "source", "cp", "scp"]
+    files = [".env", ".env.local", ".env.production", ".env.prod"]
+    forms = [
+        "{r} {f}",
+        "{r} -n {f}",
+        "true && {r} {f}",
+        "{r} {f} | wc -l",
+        "bash -lc '{r} {f}'",
+        "sh -ec '{r} {f}'",
+        "bash -o pipefail -c '{r} {f}'",
+        "env A=1 {r} {f}",
+        "{r} {f} dest/",
+    ]
+    return [form.format(r=r, f=f) for r in readers for f in files for form in forms]
+
+
+def test_every_command_the_old_pattern_blocked_stays_blocked() -> None:
+    old = hooks_module()._SETTINGS_FALLBACK
+    reads = hooks_module().reads_settings_file
+    corpus = [c for c in old_pattern_corpus() if old.search(c) and c not in INTENDED_MENTIONS]
+    assert len(corpus) > 200
+    let_through = [c for c in corpus if not reads(c)]
+    assert not let_through, let_through
+
+
+def hooks_module() -> Any:
+    """The hook script as a module (loaded once), with the repository as its root."""
+    global _HOOKS
+    if _HOOKS is None:
+        previous = os.environ.get("CLAUDE_PROJECT_DIR")
+        os.environ["CLAUDE_PROJECT_DIR"] = str(ROOT)
+        try:
+            spec = importlib.util.spec_from_file_location("hds_hooks_corpus", HOOK)
+            assert spec is not None and spec.loader is not None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            _HOOKS = module
+        finally:
+            if previous is None:
+                os.environ.pop("CLAUDE_PROJECT_DIR", None)
+            else:
+                os.environ["CLAUDE_PROJECT_DIR"] = previous
+    return _HOOKS
+
+
+_HOOKS: Any = None
 
 
 # ── gitleaks must redact, and never scan the whole folder (harness item 6) ───────────────────
@@ -193,6 +278,11 @@ GITLEAKS_IMAGE = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb7"
         "gitleaks dir --redact",
         f"docker run --rm -v $PWD:/repo {GITLEAKS_IMAGE} dir --redact /repo",
         "gitleaks detect --no-git --redact --source .",
+        # Behind a wrapper or an environment assignment (review G3).
+        "time gitleaks dir apps",
+        "GITLEAKS_CONFIG=x gitleaks dir apps",
+        "env gitleaks git .",
+        "nohup gitleaks git . &",
     ],
 )
 def test_an_unredacted_or_whole_folder_gitleaks_run_is_blocked(command: str) -> None:

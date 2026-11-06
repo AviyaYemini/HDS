@@ -20,6 +20,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()).resolve()
@@ -343,12 +344,13 @@ def _split_heredocs(cmd):
                 i += 1
             i += 1  # the delimiter line
             text = "\n".join(body)
-            before = re.split(r"[;&|(]", line[: start.start()])[-1].split()
-            words = [w for w in before if "=" not in w or w.startswith("-")]
-            first = words[0].rsplit("/", 1)[-1] if words else ""
-            if first in _SHELLS:
+            # The body goes to whatever on its line reads standard input: `sh <<EOF`,
+            # `cat <<EOF | sh`, `uv run python - <<EOF`, `docker run -i img python - <<EOF`. Any
+            # shell or interpreter word on the line, before or after the `<<`, makes it code.
+            names = {w.rsplit("/", 1)[-1] for w in re.split(r"[\s;&|()]+", _HEREDOC.sub(" ", line))}
+            if names & _SHELLS:
                 code.append(("shell", text))
-            elif first in _INTERPRETERS:
+            elif names & _INTERPRETERS:
                 code.append(("code", text))
             elif not quoted:
                 code.extend(("shell", s) for s in _substitutions(text))
@@ -375,32 +377,142 @@ def _segments(text):
     return [s for s in segments if s]
 
 
-def _segment_reads_settings(words):
-    """Whether one simple command reads or copies a real settings file."""
-    for i, word in enumerate(words):
-        if word == "<" and i + 1 < len(words) and is_settings_file(words[i + 1]):
+_WRAPPERS = frozenset({"time", "env", "command", "nice", "nohup", "xargs", "exec", "stdbuf",
+                       "timeout", "sudo", "doas"})
+_ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=.*")
+# Folders a settings file never sits in, and that are too large to walk (node_modules).
+_NO_WALK = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache",
+                      ".ruff_cache", ".pytest_cache", ".hypothesis", "dist", "coverage"})
+
+
+def command_word_index(words):
+    """The index of the command in a simple command, past assignments and wrappers.
+
+    ``A=1 time env B=2 gitleaks dir apps`` gives the index of ``gitleaks``; ``timeout 5 cmd`` skips
+    the duration, and a wrapper's own flags are skipped too.
+    """
+    i = 0
+    while i < len(words):
+        word = words[i]
+        name = word.rsplit("/", 1)[-1]
+        if _ASSIGNMENT.fullmatch(word):
+            i += 1
+        elif name in _WRAPPERS:
+            i += 1
+            while i < len(words) and (words[i].startswith("-") or
+                                      (name == "timeout" and re.fullmatch(r"[\d.]+[smhd]?", words[i]))):
+                i += 1
+        else:
+            return i
+    return len(words)
+
+
+def _shell_script(words, at):
+    """The script a shell at ``words[at]`` runs with ``-c``: after any flag cluster holding ``c``."""
+    i = at + 1
+    while i < len(words):
+        word = words[i]
+        if word in ("-o", "+o"):
+            i += 2
+        elif re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", word):
+            return words[i + 1] if i + 1 < len(words) else None
+        elif word.startswith(("-", "+")):
+            i += 1
+        else:
+            return None
+    return None
+
+
+def _tree_has_settings(path, limit=20000):
+    """Whether a real settings file sits in the folder ``path`` or below it (the search's target).
+
+    The walk skips folders that never hold one, and gives up as "yes" after ``limit`` entries, so a
+    huge tree is refused rather than searched slowly.
+    """
+    target = Path(path)
+    if not target.is_absolute():
+        target = ROOT / target
+    if not target.is_dir():
+        return is_settings_file(str(path))
+    seen = 0
+    for _dirpath, dirnames, filenames in os.walk(target):
+        dirnames[:] = [d for d in dirnames if d not in _NO_WALK]
+        seen += len(filenames) + len(dirnames)
+        if seen > limit or any(is_settings_file(f) for f in filenames):
             return True
-    # The command and every word that could be one (a reader after docker run, xargs, env, ...).
-    first = next((w for w in words if "=" not in w or w.startswith("-")), "")
+    return False
+
+
+def _search_reads_settings(words, at):
+    """Whether a grep or rg at ``words[at]`` would search a real settings file's text.
+
+    A recursive grep (``-r``, ``-R``) or an rg that reads ignored or hidden files (``-u``,
+    ``--hidden``, ``--no-ignore``) reaches every settings file below its folders, so searching for a
+    setting's name would print its real value. It passes when it excludes ``.env*``, or when no
+    folder it searches holds a settings file; ``git grep`` reads tracked files only.
+    """
+    name = words[at].rsplit("/", 1)[-1]
+    args = words[at + 1 :]
+    flags = [a for a in args if a.startswith("-")]
+    if name in ("grep", "egrep", "fgrep"):
+        deep = any(re.fullmatch(r"-[A-Za-z]*[rR][A-Za-z]*", f) or
+                   f in ("--recursive", "--dereference-recursive") for f in flags)
+    else:  # rg
+        deep = any(re.fullmatch(r"-u+", f) or f.startswith(("--hidden", "--no-ignore")) or
+                   f == "-." for f in flags)
+    if not deep:
+        return False
+    joined = " ".join(args)
+    if re.search(r"--exclude(?:=|\s+)['\"]?\.env", joined) or \
+            re.search(r"(?:-g|--glob)(?:=|\s+)['\"]?!\.env", joined):
+        return False
+    # The pattern is the first plain word unless -e or -f gave it; the rest are the targets.
+    plain, skip, given = [], False, any(f in ("-e", "-f", "--regexp", "--file") for f in flags)
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in ("-e", "-f", "--regexp", "--file", "-m", "-A", "-B", "-C", "-g", "--glob",
+                     "-t", "--type", "--include", "--exclude", "--exclude-dir"):
+            skip = True
+        elif not arg.startswith("-"):
+            plain.append(arg)
+    targets = plain if given else plain[1:]
+    return any(_tree_has_settings(t) for t in (targets or ["."]))
+
+
+def _segment_reads_settings(words):
+    """Whether one simple command reads, copies or overwrites a real settings file."""
+    for i, word in enumerate(words):
+        # `< .env` reads it; `> .env` and `>> .env` overwrite the real key, which pre_edit already
+        # refuses for the Write and Edit tools.
+        if word in ("<", ">", ">>") and i + 1 < len(words) and is_settings_file(words[i + 1]):
+            return True
+    first = command_word_index(words)
     previous = ""
     reader_seen = False
     for i, word in enumerate(words):
         name = word.rsplit("/", 1)[-1]
-        if name in SETTINGS_READERS or (name == "." and word is first):
+        if name in SETTINGS_READERS or (name == "." and i == first):
             reader_seen = True
-        elif name in _SHELLS | {"eval"} and i + 2 < len(words) and words[i + 1] == "-c":
-            if reads_settings_file(words[i + 2]):
+            if name in ("grep", "egrep", "fgrep", "rg") and _search_reads_settings(words, i):
+                return True
+        elif name in _SHELLS:
+            script = _shell_script(words, i)
+            if script is not None and reads_settings_file(script):
                 return True
         elif name in _INTERPRETERS:
             for flag, code in zip(words[i + 1 :], words[i + 2 :]):
                 if flag in ("-c", "-e") and _code_reads_settings(code):
                     return True
+        elif name == "find" and any(w in ("-exec", "-execdir", "-ok") for w in words[i + 1 :]) and \
+                any(is_settings_file(w.strip("'\"")) for w in words[i + 1 :]):
+            return True
         if name == "eval" and reads_settings_file(" ".join(words[i + 1 :])):
             return True
         excluded = previous in ("--exclude", "--exclude-from", "--ignore") or word.startswith(
             ("--exclude=", "--exclude-from=", "--ignore=", "--exclude-dir="))
-        written = previous in (">", ">>")
-        if reader_seen and not excluded and not written and is_settings_file(word):
+        if reader_seen and not excluded and previous not in ("-name", "-iname") and \
+                is_settings_file(word):
             return True
         previous = word
     return False
@@ -451,8 +563,9 @@ def gitleaks_problem(cmd):
         # The gitleaks run: the binary as the command, or an image such as
         # ghcr.io/gitleaks/gitleaks:v8@sha256:... anywhere (docker run). A bare "gitleaks" later in
         # a command is an argument (grep gitleaks file), not a run.
+        command = command_word_index(words)  # past A=1, time, env, nohup, ...
         at = next((i for i, w in enumerate(words)
-                   if (i == 0 and re.search(r"(^|/)gitleaks$", w))
+                   if (i == command and re.search(r"(^|/)gitleaks$", w))
                    or re.search(r"/gitleaks(?:[:@].*)?$", w)), None)
         if at is None:
             continue
@@ -644,6 +757,8 @@ def post_edit(d):
     if not fp:
         return 0
     p, rel = rel_path(fp)
+    if rel is not None:
+        record_edit(d.get("session_id"), rel.as_posix())  # for this session's end-of-turn gate
     if not p.exists():
         return 0
     issues = []
@@ -720,22 +835,78 @@ def stop_plan(changed):
     return plan
 
 
+# Each session's edited paths, so the gate checks this session's work and not another's in the
+# same checkout. Inside .git: never committed, and gone with the clone.
+STATE_DIR = ROOT / ".git" / "hds-hooks"
+# The whole gate's time, under the Stop hook's 300 s in settings.json: past that, Claude Code kills
+# the hook, which counts as a non-blocking error and lets the turn end unchecked.
+STOP_BUDGET_SECONDS = 270
+
+
+def _edits_file(session_id):
+    """The file holding a session's edited paths (the id made safe as a file name)."""
+    return STATE_DIR / ("edits-" + re.sub(r"[^\w.-]", "_", session_id))
+
+
+def record_edit(session_id, path):
+    """Note that this session's Write or Edit changed ``path`` (repository-relative)."""
+    if not session_id or not path or not STATE_DIR.parent.is_dir():
+        return
+    STATE_DIR.mkdir(exist_ok=True)
+    known = set(session_edits(session_id))
+    if path not in known:
+        with _edits_file(session_id).open("a") as f:
+            f.write(path + "\n")
+
+
+def session_edits(session_id):
+    """The paths this session's Write and Edit tools changed since its gate last passed."""
+    file = _edits_file(session_id)
+    if not file.exists():
+        return []
+    return list(dict.fromkeys(l for l in file.read_text().splitlines() if l))
+
+
+def clear_edits(session_id):
+    """Forget a session's edits, once its gate has passed."""
+    _edits_file(session_id).unlink(missing_ok=True)
+
+
 def stop(d):
     """The end-of-turn gate: the quick checks for what changed (principle 9), never a database.
 
-    With ``stop_hook_active`` (the gate already sent Claude back once) it lets Claude stop, so a
-    failing gate cannot loop.
+    It checks the paths this session's Write and Edit tools changed (recorded by post-edit, keyed by
+    the session id), so another session's work in the same checkout never blocks this one; edits
+    made through Bash are not recorded. Without a session id it reads the whole tree. All steps share
+    one deadline under the hook's timeout. With ``stop_hook_active`` (the gate already sent Claude
+    back once) it lets Claude stop, so a failing gate cannot loop; the edits stay recorded, so the
+    next turn checks them again.
     """
     if d.get("stop_hook_active") or os.environ.get("HDS_SKIP_STOP_GATE"):
         return 0
-    rc, out = run(["git", "status", "--porcelain"])
-    if rc != 0 or not shutil.which("uv"):
+    session_id = d.get("session_id")
+    if session_id:
+        changed = session_edits(session_id)
+    else:
+        rc, out = run(["git", "status", "--porcelain", "--untracked-files=all"])
+        if rc != 0:
+            return 0
+        changed = changed_paths(out)
+    plan = stop_plan(changed)
+    if not plan or not shutil.which("uv"):
         return 0
-    for label, cmd in stop_plan(changed_paths(out)):
-        rc, out = run(cmd, timeout=240, cwd=API)
+    deadline = time.monotonic() + STOP_BUDGET_SECONDS
+    for label, cmd in plan:
+        left = deadline - time.monotonic()
+        if left < 1:
+            return block("Quality gate (constitution principle 9) ran out of time before "
+                         f"{label}; run `make ci-local` to finish the checks.")
+        rc, out = run(cmd, timeout=left, cwd=API)
         if rc not in (0, 5):  # 5 = pytest found no tests
             return block("Quality gate (constitution principle 9) failed. Fix it before finishing:\n"
                          f"{label} failed:\n{tail(out)}")
+    if session_id:
+        clear_edits(session_id)
     return 0
 
 
