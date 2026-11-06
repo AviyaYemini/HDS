@@ -150,12 +150,12 @@ lines for it carry the API request's `trace_id`.
   Failing settings tests in `apps/api/tests/unit/test_settings_smtp.py`:
   - production with `MAIL_BACKEND=smtp` starts when `SMTP_HOST` and `MAIL_FROM` are set;
   - it is refused naming the setting without `SMTP_HOST` or `MAIL_FROM`, or with `SMTP_STARTTLS=false`.
-- [ ] T026 Add `SmtpMailSender` to `apps/api/src/hds/core/mail.py`, using `smtplib.SMTP` in `asyncio.to_thread` with `starttls()` required and a 10 s timeout. Register `smtp` in `REAL_MAIL_BACKENDS` in `apps/api/src/hds/core/config.py` and add the `SMTP_*` and `MAIL_FROM` settings, with the password as `SecretStr`. Pick the sender in `hds.wiring`, and keep `DeferredMailer` around it. Update the docstrings that say no real backend exists, `infra/README.md` and `apps/api/README.md`
+- [ ] T026 Add `SmtpMailSender` to `apps/api/src/hds/core/mail.py`, using `smtplib.SMTP` in `asyncio.to_thread` with `starttls()` required and a 10 s timeout. Register `smtp` in `REAL_MAIL_BACKENDS` in `apps/api/src/hds/core/config.py` and add the `SMTP_*` and `MAIL_FROM` settings, with the password as `SecretStr`. `get_mail_sender` in `core/mail.py` picks it, as it does the outbox, and `DeferredMailer` stays around it (review R16). Update the docstrings that say no real backend exists, `infra/README.md` and `apps/api/README.md`
 - [ ] T027 [P] Failing tests `apps/api/tests/integration/test_create_admin.py`, all using services and repositories:
-  - `python -m hds.scripts.create_admin --email a@example.com --organisation "Acme" --timezone Asia/Jerusalem`, with the password on stdin, creates the organisation and one Admin;
+  - `python -m hds.scripts.create_admin --email a@example.com --organisation "Acme" --timezone Asia/Jerusalem`, with an optional `--name` (default "Administrator", since a user needs a name; review R17) and the password on stdin, creates the organisation and one Admin;
   - it exits non-zero if any user exists, if the password fails the password rules, or if stdin is empty;
   - the password never appears in its output.
-- [ ] T028 Add `apps/api/src/hds/scripts/create_admin.py`, which uses the existing organisation and employee services
+- [ ] T028 Add `apps/api/src/hds/scripts/create_admin.py`, which uses `FirstAdminService` in `apps/api/src/hds/services/first_admin.py`. No organisation service exists, so that service reuses the employee rule `validate_initial_password` and the site rule `validate_timezone`, with `OrganisationRepository.create`, `UserRepository.any_exists` and `UserRepository.lock_first_admin` (review R15)
 - [ ] T029 Mutation checks: STARTTLS skipped; the password in the error; create_admin allowed twice. Then the gates, both reviews, the log, and a commit `feat(api): SMTP mail backend and a first-Admin command (006 Group E)`
 
 ## Phase 6: Group F, the worker drains on shutdown (US5, P2)
