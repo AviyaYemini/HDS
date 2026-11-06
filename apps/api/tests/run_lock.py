@@ -30,7 +30,10 @@ class RunLock:
         parsed = make_url(url)
         self.database = parsed.database or ""
         self._key = lock_key(self.database)
-        # The lock is server-wide, so it is taken on the maintenance database, which always exists.
+        # An advisory lock belongs to the database it is taken in (its tag holds that database's
+        # OID). Every run takes it in the maintenance database, which always exists, so runs on any
+        # test database meet there. Do not "simplify" this to the test database itself: a run that
+        # is about to create its database could not connect to it yet.
         self._dsn = parsed.set(drivername="postgresql", database="postgres").render_as_string(False)
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)

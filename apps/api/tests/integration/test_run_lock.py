@@ -7,6 +7,7 @@ Covers: the harness's test-database guard (.claude/hds/harness-log.md, item 4).
 """
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from tests.run_lock import RunLock
 
@@ -17,8 +18,14 @@ def test_a_second_run_on_the_same_database_is_refused_naming_it(migrated_test_db
         second.acquire()
 
 
-def test_a_released_lock_on_another_database_can_be_taken_again() -> None:
-    url = "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_run_1_lockcheck_test"
+def test_a_released_lock_on_another_database_can_be_taken_again(migrated_test_db: str) -> None:
+    # The session's own server and credentials (CI's differ from a developer's); only the name is
+    # another, so this lock is not the session's.
+    url = (
+        make_url(migrated_test_db)
+        .set(database="hds_run_1_lockcheck_test")
+        .render_as_string(hide_password=False)
+    )
     first = RunLock(url)
     first.acquire()
     first.release()

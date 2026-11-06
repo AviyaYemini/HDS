@@ -87,13 +87,18 @@ docker run --rm -v "$ROOT/commitlint.config.mjs:/work/commitlint.config.mjs:ro" 
         done'
 
 step "client: ESLint, tsc, Jest and the generated client's drift"
+# On a copy of the tracked files, never on this checkout: `pnpm install` in the Linux image would
+# replace this machine's node_modules with Linux builds and a store path inside the container.
+mkdir "$scratch/repo" "$scratch/tools"
+git ls-files -co --exclude-standard -z | rsync -a --from0 --files-from=- ./ "$scratch/repo/"
 # The generator asks uv for the OpenAPI document; the Node image has no uv, so the document is
 # exported here first and a stand-in uv in the container prints it.
-api uv run python -m hds.scripts.export_openapi > "$scratch/openapi.json"
-printf '#!/bin/sh\ncat /scratch/openapi.json\n' > "$scratch/uv"
-chmod +x "$scratch/uv"
-docker run --rm -v "$ROOT:/repo" -v "$scratch:/scratch:ro" -v hds-pnpm-store:/pnpm-store \
-    -w /repo -e CI=1 -e PATH="/scratch:/usr/local/bin:/usr/bin:/bin" "$NODE_IMAGE" sh -c '
+api uv run python -m hds.scripts.export_openapi > "$scratch/tools/openapi.json"
+printf '#!/bin/sh\ncat /tools/openapi.json\n' > "$scratch/tools/uv"
+chmod +x "$scratch/tools/uv"
+docker run --rm -v "$scratch/repo:/repo" -v "$scratch/tools:/tools:ro" \
+    -v hds-pnpm-store:/pnpm-store -w /repo -e CI=1 \
+    -e PATH="/tools:/usr/local/bin:/usr/bin:/bin" "$NODE_IMAGE" sh -c '
         set -e
         corepack enable
         pnpm config set store-dir /pnpm-store >/dev/null

@@ -70,3 +70,19 @@ session reviews; this session implements; nothing is pushed without the owner. O
   unchanged.
 - Left for a follow-up, outside the review's list: `actions/cache`, `actions/setup-node`,
   `actions/upload-artifact` and `pnpm/action-setup` are still `@v4` on Node 20.
+
+## Review fixes (items 2 to 4 and 8)
+
+- **F1**: `test_run_lock.py` hard-coded the developer's server URL, so it would fail on CI's
+  credentials. It now takes the session's URL and changes only the database name.
+- **F2, and it touched this machine**: `ci_local.sh`'s client step mounted the checkout read-write
+  and ran `pnpm install` in the Linux image, which replaced the host's `node_modules` with Linux
+  builds and a store path inside the container (at 13:25). The client checks now run on a copy of
+  the tracked files in the run's scratch folder. Proof: after a full `make ci-local`, the host's
+  `node_modules/.modules.yaml` checksum and the `.pnpm` listing (1028 entries) are unchanged. The
+  host's `node_modules` was not repaired here; the reviewer gave the owner the command.
+- **F3**: the lock comment said advisory locks are server-wide; they belong to the database they are
+  taken in, which is why every run takes it in `postgres`. The comment now says so.
+- **F4**: setup-uv stays at v10.3.0: v10.3.3 is eight days old, and the pins wait two weeks.
+- **Also caught by `make ci-local`**: once `ci_local_db.sh` was tracked, the published-values test
+  found its throwaway password `check`. The script now makes a fresh random one each run.

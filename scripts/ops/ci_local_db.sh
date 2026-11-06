@@ -24,7 +24,9 @@ step() { printf '\n== %s\n' "$*"; }
 
 step "migration check on a fresh database"
 container="hds-ci-local-migrations-$$"
-docker run -d --rm --name "$container" -e POSTGRES_USER=hds -e POSTGRES_PASSWORD=check \
+# A fresh password each run, so the repository publishes none (the published-values test).
+password=$(openssl rand -hex 16)
+docker run -d --rm --name "$container" -e POSTGRES_USER=hds -e POSTGRES_PASSWORD="$password" \
     -e POSTGRES_DB=hds_check -p "127.0.0.1:$CHECK_PORT:5432" "$POSTGRES_IMAGE" >/dev/null
 trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
 tries=0
@@ -33,7 +35,7 @@ until docker exec "$container" pg_isready -U hds -q; do
     [ "$tries" -lt 30 ] || { echo "the throwaway database never became ready" >&2; exit 1; }
     sleep 1
 done
-check_url="postgresql+asyncpg://hds:check@localhost:$CHECK_PORT/hds_check"
+check_url="postgresql+asyncpg://hds:$password@localhost:$CHECK_PORT/hds_check"
 (cd apps/api && DATABASE_URL="$check_url" uv run alembic upgrade head >/dev/null)
 (cd apps/api && DATABASE_URL="$check_url" uv run alembic check)
 
