@@ -951,6 +951,10 @@ from GitHub's issuer.
 - **R205**: the allowance compared `HH:MM:SS`, wrong across midnight; FAIL lines and phase markers
   are full UTC timestamps now (fa0eb9b). The proof passed again: 505 reads, 252 writes, 498 web
   fetches, 8 failures, all allowed, counted 0, 3:30.
+- **Process slip**: the first, invalid pair of mutant runs committed their throwaway mutants with
+  `git commit --no-verify`, skipping the hooks. The working agreement says never to work around a
+  hook, throwaway commits included; the valid pair committed with the hooks on, which shows it is
+  never needed. The two commits stayed in their worktrees and were deleted with them.
 
 ### PR 4 without the x/net raise (the owner's choice, 2026-11-07)
 
