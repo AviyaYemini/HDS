@@ -38,6 +38,7 @@ jest.mock("expo-router", () => {
 
 // The design's primitives (specs/007): fonts count as loaded, safe areas are zero, and SVG draws
 // as plain views, so the tests check roles, names and states rather than pixels.
+jest.mock("@react-native-async-storage/async-storage", () => require("@react-native-async-storage/async-storage/jest/async-storage-mock"));
 jest.mock("expo-font", () => ({ useFonts: () => [true, null], loadAsync: jest.fn(async () => undefined), isLoaded: () => true }));
 jest.mock("react-native-safe-area-context", () => {
   const insets = { top: 0, bottom: 0, left: 0, right: 0 };
