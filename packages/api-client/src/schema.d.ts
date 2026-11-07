@@ -242,6 +242,26 @@ export interface paths {
         patch: operations["edit_employee_api_v1_employees__id__patch"];
         trace?: never;
     };
+    "/api/v1/employees/{id}/availability-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit an employee's availability on their behalf
+         * @description Admin. Submit the employee's current blocked, open and close entries for `window_id`, at any time, the deadline included. The submission records the Admin as `submitted_by`. This is the explicit way to count an employee who did not submit; an Admin's edit of their entries alone never creates a submission.
+         */
+        post: operations["submit_on_behalf_api_v1_employees__id__availability_submissions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{id}/constraints": {
         parameters: {
             query?: never;
@@ -3313,7 +3333,8 @@ export interface components {
          *     ``status`` is derived: ``locked`` once the deadline has passed; otherwise ``submitted`` while
          *     the entries equal what was submitted, ``draft`` after any change or entry, ``not_submitted``
          *     with neither. ``counted_unavailable`` is true after the deadline when nothing was submitted:
-         *     the caller is then not scheduled anywhere in the window.
+         *     the employee is then not scheduled anywhere in the window. ``submitted_by`` is who made the
+         *     latest submit: the employee, or an Admin who submitted on their behalf.
          */
         SubmissionRead: {
             /** Counted Unavailable */
@@ -3330,6 +3351,8 @@ export interface components {
             status: "not_submitted" | "draft" | "submitted" | "locked";
             /** Submitted At */
             submitted_at: string | null;
+            /** Submitted By */
+            submitted_by: string | null;
             /**
              * Window Id
              * Format: uuid
@@ -5005,6 +5028,77 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    submit_on_behalf_api_v1_employees__id__availability_submissions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

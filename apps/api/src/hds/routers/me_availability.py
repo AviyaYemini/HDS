@@ -11,7 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from hds.core.deps import require_staff
+from hds.core.deps import require_admin, require_staff
 from hds.models.user import User
 from hds.services.availability_submission import AvailabilitySubmissionService, SubmissionStatus
 from hds.wiring import availability_submissions
@@ -25,12 +25,14 @@ class SubmissionRead(BaseModel):
     ``status`` is derived: ``locked`` once the deadline has passed; otherwise ``submitted`` while
     the entries equal what was submitted, ``draft`` after any change or entry, ``not_submitted``
     with neither. ``counted_unavailable`` is true after the deadline when nothing was submitted:
-    the caller is then not scheduled anywhere in the window.
+    the employee is then not scheduled anywhere in the window. ``submitted_by`` is who made the
+    latest submit: the employee, or an Admin who submitted on their behalf.
     """
 
     window_id: uuid.UUID
     status: Literal["not_submitted", "draft", "submitted", "locked"]
     submitted_at: datetime | None
+    submitted_by: uuid.UUID | None
     deadline: datetime
     counted_unavailable: bool
 
@@ -46,6 +48,7 @@ def _read(found: SubmissionStatus) -> SubmissionRead:
         window_id=found.window.id,
         status=found.status,
         submitted_at=found.submitted_at,
+        submitted_by=found.submitted_by,
         deadline=found.window.deadline,
         counted_unavailable=found.counted_unavailable,
     )
@@ -95,3 +98,30 @@ async def submit(
     Employee, Manager or Admin. Answers 409 once the deadline has passed.
     """
     return _read(await svc.submit(current_user, body.window_id))
+
+
+on_behalf = APIRouter(prefix="/api/v1", tags=["availability"])
+
+
+@on_behalf.post(
+    "/employees/{id}/availability-submissions",
+    response_model=SubmissionRead,
+    summary="Submit an employee's availability on their behalf",
+    description=(
+        "Admin. Submit the employee's current blocked, open and close entries for `window_id`, "
+        "at any time, the deadline included. The submission records the Admin as `submitted_by`. "
+        "This is the explicit way to count an employee who did not submit; an Admin's edit of "
+        "their entries alone never creates a submission."
+    ),
+)
+async def submit_on_behalf(
+    id: uuid.UUID,
+    body: SubmitRequest,
+    current_user: User = Depends(require_admin),
+    svc: AvailabilitySubmissionService = Depends(availability_submissions),
+) -> SubmissionRead:
+    """Submit an employee's availability on their behalf.
+
+    Admin, at any time. Records the Admin as the submitter.
+    """
+    return _read(await svc.submit_on_behalf(current_user, id, body.window_id))

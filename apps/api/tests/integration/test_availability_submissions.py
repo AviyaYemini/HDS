@@ -93,3 +93,29 @@ async def test_a_client_has_no_availability_status(
         URL, params={"window_id": window["id"]}, headers=await headers_for(async_client, "client")
     )
     assert response.status_code == 403
+
+
+async def test_an_admin_submits_on_behalf_of_someone_who_missed_the_deadline(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    admin = await headers_for(async_client, "admin")
+    window = await open_window(async_client, admin)
+    await close_window(test_db, window["id"])
+    me = seed_users["employee"]
+    employee = await headers_for(async_client, "employee")
+
+    # An Admin's hand edit alone does not create a submission (reviewer note, 2026-11-07).
+    edited = await async_client.post(constraints(me.id), json=body("open"), headers=admin)
+    assert edited.status_code == 201, edited.text
+    assert (await status(async_client, employee, window))["counted_unavailable"] is True
+
+    url = f"/api/v1/employees/{me.id}/availability-submissions"
+    refused = await async_client.post(
+        url, json={"window_id": window["id"]}, headers=await headers_for(async_client, "manager")
+    )
+    assert refused.status_code == 403
+    submitted = await async_client.post(url, json={"window_id": window["id"]}, headers=admin)
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["submitted_by"] == str(seed_users["admin"].id)
+    after = await status(async_client, employee, window)
+    assert (after["status"], after["counted_unavailable"]) == ("locked", False)

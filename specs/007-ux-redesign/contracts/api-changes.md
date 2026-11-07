@@ -24,7 +24,8 @@ Schemathesis.
 | --- | --- | --- | --- |
 | `GET /me/availability-submissions?window_id=` | new: status (`not_submitted`, `draft`, `submitted`, `locked`), `submitted_at`, `deadline`, `counted_unavailable` | staff (self) | status derived (data-model 026) |
 | `POST /me/availability-submissions` | new: `{window_id}` submits the caller's entries for the window | staff (self) | 409 `availability.window_closed` after the deadline (the code 003 already uses) |
-| `POST/PATCH/DELETE` constraint endpoints | unchanged: after a deadline employees already get 409 `availability.window_closed` (003); an Admin's change inside a closed window now refreshes that employee's snapshot | staff, admin | absences unaffected |
+| `POST/PATCH/DELETE` constraint endpoints | unchanged: after a deadline employees already get 409 `availability.window_closed` (003); an Admin's change inside a closed window refreshes that employee's existing snapshot, and creates none | staff, admin | absences unaffected |
+| `POST /api/v1/employees/{id}/availability-submissions` | new: `{window_id}`; an Admin submits the employee's current entries on their behalf, at any time; `submitted_by` records the Admin | admin | the explicit way to count someone who missed the deadline; a hand edit alone never creates a submission |
 | `GET /me/shifts` | unchanged in C: `from`/`to` already reach back in time for Past; group D makes `starts_at`/`ends_at` the caller's own times | staff | Past by pay period |
 | `GET /me/shifts/{id}` | new: one published shift with the site's address and the project's managers as contacts (standing in for a shift leader) | staff (self, assigned) | E11; 404 for a draft or someone else's |
 

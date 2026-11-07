@@ -12,8 +12,10 @@ Rules (research R6, clarification Q4):
   the live entries still equal the snapshot, Draft when there is a snapshot or any entry, and Not
   submitted when there is neither.
 - After the deadline scheduling reads the snapshot; with none, the employee counts as unavailable
-  for the whole window. An Admin's hand edit after the deadline refreshes the snapshot, so it counts
-  (003 FR-107).
+  for the whole window. An Admin's hand edit after the deadline refreshes an existing snapshot, so
+  it counts (003 FR-107), but never creates one: touching one day must not make an employee who
+  never submitted available for every other day. To count such an employee, an Admin submits on
+  their behalf, explicitly, and the submission records who did it and when.
 """
 
 import uuid
@@ -26,7 +28,7 @@ from hds.core.authz import STAFF_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
 from hds.models.availability import AvailabilityEntry
 from hds.models.submission_window import SubmissionWindow
-from hds.models.user import User
+from hds.models.user import User, UserRole
 from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.availability_submission import AvailabilitySubmissionRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
@@ -50,6 +52,7 @@ class SubmissionStatus:
     status: Status
     submitted_at: datetime | None
     counted_unavailable: bool
+    submitted_by: uuid.UUID | None = None
 
 
 def as_entry(stored: AvailabilityEntry) -> Entry:
@@ -122,15 +125,15 @@ class AvailabilitySubmissionService:
     ) -> SubmissionStatus:
         stored = await self._submissions.get(org_id, window.id, user_id)
         submitted_at = stored.submitted_at if stored else None
+        by = stored.submitted_by if stored else None
         if self._now() >= window.deadline:
-            return SubmissionStatus(
-                window, "locked", submitted_at, window.requires_submission and stored is None
-            )
+            unavailable = window.requires_submission and stored is None
+            return SubmissionStatus(window, "locked", submitted_at, unavailable, by)
         live = await self._live_snapshot(org_id, user_id, window)
         if stored is not None and stored.snapshot_hash == snapshot_hash(live):
-            return SubmissionStatus(window, "submitted", submitted_at, False)
+            return SubmissionStatus(window, "submitted", submitted_at, False, by)
         if stored is not None or live:
-            return SubmissionStatus(window, "draft", submitted_at, False)
+            return SubmissionStatus(window, "draft", submitted_at, False, by)
         return SubmissionStatus(window, "not_submitted", None, False)
 
     async def submit(self, actor: User, window_id: uuid.UUID) -> SubmissionStatus:
@@ -150,41 +153,60 @@ class AvailabilitySubmissionService:
                 code="availability.window_closed",
                 detail="The deadline for this window has passed.",
             )
-        items = await self._live_snapshot(actor.organization_id, actor.id, window)
-        await self._submissions.put(
-            actor.organization_id,
-            window.id,
-            actor.id,
-            submitted_at=self._now(),
-            submitted_by=actor.id,
-            snapshot=list(items),
-            snapshot_hash=snapshot_hash(items),
-        )
+        await self._store(actor, actor.id, window)
         return await self._status_of(actor.organization_id, actor.id, window)
 
     async def refresh_after_admin_edit(
         self, admin: User, user_id: uuid.UUID, first: date, last: date
     ) -> None:
-        """Re-snapshot ``user_id`` in every closed window an Admin's hand edit touched.
+        """Re-snapshot ``user_id``'s existing submissions in the closed windows an edit touched.
 
         After the deadline only an Admin changes an employee's entries (003 FR-107); without this,
-        the change would not reach scheduling, which reads snapshots there. The Admin counts as
-        the submitter, and an employee who had not submitted no longer counts as unavailable.
+        the change would not reach scheduling, which reads snapshots there. A window the employee
+        never submitted for is left alone: they stay counted as unavailable until an Admin submits
+        on their behalf (:meth:`submit_on_behalf`).
         """
         now = self._now()
         for window in await self._windows.covering(admin.organization_id, first, last):
             if not window.requires_submission or now < window.deadline:
                 continue
-            items = await self._live_snapshot(admin.organization_id, user_id, window)
-            await self._submissions.put(
-                admin.organization_id,
-                window.id,
-                user_id,
-                submitted_at=now,
-                submitted_by=admin.id,
-                snapshot=list(items),
-                snapshot_hash=snapshot_hash(items),
-            )
+            if await self._submissions.get(admin.organization_id, window.id, user_id) is None:
+                continue
+            await self._store(admin, user_id, window)
+
+    async def submit_on_behalf(
+        self, admin: User, user_id: uuid.UUID, window_id: uuid.UUID
+    ) -> SubmissionStatus:
+        """Submit an employee's current entries for a window, as an Admin, at any time.
+
+        The explicit way to count an employee who did not submit (003 FR-107: Admins edit anyone's
+        availability by hand). The submission records the Admin as ``submitted_by`` and the time.
+
+        Raises:
+            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            NotFoundError: The window or the employee is not in the organisation, or the account
+                is a Client's (HTTP 404).
+        """
+        ensure_role(admin, UserRole.admin)
+        window = await self._window(admin, window_id)
+        employee = await self._users.get_by_id(user_id, admin.organization_id)
+        if employee is None or employee.role == UserRole.client:
+            raise NotFoundError(resource="Employee", id=user_id)
+        await self._users.lock_user(user_id)
+        await self._store(admin, user_id, window)
+        return await self._status_of(admin.organization_id, user_id, window)
+
+    async def _store(self, by: User, user_id: uuid.UUID, window: SubmissionWindow) -> None:
+        items = await self._live_snapshot(by.organization_id, user_id, window)
+        await self._submissions.put(
+            by.organization_id,
+            window.id,
+            user_id,
+            submitted_at=self._now(),
+            submitted_by=by.id,
+            snapshot=list(items),
+            snapshot_hash=snapshot_hash(items),
+        )
 
     async def scheduling_entries(
         self, org_id: uuid.UUID, user_ids: Collection[uuid.UUID], first: date, last: date

@@ -146,14 +146,57 @@ async def test_a_client_cannot_submit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_admin_edit_refreshes_snapshots_only_in_closed_required_windows() -> None:
+async def test_an_admin_edit_refreshes_an_existing_snapshot_in_a_closed_window() -> None:
+    admin, employee = _user(UserRole.admin), _user()
+    closed = _window(NOW - timedelta(hours=1))
+    live = [_stored(employee.id)]
+    service, submissions = _service(closed, live, _submitted(closed, employee, live))
+    await service.refresh_after_admin_edit(admin, employee.id, date(2026, 11, 9), date(2026, 11, 9))
+    assert submissions.put.await_args.kwargs["submitted_by"] == admin.id
+
+
+@pytest.mark.asyncio
+async def test_an_admin_edit_never_creates_a_submission_for_someone_who_did_not_submit() -> None:
+    """Touching one day must not make a non-submitter available for the rest of the window."""
     admin, employee = _user(UserRole.admin), uuid.uuid4()
     closed = _window(NOW - timedelta(hours=1))
     service, submissions = _service(closed, [_stored(employee)])
     await service.refresh_after_admin_edit(admin, employee, date(2026, 11, 9), date(2026, 11, 9))
-    assert submissions.put.await_args.kwargs["submitted_by"] == admin.id
+    submissions.put.assert_not_awaited()
 
+
+@pytest.mark.asyncio
+async def test_an_admin_edit_in_an_open_window_changes_no_snapshot() -> None:
+    admin, employee = _user(UserRole.admin), _user()
     open_ = _window(NOW + timedelta(days=1))
-    service, submissions = _service(open_, [_stored(employee)])
-    await service.refresh_after_admin_edit(admin, employee, date(2026, 11, 9), date(2026, 11, 9))
+    live = [_stored(employee.id)]
+    service, submissions = _service(open_, live, _submitted(open_, employee, live))
+    await service.refresh_after_admin_edit(admin, employee.id, date(2026, 11, 9), date(2026, 11, 9))
+    submissions.put.assert_not_awaited()
+
+
+def _with_employee(service: AvailabilitySubmissionService, employee: User) -> None:
+    service._users.get_by_id.return_value = employee  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_an_admin_submits_on_behalf_after_the_deadline_and_is_recorded() -> None:
+    admin, employee = _user(UserRole.admin), _user()
+    closed = _window(NOW - timedelta(hours=1))
+    service, submissions = _service(closed, [_stored(employee.id)])
+    _with_employee(service, employee)
+    await service.submit_on_behalf(admin, employee.id, closed.id)
+    put = submissions.put.await_args
+    assert put.args[2] == employee.id
+    assert put.kwargs["submitted_by"] == admin.id
+    assert put.kwargs["submitted_at"] == NOW
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [UserRole.employee, UserRole.manager, UserRole.client])
+async def test_only_an_admin_submits_on_behalf(role: UserRole) -> None:
+    window = _window(NOW - timedelta(hours=1))
+    service, submissions = _service(window, [])
+    with pytest.raises(ForbiddenError):
+        await service.submit_on_behalf(_user(role), uuid.uuid4(), window.id)
     submissions.put.assert_not_awaited()
