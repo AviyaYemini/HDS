@@ -19,7 +19,7 @@ from collections import defaultdict
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from hds.repositories.availability import AvailabilityRepository
@@ -33,6 +33,9 @@ from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.scheduling import Employee, Entry, Problem, Settings, ShiftSlot, Slot, local_span
 from hds.scheduling.rules import local_day, sunday_index, week_start
+
+if TYPE_CHECKING:
+    from hds.services.availability_submission import AvailabilitySubmissionService
 
 
 @dataclass(frozen=True)
@@ -73,13 +76,20 @@ class ScheduleInputService:
         shift_types: ShiftTypeRepository,
         needs: StaffingNeedRepository,
         entries: AvailabilityRepository,
+        availability: "AvailabilitySubmissionService | None" = None,
     ) -> None:
-        """Wire the service to the repositories it reads."""
+        """Wire the service to the repositories it reads.
+
+        ``availability``, when given, supplies the entries that stand once windows close (007
+        FR-014): snapshots, and a ``not_submitted`` block for whoever did not submit. Without it
+        the live entries are read, as before 007.
+        """
         self._inputs = inputs
         self._orgs = organisations
         self._types = shift_types
         self._needs = needs
         self._entries = entries
+        self._availability = availability
 
     async def active_projects(
         self, org_id: uuid.UUID, ids: Collection[uuid.UUID] | None
@@ -231,22 +241,32 @@ class ScheduleInputService:
             for s in shifts
             if s.id not in used_drafts and any(p in relevant for p in s.people)
         )
-        stored_entries = await self._entries.for_users(
-            org_id, candidates, first_week - timedelta(days=1), last_week
-        )
-        entries = tuple(
-            Entry(
-                employee_id=e.user_id,
-                kind=e.kind,  # type: ignore[arg-type]
-                starts_on=e.starts_on,
-                ends_on=e.ends_on,
-                shift_type_id=e.shift_type_id,
-                weekday=e.weekday,
+        entry_first, entry_last = first_week - timedelta(days=1), last_week
+        if self._availability is not None:
+            loaded = await self._availability.scheduling_entries(
+                org_id, candidates, entry_first, entry_last
             )
-            for e in sorted(stored_entries, key=lambda e: str(e.id))
-        )
+        else:
+            stored_entries = await self._entries.for_users(
+                org_id, candidates, entry_first, entry_last
+            )
+            loaded = [
+                Entry(
+                    employee_id=e.user_id,
+                    kind=e.kind,  # type: ignore[arg-type]
+                    starts_on=e.starts_on,
+                    ends_on=e.ends_on,
+                    shift_type_id=e.shift_type_id,
+                    weekday=e.weekday,
+                )
+                for e in sorted(stored_entries, key=lambda e: str(e.id))
+            ]
+        entries = tuple(loaded)
+        # A not-submitted block is not availability the employee gave, so they stay listed.
         with_entries = {
-            e.employee_id for e in entries if e.starts_on <= last and e.ends_on >= first
+            e.employee_id
+            for e in entries
+            if e.starts_on <= last and e.ends_on >= first and e.reason is None
         }
         problem = Problem(
             slots=tuple(sorted(slots, key=lambda s: (s.starts_at, s.key))),
@@ -341,6 +361,8 @@ def fingerprint(
                     str(e.shift_type_id),
                     e.weekday,
                 ]
+                # Only when set, so the fingerprints of proposals made before 007 still match.
+                + ([e.reason] if e.reason is not None else [])
             )
             for e in problem.entries
         ),

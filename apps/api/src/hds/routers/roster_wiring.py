@@ -14,6 +14,7 @@ from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
 from hds.services.roster import RosterService
+from hds.wiring import submission_service
 
 
 def roster_service(db: AsyncSession) -> RosterService:
@@ -27,4 +28,5 @@ def roster_service(db: AsyncSession) -> RosterService:
         entry_repo=AvailabilityRepository(db),
         organisation_repo=OrganisationRepository(db),
         project_manager_repo=ProjectManagerRepository(db),
+        availability=submission_service(db),
     )

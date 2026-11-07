@@ -263,3 +263,12 @@ def test_exactly_the_weekly_maximum_is_allowed() -> None:
     week = tuple(shift(at(day, 7)) for day in range(7, 13))
 
     assert run(week[-1], week[:-1]) == []
+
+
+def test_a_missed_deadline_block_reports_not_submitted_instead_of_blocked() -> None:
+    """007 FR-014: a manual assignment of someone who did not submit warns, with its own code."""
+    missed = Entry(
+        ANN, "blocked", date(2026, 5, 31), date(2026, 6, 6), None, None, reason="not_submitted"
+    )
+
+    assert codes(run(shift(at(1, 7)), entries=(missed,))) == ["warnings.not_submitted"]

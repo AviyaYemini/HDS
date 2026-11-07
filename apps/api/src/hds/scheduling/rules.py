@@ -21,6 +21,8 @@ _ENTRY_CODES = {
     "close": "warnings.close_preference",
 }
 _KINDS = frozenset(("blocked", "open", "close", "absence"))
+# A block that stands for a missed availability deadline reports its own code (007 FR-014).
+_NOT_SUBMITTED_CODE = "warnings.not_submitted"
 
 
 def local_span(
@@ -224,6 +226,8 @@ def _entries(slot: ShiftSlot, person: uuid.UUID, theirs: Iterable[Entry]) -> set
     found: set[RuleWarning] = set()
     for entry in theirs:
         code = _ENTRY_CODES.get(entry.kind)
+        if entry.kind == "blocked" and entry.reason == "not_submitted":
+            code = _NOT_SUBMITTED_CODE
         if code is not None and entry_covers(entry, day, slot.shift_type_id):
             found.add(RuleWarning(code, person, (slot.id,)))
     return found

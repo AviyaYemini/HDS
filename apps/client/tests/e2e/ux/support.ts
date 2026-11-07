@@ -6,7 +6,7 @@
  * fails on serious and critical issues (FR-064, FR-065).
  */
 import { AxeBuilder } from "@axe-core/playwright";
-import { expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, request, type APIRequestContext, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 
 /** The two languages every screen is checked in. */
 export const LANGUAGES = ["he", "en"] as const;
@@ -93,4 +93,39 @@ export async function apiHeaders(request: APIRequestContext, role: Role): Promis
   expect(response.ok(), await response.text()).toBeTruthy();
   const { access_token } = (await response.json()) as { access_token: string };
   return { Authorization: `Bearer ${access_token}` };
+}
+
+/** An API request context signed in as a seeded role, for setting data up (`API_URL`). */
+export async function apiAs(role: Role): Promise<APIRequestContext> {
+  const anonymous = await request.newContext({ baseURL: API_URL });
+  const headers = await apiHeaders(anonymous, role);
+  await anonymous.dispose();
+  return request.newContext({ baseURL: API_URL, extraHTTPHeaders: headers });
+}
+
+/** The JSON body of a call that must answer `status`. */
+export async function ok<T>(answer: Promise<APIResponse>, status = 200): Promise<T> {
+  const response = await answer;
+  const text = await response.text();
+  expect(response.status(), text).toBe(status);
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** The local date `days` from today at the seeded site (Asia/Jerusalem), as `YYYY-MM-DD`. */
+export function siteDay(days = 0): string {
+  return new Date(Date.now() + days * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+}
+
+/** The Sunday on or before a `YYYY-MM-DD` date (HDS weeks run Sunday to Saturday). */
+export function sundayOf(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
+
+/** `day` moved by `days`, as `YYYY-MM-DD`. */
+export function addDays(day: string, days: number): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }

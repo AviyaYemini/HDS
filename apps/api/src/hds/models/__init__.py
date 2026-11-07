@@ -7,6 +7,7 @@ new model must be imported here or its table is invisible to migrations.
 """
 
 from hds.models.availability import AvailabilityEntry
+from hds.models.availability_submission import AvailabilitySubmission
 from hds.models.base import Base, TimestampedBase
 from hds.models.client import Client
 from hds.models.group import Group, user_groups
@@ -53,6 +54,7 @@ __all__ = [
     "ScheduleJob",
     "StaffingNeed",
     "AvailabilityEntry",
+    "AvailabilitySubmission",
     "Shift",
     "Assignment",
     "IdempotencyKey",
