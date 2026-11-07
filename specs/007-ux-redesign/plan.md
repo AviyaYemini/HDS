@@ -194,7 +194,7 @@ User Story 9, FR-070 to FR-077.*
   header (under the status bar on phones), a `cta.bg` track with an `accent` fill and a clipped
   leading end. Indeterminate for route and data loads, shown only after 300 ms and kept at least
   400 ms once shown so it never flickers; determinate for schedule runs, its value elapsed time over
-  the time limit with "best so far: n / m filled" beside it. `role="progressbar"` with
+  the time limit, labelled "up to N s", completing at once when a run ends early; indeterminate for a greedy run or one without a limit; "best so far" comes with 008. `role="progressbar"` with
   `aria-valuenow` on web and `accessibilityRole="progressbar"` with `accessibilityValue` on native;
   its value announced at 25 % steps; a still bar under reduce-motion (R15).
 - **Language** ([CORE] glossary file, parity test; [UI] copy): `docs/ux/glossary.md` (every domain

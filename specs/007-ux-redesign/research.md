@@ -176,8 +176,10 @@ that first needs it.
 
 - **Decision**: one `LoadingBar` fed by a small loading store: route changes and any request still
   pending after 300 ms raise it, and once shown it stays at least 400 ms. Indeterminate is a moving
-  copper segment on a tan track; determinate (schedule runs) is a fill to elapsed / limit, polled
-  from the job, with "best so far" text beside it. Under reduce-motion the indeterminate state is a
+  copper segment on a tan track; determinate (schedule runs) is a fill to elapsed / `time_limit_seconds`,
+  polled from the job and labelled "up to N s"; it completes at once when the run ends early, and
+  a greedy run or one without a limit shows the indeterminate bar. "Best so far" needs the worker to
+  publish interim results, which comes with 008 (reviewer ruling). Under reduce-motion the indeterminate state is a
   still, half-filled bar with "Loading…" text for screen readers.
 - **Rationale**: the owner's note, A9 (nothing under a second flashes), AS8's visible part.
 
