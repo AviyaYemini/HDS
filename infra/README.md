@@ -1,7 +1,8 @@
 # Infrastructure
 
-The local environment, the images, the Helm charts and the pinned versions. The shared environment
-(specs/006-deploy-operations) adds the cluster files next; nothing deploys the charts yet.
+The local environment, the images, the Helm charts, the release and what Flux runs in the shared
+environment, and the pinned versions (specs/006-deploy-operations). The cluster's own set-up
+(`make ops-cluster`) arrives with Group M.
 
 | File | Purpose |
 | --- | --- |
@@ -14,27 +15,46 @@ The local environment, the images, the Helm charts and the pinned versions. The 
 | `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
 | `helm/hds` | The application chart: the API, the worker, the web client, the migration hook, the ingress |
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
+| `helm/hds-secrets` | The Vault Secrets Operator's objects, which keep the `hds-*` Secrets; installed first |
+| `cluster/backup-pvc.yaml` | The backups' claim `hds-backups`, made outside Helm, which the backup and the snapshot mount by name: by `make ops-flux` (**Proposed**, T063, Group M), and until that exists by hand, `kubectl apply -f infra/cluster/backup-pvc.yaml` once the `hds` namespace exists |
+| `cluster/vault-values.yaml`, `cluster/vso-values.yaml` | Vault (one node, raft, its NetworkPolicy) and the Vault Secrets Operator, for their pinned charts |
+| `cluster/vault-policy.hcl`, `cluster/vault-snapshot-policy.hcl`, `cluster/vault-alertmanager-policy.hcl` | Vault's three policies, written by `make ops-vault-configure` |
+| `tests/check_vault_policy.sh` | Those policies and roles against a dev Vault of the cluster's version (CI `chart` job) |
+| `helm/hds/files/alert-rules.yaml`, `cluster/alerts/tests.yaml` | The alert rules, read as they are into the PrometheusRule, and their promtool tests (`tests/check_alerts.sh`, CI `chart` job) |
+| `cluster/monitoring-values.yaml` | kube-prometheus-stack: Prometheus, Alertmanager (its configuration from Vault, through hds-secrets), kube-state-metrics; no Grafana, no default rules |
+| `cluster/vault-alertmanager-policy.hcl` | Vault's policy for Alertmanager's sign-in: `hds/smtp` only |
+| `tests/check_alertmanager.sh` | Alertmanager's configuration filled with hostile values, and its e-mails, with amtool (CI `chart` job) |
+| `tests/check_status.sh` | `make ops-status` against a fake kubectl and helm (CI `lint` job) |
+| `cluster/k3d.yaml` | The k3d cluster: one server, k3s pinned by digest, the ingress on 8080 and 8443 |
+| `tests/rolling_update.sh`, `tests/rolling-update-values.yaml`, `tests/load.py`, `tests/flux_verify.sh` | The rolling-update proof on k3d: the base's release upgraded to the head's under signed-in load, Flux's signature check, the web build on the upgraded cluster (CI `rolling-update` job) |
+| `tests/compat.sh` | The base's code and integration tests on the head's schema, on a throwaway PostgreSQL (CI `compatibility` job) |
 | `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
 | `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
-| `helm/tests/assert.sh` | Lints, validates and checks the rendered charts (CI `chart` job, `make ci-local`) |
+| `helm/tests/assert.sh` | Lints, validates and checks the rendered charts and `flux/` (CI `chart` job, `make ci-local`) |
+| `helm/tests/chart_version.sh` | Fails a pull request that changes `helm/hds-postgres` without raising its version (CI `chart` job) |
+| `release/` | The release workflow's scripts: `trust.sh` (may this run publish), `scan.sh` (Trivy), `push_images.sh` (skopeo), `publish_charts.sh` (both charts) |
+| `flux/clusters/local/` | What Flux runs in the cluster: an OCIRepository and a HelmRelease for each chart, and its alerts to Alertmanager |
+| `tests/check_backup_jobs.sh`, `tests/check_deploy_ops.sh` | The `make ops-*` scripts against fake kubectl, flux and helm (CI `lint` job) |
+| `tests/check_release.sh` | The release's scripts and workflow, without GitHub or a registry (CI `lint` job) |
+| `tests/release_gates.sh` | The release's scan gates and its push, proven locally with throwaway images and registry; run by hand |
 
 ## The Helm charts
 
-Two charts, each its own release (specs/006 research R3, amended). `hds-postgres` holds the
-database, so it exists before the `hds` release's `pre-install` migration hook runs, and its data
-is never touched by an app upgrade or rollback. `hds` reaches it through the Service named in its
-values (`database.host`).
+Three charts, each its own release (specs/006 research R3, amended). `hds-secrets` keeps the
+Secrets, synced from Vault by the Vault Secrets Operator, and is installed first. `hds-postgres`
+holds the database, so it exists before the `hds` release's `pre-install` migration hook runs, and
+its data is never touched by an app upgrade or rollback. `hds` reaches it through the Service named
+in its values (`database.host`).
 
-Neither chart defines a Secret; both read them by name: `hds-api` (`JWT_SECRET_KEY`,
+No chart defines a Secret; `hds` and `hds-postgres` read them by name: `hds-api` (`JWT_SECRET_KEY`,
 `DATABASE_PASSWORD`, which the database's password also comes from, and the optional
 `THROTTLE_SECRET_KEY`), `hds-smtp` (the relay's settings, when `mail.backend` is `smtp`),
 `hds-backup` and `hds-registry`. `DATABASE_PASSWORD` goes into the database URL, so it must be
 URL-safe (`openssl rand -hex 32`). PostgreSQL takes it only when it first creates the database;
-to change it later, set the role's password first, with `\password hds` in `psql` in the pod,
-which sends only its hash (an `ALTER ROLE ... PASSWORD` statement would land in psql's history on
-the data volume, and in the server log if statements are logged), then the Secret, then restart
-the API and the worker. In the other order, the next migration hook cannot
-sign in and the upgrade stops. Only the API, worker, migration and backup pods carry the
+to change it later, change it in Vault, then set the role's password to the same value with
+`\password hds` in `psql` in the pod, which sends only its hash (an `ALTER ROLE ... PASSWORD`
+statement would land in psql's history on the data volume, and in the server log if statements are
+logged). The order and why: [the operations runbook](../docs/runbooks/operations.md#vault). Only the API, worker, migration and backup pods carry the
 `hds/database-client` label that the database's NetworkPolicy lets in; the web pods do not. The
 operations port 9100 is reachable only from the `monitoring` namespace, and the ingress never
 routes it.
@@ -42,6 +62,22 @@ routes it.
 `helm/tests/assert.sh` runs `helm lint`, kubeconform (Kubernetes v1.37.1 schemas) and assertions
 on the rendered manifests: `hds` for `values-local.yaml` and `values-ci.yaml`, and `hds-postgres`
 with its defaults. Every tool runs from an image pinned in `VERSIONS.md`; only Docker is needed.
+
+## Releases
+
+A merge to `main` that passes CI runs `.github/workflows/release.yml`: it builds the three images
+once for amd64 and arm64, scans each platform with Trivy (a fixed HIGH or CRITICAL finding, or any
+secret, stops it), pushes those same images, and publishes the `hds` chart as `0.1.<run number>`
+with the images' digests in its values. `hds-postgres` is published only when its version is
+raised. Each image and chart is signed by digest, keyless, as it is pushed, and Flux
+(`flux/clusters/local/`) pulls the newest chart every 5 minutes and installs it only if it carries
+the release workflow's signature (Proposed); a failed upgrade rolls back.
+
+**What the cluster reaches out to**: GHCR, for the charts and images; Sigstore over HTTPS
+(`tuf-repo-cdn.sigstore.dev` for its TUF root, `rekor.sigstore.dev` for the transparency log),
+which Flux needs to verify a chart's signature; Google Drive, for the backups; the SMTP relay.
+Nothing reaches in. Without Sigstore, no new version installs, and the running one keeps
+running. Deploys, rollbacks and the dry run: [the operations runbook](../docs/runbooks/operations.md).
 
 ## Backups
 

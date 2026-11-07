@@ -1,0 +1,7 @@
+# The charts whose version is raised by hand in their Chart.yaml (specs/006 research R3 amended,
+# R4; reviews R98, R135, R153), in the order they are published and installed. The release pushes
+# each only at a version the registry does not have (infra/release/publish_charts.sh), and a pull
+# request that changes one must raise its version (infra/helm/tests/chart_version.sh). Every chart
+# in infra/helm but hds, which each release versions, is listed here (infra/tests/check_release.sh).
+hds-secrets
+hds-postgres

@@ -12,3 +12,6 @@ ingress:
 # kept, and no CI job takes a snapshot.
 vault:
   snapshotRecipient: age16q9ew59lene00jp303rjfh0c7t8jt9agwsctp27kez526m6hhazsfuev0c
+# No kube-prometheus-stack in CI's cluster, so none of its kinds (the rules are tested by promtool).
+monitoring:
+  enabled: false

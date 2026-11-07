@@ -49,11 +49,25 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
     its Service, and a NetworkPolicy that lets only the hds pods in. Its password is read by name
     from the `hds-api` Secret's `DATABASE_PASSWORD`.
   - **`infra/helm/hds`**: the API, worker and web Deployments, the migration Job, the backup and
-    restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors, alert rules and the
-    Vault Secrets Operator resources. Its values name the database Service.
+    restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors and alert rules. Its
+    values name the database Service.
+  - **`infra/helm/hds-secrets`** (amended in Group J; review R135): the Vault Secrets Operator's
+    objects, a VaultConnection, a VaultAuth with its ServiceAccount, and one VaultStaticSecret per
+    path. In the `hds` chart, the first install deadlocks: `hds-postgres`, installed first, reads
+    the `hds-api` Secret, which does not exist yet, and `hds`'s pre-install migration hook runs
+    before Helm creates any of `hds`'s resources, the VaultStaticSecrets among them. As hooks they
+    would be deleted and made again at each upgrade, and the operator deletes the Secret it made
+    when its VaultStaticSecret goes. In `hds-postgres` a change to them would raise its version and
+    restart the database (review R98). The VaultStaticSecrets are kept on uninstall
+    (`helm.sh/resource-policy: keep`).
 
   The values have an `environment` block (`local` and `ci`), with no secrets in any values file.
-  Flux installs `hds-postgres` first, and the `hds` HelmRelease `dependsOn` it (Group I).
+  Flux installs `hds-secrets` first, then `hds-postgres`, which `dependsOn` it, then `hds`, which
+  `dependsOn` `hds-postgres` (Groups I and J). `hds-secrets` and `hds-postgres` keep the versions in
+  their `Chart.yaml`; `hds` is versioned by each release. Flux is given the releases only after Vault
+  is unsealed and its paths are written (`make ops-flux`, T063): `hds-secrets` turns Ready once Helm
+  applies its objects, before the operator has synced anything, so `hds-postgres` could otherwise
+  start without its Secret and fail an install that is not retried.
 - **Rationale**: The original names Helm (§7 Deployment). The database is a chart of its own for two
   reasons:
   - **Hook ordering on the first install**: the migration Job is a `pre-install,pre-upgrade` hook
@@ -74,10 +88,65 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
      `main`, with `concurrency: release` (FR-023). It builds the three images, scans them with Trivy
      and fails on a high or critical finding (FR-015, §9 Security, §10 Dependencies). Then it pushes
      the images, packages the chart with `appVersion` set to the SHA and `version: 0.1.<run
-     number>`, and pushes the chart to GHCR as an OCI artefact.
+     number>`, and pushes the chart to GHCR as an OCI artefact. In detail (Group I):
+     - **Trust** (review R99): `branches: [main]` and `head_branch` match only a branch's name,
+       which a fork's pull request can share. The job also requires CI's run to be for a `push`
+       from this repository, and `infra/release/trust.sh` checks it all again from the event
+       before any of the tested commit's code runs; the release then builds exactly CI's
+       `head_sha`. A manual run is a dry run only.
+     - **The bytes scanned are the bytes pushed** (review R100): each image is built once for both
+       platforms into an OCI image layout; Trivy scans each platform of that layout; `skopeo copy
+       --all --preserve-digests` pushes the layout as it is, and the pushed index is read back and
+       must have the layout's digest. Nothing is rebuilt between scan and push.
+     - **"High-severity" is a fixed HIGH or CRITICAL finding** (Proposed; the owner's choice on
+       2026-11-07, "Skip unfixed ones"): the vulnerability scan runs with `--ignore-unfixed`, a
+       reading of FR-015. An unfixed finding in a Debian or Alpine base has no version to move to,
+       so it would stop every release and nothing on our side could clear it. A fixed one still
+       stops the release: the base or the binary is raised instead, and nothing is ignored
+       (review R101).
+     - **Known limit**: the gate scans the three images the release builds. The `postgres:16.15`
+       image the cluster runs for `hds-postgres` and the restore test's sidecar is the official
+       one, not rebuilt, and is not scanned; its `gosu` carries an old Go's fixed findings (the
+       backup image removes its copy). Raising that image is a change of its own.
+     - **Two charts** (research R3, amended; review R98): `hds-postgres` keeps the version in its
+       `Chart.yaml`, raised by hand, because its pod template carries the chart's version and a new
+       one each release would restart the database. The release pushes it only when the registry
+       answers that the version is not there; any other answer fails the release. A pull request
+       that changes the chart without raising its version fails CI (`chart_version.sh`).
+     - **Signed releases** (FR-028, **Proposed**: the owner's request on 2026-11-07, "Add it";
+       T047c): each image index and each chart is signed by digest, keyless, with cosign and the
+       job's GitHub OIDC token (`id-token: write`, on the release job only), in the step that
+       pushes it, so a pushed artefact with no signature is a failed run. Fulcio certifies the
+       identity `https://github.com/AviyaYemini/HDS/.github/workflows/release.yml@refs/heads/main`;
+       there is no signing key to steal or rotate. Both OCIRepositories carry `verify` with
+       `provider: cosign` and that exact identity and GitHub's issuer, anchored, so Flux installs
+       no chart that is unsigned or signed by anyone else. Images are not verified by Flux: the
+       verified `hds` chart names every image by digest, so a verified chart covers the images
+       it runs. They are signed anyway, so an operator can check one by hand. source-controller
+       v1.9.6 (Flux v2.9.6) verifies both cosign v2 signatures and v3 bundles; cosign v3.1.4
+       signs.
+       - **What it stops**: a stolen packages token, and changes in the registry after the push.
+         **What it does not**: anyone who can push to `main` can make a validly signed release,
+         since the identity is "release.yml on main". Protecting `main` (a required pull request
+         and passing CI) is the complement; it is a repository setting the owner controls,
+         recommended, not a task here.
+       - **Public record**: keyless signatures are written to Sigstore's public Rekor log with the
+         repository and workflow name. That is fine while the repository is public; if it ever
+         becomes private, that log still names it (and a private Sigstore, or key-based signing,
+         would be the choice).
+       - **Fails closed**: verifying needs HTTPS from the cluster to Sigstore (its TUF root and
+         Rekor). Unreachable, verification fails, the OCIRepository stops being Ready and no new
+         version installs; the running one keeps running, and an alert fires.
+       - **Alternatives**: key-based cosign (a long-lived private key in a GitHub secret, to keep
+         and rotate, and a stolen one signs anything); Notation (Notary v2; needs a key and a
+         certificate authority of our own); an admission controller such as Kyverno or the
+         Sigstore policy-controller verifying images at admission (another always-on component,
+         redundant while the verified chart pins every image by digest).
   2. **Flux** (source-controller, helm-controller and notification-controller only) runs in the
-     cluster. An `OCIRepository` watches the chart with `semver: ">=0.1.0"` and polls every 5
-     minutes. A `HelmRelease` installs it. This is all outbound: nothing reaches into the machine.
+     cluster. An `OCIRepository` for each chart watches it with `semver: ">=0.1.0"` and polls every 5
+     minutes. A `HelmRelease` installs each, `hds` after `hds-postgres`. A failed upgrade rolls
+     back: with `retries: 0`, Flux remediates only with `remediateLastFailure: true` (review R102).
+     This is all outbound: nothing reaches into the machine.
   3. **Records** (FR-022): Helm's release history keeps each revision with its version, time and
      status, and Flux records an event for each one.
 - **Why the chart is published, not a commit to `main`**: CI never writes to the protected branch,
@@ -231,6 +300,21 @@ lines).
   and links nowhere outside the cluster.
 - **Shown with the health status**: `make ops-status` prints the parts' readiness and versions, the
   last backup, the last restore test and the last deploy, with any alert that is firing.
+- **Settled in Group K** (reviews R159 to R168):
+  - **Alertmanager's configuration from Vault**: Alertmanager runs in `monitoring` and cannot read
+    `hds-smtp`, and `OPERATOR_EMAILS` are personal addresses, so no values file may hold them. A
+    VaultStaticSecret in `monitoring` (in hds-secrets, with its own sign-in: the Vault role
+    `alertmanager` reads `hds/data/smtp` only) renders the whole `alertmanager.yaml`, each value as
+    a JSON string so no character can break it. One receiver, no sub-routes.
+  - **The message**: Alertmanager's `email.default.subject` and `email.default.html` are replaced
+    from a ConfigMap: the alert, the object, the time, the summary.
+  - **Which Job is the backup's**: by its owner, the CronJob, and only each CronJob's newest Job,
+    so `make ops-backup`'s failures alert and `make ops-restore`'s Jobs (no owner) never do. The
+    "missing" alerts also fire when a CronJob has never succeeded.
+  - **Flux's alerts** keep Flux's names (`Flux<Kind><Reason>`); there is no `HdsDeployFailed`.
+  - **No other rules**: the stack's default rules are off, its Watchdog among them. So
+    `make ops-status` checks that Prometheus and Alertmanager are ready and Alertmanager's
+    configuration is present: nothing else would say alerting is down.
 
 **Alternatives**: a chat webhook (a second channel, and application mail still needs SMTP);
 `aiosmtplib` (a new dependency for a few messages a day).
@@ -249,7 +333,26 @@ lines).
   `hds/registry`) into Kubernetes Secrets that the pods read as environment variables (FR-024).
 - **Rotation** (FR-027): the operator writes a new value to Vault. The operator refreshes the
   Secret and restarts the dependent Deployments with `rolloutRestartTargets`, so there is no code
-  change and no outage.
+  change and no outage. Settled in Group J (reviews R132 to R141):
+  - The targets are exactly the Deployments that read each Secret: `hds-api` and `hds-smtp`
+    restart `hds-api` and `hds-worker`; `hds-backup` restarts nothing, since only Jobs read it,
+    when they start; the `hds-postgres` StatefulSet is never a target, since PostgreSQL reads its
+    password only when it creates its data.
+  - The database password changes in Vault first, then in PostgreSQL (`\password hds`) straight
+    after: the new pods cannot sign in until then and do not become ready, while the old ones keep
+    serving on the connections they hold (maxUnavailable 0). The other order fails every running
+    pod's new connections for the minute the operator takes to sync. A single key changes with
+    `vault kv patch ... KEY=-`, never `kv put`, which drops the path's other keys.
+  - The policy `hds` reads `hds/data/*` only (KV v2); `vault-snapshot` reads the raft snapshot
+    only. Each Kubernetes-auth role binds exactly one ServiceAccount in `hds` (`hds-vault`, the
+    operator's sign-in; `hds-vault-snapshot`), for the audience `vault`, with 10- and 5-minute
+    tokens; the snapshot pod gets such a token as a projected volume and no API-server token.
+    `make ops-vault-configure` (Proposed: the set-up commands as a script, so they are tested
+    against a real Vault) writes them, and only `kubernetes_host` in the auth config (review R95).
+  - **Known limit**: Vault listens on plain HTTP inside the cluster, so the secrets cross the
+    pod network unencrypted, on one machine. Vault's NetworkPolicy (Proposed) lets in only the
+    operator's namespace and the snapshot pods. TLS inside the cluster is Proposed with the cloud
+    move, when the network spans machines.
 - **Refusing known values** (FR-026): the settings already refuse the published JWT placeholder and
   short keys. They now also refuse every value written in `.env.example`, the compose file or the
   test settings, such as `hds_dev` or `change-me`, in a password or key, when `ENVIRONMENT` is not a
@@ -273,7 +376,14 @@ while the machine slept happens when it wakes. It runs in the `hds-backup` image
 2. A manifest: the migration version, the time, the row count of every table, the size and a
    SHA-256.
 3. Two copies through rclone `crypt` remotes:
-   - `local-crypt:`, over the plain `local:` remote, a persistent volume on the machine
+   - `local-crypt:`, over the plain `local:` remote, a persistent volume on the machine: the claim
+     `hds-backups`, made outside Helm (`infra/cluster/backup-pvc.yaml`, applied by `make ops-flux`)
+     and mounted by name by the backup and the snapshot (review R189). In the chart, the claim
+     stayed Pending under k3s's local-path (WaitForFirstConsumer) until the first backup, so Helm's
+     --wait, and Flux's, timed out at every install. A static hostPath volume was rejected: it
+     ignores fsGroup, so the non-root Jobs could not write, and a claim's spec cannot change, so
+     main's chart could not be upgraded to it. Uninstalling hds keeps the claim; deleting it deletes
+     the local copies, which local-path keeps under `/var/lib/rancher/k3s/storage` on the node
    - `offsite-crypt:`, over the plain `offsite:` remote, a Google Drive folder
    - Encryption is NaCl secretbox under a password from Vault, so Drive holds only ciphertext and
      encrypted names (FR-012).

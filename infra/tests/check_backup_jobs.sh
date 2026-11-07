@@ -13,7 +13,7 @@ cat > "$fake/kubectl" <<'EOF'
 printf '%s\n' "$*" >> "$FAKE_LOG"
 case "$*" in
     *"get cronjob"*) [ -z "${FAKE_NO_CRONJOB:-}" ] ;;
-    *"get jobs -l app.kubernetes.io/component="*) printf '%s' "${FAKE_ACTIVE:-}" ;;
+    *"get jobs -l app.kubernetes.io/component in "*) printf '%s' "${FAKE_ACTIVE:-}" ;;
     *"create job"*) ;;
     *"get job "*) printf '%s' "${FAKE_STATE:-}" ;;
     *"logs job/"*) echo "[pod/x/backup] a log line" ;;
@@ -55,6 +55,11 @@ if grep -q "create job" "$FAKE_LOG"; then
     printf 'FAIL  the refused run created a Job\n'; failures=$((failures + 1))
 else
     printf 'ok    the refused run created no Job\n'
+fi
+if grep -qF -- "get jobs -l app.kubernetes.io/component in (backup,restore)" "$FAKE_LOG"; then
+    printf 'ok    a running restore refuses a backup too\n'
+else
+    printf 'FAIL  the guard was: %s\n' "$(grep 'get jobs' "$FAKE_LOG")"; failures=$((failures + 1))
 fi
 check "a Job that never finishes times out" 1 "did not finish within 0s" \
     HDS_JOB_TIMEOUT=0 -- run backup

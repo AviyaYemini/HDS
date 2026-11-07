@@ -1,0 +1,12 @@
+apiVersion: v2
+name: hds-secrets
+description: >-
+  HDS 2.0's Secrets, synced from Vault by the Vault Secrets Operator, as a release of its own
+  (specs/006-deploy-operations research R3, amended in Group J). Installed before hds-postgres and
+  hds, which read the Secrets it keeps.
+type: application
+# Raised by hand when the chart changes (infra/helm/tests/chart_version.sh); the release pushes a
+# version only once, and signs it each release.
+version: 0.1.0
+appVersion: "1.6.0"
+kubeVersion: ">=1.33.0-0"

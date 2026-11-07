@@ -1,0 +1,199 @@
+# promtool's tests of HDS's alert rules (specs/006-deploy-operations T055; contracts/ops.md
+# section 3; review R159), run by infra/tests/check_alerts.sh in the CI chart job:
+#   promtool test rules infra/cluster/alerts/tests.yaml
+# Times are from 0; kube-state-metrics' series are written as it reports them (kube_job_failed
+# with condition="true" is 1 once the Job's Failed condition is true, and 0 before).
+rule_files:
+  - ../../helm/hds/files/alert-rules.yaml
+evaluation_interval: 1m
+
+tests:
+  # The newest scheduled backup failed: it alerts.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-backup-1", owner_kind="CronJob", owner_name="hds-backup", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-backup-1"}'
+        values: '100x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-backup-1", condition="true"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HdsBackupFailed
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds, job_name: hds-backup-1, owner_name: hds-backup}
+            exp_annotations:
+              summary: "The newest backup (hds-backup-1) failed: on the machine, off it, or both."
+
+  # A failure followed by a newer success: only the newest Job counts, so nothing fires.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-backup-1", owner_kind="CronJob", owner_name="hds-backup", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-backup-1"}'
+        values: '100x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-backup-1", condition="true"}'
+        values: '1x10'
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-backup-2", owner_kind="CronJob", owner_name="hds-backup", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-backup-2"}'
+        values: '200x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-backup-2", condition="true"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HdsBackupFailed
+        exp_alerts: []
+
+  # `make ops-backup` makes its Job from the CronJob, which owns it: its failure alerts. A refused
+  # `make ops-restore` check (exit 3) is a Job with no owner (review R122): it never does.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-backup-manual-20261107", owner_kind="CronJob", owner_name="hds-backup", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-backup-manual-20261107"}'
+        values: '300x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-backup-manual-20261107", condition="true"}'
+        values: '1x10'
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-restore-check-20261107", owner_kind="<none>", owner_name="<none>", owner_is_controller="<none>"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-restore-check-20261107"}'
+        values: '400x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-restore-check-20261107", condition="true"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HdsBackupFailed
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds, job_name: hds-backup-manual-20261107, owner_name: hds-backup}
+            exp_annotations:
+              summary: "The newest backup (hds-backup-manual-20261107) failed: on the machine, off it, or both."
+
+  # A refused restore alone: no backup, restore-test or snapshot alert.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-restore-run-20261107", owner_kind="<none>", owner_name="<none>", owner_is_controller="<none>"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-restore-run-20261107"}'
+        values: '400x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-restore-run-20261107", condition="true"}'
+        values: '1x10'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: HdsBackupFailed, exp_alerts: []}
+      - {eval_time: 5m, alertname: HdsRestoreTestFailed, exp_alerts: []}
+      - {eval_time: 5m, alertname: HdsVaultSnapshotFailed, exp_alerts: []}
+
+  # The restore test and the snapshot, each by its own CronJob; a failed backup does not raise them.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-restore-test-1", owner_kind="CronJob", owner_name="hds-restore-test", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-restore-test-1"}'
+        values: '100x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-restore-test-1", condition="true"}'
+        values: '1x10'
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-vault-snapshot-1", owner_kind="CronJob", owner_name="hds-vault-snapshot", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-vault-snapshot-1"}'
+        values: '100x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-vault-snapshot-1", condition="true"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HdsRestoreTestFailed
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds, job_name: hds-restore-test-1, owner_name: hds-restore-test}
+            exp_annotations: {summary: "The newest restore test (hds-restore-test-1) failed."}
+      - eval_time: 5m
+        alertname: HdsVaultSnapshotFailed
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds, job_name: hds-vault-snapshot-1, owner_name: hds-vault-snapshot}
+            exp_annotations: {summary: "The newest Vault snapshot (hds-vault-snapshot-1) failed; after a restart, Vault may be sealed."}
+      - {eval_time: 5m, alertname: HdsBackupFailed, exp_alerts: []}
+
+  # No backup since time 0: quiet up to 26 h, pending for an hour, then firing.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="hds", cronjob="hds-backup"}'
+        values: '0x1700'
+    alert_rule_test:
+      - {eval_time: 25h, alertname: HdsBackupMissing, exp_alerts: []}
+      - {eval_time: 26h30m, alertname: HdsBackupMissing, exp_alerts: []}
+      - eval_time: 27h1m
+        alertname: HdsBackupMissing
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds}
+            exp_annotations: {summary: "No backup has succeeded for more than 26 hours."}
+
+  # Stale, then the catch-up run succeeds within the hour (the Mac waking after a day off): nothing
+  # is sent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="hds", cronjob="hds-backup"}'
+        values: '0x1590 95400x120'
+    alert_rule_test:
+      - {eval_time: 26h20m, alertname: HdsBackupMissing, exp_alerts: []}
+      - {eval_time: 27h5m, alertname: HdsBackupMissing, exp_alerts: []}
+      - {eval_time: 28h, alertname: HdsBackupMissing, exp_alerts: []}
+
+  # A CronJob that has never succeeded has no last_successful_time series: 26 h after it was made,
+  # and an hour on, it alerts.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_created{namespace="hds", cronjob="hds-backup"}'
+        values: '0x1700'
+    alert_rule_test:
+      - {eval_time: 26h30m, alertname: HdsBackupMissing, exp_alerts: []}
+      - eval_time: 27h1m
+        alertname: HdsBackupMissing
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds}
+            exp_annotations: {summary: "No backup has succeeded for more than 26 hours."}
+
+  # Healthy: a backup a day, the restore test a week; nothing fires.
+  - interval: 1h
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="hds", cronjob="hds-backup"}'
+        values: '0x23 86400x24 172800x24'
+      - series: 'kube_cronjob_created{namespace="hds", cronjob="hds-backup"}'
+        values: '0x72'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="hds", cronjob="hds-restore-test"}'
+        values: '0x72'
+      - series: 'kube_cronjob_created{namespace="hds", cronjob="hds-restore-test"}'
+        values: '0x72'
+    alert_rule_test:
+      - {eval_time: 70h, alertname: HdsBackupMissing, exp_alerts: []}
+      - {eval_time: 70h, alertname: HdsRestoreTestMissing, exp_alerts: []}
+
+  # The restore test: no success for 8 days, then an hour more.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="hds", cronjob="hds-restore-test"}'
+        values: '0x11700'
+    alert_rule_test:
+      - {eval_time: 192h30m, alertname: HdsRestoreTestMissing, exp_alerts: []}
+      - eval_time: 193h10m
+        alertname: HdsRestoreTestMissing
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds}
+            exp_annotations: {summary: "No restore test has succeeded for more than 8 days."}
+
+  # A Job marked Failed (a deadline exceeded, say) before any pod counted as failed: its Failed
+  # condition is true while status.failed is 0. It alerts, as make ops-status reports it (R179).
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="hds", job_name="hds-backup-3", owner_kind="CronJob", owner_name="hds-backup", owner_is_controller="true"}'
+        values: '1x10'
+      - series: 'kube_job_status_start_time{namespace="hds", job_name="hds-backup-3"}'
+        values: '500x10'
+      - series: 'kube_job_status_failed{namespace="hds", job_name="hds-backup-3"}'
+        values: '0x10'
+      - series: 'kube_job_failed{namespace="hds", job_name="hds-backup-3", condition="true"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HdsBackupFailed
+        exp_alerts:
+          - exp_labels: {severity: page, namespace: hds, job_name: hds-backup-3, owner_name: hds-backup}
+            exp_annotations:
+              summary: "The newest backup (hds-backup-3) failed: on the machine, off it, or both."

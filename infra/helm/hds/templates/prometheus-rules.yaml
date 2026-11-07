@@ -1,0 +1,14 @@
+# HDS's alert rules (specs/006 T056; contracts/ops.md section 3), read as they are from
+# files/alert-rules.yaml, the file promtool tests (infra/cluster/alerts/tests.yaml), so Helm never
+# renders their own templating. Prometheus selects every PrometheusRule, whatever its labels
+# (infra/cluster/monitoring-values.yaml).
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "hds.name" . }}-alerts
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "alerts") | nindent 4 }}
+spec:
+  {{- .Files.Get "files/alert-rules.yaml" | nindent 2 }}
+{{- end }}

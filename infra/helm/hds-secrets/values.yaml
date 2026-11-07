@@ -1,0 +1,45 @@
+# The Vault Secrets Operator's view of HDS's secrets (specs/006 T051, T052; data-model.md
+# "Secrets"). No secret is set here: these name where each one lives in Vault and which pods
+# restart when it changes.
+vault:
+  # Vault's listener inside the cluster (infra/cluster/vault-values.yaml).
+  address: http://vault.vault.svc:8200
+  # The Kubernetes-auth role and its ServiceAccount, bound to each other in Vault
+  # (scripts/ops/vault_configure.sh), with tokens for the audience "vault" only.
+  authMount: kubernetes
+  role: hds
+  serviceAccount: hds-vault
+  # The KV v2 mount holding hds/api, hds/smtp, hds/backup and hds/registry.
+  mount: hds
+  # How soon a change in Vault reaches the Secret, and so the pods named below.
+  refreshAfter: 60s
+
+# Each Secret from its path, and the Deployments that restart when it changes. A Job (the migration,
+# the backups, the restore test, Vault's snapshot) reads its Secrets when it starts, so none is
+# named. The hds-postgres StatefulSet is never named: PostgreSQL reads its password only when it
+# creates its data folder, and restarting it would not change it (docs/runbooks/operations.md,
+# section Vault, has the password's rotation).
+secrets:
+  - name: hds-api
+    path: api
+    restart: [hds-api, hds-worker]
+  - name: hds-smtp
+    path: smtp
+    restart: [hds-api, hds-worker]
+  - name: hds-backup
+    path: backup
+    restart: []
+
+# Alertmanager's configuration (templates/monitoring.yaml): in the monitoring stack's namespace,
+# signed in as its own ServiceAccount under the Vault role alertmanager, which reads hds/smtp only.
+monitoring:
+  namespace: monitoring
+  serviceAccount: hds-alertmanager-vault
+  role: alertmanager
+
+# The image pull secret hds-registry, from hds/registry's GHCR_READ_TOKEN, only when the packages
+# are private (data-model.md); then set imagePullSecrets: [hds-registry] in the hds values too.
+registry:
+  enabled: false
+  server: ghcr.io
+  username: aviyayemini

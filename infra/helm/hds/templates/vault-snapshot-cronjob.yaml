@@ -32,8 +32,9 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: {{ include "hds.name" . }}-vault-snapshot
-          # The token is for Vault's sign-in only.
-          automountServiceAccountToken: true
+          # No API-server token: Vault's sign-in uses a token for the audience "vault" only, valid
+          # for 10 minutes (the vault-snapshot role requires that audience; Group J).
+          automountServiceAccountToken: false
           securityContext:
             {{- include "hds.podSecurity" (dict "uid" 999) | nindent 12 }}
           {{- with .Values.imagePullSecrets }}
@@ -59,10 +60,20 @@ spec:
                   mountPath: /backups
                 - name: tmp
                   mountPath: /tmp
+                - name: vault-token
+                  mountPath: /var/run/secrets/vault
+                  readOnly: true
           volumes:
+            - name: vault-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      audience: vault
+                      expirationSeconds: 600
+                      path: token
             - name: backups
               persistentVolumeClaim:
-                claimName: {{ include "hds.name" . }}-backups
+                claimName: {{ .Values.backup.storage.claimName | quote }}
             - name: tmp
               emptyDir: {}
 {{- end }}

@@ -1,0 +1,23 @@
+# Prometheus scrapes the API and the worker on their operations port, 9100 (specs/006 T056,
+# contracts/ops.md section 2), through their Services, from the monitoring namespace, which their
+# NetworkPolicies let in. The ingress never routes the port (FR-009). Prometheus selects every
+# ServiceMonitor, whatever its labels (infra/cluster/monitoring-values.yaml).
+{{- if .Values.monitoring.enabled }}
+{{- range $part := list "api" "worker" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "hds.name" $ }}-{{ $part }}
+  labels:
+    {{- include "hds.labels" (dict "root" $ "component" $part) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hds.selector" (dict "root" $ "component" $part) | nindent 6 }}
+  endpoints:
+    - port: ops
+      path: /metrics
+      interval: 30s
+{{- end }}
+{{- end }}

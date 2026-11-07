@@ -22,6 +22,8 @@ spec:
     spec:
       serviceAccountName: {{ include "hds.name" . }}-web
       automountServiceAccountToken: false
+      # Covers the preStop below and nginx's own graceful stop.
+      terminationGracePeriodSeconds: 30
       securityContext:
         {{- include "hds.podSecurity" (dict "uid" 101) | nindent 8 }}
       {{- with .Values.imagePullSecrets }}
@@ -43,6 +45,12 @@ spec:
           readinessProbe:
             httpGet: {path: /, port: 8080}
             periodSeconds: 5
+          # As the API's: a stopping pod keeps serving for 5 s while Traefik drops it from its
+          # endpoints, so no request reaches an nginx that has stopped listening (FR-017; review R201).
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           securityContext:
             {{- include "hds.containerSecurity" . | nindent 12 }}
           resources:

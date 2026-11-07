@@ -1,0 +1,29 @@
+# Alertmanager's configuration (specs/006-deploy-operations T056; FR-010a; reviews R159 to R164),
+# rendered by the Vault Secrets Operator from hds/smtp into the Secret alertmanager-hds in monitoring.
+# Read as is by the chart (.Files.Get), so Helm does not render it. Every value from Vault is
+# inserted as a JSON string (toJson), which is valid YAML whatever it holds: a quote, a colon, a
+# hash or a newline in a password cannot break this file or add to it. infra/tests/check_alertmanager.sh
+# allows no other insertion.
+global:
+  smtp_require_tls: true
+# One receiver and no sub-routes: every alert, HDS's own and those Flux forwards
+# (Flux<Kind><Reason>), is e-mailed.
+route:
+  receiver: operators
+  group_by: [alertname, namespace]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+receivers:
+  - name: operators
+    email_configs:
+      - to: {{ .Secrets.OPERATOR_EMAILS | toJson }}
+        from: {{ .Secrets.MAIL_FROM | toJson }}
+        smarthost: {{ printf "%s:%s" .Secrets.SMTP_HOST .Secrets.SMTP_PORT | toJson }}
+        auth_username: {{ .Secrets.SMTP_USERNAME | toJson }}
+        auth_password: {{ .Secrets.SMTP_PASSWORD | toJson }}
+        require_tls: true
+        send_resolved: true
+# The subject and body: the alert, the object, the time and the summary only (FR-010a).
+templates:
+  - /etc/alertmanager/configmaps/alertmanager-hds-templates/*.tmpl

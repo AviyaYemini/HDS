@@ -11,6 +11,10 @@
 # The shared environment, with kubectl access to the cluster (contracts/ops.md section 5):
 #   make ops-backup        a backup now; make ops-restore-test, the restore test now
 #   make ops-backups       the backups on Drive, by name (Proposed)
+#   make ops-status        the Deployments, the backups, the deploys, alerting and Vault, FAIL marked
+#   make ops-restore BACKUP=<name> [CONFIRM=replace]   restore a backup (docs/runbooks/restore.md)
+#   make ops-rollback      suspend Flux for hds and roll back to the previous revision; ops-resume
+#                          hands hds back to Flux (docs/runbooks/operations.md)
 #
 # The compose file lives in infra/ and Compose reads a `.env` file from THE COMPOSE FILE'S folder
 # (infra/), not from here, so every target passes `--env-file .env` to use the one in the repository
@@ -33,7 +37,8 @@ COMPOSE_READ := JWT_SECRET_KEY="$${JWT_SECRET_KEY:-unused-by-down}" $(COMPOSE)
 POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
 
 .PHONY: env up build down wipe ps logs hooks ci-local ci-local-db
-.PHONY: ops-backup ops-restore-test ops-backups
+.PHONY: ops-backup ops-restore-test ops-backups ops-restore ops-rollback ops-resume ops-unseal
+.PHONY: ops-vault-configure ops-status
 
 # CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
 # interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
@@ -121,3 +126,27 @@ ops-restore-test:
 
 ops-backups:
 	scripts/ops/backup_jobs.sh list
+
+# A restore in the cluster (specs/006 T049b), with Flux suspended throughout. BACKUP and CONFIRM
+# pass through as they are.
+ops-restore:
+	BACKUP="$(BACKUP)" CONFIRM="$(CONFIRM)" scripts/ops/restore.sh
+
+# The shared environment at a glance (specs/006 T057): each failing item marked FAIL, exit 1.
+ops-status:
+	scripts/ops/status.sh
+
+# Vault (specs/006 T052, T053; docs/runbooks/operations.md, section Vault): unseal after a restart;
+# configure once after init, with the root token in VAULT_TOKEN (never an argument).
+ops-unseal:
+	scripts/ops/unseal.sh
+
+ops-vault-configure:
+	scripts/ops/vault_configure.sh
+
+# Deploys (specs/006 T049, FR-021): code only, never a migration downgrade.
+ops-rollback:
+	REVISION="$(REVISION)" scripts/ops/rollback.sh
+
+ops-resume:
+	scripts/ops/resume.sh

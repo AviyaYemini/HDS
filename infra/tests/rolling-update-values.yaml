@@ -1,0 +1,13 @@
+# The rolling-update job's values (specs/006-deploy-operations T059), over values-local.yaml, for
+# the base's chart and the head's alike: a production environment, as the shared one, with the
+# images the job imports and mail to mailpit in the cluster (STARTTLS required). The run sends no
+# mail, so neither chart needs to trust mailpit's certificate; the job checks no mail was sent
+# (review: A). No Prometheus stack in this cluster, so none of its kinds (the head's chart).
+settings:
+  environment: production
+mail:
+  backend: smtp
+monitoring:
+  enabled: false
+images:
+  pullPolicy: Never
