@@ -18,6 +18,7 @@ import {
   at,
   checkA11y,
   isPhone,
+  openAs,
   signIn,
 } from "./support";
 
@@ -119,9 +120,8 @@ test.describe("with previews on", () => {
       });
 
       test(`${role} in ${language}: a forbidden address shows the no-access page with a way home`, async ({ page }) => {
-        await signIn(page, role, language);
         for (const path of FORBIDDEN[role]) {
-          await page.goto(at(path, language));
+          await openAs(page, role, language, path);
           await expect(page.getByTestId("screen-no-access"), path).toBeVisible();
           await expect(page.getByTestId("action-go-home")).toBeVisible();
         }
@@ -132,9 +132,8 @@ test.describe("with previews on", () => {
     }
 
     test(`client in ${language}: sees no employee field anywhere it can go`, async ({ page }) => {
-      await signIn(page, "client", language);
       for (const path of ["/client", "/client/contact", "/account"]) {
-        await page.goto(at(path, language));
+        await openAs(page, "client", language, path);
         await expect(page.locator("body")).not.toContainText(/Employee User|Extra Employee|employee@hds\.test|extra@hds\.test/);
         await expect(page.locator("body")).not.toContainText(/hourly rate|תעריף שעתי/i);
       }
@@ -151,8 +150,7 @@ test.describe("with previews on", () => {
         },
       });
       expect(set.ok(), await set.text()).toBeTruthy();
-      await signIn(page, "client", language);
-      await page.goto(at("/client/contact", language));
+      await openAs(page, "client", language, "/client/contact");
       const card = page.getByTestId("screen-contact");
       await expect(card).toContainText("03-5550100");
       await expect(card).toContainText("office@hds.test");
@@ -162,9 +160,8 @@ test.describe("with previews on", () => {
 
     test(`${language}: every routed preview sits in place for its roles only`, async ({ page }) => {
       for (const role of ["employee", "manager", "admin", "client"] as const) {
-        await signIn(page, role, language);
         for (const preview of ROUTED_PREVIEWS) {
-          await page.goto(at(preview.path, language));
+          await openAs(page, role, language, preview.path);
           if (preview.roles.includes(role)) {
             await expect(page.getByTestId(preview.id), `${role} ${preview.path}`).toBeVisible();
           } else {
@@ -172,15 +169,12 @@ test.describe("with previews on", () => {
             await expect(page.getByTestId("screen-no-access")).toBeVisible();
           }
         }
-        await page.getByTestId("action-sign-out").first().click();
-        await expect(page).toHaveURL(/\/sign-in/);
       }
     });
   }
 
   test("the language switch flips the direction straight away", async ({ page }) => {
-    await signIn(page, "employee", "en");
-    await page.goto(at("/account", "en"));
+    await openAs(page, "employee", "en", "/account");
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
     await page.getByTestId("language-he").click();
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
@@ -190,8 +184,8 @@ test.describe("with previews on", () => {
   });
 
   for (const language of LANGUAGES) {
+    // An unknown address is no one's page, so it shows the 404 page signed in or not.
     test(`${language}: an unknown address shows the 404 page with a way home`, async ({ page }) => {
-      await signIn(page, "employee", language);
       await page.goto(at("/no-such-page", language));
       await expect(page.getByTestId("screen-not-found")).toBeVisible();
       await expect(page.locator("html")).toHaveAttribute("lang", language);
@@ -231,18 +225,16 @@ test.describe("with previews on", () => {
 test.describe("with previews off @previews-off", () => {
   test.skip(PREVIEWS_ON, "needs a build made without previews");
 
-  test("no preview address resolves, for any role", async ({ page }) => {
-    for (const role of ["employee", "manager", "admin", "client"] as const) {
-      await signIn(page, role, "en");
-      for (const preview of ROUTED_PREVIEWS) {
-        await page.goto(at(preview.path, "en"));
-        await expect(page.getByTestId(preview.id), `${role} ${preview.path}`).toHaveCount(0);
-        await expect(page.getByTestId("screen-not-found")).toBeVisible();
-      }
-      await page.goto(at("/dev/gallery", "en"));
-      await expect(page.getByTestId("gallery-root")).toHaveCount(0);
-      await page.getByTestId("action-sign-out").first().click();
+  // Without previews the addresses are not registered at all, so they are unknown addresses: the
+  // 404 page, signed in or not, for every role alike.
+  test("no preview address resolves", async ({ page }) => {
+    for (const preview of ROUTED_PREVIEWS) {
+      await page.goto(at(preview.path, "en"));
+      await expect(page.getByTestId(preview.id), preview.path).toHaveCount(0);
+      await expect(page.getByTestId("screen-not-found"), preview.path).toBeVisible();
     }
+    await page.goto(at("/dev/gallery", "en"));
+    await expect(page.getByTestId("gallery-root")).toHaveCount(0);
   });
 });
 

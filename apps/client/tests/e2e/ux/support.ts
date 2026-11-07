@@ -45,6 +45,27 @@ export async function signIn(page: Page, role: Role, language: Language): Promis
   await expect(page).not.toHaveURL(/\/sign-in/);
 }
 
+/**
+ * Open `path` as `role`. The web app keeps no session across a page load (ADR 010: tokens in
+ * memory only), so an address opened in a fresh page shows sign-in first and, once signed in,
+ * returns to that address (contracts/ui-routes.md, "Deep links"). This is how a bookmark or a
+ * shared link behaves for a real person, so the specs test it rather than work around it.
+ */
+export async function openAs(
+  page: Page,
+  role: Role,
+  language: Language,
+  path: string,
+  query: Record<string, string> = {},
+): Promise<void> {
+  await page.goto(at(path, language, query));
+  await expect(page.getByTestId("sign-in-btn"), `${path} asks for sign-in first`).toBeVisible();
+  await page.getByTestId("email").fill(USERS[role]);
+  await page.getByTestId("password").fill(PASSWORD);
+  await page.getByTestId("sign-in-btn").click();
+  await expect(page, `${path} after sign-in`).toHaveURL((url) => url.pathname === path);
+}
+
 /** Run axe-core on the page (WCAG 2.2 A and AA rules) and fail on serious or critical issues. */
 export async function checkA11y(page: Page, context: string): Promise<void> {
   const results = await new AxeBuilder({ page })

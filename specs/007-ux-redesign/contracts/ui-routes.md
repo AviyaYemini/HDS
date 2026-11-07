@@ -68,6 +68,11 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
   (`role="radio"`), and the profile's phone `profile-phone` with `action-save-profile`.
 - **Sign-in** (kept from 001's specs, which still use them): `email`, `password`, `sign-in-btn`,
   and the refusal `error-message`.
+- **Deep links**: the web keeps no session across a page load (ADR 010), so an address of the
+  signed-in area opened in a fresh page shows sign-in and, once signed in, opens that address
+  (path and query), where the guard then decides as usual (the no-access page for a forbidden one,
+  FR-007). The address to return to is only ever a path of this app, never another site. An
+  unknown address shows `screen-not-found`, signed in or not.
 
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
