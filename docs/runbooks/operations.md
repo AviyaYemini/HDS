@@ -291,30 +291,41 @@ releases (`flux -n flux-system suspend helmrelease <name>` for `hds`, `hds-postg
 Prometheus (in `monitoring`) scrapes the API and the worker on their operations port and reads
 the backups' Jobs from kube-state-metrics. Alertmanager e-mails `OPERATOR_EMAILS` (from `hds/smtp`)
 through the relay, for HDS's five alerts (contracts/ops.md section 3) and for every error Flux
-forwards, under Flux's own names (`FluxHelmReleaseUpgradeFailed`, `FluxOCIRepositoryVerificationError`
-and so on). There are no other rules.
+forwards, under Flux's own names: `Flux`, the kind, and the reason with only its first letter
+capital (`FluxHelmReleaseUpgradefailed`, `FluxOCIRepositoryVerificationerror`; review R185). There
+are no other rules.
 
 **What an e-mail holds**: the subject `[HDS] 1 firing: HdsBackupFailed`, and for each alert its name,
 the object (`Job hds-backup-29001`, `HelmRelease flux-system/hds`), the time it started (UTC) and
 its one-line summary. No labels list, log line or link.
 
+**A Flux alert that "resolves" is not fixed.** Flux reports an error once, and Alertmanager resolves
+it by itself a few minutes later. So the e-mail that follows says `no longer recent, not fixed`
+instead of resolved, and points to `make ops-status`, which fails while the newest deploy is not
+deployed (review R186). HDS's own alerts resolve when the problem is gone, and say `resolved`.
+
 **At a glance**: `make ops-status`. Expected, when all is well, every line `ok` and exit 0:
 
 ```text
-Deployments in hds
+Parts in hds
   ok    hds-api: 2/2 ready, version <commit>
-  ok    hds-worker: 1/1 ready, version <commit>
   ok    hds-web: 1/1 ready, version <commit>
+  ok    hds-worker: 1/1 ready, version <commit>
+  ok    hds-postgres: 1/1 ready, version 16.15
 Backups
   ok    backup: last success <time>
   ok    restore test: last success <time>
   ok    vault snapshot: last success <time>
 Deploys of hds
-  <the last three helm history rows>
+  revision <n>: deployed, hds-0.1.<n>, <commit> (Upgrade complete)
+  ok    the newest deploy, revision <n>, is deployed
 Alerting
   ok    prometheus ready
   ok    alertmanager ready
+  ok    kube-state-metrics ready
   ok    Alertmanager's configuration (alertmanager-hds) is present
+  ok    Alertmanager runs HDS's configuration (receiver operators)
+  ok    the operator applied Alertmanager's configuration
   ok    no alert firing
 Vault
   ok    unsealed
@@ -324,9 +335,12 @@ Each failing item reads `FAIL` and says what is wrong; the exit status is 1. Ale
 here, since nothing e-mails when Alertmanager or Prometheus is down: run it after a restart of the
 machine.
 
-- **Right after set-up**, Alertmanager is not ready until `make ops-flux` has synced its
-  configuration: the Secret `alertmanager-hds`, rendered from `hds/smtp` by hds-secrets. That is
-  expected, not a fault.
+- **Until its configuration is synced** (the Secret `alertmanager-hds`, rendered from `hds/smtp` by
+  hds-secrets; `make ops-flux` waits for it), the operator runs Alertmanager on a fallback with one
+  empty receiver: it is ready, and it drops every alert. `make ops-status` shows that as
+  `Alertmanager does not run HDS's configuration` (review R184). A value in `hds/smtp` the operator
+  refuses leaves the old configuration running, and shows as `the operator has not applied
+  Alertmanager's configuration`.
 - **Changing the recipients or the relay**: `vault kv patch -mount=hds smtp OPERATOR_EMAILS=-` (and
   the like, as in section Vault). Within a minute the Secret is rendered again and Alertmanager
   reloads it; the API and the worker restart for the relay's settings.

@@ -3,13 +3,19 @@
   subject and body: each alert's name, the object it is about, when it started and its one-line
   summary, and nothing else (no labels list, no log line, no link). Mounted from the ConfigMap
   alertmanager-hds-templates; infra/tests/check_alertmanager.sh renders them.
+
+  Flux reports an error once, and Alertmanager resolves it a few minutes later by itself: for an
+  alert named Flux..., "resolved" only means no longer recent, never fixed, so the e-mail says that
+  and points to make ops-status (review R186). Alerts are grouped by name, so a group is all Flux's
+  or all HDS's.
 */}}
-{{ define "email.default.subject" }}[HDS] {{ if eq .Status "firing" }}{{ .Alerts.Firing | len }} firing{{ else }}resolved{{ end }}: {{ .CommonLabels.alertname }}{{ end }}
+{{ define "email.default.subject" }}[HDS] {{ if eq .Status "firing" }}{{ .Alerts.Firing | len }} firing{{ else if match "^Flux" .CommonLabels.alertname }}no longer recent, not fixed{{ else }}resolved{{ end }}: {{ .CommonLabels.alertname }}{{ end }}
 
 {{ define "hds.object" }}{{ if .Labels.job_name }}Job {{ .Labels.job_name }}{{ else if .Labels.name }}{{ .Labels.kind }} {{ .Labels.namespace }}/{{ .Labels.name }}{{ else }}namespace {{ .Labels.namespace }}{{ end }}{{ end }}
 
 {{ define "email.default.html" }}<html><body>
-{{ range .Alerts }}<p><b>{{ .Labels.alertname }}</b> ({{ .Status }})<br>
+{{ range .Alerts }}<p><b>{{ .Labels.alertname }}</b> ({{ if and (eq .Status "resolved") (match "^Flux" .Labels.alertname) }}no longer recent, not fixed{{ else }}{{ .Status }}{{ end }})<br>
 {{ template "hds.object" . }}, since {{ .StartsAt.UTC.Format "2006-01-02 15:04 UTC" }}<br>
-{{ or .Annotations.summary .Annotations.message }}</p>
+{{ or .Annotations.summary .Annotations.message }}{{ if and (eq .Status "resolved") (match "^Flux" .Labels.alertname) }}<br>
+Flux reports an error once, so this only means it is no longer recent: it may still be failing. Run make ops-status, which fails while the newest deploy is not deployed.{{ end }}</p>
 {{ end }}</body></html>{{ end }}

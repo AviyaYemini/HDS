@@ -845,3 +845,24 @@ from GitHub's issuer.
   files; J's ci-local had passed only because the file was not tracked yet. 9455551 is red on that
   test; this commit fixes it with run-time values. From now on new files are staged with
   `git add -N` before ci-local.
+
+## The reviewer's check of Group K (6a5340b): R184 to R187
+
+- **R184**: prometheus-operator's AlertmanagerSpec.configSecret: when the Secret or its key is
+  missing, it "provisions a minimal Alertmanager configuration with one empty receiver (effectively
+  dropping alert notifications)". So Alertmanager is Ready and sends nothing, the reverse of R165.
+  `make ops-status` now checks:
+  - that `/api/v2/receivers` returns exactly `operators` (names only: the configuration holds
+    personal addresses);
+  - the Alertmanager object's `Reconciled` condition (the CRD's name, checked).
+  `make ops-flux` (T063) waits for `alertmanager-hds`.
+- **R185**: Flux's alert names are `Flux` + kind + `cases.Title(reason)`:
+  `FluxHelmReleaseUpgradefailed`, `FluxOCIRepositoryVerificationerror` (source-controller v1.9.6's
+  constant is `VerificationError`).
+- **R186**: a resolved Flux alert says "no longer recent, not fixed" and points to
+  `make ops-status`. Alertmanager's templates have no `tmpl` function (a first try failed
+  `amtool check-config` on it), so the subject tests `match "^Flux"` directly.
+- **R187**: the runbook's sample output updated.
+- R183: 9455551 stays as it is (squash merge); the `git add -N` habit stays.
+- Mutants, each failing its test: the fallback passed as HDS's configuration, Reconciled not
+  checked, a resolved Flux alert read as resolved, every resolved alert read as not fixed.

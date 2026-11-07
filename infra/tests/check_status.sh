@@ -36,6 +36,12 @@ case "$*" in
     "-n monitoring get secret alertmanager-hds") [ -z "${FAKE_NO_AM_SECRET:-}" ] ;;
     "get --raw /api/v1/namespaces/monitoring/services/alertmanager-operated:9093/proxy/api/v2/alerts"*)
         printf '%s' "${FAKE_ALERTS-[]}" ;;
+    "get --raw /api/v1/namespaces/monitoring/services/alertmanager-operated:9093/proxy/api/v2/receivers")
+        if [ "${FAKE_RECEIVERS+set}" = set ]; then printf '%s' "$FAKE_RECEIVERS"; else
+            printf '%s' '[{"name":"operators"}]'; fi ;;
+    "-n monitoring get alertmanagers -o json")
+        printf '{"items":[{"metadata":{"name":"kube-prometheus-stack-alertmanager"},"status":{"conditions":[{"type":"Available","status":"True"},{"type":"Reconciled","status":"%s"}]}}]}' \
+            "${FAKE_RECONCILED:-True}" ;;
     "-n vault exec vault-0 -- vault status -format=json") printf '{"sealed": %s}' "${FAKE_SEALED:-false}" ;;
     *) echo "fake kubectl: unexpected: $*" >&2; exit 2 ;;
 esac
@@ -113,9 +119,16 @@ check "Prometheus not ready fails (review R161)" 1 "FAIL  prometheus not ready" 
 check "Alertmanager not ready fails" 1 "FAIL  alertmanager not ready" FAKE_ALERTMANAGER=""
 check "Alertmanager's configuration missing fails" 1 "FAIL  Alertmanager's configuration (alertmanager-hds) is missing" \
     FAKE_NO_AM_SECRET=1
-check "firing alerts fail, by name" 1 "FAIL  firing: FluxHelmReleaseUpgradeFailed, HdsBackupFailed" \
-    FAKE_ALERTS='[{"labels":{"alertname":"HdsBackupFailed"}},{"labels":{"alertname":"FluxHelmReleaseUpgradeFailed"}}]'
+check "firing alerts fail, by name" 1 "FAIL  firing: FluxHelmReleaseUpgradefailed, HdsBackupFailed" \
+    FAKE_ALERTS='[{"labels":{"alertname":"HdsBackupFailed"}},{"labels":{"alertname":"FluxHelmReleaseUpgradefailed"}}]'
 check "Alertmanager's API unreadable fails" 1 "FAIL  the firing alerts could not be read" FAKE_ALERTS=
+check "Alertmanager running the operator's fallback fails (review R184)" 1 \
+    "FAIL  Alertmanager does not run HDS's configuration (receivers [\"null\"])" FAKE_RECEIVERS='[{"name":"null"}]'
+check "its receivers unreadable fails" 1 "FAIL  Alertmanager does not run HDS's configuration (receivers unreadable)" \
+    FAKE_RECEIVERS=
+check "a configuration the operator refused fails" 1 \
+    "FAIL  the operator has not applied Alertmanager's configuration (kube-prometheus-stack-alertmanager)" \
+    FAKE_RECONCILED=False
 check "a sealed Vault fails" 1 "FAIL  sealed: run make ops-unseal" FAKE_SEALED=true
 
 [ "$failures" -eq 0 ] || { echo "status checks: $failures failed" >&2; exit 1; }

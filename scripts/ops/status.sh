@@ -6,7 +6,9 @@
 #   - the backup, the restore test and Vault's snapshot: the last success (too old or never is a
 #     FAIL), and the last failure of the newest Job, if it failed; a snapshot not configured yet;
 #   - the last three Helm revisions of hds, the newest not deployed (failed, stuck) as a FAIL;
-#   - alerting itself (review R161): Prometheus, Alertmanager and kube-state-metrics ready, Alertmanager's configuration
+#   - alerting itself (reviews R161, R184): Prometheus, Alertmanager and kube-state-metrics ready,
+#     Alertmanager running HDS's configuration (its receivers are exactly "operators") and the
+#     operator having applied it (Reconciled), Alertmanager's configuration
 #     Secret present, and the alerts firing now, read from Alertmanager's API through the API
 #     server's service proxy (no port-forward to manage);
 #   - Vault: sealed is a FAIL.
@@ -114,7 +116,27 @@ if kubectl -n "$mon" get secret alertmanager-hds > /dev/null 2>&1; then
 else
     bad "Alertmanager's configuration (alertmanager-hds) is missing: is hds-secrets synced?"
 fi
-alerts=$(kubectl get --raw "/api/v1/namespaces/$mon/services/alertmanager-operated:9093/proxy/api/v2/alerts?active=true&silenced=false&inhibited=false" 2> /dev/null) \
+# The configuration Alertmanager runs is HDS's: without alertmanager-hds the operator runs a
+# fallback with one empty receiver, which drops every alert and is Ready all the same (review
+# R184). Only the receivers' names are read: the configuration holds personal addresses.
+proxy="/api/v1/namespaces/$mon/services/alertmanager-operated:9093/proxy/api/v2"
+receivers=$(kubectl get --raw "$proxy/receivers" 2> /dev/null | jq -c '[.[].name] | sort') || receivers=""
+if [ "$receivers" = '["operators"]' ]; then
+    ok "Alertmanager runs HDS's configuration (receiver operators)"
+else
+    bad "Alertmanager does not run HDS's configuration (receivers ${receivers:-unreadable}): alerts are dropped"
+fi
+# A configuration the operator refused (a bad value written to hds/smtp, say) leaves the old one
+# running: the Alertmanager object's Reconciled condition is then not True (review R184).
+unreconciled=$(kubectl -n "$mon" get alertmanagers -o json 2> /dev/null | jq -r '[.items[]
+    | select(any(.status.conditions[]?; .type == "Reconciled" and .status == "True") | not)
+    | .metadata.name] | join(", ")') || unreconciled="unreadable"
+if [ -z "$unreconciled" ]; then
+    ok "the operator applied Alertmanager's configuration"
+else
+    bad "the operator has not applied Alertmanager's configuration ($unreconciled): see kubectl -n $mon describe alertmanager"
+fi
+alerts=$(kubectl get --raw "$proxy/alerts?active=true&silenced=false&inhibited=false" 2> /dev/null) \
     || alerts=""
 if [ -z "$alerts" ]; then
     bad "the firing alerts could not be read from Alertmanager"

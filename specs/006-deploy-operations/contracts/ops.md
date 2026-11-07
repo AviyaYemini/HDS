@@ -103,7 +103,7 @@ do not; only each CronJob's newest Job counts. Two recording rules, `hds:job_own
 | `HdsRestoreTestFailed` | the newest `hds-restore-test` Job failed |
 | `HdsRestoreTestMissing` | no successful restore test for 8 days, or none 8 days after the CronJob was made, for 1 h (`for: 1h`) |
 | `HdsVaultSnapshotFailed` | the newest `hds-vault-snapshot` Job failed; while Vault is sealed after a restart this fires, as a reminder to unseal |
-| Flux's own, `Flux<Kind><Reason>` (for example `FluxHelmReleaseUpgradeFailed`, `FluxOCIRepositoryVerificationError`) | Flux reports an error on one of the three HelmReleases or their OCIRepositories (forwarded by Flux's Alertmanager provider, under the name Flux gives it; review R162). Earlier named `HdsDeployFailed` here, which Flux cannot send |
+| Flux's own, `Flux` + the kind + the reason with only its first letter capital (for example `FluxHelmReleaseUpgradefailed`, `FluxOCIRepositoryVerificationerror`; review R185) | Flux reports an error on one of the three HelmReleases or their OCIRepositories (forwarded by Flux's Alertmanager provider, under the name Flux gives it; review R162). Earlier named `HdsDeployFailed` here, which Flux cannot send. Flux reports an error once, so its "resolved" e-mail says the error is no longer recent, not that it is fixed (review R186) |
 
 Each message gives the alert's name, the object, the time and a one-line reason (FR-010a). It never
 quotes a log line, a secret or any personal data. There are no other rules: rules on error rates or

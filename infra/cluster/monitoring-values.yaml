@@ -56,7 +56,9 @@ alertmanager:
       sha: e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     # The configuration is the Secret alertmanager-hds, rendered by the Vault Secrets Operator from
     # hds/smtp (infra/helm/hds-secrets): the relay's password and the operators' addresses are in no
-    # file here. Until `make ops-flux` has synced it, Alertmanager is not Ready (T063).
+    # file here. Until it is synced, the operator runs Alertmanager on a fallback with one empty
+    # receiver, which is Ready and drops every alert; `make ops-status` fails on that (its receivers
+    # are not "operators"; review R184).
     useExistingSecret: true
     configSecret: alertmanager-hds
     # The message templates, mounted at /etc/alertmanager/configmaps/alertmanager-hds-templates/.
