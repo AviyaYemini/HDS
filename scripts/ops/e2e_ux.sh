@@ -30,12 +30,22 @@ if ! mkdir "$LOCK" 2>/dev/null; then
     echo "e2e_ux: another run holds $LOCK: $(cat "$LOCK/holder" 2>/dev/null || echo unknown)" >&2
     exit 1
 fi
+# Set at once, so every exit from here on (a refusal, or a failure under set -e) frees the lock.
+scratch=""
+api_pid=""
+# Called by the EXIT trap below, which ShellCheck does not follow.
+# shellcheck disable=SC2329
+cleanup() {
+    if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
+    if [ -n "$scratch" ]; then rm -rf "$scratch"; fi
+    rm -rf "$LOCK"
+}
+trap cleanup EXIT
 printf '%s pid %s in %s since %s\n' "${HDS_SESSION_NAME:-$(whoami)}" "$$" "$ROOT" "$(date -u +%H:%M:%SZ)" \
     > "$LOCK/holder"
 for port in "$PORT" 3000; do
     if holder=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1 " pid " $2}') \
         && [ -n "$holder" ]; then
-        rm -rf "$LOCK"
         echo "e2e_ux: port $port is taken by $holder" >&2
         exit 1
     fi
@@ -44,20 +54,11 @@ done
 busy=$(docker exec infra-postgres-1 psql -U hds -d postgres -tAc \
     "SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid()")
 if [ "$busy" != "0" ]; then
-    rm -rf "$LOCK"
     echo "e2e_ux: $DB_NAME has $busy other connection(s); another run may be using it" >&2
     exit 1
 fi
 
 scratch="$(mktemp -d)"
-api_pid=""
-# Called by the EXIT trap below, which ShellCheck does not follow.
-# shellcheck disable=SC2329
-cleanup() {
-    if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
-    rm -rf "$scratch" "$LOCK"
-}
-trap cleanup EXIT
 
 api_env=(ENVIRONMENT=test "DATABASE_URL=$DATABASE_URL"
     JWT_SECRET_KEY=e2e-only-not-a-secret-0123456789-abcdefgh LOGIN_RATE_LIMIT_PER_NETWORK=0
