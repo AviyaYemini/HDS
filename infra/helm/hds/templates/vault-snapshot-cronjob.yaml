@@ -73,7 +73,7 @@ spec:
                       path: token
             - name: backups
               persistentVolumeClaim:
-                claimName: {{ include "hds.name" . }}-backups
+                claimName: {{ .Values.backup.storage.claimName | quote }}
             - name: tmp
               emptyDir: {}
 {{- end }}

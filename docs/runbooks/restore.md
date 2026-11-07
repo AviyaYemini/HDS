@@ -6,7 +6,9 @@ Following it end to end, a lost machine is serving again in under an hour (specs
 
 Background: research R11 in `specs/006-deploy-operations/research.md`. A daily backup is
 `hds-<UTC yyyymmddTHHMMSSZ>.dump` and its `.manifest.json`, encrypted by rclone crypt, on the
-machine (`local-crypt:`, the `hds-backups` volume) and on Drive (`offsite-crypt:`). Vault's weekly
+machine (`local-crypt:`, the claim `hds-backups`, made from `infra/cluster/backup-pvc.yaml`
+outside Helm by `make ops-flux` (Proposed, T063) or by hand with `kubectl apply -f`, which local-path keeps under `/var/lib/rancher/k3s/storage` on the node) and on Drive
+(`offsite-crypt:`). Uninstalling hds keeps the claim; deleting it deletes the local copies. Vault's weekly
 snapshot is `vault-<UTC time>.snap.age`, encrypted with age, on the plain `local:` and `offsite:`
 remotes. The `make ops-*` targets are the ones `contracts/ops.md` §5 lists, run from the operator's
 machine with flux, helm and kubectl (`scripts/ops/restore.sh` describes each step of

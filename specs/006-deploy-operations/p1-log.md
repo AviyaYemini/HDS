@@ -866,3 +866,56 @@ from GitHub's issuer.
 - R183: 9455551 stays as it is (squash merge); the `git add -N` habit stays.
 - Mutants, each failing its test: the fallback passed as HDS's configuration, Reconciled not
   checked, a resolved Flux alert read as resolved, every resolved alert read as not fixed.
+
+## Group L: the rolling-update proof (T059 to T062), 2026-11-07
+
+- **Settled with the reviewer**:
+  - (A) production settings, with mailpit (STARTTLS required); no mail is sent during the run, so
+    no chart value was added for trusting its certificate; the job checks mailpit got none.
+  - (B) Flux's check on a throwaway chart, with a key made in the job, also refusing a chart
+    signed with another key.
+  - (C1) a new Playwright spec in `apps/client/tests/cluster/`, outside both runners.
+  - The compatibility check on its own throwaway database.
+  - No summary jobs: a job skipped by its own `if` reports success. `rolling-update` is gated on a
+    new `deploy` output of `changes`, `compatibility` on `api`. main was merged in (7fe3730, #12)
+    for that `changes` job.
+- **Tools, nothing installed**: k3d from its pinned image with the Docker socket, kubectl from
+  the k3s server (pinned by the k3s digest), helm from its pinned image on k3d's network.
+- **The proof found a product defect, R189**: on the first run `helm install hds --wait` timed out
+  with every pod ready, on the chart's backup claim, Pending under local-path (WaitForFirstConsumer)
+  until the 03:30 backup. Helm's waiter and helm-controller's kstatus both need it Bound, so the
+  first install on the shared cluster would have failed for good. The reviewer chose the fix: the
+  claim made outside Helm (`infra/cluster/backup-pvc.yaml`, by `make ops-flux`) and mounted by name.
+  Rejected: a static hostPath (it ignores fsGroup; a claim's spec cannot change, so main's chart
+  could not be upgraded to it), a hook, no wait, a dummy mount, an Immediate class. The base,
+  main's chart, still makes the claim, so the job binds it with a throwaway pod during the base
+  install; the upgrade keeps it (resource-policy keep).
+- **Fixes to the proof itself, from its runs**:
+  - TERM reached a subshell wrapper, not load.py, so no totals were printed (exec the venv's
+    python).
+  - The job's field is `status`, not `state`.
+  - The API image has no httpx, so the forwarded-address probe uses urllib.
+  - The smoke journey first loaded `/me` and `/employees` by address. `/me` is the API's path on the
+    same host, and the web build keeps tokens in memory (ADR 010), so a page load starts signed
+    out. It now moves by the app's own navigation.
+  - The tests' guard allows only `hds_p3_test` or a run's own database, so the throwaway
+    container's database is named `hds_p3_test`, in its own container.
+- **The passing run** (base 4081749, main after #12, to the head):
+  - load.py: 882 reads, 220 writes, 1 refresh, 0 failures through the upgrade;
+  - the head's throwaway migration applied; the schedule job queued before the upgrade ended
+    `succeeded`, exactly once; mailpit received 0 messages;
+  - `make ops-status` failed on exactly the 11 lines a cluster without monitoring, Vault or backups
+    gives (R188's line among them);
+  - the forwarded address: two pods each `401` then `429` on their 31st failure, a third claiming
+    the first's address `401 429` under its own;
+  - the Admin signed in on the web build, moved through availability, shifts and pay, and signed
+    out; a reload showed sign-in;
+  - Flux v1.9.6's source-controller: unsigned `False VerificationError`, another key `False
+    VerificationError`, the trusted key `True Succeeded`.
+- **Compatibility** (T061), at the group's end: the base (4081749) passed its integration tests on
+  the head's schema, 1214 passed, alembic_version 024_schedule_job_trace_context. **The mutant**, a
+  migration renaming `shifts.headcount` in a detached throwaway worktree (removed after, no branch,
+  nothing pushed): 110 failed, 430 errors, the base's `INSERT INTO shifts (... headcount ...)`
+  refused.
+- **New CI jobs, for the ruleset after their first run**: "Rolling update on k3d (base to head,
+  under load)" and "Old code on the new schema (compatibility)".

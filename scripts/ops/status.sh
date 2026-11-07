@@ -77,6 +77,19 @@ job_line() {
 }
 
 section "Backups"
+# The local copies' claim is made outside Helm (infra/cluster/backup-pvc.yaml; review R189), under
+# the name the backup CronJob mounts (backup.storage.claimName; review R197). Missing, or Lost, is a
+# FAIL; Bound, or Pending before the first backup binds it, is fine (review R194).
+claim=$(kubectl -n "$ns" get cronjob hds-backup \
+    -o jsonpath='{.spec.jobTemplate.spec.template.spec.volumes[?(@.name=="backups")].persistentVolumeClaim.claimName}' \
+    2> /dev/null) || claim=""
+claim=${claim:-hds-backups}
+phase=$(kubectl -n "$ns" get pvc "$claim" -o jsonpath='{.status.phase}' 2> /dev/null) || phase=""
+case $phase in
+    Bound | Pending) ok "the backups' claim $claim: $phase" ;;
+    "") bad "the backups' claim $claim is missing: kubectl apply -f infra/cluster/backup-pvc.yaml (or the cluster's own claim of that name)" ;;
+    *) bad "the backups' claim $claim is $phase: the local copies cannot be written" ;;
+esac
 job_line hds-backup "backup" $((26 * 3600))
 job_line hds-restore-test "restore test" $((8 * 86400))
 if kubectl -n "$ns" get cronjob hds-vault-snapshot > /dev/null 2>&1; then
@@ -128,13 +141,22 @@ else
 fi
 # A configuration the operator refused (a bad value written to hds/smtp, say) leaves the old one
 # running: the Alertmanager object's Reconciled condition is then not True (review R184).
-unreconciled=$(kubectl -n "$mon" get alertmanagers -o json 2> /dev/null | jq -r '[.items[]
-    | select(any(.status.conditions[]?; .type == "Reconciled" and .status == "True") | not)
-    | .metadata.name] | join(", ")') || unreconciled="unreadable"
-if [ -z "$unreconciled" ]; then
-    ok "the operator applied Alertmanager's configuration"
+# Read first, then judged: a refused or empty read is a FAIL, never "nothing unreconciled" (review
+# R188; without pipefail a pipe from a failed kubectl would hand jq nothing and pass).
+ams=$(kubectl -n "$mon" get alertmanagers -o json 2> /dev/null) || ams=""
+if [ -z "$ams" ]; then
+    bad "the Alertmanager objects could not be read"
+elif [ "$(printf '%s' "$ams" | jq '.items | length')" = 0 ]; then
+    bad "no Alertmanager object in $mon"
 else
-    bad "the operator has not applied Alertmanager's configuration ($unreconciled): see kubectl -n $mon describe alertmanager"
+    unreconciled=$(printf '%s' "$ams" | jq -r '[.items[]
+        | select(any(.status.conditions[]?; .type == "Reconciled" and .status == "True") | not)
+        | .metadata.name] | join(", ")' 2> /dev/null) || unreconciled="unreadable"
+    if [ -z "$unreconciled" ]; then
+        ok "the operator applied Alertmanager's configuration"
+    else
+        bad "the operator has not applied Alertmanager's configuration ($unreconciled): see kubectl -n $mon describe alertmanager"
+    fi
 fi
 alerts=$(kubectl get --raw "$proxy/alerts?active=true&silenced=false&inhibited=false" 2> /dev/null) \
     || alerts=""

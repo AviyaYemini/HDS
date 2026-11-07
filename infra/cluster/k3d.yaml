@@ -1,0 +1,24 @@
+# The k3d cluster (specs/006-deploy-operations T060, research R1): the operator's machine (T063)
+# and CI's rolling-update job (T059). One server, k3s pinned by digest (infra/VERSIONS.md), Traefik
+# as k3s ships it, local-path volumes. The ingress answers on the host's 8080 (HTTP) and 8443.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: hds
+servers: 1
+agents: 0
+image: rancher/k3s:v1.37.1-k3s1@sha256:ca7f37d993d82ef0dcdcfecb2e0e2618ea541dbaffc620c8cedebe01a82acd0d
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+  - port: 8443:443
+    nodeFilters:
+      - loadbalancer
+options:
+  k3d:
+    wait: true
+    timeout: 180s
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

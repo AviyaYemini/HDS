@@ -16,6 +16,7 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 | `helm/hds` | The application chart: the API, the worker, the web client, the migration hook, the ingress |
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
 | `helm/hds-secrets` | The Vault Secrets Operator's objects, which keep the `hds-*` Secrets; installed first |
+| `cluster/backup-pvc.yaml` | The backups' claim `hds-backups`, made outside Helm, which the backup and the snapshot mount by name: by `make ops-flux` (**Proposed**, T063, Group M), and until that exists by hand, `kubectl apply -f infra/cluster/backup-pvc.yaml` once the `hds` namespace exists |
 | `cluster/vault-values.yaml`, `cluster/vso-values.yaml` | Vault (one node, raft, its NetworkPolicy) and the Vault Secrets Operator, for their pinned charts |
 | `cluster/vault-policy.hcl`, `cluster/vault-snapshot-policy.hcl`, `cluster/vault-alertmanager-policy.hcl` | Vault's three policies, written by `make ops-vault-configure` |
 | `tests/check_vault_policy.sh` | Those policies and roles against a dev Vault of the cluster's version (CI `chart` job) |
@@ -24,6 +25,9 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 | `cluster/vault-alertmanager-policy.hcl` | Vault's policy for Alertmanager's sign-in: `hds/smtp` only |
 | `tests/check_alertmanager.sh` | Alertmanager's configuration filled with hostile values, and its e-mails, with amtool (CI `chart` job) |
 | `tests/check_status.sh` | `make ops-status` against a fake kubectl and helm (CI `lint` job) |
+| `cluster/k3d.yaml` | The k3d cluster: one server, k3s pinned by digest, the ingress on 8080 and 8443 |
+| `tests/rolling_update.sh`, `tests/rolling-update-values.yaml`, `tests/load.py`, `tests/flux_verify.sh` | The rolling-update proof on k3d: the base's release upgraded to the head's under signed-in load, Flux's signature check, the web build on the upgraded cluster (CI `rolling-update` job) |
+| `tests/compat.sh` | The base's code and integration tests on the head's schema, on a throwaway PostgreSQL (CI `compatibility` job) |
 | `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
 | `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
 | `helm/tests/assert.sh` | Lints, validates and checks the rendered charts and `flux/` (CI `chart` job, `make ci-local`) |

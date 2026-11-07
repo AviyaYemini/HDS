@@ -376,7 +376,14 @@ while the machine slept happens when it wakes. It runs in the `hds-backup` image
 2. A manifest: the migration version, the time, the row count of every table, the size and a
    SHA-256.
 3. Two copies through rclone `crypt` remotes:
-   - `local-crypt:`, over the plain `local:` remote, a persistent volume on the machine
+   - `local-crypt:`, over the plain `local:` remote, a persistent volume on the machine: the claim
+     `hds-backups`, made outside Helm (`infra/cluster/backup-pvc.yaml`, applied by `make ops-flux`)
+     and mounted by name by the backup and the snapshot (review R189). In the chart, the claim
+     stayed Pending under k3s's local-path (WaitForFirstConsumer) until the first backup, so Helm's
+     --wait, and Flux's, timed out at every install. A static hostPath volume was rejected: it
+     ignores fsGroup, so the non-root Jobs could not write, and a claim's spec cannot change, so
+     main's chart could not be upgraded to it. Uninstalling hds keeps the claim; deleting it deletes
+     the local copies, which local-path keeps under `/var/lib/rancher/k3s/storage` on the node
    - `offsite-crypt:`, over the plain `offsite:` remote, a Google Drive folder
    - Encryption is NaCl secretbox under a password from Vault, so Drive holds only ciphertext and
      encrypted names (FR-012).

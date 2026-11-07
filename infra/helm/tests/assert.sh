@@ -255,8 +255,10 @@ for env in local ci; do
     expect "backup's remotes from hds-backup" "hds-backup" "$(yq "$f" "$bp | .containers[0].envFrom[0].secretRef.name")"
     expect "local copies on the hds-backups volume" "hds-backups /backups" \
         "$(yq "$f" "$bp | [(.volumes[] | select(.name == \"backups\") | .persistentVolumeClaim.claimName), (.containers[0].volumeMounts[] | select(.name == \"backups\") | .mountPath)] | join(\" \")")"
-    expect "the hds-backups volume outlives the release" "keep" \
-        "$(yq "$f" 'select(.kind == "PersistentVolumeClaim" and .metadata.name == "hds-backups") | .metadata.annotations["helm.sh/resource-policy"]')"
+    expect "the chart renders no PersistentVolumeClaim: the backup claim is made outside it (R189)" 0 \
+        "$(yq "$f" '[select(.kind == "PersistentVolumeClaim")] | length')"
+    expect "the backup and the snapshot mount the named claim" "hds-backups" \
+        "$(yq "$f" 'select(.kind == "CronJob") | .spec.jobTemplate.spec.template.spec.volumes[]? | select(.name == "backups") | .persistentVolumeClaim.claimName' | sort -u)"
     expect "backup image non-root" "999 true" \
         "$(yq "$f" "$bp | [.securityContext.runAsUser, .containers[0].securityContext.readOnlyRootFilesystem] | join(\" \")")"
     r='select(.kind == "CronJob" and .metadata.name == "hds-restore-test") | .spec'

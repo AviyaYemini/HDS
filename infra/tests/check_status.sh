@@ -27,6 +27,10 @@ case "$*" in
     "-n hds get cronjob hds-vault-snapshot") [ -z "${FAKE_NO_SNAPSHOT:-}" ] ;;
     "-n hds get cronjob hds-vault-snapshot -o json")
         printf '{"status":{"lastSuccessfulTime":"2026-11-01T03:05:00Z"}}' ;;
+    "-n hds get cronjob hds-backup -o jsonpath="*) printf '%s' "${FAKE_CLAIM:-hds-backups}" ;;
+    "-n hds get pvc "*" -o jsonpath={.status.phase}")
+        [ -z "${FAKE_NO_PVC:-}" ] || exit 1
+        printf '%s' "${FAKE_PVC_PHASE:-Bound}" ;;
     "-n hds get jobs -o json")
         [ -z "${FAKE_JOBS_REFUSED:-}" ] || exit 1
         if [ -n "${FAKE_JOBS:-}" ]; then printf '%s' "$FAKE_JOBS"; else printf '%s' '{"items":[]}'; fi ;;
@@ -40,6 +44,9 @@ case "$*" in
         if [ "${FAKE_RECEIVERS+set}" = set ]; then printf '%s' "$FAKE_RECEIVERS"; else
             printf '%s' '[{"name":"operators"}]'; fi ;;
     "-n monitoring get alertmanagers -o json")
+        [ -z "${FAKE_NO_AM_CRD:-}" ] || exit 1
+        [ -z "${FAKE_NO_AM_OBJECT:-}" ] || { printf '{"items":[]}'; exit 0; }
+        [ -z "${FAKE_AM_GARBAGE:-}" ] || { printf '{"items": [ {"broken"'; exit 0; }
         printf '{"items":[{"metadata":{"name":"kube-prometheus-stack-alertmanager"},"status":{"conditions":[{"type":"Available","status":"True"},{"type":"Reconciled","status":"%s"}]}}]}' \
             "${FAKE_RECONCILED:-True}" ;;
     "-n vault exec vault-0 -- vault status -format=json") printf '{"sealed": %s}' "${FAKE_SEALED:-false}" ;;
@@ -129,6 +136,18 @@ check "its receivers unreadable fails" 1 "FAIL  Alertmanager does not run HDS's 
 check "a configuration the operator refused fails" 1 \
     "FAIL  the operator has not applied Alertmanager's configuration (kube-prometheus-stack-alertmanager)" \
     FAKE_RECONCILED=False
+check "Alertmanager objects that cannot be read fail, not pass (review R188)" 1 \
+    "FAIL  the Alertmanager objects could not be read" FAKE_NO_AM_CRD=1
+check "no Alertmanager object fails" 1 "FAIL  no Alertmanager object in monitoring" FAKE_NO_AM_OBJECT=1
+check "a missing backups claim fails, naming the file (review R189)" 1 \
+    "FAIL  the backups' claim hds-backups is missing: kubectl apply -f infra/cluster/backup-pvc.yaml" FAKE_NO_PVC=1
+check "a Pending claim, before the first backup, is fine" 0 "ok    the backups' claim hds-backups: Pending" \
+    FAKE_PVC_PHASE=Pending
+check "a Lost claim fails (review R194)" 1 "FAIL  the backups' claim hds-backups is Lost" FAKE_PVC_PHASE=Lost
+check "the claim is the one the CronJob mounts (review R197)" 0 "ok    the backups' claim cloud-backups: Bound" \
+    FAKE_CLAIM=cloud-backups
+check "Alertmanager objects that are not JSON fail, not stop the script (review R196)" 1 \
+    "FAIL  the operator has not applied Alertmanager's configuration (unreadable)" FAKE_AM_GARBAGE=1
 check "a sealed Vault fails" 1 "FAIL  sealed: run make ops-unseal" FAKE_SEALED=true
 
 [ "$failures" -eq 0 ] || { echo "status checks: $failures failed" >&2; exit 1; }

@@ -1,0 +1,20 @@
+# The claim of the backups' local copies (specs/006-deploy-operations research R11; review R189),
+# made outside Helm: `make ops-flux` (Proposed, T063, Group M) applies it once the hds namespace
+# exists, before hds is handed to Flux; until that target exists, apply it by hand
+# (`kubectl apply -f infra/cluster/backup-pvc.yaml`). infra/tests/rolling_update.sh does the same.
+#
+# It is not the chart's: under a WaitForFirstConsumer class (k3s's local-path) a claim stays
+# Pending until its first user, the 03:30 backup, and Helm's --wait (Flux's too) would time out on
+# it at every install. Applied by kubectl, it binds at the first backup or snapshot, as local-path
+# intends. Uninstalling hds keeps it; deleting it deletes the local copies. A cloud move changes
+# only this file (its class and size).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hds-backups
+  namespace: hds
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
