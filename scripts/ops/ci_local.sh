@@ -61,7 +61,7 @@ step "the rollback and resume targets (fake flux, helm and kubectl)"
 infra/tests/check_deploy_ops.sh
 
 step "the release's scripts and workflow"
-infra/tests/check_release.sh
+GITHUB_ACTIONS=true infra/tests/check_release.sh
 
 step "make ops-status (a fake kubectl and helm)"
 infra/tests/check_status.sh

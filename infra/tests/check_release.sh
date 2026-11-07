@@ -144,13 +144,15 @@ cat > "$scratch/sign" <<FAKE
 printf 'sign %s\n' "\$1" >> "$scratch/calls"
 FAKE
 chmod +x "$scratch/skopeo" "$scratch/sign"
+# CI sets GITHUB_ACTIONS=true, and the scripts then refuse every stand-in (R128), so each run with
+# stand-ins drops it (R206); the refusal cases below set it again on purpose.
 # digest_of TEXT: the sha256 digest of TEXT, as the stand-in registry answers it.
 digest_of() { printf 'sha256:%s' "$(printf 'manifest of %s' "$1" | sha256sum | cut -d ' ' -f 1)"; }
 A="sha256:$(printf 'a%.0s' {1..64})" W="sha256:$(printf 'b%.0s' {1..64})" B="sha256:$(printf 'c%.0s' {1..64})"
 publish() {
     : > "$scratch/calls"
-    env HDS_HELM="$scratch/helm" HDS_SKOPEO="$scratch/skopeo" HDS_SIGN="$scratch/sign" "$@" \
-        "$ROOT/infra/release/publish_charts.sh" aviyayemini 0.1.42 \
+    env -u GITHUB_ACTIONS HDS_HELM="$scratch/helm" HDS_SKOPEO="$scratch/skopeo" HDS_SIGN="$scratch/sign" \
+        "$@" "$ROOT/infra/release/publish_charts.sh" aviyayemini 0.1.42 \
         0123456789abcdef0123456789abcdef01234567 "$A" "$W" "$B" < /dev/null
 }
 pushed() { grep -q "^helm push out/$1" "$scratch/calls"; }
@@ -186,7 +188,7 @@ expect "an image by tag in the packaged chart fails before any push" 1 "not an i
     publish FAKE_IMAGE=ghcr.io/aviyayemini/hds-api:latest
 never "nothing was pushed" grep -q "^helm push" "$scratch/calls"
 expect "a digest that is not one is refused" 1 "is not an image digest" \
-    env HDS_HELM="$scratch/helm" "$ROOT/infra/release/publish_charts.sh" aviyayemini 0.1.42 abc \
+    env -u GITHUB_ACTIONS HDS_HELM="$scratch/helm" "$ROOT/infra/release/publish_charts.sh" aviyayemini 0.1.42 abc \
     sha256:1 "$W" "$B"
 
 echo "== push_images.sh"
@@ -199,8 +201,8 @@ for name in api web backup; do
 done
 push() {
     : > "$scratch/calls"
-    env HDS_SKOPEO="$scratch/skopeo" HDS_SIGN="$scratch/sign" "$@" "$ROOT/infra/release/push_images.sh" \
-        proof 0123456789abcdef0123456789abcdef01234567 "$layouts"
+    env -u GITHUB_ACTIONS HDS_SKOPEO="$scratch/skopeo" HDS_SIGN="$scratch/sign" "$@" \
+        "$ROOT/infra/release/push_images.sh" proof 0123456789abcdef0123456789abcdef01234567 "$layouts"
 }
 expect "the three images are pushed and their digests given" 0 "backup_digest=sha256:" push
 for name in api web backup; do
@@ -212,7 +214,7 @@ never "no image is signed by tag" grep -q "^sign [^@]*$" "$scratch/calls"
 
 echo "== sign.sh and the stand-ins in GitHub Actions"
 expect "sign.sh refuses a tag" 1 "sign by digest only" \
-    env HDS_COSIGN=true "$ROOT/infra/release/sign.sh" ghcr.io/aviyayemini/hds-api:0123
+    env -u GITHUB_ACTIONS HDS_COSIGN=true "$ROOT/infra/release/sign.sh" ghcr.io/aviyayemini/hds-api:0123
 expect "sign.sh refuses a key in GitHub Actions" 1 "never in GitHub Actions" \
     env GITHUB_ACTIONS=true HDS_SIGN_KEY=/tmp/k "$ROOT/infra/release/sign.sh" "ghcr.io/x/y@$A"
 expect "sign.sh refuses a stand-in cosign in GitHub Actions" 1 "never in GitHub Actions" \
