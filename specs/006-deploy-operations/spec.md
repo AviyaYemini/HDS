@@ -294,6 +294,9 @@ outside.
   a database change is a separate, deliberate step and is never part of it. **Proposed.**
 - **FR-022**: Each deploy MUST be recorded with its version, time, and outcome. **Proposed.**
 - **FR-023**: Deploys MUST NOT run at the same time; a second waits for the first. **Proposed.**
+- **FR-028**: Each published version MUST carry proof that the project's own release process made it
+  from the main line, and the shared environment MUST install only a version with that proof, never
+  one without it or with proof from anyone else. **Proposed** (the owner's request, 2026-11-07).
 
 **Secrets**
 

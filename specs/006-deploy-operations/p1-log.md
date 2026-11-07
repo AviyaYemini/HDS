@@ -698,3 +698,28 @@ Branch `006-deploy-operations-i-l` from `main` at bc68070 (PR 3 merged as #11).
   the hds-postgres HelmRelease too and sets it back.
 - Mutants, each failing its test: the Job keeping its owner, no second guard, hds-postgres not
   suspended, the race wiping an earlier run's saved state, `make ops-backup` ignoring a restore.
+
+## Signed releases (T047c, FR-028, Proposed): R128 to R131
+
+The owner asked for it ("Add it", 2026-11-07, through the reviewer). Keyless cosign v3.1.4 in the
+release job (`id-token: write` there only), by digest, in the step that pushes; Flux verifies
+both charts for the identity `https://github.com/AviyaYemini/HDS/.github/workflows/release.yml@refs/heads/main`
+from GitHub's issuer.
+
+- **Compatibility, checked first**: Flux v2.9.6 ships source-controller v1.9.6, whose go.mod has
+  `sigstore/cosign/v3 v3.0.6`, and whose `internal/oci/cosign/cosign.go` verifies cosign v2
+  signatures and v3 bundles (OCI 1.1 referrers, or the referrer-tag fallback).
+- **Local proof** (`release_gates.sh` step (f), a throwaway registry, key pairs made at run time):
+  the push signs each image by digest through `sign.sh`'s key mode; the image verifies with that
+  key; another key is refused (`accepted signatures do not match threshold`), an unsigned image is
+  refused (`no signatures found`), and a tag moved to other bytes after signing is refused. A first
+  try failed on the plain-HTTP registry: cosign needs `--allow-http-registry` there.
+- Keyless signing cannot run outside Actions; the identity Flux requires is checked in assert.sh,
+  Flux's own refusal of an unsigned chart in T059's k3d cluster, and the identity's exact form
+  with the first real release (T064).
+- **Mutants, each failing its test**: signing by tag, an image not signed, the stand-ins allowed in
+  Actions, hds-postgres not signed again when it exists, `id-token: write` at the workflow level,
+  `verify` removed (and renamed), the subject loosened to `.*`. A first try at the hds-postgres
+  mutant was a no-op (`return` outside a function) and survived for that reason; the real one fails.
+- **Recommended to the owner, not done here**: protect `main` (a required pull request and passing
+  CI), since anyone who can push there can make a validly signed release (R130).

@@ -83,6 +83,32 @@ Within 5 minutes Flux in the cluster sees the new chart and upgrades the `hds` r
    again (`kubectl apply -k infra/flux/clusters/local`); resume Flux if it is suspended. Undo it
    by setting `">=0.1.0"` again.
 
+**Signed releases** (Proposed). Each image and chart is signed keyless, by digest, by the Release
+workflow on `main`, and Flux installs only a chart with that signature. To check one by hand (cosign
+from `infra/VERSIONS.md`):
+
+```bash
+cosign verify ghcr.io/aviyayemini/hds-api@sha256:<digest> \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/AviyaYemini/HDS/.github/workflows/release.yml@refs/heads/main
+```
+
+Expected: `The cosign claims were validated` and the certificate's identity, as above.
+
+- **When no new version installs**: `flux -n flux-system get sources oci` shows the source not
+  Ready, and the alert e-mail carries the same message. A message about the signature (`no
+  matching signatures`, `none of the expected identities matched`) means the chart is unsigned or
+  signed by someone else: do not work around it, find out who pushed it. A message about fetching
+  the trust root or reaching `tuf-repo-cdn.sigstore.dev` or `rekor.sigstore.dev` means the machine
+  cannot reach Sigstore: the running version keeps running, and the next one installs once it can.
+- **The record is public**: each signature is written to Sigstore's public transparency log, with
+  the repository's and the workflow's names. That is fine while the repository is public; if it is
+  ever made private, the log still names it.
+- **The limit**: anyone who can push to `main` can produce a validly signed release, since the
+  signature says only "the Release workflow on main". Protect `main` in GitHub's settings: a
+  required pull request and passing CI before merge (recommended to the owner; not set by this
+  repository).
+
 **The Release workflow's dry run.** A manual run builds and scans and publishes nothing:
 
 ```bash

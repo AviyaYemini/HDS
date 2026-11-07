@@ -1,6 +1,9 @@
 # The hds-postgres chart in GHCR (specs/006 T048, research R4): PostgreSQL; a new version only when its chart changes (infra/helm/tests/chart_version.sh).
 # Polled every 5 minutes; the newest version at or above 0.1.0 is installed. Pin the range here to
 # hold a version for good. When the packages are private, add secretRef: {name: hds-registry}.
+# Only a chart signed keyless by .github/workflows/release.yml on main of this repository is
+# installed (T047c, FR-028, Proposed): anything else leaves this source not Ready, and its error
+# goes to Alertmanager (alert.yaml). Verifying needs HTTPS to Sigstore (its TUF root and Rekor).
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -13,3 +16,8 @@ spec:
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: '^https://token\.actions\.githubusercontent\.com$'
+        subject: '^https://github\.com/AviyaYemini/HDS/\.github/workflows/release\.yml@refs/heads/main$'

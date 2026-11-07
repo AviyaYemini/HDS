@@ -11,12 +11,17 @@
 #       the layout that was scanned;
 #   (e) --platform picks the platform in a layout (review R124): a two-platform image whose arm64
 #       half alone carries a key fails the secret gate for linux/arm64 and passes it for
-#       linux/amd64, and Trivy names the architecture it read for each.
+#       linux/amd64, and Trivy names the architecture it read for each;
+#   (f) signatures (T047c; review R128): the release's push signs each image by digest; cosign
+#       verifies it with the signing key and refuses it with another key, refuses an unsigned
+#       image, and refuses a tag moved to other bytes after signing. Keyless signing needs
+#       GitHub's OIDC token, so this proves the mechanism with a key made here; the identity
+#       Flux requires is checked in assert.sh, and Flux's own refusal in the rolling-update job.
 #
 # Nothing is pushed anywhere but the local registry, which is removed at the end, and nothing is
 # written to the repository. It takes a while: three multi-platform builds. Run it by hand, all of
 # it or some steps:
-#   infra/tests/release_gates.sh [a] [b] [c] [d] [e]
+#   infra/tests/release_gates.sh [a] [b] [c] [d] [e] [f]
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -37,8 +42,19 @@ failures=0
 pass() { printf 'ok    %s\n' "$1"; }
 flunk() { printf 'FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 cd "$ROOT"
-steps=${*:-a b c d e}
+steps=${*:-a b c d e f}
 want() { case " $steps " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+COSIGN_IMAGE=$(sed -n 's/^COSIGN_IMAGE="\(.*\)"$/\1/p' "$ROOT/infra/release/sign.sh")
+# keys: two cosign key pairs made here, once: the one the proof signs with, and another. A push
+# signs what it pushes (T047c); keyless signing needs GitHub's OIDC token, so the proof uses a key.
+keys() {
+    [ ! -d "$work/keys" ] || return 0
+    mkdir "$work/keys" "$work/other"
+    for dir in keys other; do
+        docker run --rm --user "$(id -u):$(id -g)" -e COSIGN_PASSWORD="" -v "$work/$dir:/k" -w /k \
+            "$COSIGN_IMAGE" generate-key-pair > /dev/null 2>&1
+    done
+}
 WEB_BASE=$(sed -n 's/^FROM \(nginxinc\/nginx-unprivileged:[^ ]*\)$/\1/p' infra/Dockerfile.web)
 
 # gate LABEL WANTED KIND LAYOUT PLATFORM: the scan's status is 0 (WANTED pass) or not (WANTED fail).
@@ -101,8 +117,9 @@ echo "== (d) the pushed images are the scanned layouts"
 docker network create "$network" > /dev/null
 registry=$(docker run -d --network "$network" --network-alias registry "$REGISTRY_IMAGE")
 sleep 2
+keys
 HDS_REGISTRY=registry:5000 HDS_REGISTRY_INSECURE=1 HDS_DOCKER_NETWORK="$network" \
-    "$ROOT/infra/release/push_images.sh" proof 0123456789abcdef0123456789abcdef01234567 \
+    HDS_SIGN_KEY="$work/keys/cosign.key" "$ROOT/infra/release/push_images.sh" proof 0123456789abcdef0123456789abcdef01234567 \
     "$work/layouts" > "$work/push.log" 2>&1 || { cat "$work/push.log"; flunk "the local push"; }
 for name in api web backup; do
     want=$(jq -r '.manifests[0].digest' "$work/layouts/hds-$name/index.json")
@@ -139,6 +156,61 @@ for platform in linux/amd64 linux/arm64; do
         flunk "Trivy read '$arch' for --platform $platform"
     fi
 done
+fi
+
+if want f; then
+echo "== (f) signed by digest, verified, and refused when it should be"
+keys
+mkdir "$work/signed"
+# Two small two-platform images: the one signed, and the bytes a tag is moved to afterwards.
+for n in 1 2; do
+    printf 'FROM %s\nLABEL proof=%s\n' "$WEB_BASE" "$n" > "$work/Dockerfile.tiny$n"
+    docker buildx build --quiet --platform linux/amd64,linux/arm64 -f "$work/Dockerfile.tiny$n" \
+        --output "type=oci,dest=$work/tiny$n,tar=false" "$work" > /dev/null
+done
+for name in api web backup; do cp -R "$work/tiny1" "$work/signed/hds-$name"; done
+[ -n "$registry" ] || {
+    docker network create "$network" > /dev/null
+    registry=$(docker run -d --network "$network" --network-alias registry "$REGISTRY_IMAGE")
+    sleep 2
+}
+sha=fedcba9876543210fedcba9876543210fedcba98
+HDS_REGISTRY=registry:5000 HDS_REGISTRY_INSECURE=1 HDS_DOCKER_NETWORK="$network" \
+    HDS_SIGN_KEY="$work/keys/cosign.key" \
+    "$ROOT/infra/release/push_images.sh" signed "$sha" "$work/signed" > "$work/sign.log" 2>&1 \
+    || { cat "$work/sign.log"; flunk "the signed push"; }
+digest=$(jq -r '.manifests[0].digest' "$work/tiny1/index.json")
+# verify KEY_DIR REF: cosign's verdict, as Flux would reach it for a key-signed artefact.
+verify() {
+    docker run --rm --network "$network" -v "$work/$1:/k:ro" "$COSIGN_IMAGE" verify \
+        --key /k/cosign.pub --insecure-ignore-tlog=true --allow-http-registry "$2" \
+        > "$work/verify.log" 2>&1
+}
+if verify keys "registry:5000/signed/hds-api@$digest"; then
+    pass "the pushed image verifies with the signing key"
+else
+    flunk "the pushed image did not verify: $(tail -n 3 "$work/verify.log")"
+fi
+if verify other "registry:5000/signed/hds-api@$digest"; then
+    flunk "it verified with another key"
+else
+    pass "another key is refused"
+fi
+SKOPEO_IMAGE=$(sed -n 's/^SKOPEO_IMAGE="\(.*\)"$/\1/p' "$ROOT/infra/release/push_images.sh")
+docker run --rm --network "$network" -v "$work:/w:ro" "$SKOPEO_IMAGE" copy --all \
+    --dest-tls-verify=false oci:/w/tiny2 "docker://registry:5000/signed/unsigned:$sha" > /dev/null
+if verify keys "registry:5000/signed/unsigned:$sha"; then
+    flunk "an unsigned image verified"
+else
+    pass "an unsigned image is refused"
+fi
+docker run --rm --network "$network" -v "$work:/w:ro" "$SKOPEO_IMAGE" copy --all \
+    --dest-tls-verify=false oci:/w/tiny2 "docker://registry:5000/signed/hds-api:$sha" > /dev/null
+if verify keys "registry:5000/signed/hds-api:$sha"; then
+    flunk "a tag moved after signing still verified"
+else
+    pass "a tag moved to other bytes after signing is refused"
+fi
 fi
 
 [ "$failures" -eq 0 ] || { echo "release gate proofs: $failures failed" >&2; exit 1; }

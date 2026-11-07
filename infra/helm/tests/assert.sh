@@ -284,6 +284,12 @@ expect "both OCIRepositories take the newest 0.1 or later, every 5 minutes" \
 expect "the OCIRepositories point at the release's chart paths" \
     "oci://ghcr.io/aviyayemini/charts/hds oci://ghcr.io/aviyayemini/charts/hds-postgres" \
     "$(yq "$f" 'select(.kind == "OCIRepository") | .spec.url' | sort | paste -sd ' ' -)"
+# Signed releases only (T047c): both sources verify with cosign, for exactly one identity, the
+# release workflow on main of this repository, from GitHub's issuer; both patterns anchored.
+expect "both sources install only charts signed by the release workflow on main" \
+    "$(printf '%s\n' 'cosign ^https://token\.actions\.githubusercontent\.com$ ^https://github\.com/AviyaYemini/HDS/\.github/workflows/release\.yml@refs/heads/main$ 1' | sort -u)" \
+    "$(yq "$f" 'select(.kind == "OCIRepository") | .spec.verify.provider + " " + .spec.verify.matchOIDCIdentity[0].issuer + " " + .spec.verify.matchOIDCIdentity[0].subject + " " + (.spec.verify.matchOIDCIdentity | length | tostring)' | sort -u)"
+expect "and both sources verify" 2 "$(yq "$f" 'select(.kind == "OCIRepository" and .spec.verify.provider == "cosign") | .metadata.name' | sort -u | wc -l | tr -d ' ')"
 expect "hds waits for hds-postgres" "hds-postgres" "$(yq "$f" "$hr | .dependsOn[].name")"
 expect "both are Helm releases named as such, stored in hds" "hds hds hds|hds-postgres hds hds" \
     "$(yq "$f" 'select(.kind == "HelmRelease") | .spec.releaseName + " " + .spec.targetNamespace + " " + .spec.storageNamespace' | sort -u | paste -sd '|' -)"

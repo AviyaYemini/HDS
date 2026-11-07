@@ -56,8 +56,15 @@ A merge to `main` that passes CI runs `.github/workflows/release.yml`: it builds
 once for amd64 and arm64, scans each platform with Trivy (a fixed HIGH or CRITICAL finding, or any
 secret, stops it), pushes those same images, and publishes the `hds` chart as `0.1.<run number>`
 with the images' digests in its values. `hds-postgres` is published only when its version is
-raised. Flux (`flux/clusters/local/`) pulls the newest chart every 5 minutes; a failed upgrade rolls
-back. Deploys, rollbacks and the dry run: [the operations runbook](../docs/runbooks/operations.md).
+raised. Each image and chart is signed by digest, keyless, as it is pushed, and Flux
+(`flux/clusters/local/`) pulls the newest chart every 5 minutes and installs it only if it carries
+the release workflow's signature (Proposed); a failed upgrade rolls back.
+
+**What the cluster reaches out to**: GHCR, for the charts and images; Sigstore over HTTPS
+(`tuf-repo-cdn.sigstore.dev` for its TUF root, `rekor.sigstore.dev` for the transparency log),
+which Flux needs to verify a chart's signature; Google Drive, for the backups; the SMTP relay.
+Nothing reaches in. Without Sigstore, no new version installs, and the running one keeps
+running. Deploys, rollbacks and the dry run: [the operations runbook](../docs/runbooks/operations.md).
 
 ## Backups
 

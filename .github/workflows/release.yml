@@ -3,7 +3,9 @@
 # After CI succeeds on a push to main: build hds-api, hds-web and hds-backup once for linux/amd64
 # and linux/arm64 into OCI image layouts, scan every platform of each for vulnerabilities and
 # secrets, push those same layouts (the bytes scanned are the bytes pushed), then package and push
-# the charts with the images' digests. Flux in the cluster pulls the new chart (infra/flux).
+# the charts with the images' digests. Each image and chart is signed keyless by digest as it is
+# pushed (T047c, Proposed). Flux in the cluster pulls the new chart, only with this workflow's
+# signature (infra/flux).
 #
 # A manual run (workflow_dispatch) is a dry run: it builds and scans, and publishes nothing; with
 # dry_run=false it fails at once. Runs never overlap and are never cancelled midway.
@@ -47,6 +49,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # id-token: write only here: the OIDC token cosign signs with, keyless (T047c, FR-028, Proposed).
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
     env:
       HDS_TRIVY_CACHE: hds-trivy-cache
     steps:

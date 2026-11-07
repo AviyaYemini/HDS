@@ -99,6 +99,35 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
        one each release would restart the database. The release pushes it only when the registry
        answers that the version is not there; any other answer fails the release. A pull request
        that changes the chart without raising its version fails CI (`chart_version.sh`).
+     - **Signed releases** (FR-028, **Proposed**: the owner's request on 2026-11-07, "Add it";
+       T047c): each image index and each chart is signed by digest, keyless, with cosign and the
+       job's GitHub OIDC token (`id-token: write`, on the release job only), in the step that
+       pushes it, so a pushed artefact with no signature is a failed run. Fulcio certifies the
+       identity `https://github.com/AviyaYemini/HDS/.github/workflows/release.yml@refs/heads/main`;
+       there is no signing key to steal or rotate. Both OCIRepositories carry `verify` with
+       `provider: cosign` and that exact identity and GitHub's issuer, anchored, so Flux installs
+       no chart that is unsigned or signed by anyone else. Images are not verified by Flux: the
+       verified `hds` chart names every image by digest, so a verified chart covers the images
+       it runs. They are signed anyway, so an operator can check one by hand. source-controller
+       v1.9.6 (Flux v2.9.6) verifies both cosign v2 signatures and v3 bundles; cosign v3.1.4
+       signs.
+       - **What it stops**: a stolen packages token, and changes in the registry after the push.
+         **What it does not**: anyone who can push to `main` can make a validly signed release,
+         since the identity is "release.yml on main". Protecting `main` (a required pull request
+         and passing CI) is the complement; it is a repository setting the owner controls,
+         recommended, not a task here.
+       - **Public record**: keyless signatures are written to Sigstore's public Rekor log with the
+         repository and workflow name. That is fine while the repository is public; if it ever
+         becomes private, that log still names it (and a private Sigstore, or key-based signing,
+         would be the choice).
+       - **Fails closed**: verifying needs HTTPS from the cluster to Sigstore (its TUF root and
+         Rekor). Unreachable, verification fails, the OCIRepository stops being Ready and no new
+         version installs; the running one keeps running, and an alert fires.
+       - **Alternatives**: key-based cosign (a long-lived private key in a GitHub secret, to keep
+         and rotate, and a stolen one signs anything); Notation (Notary v2; needs a key and a
+         certificate authority of our own); an admission controller such as Kyverno or the
+         Sigstore policy-controller verifying images at admission (another always-on component,
+         redundant while the verified chart pins every image by digest).
   2. **Flux** (source-controller, helm-controller and notification-controller only) runs in the
      cluster. An `OCIRepository` for each chart watches it with `semver: ">=0.1.0"` and polls every 5
      minutes. A `HelmRelease` installs each, `hds` after `hds-postgres`. A failed upgrade rolls
