@@ -176,11 +176,46 @@ components:
             capabilities:
               type: array
               items:
-                type: string
+                $ref: "#/components/schemas/Capability"
             managed_project_ids:
               type: array
               items:
                 $ref: "#/components/schemas/UUIDv4"
+
+    Capability:
+      type: string
+      description: >
+        One thing a signed-in person may do (specs/007-ux-redesign/contracts/capabilities.md). A
+        name ending in `:project` holds only on the projects in `managed_project_ids`, or on every
+        project for an Admin.
+      enum:
+        - my_work.read
+        - my_work.availability
+        - roster.read
+        - roster.edit:project
+        - roster.publish:project
+        - roster.override:project
+        - schedule.generate
+        - availability.read_others
+        - availability.edit_others
+        - reports.read
+        - pay.read_others
+        - pay.edit_shift
+        - pay_settings.edit
+        - staff.manage
+        - clients.manage
+        - sites.manage
+        - projects.manage
+        - projects.read
+        - staff.delete
+        - clients.delete
+        - projects.delete
+        - special_days.edit
+        - organisation.contact.edit
+        - client_portal.read
+        - client_portal.requests
+        - client_requests.answer
+        - account.self
 
     SessionRead:
       type: object

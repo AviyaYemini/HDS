@@ -68,6 +68,7 @@
   "validation.request_invalid": "חלק מהפרטים אינם תקינים.",
   "resource.not_found": "הפריט הזה כבר לא קיים.",
   "users.forbidden": "אין הרשאה לפעולה הזו.",
+  "organisation.opening_hours_invalid": "בשעות הפתיחה כל יום מופיע פעם אחת, ושעת הסגירה אחרי שעת הפתיחה.",
   "nav.pay": "השכר שלי",
   "nav.work_log": "יומן עבודה",
   "nav.hours": "דוח שעות",

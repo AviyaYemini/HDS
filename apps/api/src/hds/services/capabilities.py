@@ -7,7 +7,7 @@ project-manager repository it is given; it MUST NOT import routers or know about
 import uuid
 from dataclasses import dataclass
 
-from hds.core.capabilities import capabilities_for
+from hds.core.capabilities import Capability, capabilities_for
 from hds.models.user import User, UserRole
 from hds.repositories.project_manager import ProjectManagerRepository
 
@@ -16,7 +16,7 @@ from hds.repositories.project_manager import ProjectManagerRepository
 class UserCapabilities:
     """A user's capability names and the projects their ``:project`` capabilities cover."""
 
-    capabilities: list[str]
+    capabilities: list[Capability]
     managed_project_ids: list[uuid.UUID]
 
 

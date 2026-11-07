@@ -49,6 +49,11 @@ Sign in with any of the development accounts, all with the password `Dev1234!` (
 | `employee@hds.test`, `extra@hds.test` | Employee |
 | `client@hds.test` | Client |
 
+The seed also gives the Manager one project of two (Night Watch, not Day Patrol), last week's
+availability window (closed) and one four weeks ahead (open), this week's roster published and a
+draft week four weeks ahead. Running it again adds nothing in the same week, and that week's own
+windows and shifts in a later one (`apps/api/src/hds/scripts/seed_dev.py`).
+
 The other targets:
 
 ```bash

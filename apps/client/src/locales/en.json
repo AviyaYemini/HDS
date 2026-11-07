@@ -68,6 +68,7 @@
   "validation.request_invalid": "Some of the details are not valid.",
   "resource.not_found": "That item no longer exists.",
   "users.forbidden": "You are not allowed to do this.",
+  "organisation.opening_hours_invalid": "Opening hours need each weekday once, closing after opening.",
   "nav.pay": "My pay",
   "nav.work_log": "Work log",
   "nav.hours": "Hours report",

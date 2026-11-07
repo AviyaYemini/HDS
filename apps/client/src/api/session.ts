@@ -1,6 +1,8 @@
 /**
  * The signed-in session: signing in and out, the caller's account, and the typed API client that
- * sends the access token and, on a 401, refreshes the tokens once and sends the request again.
+ * sends the access token and, on a 401, refreshes the tokens once and sends the request again. After
+ * any 403 the account is read again, so a role or project changed elsewhere redraws what the
+ * person may do (specs/007-ux-redesign FR-001, T032).
  */
 import { createApiClient, type ApiClient, type components } from "@hds/api-client";
 import { Platform } from "react-native";
@@ -29,6 +31,7 @@ export class Session {
   private readonly plain: ApiClient;
   private tokens: Tokens | null = null;
   private refreshing: Promise<boolean> | null = null;
+  private reloading: Promise<void> | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -45,7 +48,10 @@ export class Session {
     return this.tokens !== null && this.user !== null;
   }
 
-  /** Call `listener` when someone signs in or the session ends; returns the unsubscribe. */
+  /**
+   * Call `listener` when someone signs in, the session ends or the account is read again; returns
+   * the unsubscribe.
+   */
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -113,6 +119,25 @@ export class Session {
     this.user = await call(this.api.GET("/me"));
   }
 
+  /**
+   * Read the account again after a refusal; refusals together share one read. A failed read keeps
+   * the account as it was (a 401 that cannot refresh has already ended the session).
+   */
+  reloadMe(): Promise<void> {
+    this.reloading ??= (async () => {
+      try {
+        const before = this.user;
+        await this.loadMe();
+        if (this.user !== before) this.notify();
+      } catch {
+        // Unreachable or refused: the next refusal tries again.
+      } finally {
+        this.reloading = null;
+      }
+    })();
+    return this.reloading;
+  }
+
   private async keep(tokens: Tokens): Promise<void> {
     this.tokens = tokens;
     await this.store.save(tokens);
@@ -139,9 +164,18 @@ export class Session {
   private async authorised(request: Request): Promise<Response> {
     const spare = request.clone();
     const first = await this.send(this.withToken(request));
+    if (first.status === 403) this.refusedBy(request);
     if (first.status !== 401 || this.tokens === null) return first;
     if (!(await this.refresh())) return first;
-    return this.send(this.withToken(spare));
+    const second = await this.send(this.withToken(spare));
+    if (second.status === 403) this.refusedBy(spare);
+    return second;
+  }
+
+  /** A 403 may mean the role changed: read the account again, unless `/me` itself was refused. */
+  private refusedBy(request: Request): void {
+    if (new URL(request.url).pathname.endsWith("/me")) return;
+    void this.reloadMe();
   }
 
   /** Refresh the tokens; requests refused together share one refresh. */

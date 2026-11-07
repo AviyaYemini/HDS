@@ -1380,6 +1380,12 @@ export interface components {
             user_id: string;
         };
         /**
+         * Capability
+         * @description One thing a signed-in person may do.
+         * @enum {string}
+         */
+        Capability: "my_work.read" | "my_work.availability" | "roster.read" | "roster.edit:project" | "roster.publish:project" | "roster.override:project" | "schedule.generate" | "availability.read_others" | "availability.edit_others" | "reports.read" | "pay.read_others" | "pay.edit_shift" | "pay_settings.edit" | "staff.manage" | "clients.manage" | "sites.manage" | "projects.manage" | "projects.read" | "staff.delete" | "clients.delete" | "projects.delete" | "special_days.edit" | "organisation.contact.edit" | "client_portal.read" | "client_portal.requests" | "client_requests.answer" | "account.self";
+        /**
          * Change
          * @description A person on a slot, added or removed against the current drafts.
          */
@@ -2077,7 +2083,7 @@ export interface components {
          */
         MeRead: {
             /** Capabilities */
-            capabilities: string[];
+            capabilities: components["schemas"]["Capability"][];
             /**
              * Created At
              * Format: date-time

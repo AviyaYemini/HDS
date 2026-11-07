@@ -1,34 +1,26 @@
 /**
- * US2 — Employee Self-Service Profile: Playwright smoke tests.
+ * US2 — My profile: an employee changes their own phone on the Account screen and it is kept
+ * (001 FR-017; 007 T039, contracts/ui-routes.md "Account").
  *
- * NOTE: SKIPPED pending apps/client implementation.
+ * Reaching another employee's profile is refused by the API and drawn as the no-access page, which
+ * `ux/b-roles.spec.ts` checks for every role (007 T033).
  */
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const BASE = process.env.APP_URL ?? "http://localhost:3000";
 
-async function signIn(page: any, email: string, password = "Dev1234!") {
+test("an employee changes their phone on the Account screen and it is kept", async ({ page }) => {
   await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', email);
-  await page.fill('[data-testid="password"]', password);
+  await page.fill('[data-testid="email"]', "employee@hds.test");
+  await page.fill('[data-testid="password"]', "Dev1234!");
   await page.click('[data-testid="sign-in-btn"]');
-}
-
-test.skip("Employee can open My Profile and edit phone", async ({ page }) => {
-  await signIn(page, "employee@hds.test");
-  await page.click('[data-testid="nav-my-profile"]');
-  await expect(page).toHaveURL(/\/me/);
-  await page.fill('[data-testid="phone-input"]', "+972509999999");
-  await page.click('[data-testid="save-btn"]');
-  await expect(page.locator('[data-testid="phone-input"]')).toHaveValue("+972509999999");
-  // Reload to confirm persisted
+  await page.goto(`${BASE}/account`);
+  await expect(page.getByTestId("screen-account")).toBeVisible();
+  // A new number each run, so the check never passes on what an earlier run left.
+  const phone = `+97250${String(Date.now()).slice(-7)}`;
+  await page.getByTestId("profile-phone").fill(phone);
+  await page.getByTestId("action-save-profile").click();
+  await expect(page.getByTestId("profile-phone")).toHaveValue(phone);
   await page.reload();
-  await expect(page.locator('[data-testid="phone-input"]')).toHaveValue("+972509999999");
-});
-
-test.skip("Employee cannot navigate to another employee profile", async ({ page }) => {
-  await signIn(page, "employee@hds.test");
-  await page.goto(`${BASE}/employees/00000000-0000-0000-0000-000000000001`);
-  // Should redirect or show 403 page
-  await expect(page).not.toHaveURL(/\/employees\//);
+  await expect(page.getByTestId("profile-phone")).toHaveValue(phone);
 });

@@ -65,7 +65,9 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
 - **Pages**: `screen-no-access` with `action-go-home`; `screen-not-found` (an unknown address) with
   `action-go-home`; `splash` (static markup in the web page, shown until the app has started).
 - **Account**: `screen-account` with the language choice `language-he` and `language-en`
-  (`role="radio"`).
+  (`role="radio"`), and the profile's phone `profile-phone` with `action-save-profile`.
+- **Sign-in** (kept from 001's specs, which still use them): `email`, `password`, `sign-in-btn`,
+  and the refusal `error-message`.
 
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 

@@ -101,16 +101,16 @@ ROLE_CAPABILITIES: dict[UserRole, frozenset[Capability]] = {
 }
 
 
-def capabilities_for(role: UserRole) -> list[str]:
-    """The capability names a role holds, sorted, as ``GET /me`` serves them.
+def capabilities_for(role: UserRole) -> list[Capability]:
+    """The capabilities a role holds, sorted by name, as ``GET /me`` serves them.
 
     Args:
         role: The user's current role, read from their row on this request.
 
     Returns:
-        The names in ``Capability``, sorted alphabetically so the answer is stable.
+        The role's capabilities, sorted alphabetically by name so the answer is stable.
     """
-    return sorted(c.value for c in ROLE_CAPABILITIES[role])
+    return sorted(ROLE_CAPABILITIES[role], key=lambda c: c.value)
 
 
 def has(role: UserRole, capability: Capability) -> bool:

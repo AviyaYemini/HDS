@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.capabilities import Capability
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
@@ -57,7 +58,7 @@ class MeRead(UserRead):
     for every other role (an Admin's scoped capabilities cover every project).
     """
 
-    capabilities: list[str]
+    capabilities: list[Capability]
     managed_project_ids: list[uuid.UUID]
 
 
