@@ -227,8 +227,9 @@ sign_in() {
         | curl -fsS -H 'Host: hds.localhost' -H 'Content-Type: application/json' --data @- \
             http://127.0.0.1:$PORT/auth/login | jq -r .access_token
 }
-# The API's own environment (uv sync --extra dev), run with exec, so $! is load.py itself and the
-# TERM below reaches it, not a wrapper.
+# The API's own environment (uv sync --extra dev; made here if this checkout has none), run with
+# exec, so $! is load.py itself and the TERM below reaches it, not a wrapper.
+[ -x "$ROOT/apps/api/.venv/bin/python" ] || (cd apps/api && uv sync --quiet --extra dev)
 printf '%s\n' "$admin_password" | (exec "$ROOT/apps/api/.venv/bin/python" infra/tests/load.py \
     --email "$admin" --password-file - --url "http://127.0.0.1:$PORT") > "$work/load.log" 2>&1 &
 load_pid=$!
@@ -272,7 +273,9 @@ grep '^  FAIL  ' "$work/load.log" | sed 's/^  FAIL  //' > "$work/failures" || tr
 if grep -q 'preStop:' "$work/base/infra/helm/hds/templates/web.yaml"; then
     cp "$work/failures" "$work/counted"
 else
-    awk -v roll="$head_roll" '!($1 < roll && ($3 == "/" || $3 ~ /^\/_expo\//))' "$work/failures" > "$work/counted"
+    # A failure reads "HH:MM:SS GET /path: why"; the path's colon is load.py's.
+    awk -v roll="$head_roll" '{ path = $3; sub(/:$/, "", path) }
+        !($1 < roll && $2 == "GET" && (path == "/" || path ~ /^\/_expo\//))' "$work/failures" > "$work/counted"
     allowed=$(($(wc -l < "$work/failures") - $(wc -l < "$work/counted")))
     [ "$allowed" -eq 0 ] || echo "allowed: $allowed web request(s) dropped by the base's web pods, which have no preStop (R201)"
 fi
