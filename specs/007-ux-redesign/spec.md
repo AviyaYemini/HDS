@@ -29,6 +29,25 @@ feature 007; decision IDs (O1 to O14) are the plan's section 2. **Owner** marks 
 notes. **Proposed** marks anything the original product spec does not state. Everything else changes
 only how an original capability looks or behaves.
 
+## Clarifications
+
+### Session 2026-11-07
+
+- Q: Who approves an absence request when feature 016 builds it? → A: Any manager of a project the
+  employee works on, or an admin (the plan's default, approved with "apply all").
+- Q: Are tenders in scope for 007's client portal? → A: No; no screen or preview mentions them.
+- Q: How far may one person's own times in a shift reach past the shift itself? → A: Up to 4 h before
+  the shift starts and up to 4 h after it ends; the rest and weekly-cap checks flag anything beyond
+  policy.
+- Q: An employee has not submitted by the deadline (with or without a draft). What does scheduling
+  use? → A: "Count them as unavailable." They count as unavailable for that window and any draft is
+  not used. Derived: the auto-scheduler does not assign them in that window; a manager may still
+  assign them by hand, with a warning; the submission tracker shows who hasn't submitted; the screen
+  tells the employee before the deadline that not submitting means they won't be scheduled; reminders
+  come with feature 010.
+- Q: How long does a phone stay signed in with biometric unlock? → A: 30 days rolling on phones,
+  unlocked by biometrics; the web stays at 7 days.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Each role sees only what it can use (Priority: P1)
@@ -98,11 +117,15 @@ see Locked.
    change is allowed and the week shows it must be submitted again.
 5. **Given** the deadline has passed, **When** the employee opens the week, **Then** it shows Locked,
    cells cannot change, and the screen says why.
-6. **Given** any cell change, **When** the employee chooses Undo, **Then** the previous state returns;
+6. **Given** an employee who has not submitted, **When** they open the week before the deadline,
+   **Then** the banner says that if they don't submit by the deadline they count as unavailable and
+   won't be scheduled for that window; **given** the deadline passes without a submit, **then** the
+   week shows "Not submitted, counted as unavailable" and any draft is not used.
+7. **Given** any cell change, **When** the employee chooses Undo, **Then** the previous state returns;
    there is no reset that cannot be undone.
-7. **Given** the grid, **When** the employee reads it, **Then** the rules are stated: unmarked means
+8. **Given** the grid, **When** the employee reads it, **Then** the rules are stated: unmarked means
    available, open and close are wishes rather than promises.
-8. **Given** last week's availability, **When** the employee chooses Copy last week, **Then** the
+9. **Given** last week's availability, **When** the employee chooses Copy last week, **Then** the
    grid fills from it and can still be changed cell by cell.
 
 ---
@@ -331,13 +354,16 @@ its roles; with previews off, confirm none is reachable.
   behind the refusal.
 - A client user follows a link to a staff screen, or to another client's project: the no-access page,
   with nothing about the other client.
-- An availability draft exists when the deadline passes without a submit: the week locks; the screen
-  shows the draft was not submitted and what was last submitted, if anything.
+- The deadline passes and the employee never submitted (with or without a draft): they count as
+  unavailable for the whole window, the draft is not used, the auto-scheduler leaves them out, and a
+  manager who assigns them by hand sees a warning.
+- An employee submitted, then changed a cell and did not submit again before the deadline: the last
+  submitted week stands and the unsent change is dropped; the screen says so.
 - The device is offline while filling availability: the draft is kept on the device and sent when the
   connection returns; My shifts shows the last loaded list with "updated hh:mm".
-- An assignment's own times fall outside its shift (starting before or ending more than the shift's
-  length after it), or end before they start: refused with a reason, except an end after midnight,
-  which shows "+1".
+- An assignment's own times start more than 4 h before its shift starts or end more than 4 h after
+  it ends: refused with a reason. Within those 4 h the rest and weekly-cap checks still warn. An end
+  after midnight shows "+1" rather than reading as an end before the start.
 - A daylight-saving change makes a night 7 or 9 real hours: the shift's duration shows the real hours
   and says why.
 - Two managers edit the same project's roster at once: the second save is told the roster changed and
@@ -385,8 +411,9 @@ its roles; with previews off, confirm none is reachable.
 - **FR-009**: Every role MUST have one Account screen with the language switch, active sessions with
   "sign out of other devices", and a sign-out that is visible on every screen. Help, contact and the
   accessibility statement MUST sit in the same place on every screen. [N12, X10]
-- **FR-010**: Sessions on phones MUST stay signed in for long periods and unlock with the device's
-  biometrics where available, and a session that does end MUST say so visibly. [E15; Proposed]
+- **FR-010**: Sessions on phones MUST stay signed in for 30 days, renewed with each use, and unlock
+  with the device's biometrics where available; web sessions keep today's 7 days. A session that does
+  end MUST say so visibly. [E15; Proposed]
 - **FR-011**: An invitation MUST open the set-password screen in the invitee's language, then the
   role's home. [N11]
 - **FR-012**: Clients MUST have a contact card with the company's phone, e-mail and opening hours.
@@ -400,8 +427,12 @@ its roles; with previews off, confirm none is reachable.
   available. [Owner, E1]
 - **FR-014**: Each employee's availability for each window MUST have a status: Not submitted, Draft,
   Submitted (with the time, changeable until the deadline) and Locked (after the deadline). A change
-  after submitting MUST return the week to Draft until it is submitted again. The scheduler MUST use
-  the employee's last submitted availability. [E2, O4]
+  after submitting MUST return the week to Draft until it is submitted again. Scheduling MUST use the
+  employee's last submitted availability. An employee with no submission for a window when its
+  deadline passes MUST count as unavailable for the whole window; any draft MUST not be used; the
+  auto-scheduler MUST not assign them in that window; a manager MAY still assign them by hand, with a
+  warning. Before the deadline the grid MUST tell the employee that not submitting means they won't
+  be scheduled. Reminders come with feature 010. [E2, O4; Proposed]
 - **FR-015**: Submit MUST pass through a Review step that summarises the week. [E2]
 - **FR-016**: The grid MUST state its rules: unmarked means available, open and close are wishes, not
   promises. [E3]
@@ -432,8 +463,9 @@ its roles; with previews off, confirm none is reachable.
 - **FR-026**: The roster MUST show columns Sunday to Saturday and rows by shift template; each block
   MUST name who filled it with their own times, drawing a half shift as a partial bar and extra hours
   past the block's edge. Past days MUST show who worked and future days who is scheduled. [Owner, S2]
-- **FR-027**: Each assignment MUST have its own start and end, defaulting to its shift's. Pay, the rule
-  checks and the reports MUST use the assignment's times. [S3, O7; Proposed]
+- **FR-027**: Each assignment MUST have its own start and end, defaulting to its shift's, starting no
+  more than 4 h before the shift starts and ending no more than 4 h after it ends. Pay, the rule checks
+  and the reports MUST use the assignment's times. [S3, O7; Proposed]
 - **FR-028**: Managers MUST be able to edit the roster of the projects they manage; admins MUST be able
   to edit all of it; anyone else who may see a roster MUST see it read-only. [O9; Proposed, changing
   the original's admin-only hand edits]
@@ -461,7 +493,7 @@ its roles; with previews off, confirm none is reachable.
 - **FR-039**: On phones, managers MUST have a day agenda with the same tap-to-assign and publishing.
   [S19]
 - **FR-040**: Managers MUST have a submission tracker for the open window, showing who has and hasn't
-  submitted. [S21]
+  submitted, and after the deadline who counts as unavailable for not submitting. [S21]
 - **FR-041**: Two people changing the same roster MUST never silently overwrite each other; the later
   save MUST be told and shown the current version.
 
@@ -604,11 +636,10 @@ its roles; with previews off, confirm none is reachable.
 
 ## Assumptions
 
-- **Absence approval (O3)**: absence becomes a request with approval in feature 016. Until then 007
-  draws today's absence entries as full-day bands. The approver, by default, is any manager of a
-  project the employee works on, or an admin; to confirm in clarify.
-- **Tenders (O6)**: out of scope; no screen or preview mentions them, until the owner confirms
-  otherwise.
+- **Absence approval (O3)**: absence becomes a request with approval in feature 016, approved by any
+  manager of a project the employee works on, or an admin (confirmed in clarify). Until then 007
+  draws today's absence entries as full-day bands.
+- **Tenders (O6)**: out of scope; no screen or preview mentions them (confirmed in clarify).
 - **Client content**: in 007 the client shell carries its navigation, the contact card and the home
   screen with one summary per project; Billing and Requests are previews filled by feature 009, and
   coverage for clients will show counts only, never names (O5).
