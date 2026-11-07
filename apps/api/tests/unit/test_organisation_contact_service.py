@@ -51,9 +51,11 @@ def test_opening_hours_refuse_a_repeated_weekday() -> None:
     assert refused.value.code == "organisation.opening_hours_invalid"
 
 
-def test_opening_hours_refuse_closing_before_opening() -> None:
-    with pytest.raises(DomainValidationError):
-        check_opening_hours([{"weekday": 1, "opens": "17:00", "closes": "08:00"}])
+@pytest.mark.parametrize(("opens", "closes"), [("17:00", "08:00"), ("00:00", "00:00")])
+def test_opening_hours_refuse_closing_not_after_opening(opens: str, closes: str) -> None:
+    with pytest.raises(DomainValidationError) as refused:
+        check_opening_hours([{"weekday": 1, "opens": opens, "closes": closes}])
+    assert refused.value.code == "organisation.opening_hours_invalid"
 
 
 def test_opening_hours_accept_a_normal_week_and_none() -> None:

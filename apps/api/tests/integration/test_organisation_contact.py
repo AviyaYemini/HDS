@@ -60,7 +60,16 @@ async def test_bad_opening_hours_are_refused(
     admin = await headers_for(async_client, "admin")
     twice = [WEEK[0], WEEK[0]]
     backwards = [{"weekday": 1, "opens": "17:00", "closes": "08:00"}]
-    bad_time = [{"weekday": 1, "opens": "25:00", "closes": "26:00"}]
-    for hours in (twice, backwards, bad_time):
+    # Found by the contract suite's fuzzing, which skips this operation's valid-data check (R20).
+    no_time_open = [{"weekday": 5, "opens": "00:00", "closes": "00:00"}]
+    for hours in (twice, backwards, no_time_open):
         response = await async_client.patch(URL, json={"opening_hours": hours}, headers=admin)
         assert response.status_code == 422, hours
+        assert response.json()["code"] == "organisation.opening_hours_invalid", hours
+    bad_time = [{"weekday": 1, "opens": "25:00", "closes": "26:00"}]
+    response = await async_client.patch(URL, json={"opening_hours": bad_time}, headers=admin)
+    assert response.status_code == 422
+    # Valid hours right after are kept: the refusals changed nothing.
+    response = await async_client.patch(URL, json={"opening_hours": WEEK}, headers=admin)
+    assert response.status_code == 200
+    assert response.json()["opening_hours"] == WEEK
