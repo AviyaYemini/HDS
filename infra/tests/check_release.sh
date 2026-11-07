@@ -7,6 +7,11 @@
 #     played, package and template run for real.
 set -euo pipefail
 
+# The runner's own variables never reach the scripts under test (R209): GITHUB_ACTIONS refuses every
+# stand-in, GITHUB_OUTPUT takes the digests off stdout, and trust.sh reads the event variables. Each
+# case sets what it needs itself.
+for v in $(env | sed -n 's/^\(GITHUB_[A-Za-z0-9_]*\)=.*/\1/p') CI; do unset "$v"; done
+
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FIXTURES="$ROOT/infra/tests/fixtures/release"
 HELM_IMAGE="alpine/helm:3.22.1@sha256:8191701ad1f82ee3695c87211fcbfe6d7b1bb7df92ac1c8de9ccdb0995a6a2c1"
@@ -211,6 +216,10 @@ for name in api web backup; do
     holds "after its push" after "^skopeo copy .*hds-$name:" "^sign ghcr.io/proof/hds-$name@"
 done
 never "no image is signed by tag" grep -q "^sign [^@]*$" "$scratch/calls"
+: > "$scratch/gh_output"
+expect "in the workflow, the digests go to its step output" 0 "pushed ghcr.io/proof/hds-backup" \
+    push GITHUB_OUTPUT="$scratch/gh_output"
+holds "all three, one line each" test "$(grep -c '^\(api\|web\|backup\)_digest=sha256:' "$scratch/gh_output")" -eq 3
 
 echo "== sign.sh and the stand-ins in GitHub Actions"
 expect "sign.sh refuses a tag" 1 "sign by digest only" \
