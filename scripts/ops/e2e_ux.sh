@@ -28,8 +28,28 @@ PREVIEWS="${PREVIEWS:-1}"
 # The lock lives in the common git folder, so worktrees of this clone share it. mkdir is atomic.
 LOCK="$(git rev-parse --git-common-dir)/hds-e2e-ux.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
-    echo "e2e_ux: another run holds $LOCK: $(cat "$LOCK/holder" 2>/dev/null || echo unknown)" >&2
-    exit 1
+    # A run killed before its EXIT trap (SIGKILL, a closed terminal) leaves the lock behind. Reclaim
+    # it when its holder's process is gone, or when it names no holder and is over a minute old (a
+    # run killed between taking the lock and writing its name).
+    holder_line="$(cat "$LOCK/holder" 2>/dev/null || true)"
+    holder_pid="$(printf '%s\n' "$holder_line" | sed -n 's/.* pid \([0-9][0-9]*\) in .*/\1/p')"
+    stale=""
+    if [ -n "$holder_pid" ]; then
+        kill -0 "$holder_pid" 2>/dev/null || stale="its process $holder_pid has ended"
+    elif [ -z "$holder_line" ] && [ -n "$(find "$LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+        stale="it names no holder and is over a minute old"
+    fi
+    if [ -z "$stale" ]; then
+        echo "e2e_ux: another run holds $LOCK: ${holder_line:-unknown}" >&2
+        exit 1
+    fi
+    rm -rf "$LOCK"
+    # Still atomic: if another session reclaimed it first, this mkdir fails and this run refuses.
+    if ! mkdir "$LOCK" 2>/dev/null; then
+        echo "e2e_ux: another run took $LOCK first" >&2
+        exit 1
+    fi
+    echo "e2e_ux: reclaimed a stale lock ($stale; it was held by: ${holder_line:-nobody})" >&2
 fi
 # Set at once, so every exit from here on (a refusal, or a failure under set -e) frees the lock.
 scratch=""
@@ -67,7 +87,9 @@ api_env=(ENVIRONMENT=test "DATABASE_URL=$DATABASE_URL"
 
 (cd apps/api && env "${api_env[@]}" uv run alembic upgrade head >/dev/null \
     && env "${api_env[@]}" uv run python -m hds.scripts.seed_dev >/dev/null)
-(cd apps/api && exec env "${api_env[@]}" uv run uvicorn hds.main:app --host 0.0.0.0 --port "$PORT" \
+# Loopback only: this API has a published test secret and seeded passwords, so nothing on the
+# network may reach it. Docker Desktop's host.docker.internal still reaches the host's loopback.
+(cd apps/api && exec env "${api_env[@]}" uv run uvicorn hds.main:app --host 127.0.0.1 --port "$PORT" \
     --log-level warning) &
 api_pid=$!
 curl --retry 30 --retry-connrefused --retry-delay 1 -sf "http://localhost:$PORT/health" -o /dev/null

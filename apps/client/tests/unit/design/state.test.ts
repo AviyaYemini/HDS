@@ -6,7 +6,16 @@
 import { getLoadingState, resetLoading, setProgress, startLoading, track } from "../../../src/design/loading/loadingStore";
 import { setReducedMotionForTests, transition } from "../../../src/design/motion";
 import { resolveThemeName } from "../../../src/design/theme/ThemeProvider";
-import { parsePreference } from "../../../src/design/theme/themeStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+
+import {
+  getThemeState,
+  hydrateThemePreference,
+  parsePreference,
+  resetThemeStore,
+  setThemePreference,
+} from "../../../src/design/theme/themeStore";
 import { matches, normalise, order } from "../../../src/design/components";
 
 describe("loading store (FR-074)", () => {
@@ -81,6 +90,55 @@ describe("themes (FR-061)", () => {
     expect(parsePreference("high-contrast-light")).toBe("highContrastLight");
     expect(parsePreference("HIGHCONTRASTDARK")).toBe("highContrastDark");
     expect(parsePreference("purple")).toBeNull();
+  });
+
+  it("refuse the names of Object's own members (PR 1 review)", () => {
+    expect(parsePreference("constructor")).toBeNull();
+    expect(parsePreference("toString")).toBeNull();
+    expect(parsePreference("__proto__")).toBeNull();
+  });
+});
+
+describe("the theme choice on phones (X12)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetThemeStore();
+  });
+
+  it("runs as a phone", () => {
+    expect(Platform.OS).not.toBe("web");
+  });
+
+  it("is kept and read back on the next start", async () => {
+    setThemePreference("highContrastDark");
+    await Promise.resolve();
+    expect(await AsyncStorage.getItem("hds.theme")).toBe("highContrastDark");
+    resetThemeStore();
+    await hydrateThemePreference();
+    expect(getThemeState().preference).toBe("highContrastDark");
+  });
+
+  it("forgets the choice when set back to the device's", async () => {
+    await AsyncStorage.setItem("hds.theme", "dark");
+    setThemePreference("system");
+    await Promise.resolve();
+    expect(await AsyncStorage.getItem("hds.theme")).toBeNull();
+  });
+
+  it("lets a choice made before the read finishes win", async () => {
+    await AsyncStorage.setItem("hds.theme", "dark");
+    setThemePreference("light");
+    await hydrateThemePreference();
+    expect(getThemeState().preference).toBe("light");
+  });
+
+  it("ignores what it cannot read", async () => {
+    await AsyncStorage.setItem("hds.theme", "constructor");
+    await hydrateThemePreference();
+    expect(getThemeState().preference).toBe("system");
+    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("storage unavailable"));
+    await hydrateThemePreference();
+    expect(getThemeState().preference).toBe("system");
   });
 });
 

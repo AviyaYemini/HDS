@@ -105,6 +105,12 @@ Absence types: **Leave** / **חופשה**, **Reserve duty** / **מילואים**
 | | Weekly rest | מנוחה שבועית | Weekend, סופ"ש |
 | | Night shift | משמרת לילה | |
 
+## Dates
+
+| Key | Term | עברית | Avoid |
+| --- | --- | --- | --- |
+| `date.preset.custom` | Custom | מותאם אישית | Adjusted, מותאם (alone it reads as "adjusted") |
+
 ## Phrases never used
 
 - "You are not allowed to do this." and any refusal that names no way forward (FR-007).

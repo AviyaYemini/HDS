@@ -12,6 +12,7 @@ import { AccessibilityInfo, Platform, useColorScheme, useWindowDimensions } from
 import { component, themes, type Density, type ThemeColors, type ThemeName } from "./theme.generated";
 import {
   getThemeState,
+  hydrateThemePreference,
   setDensityPreference,
   setThemePreference,
   subscribeTheme,
@@ -89,6 +90,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const isDesktop = Platform.OS === "web" && width >= DESKTOP_MIN_WIDTH;
   const name = resolveThemeName(state.preference, scheme === "dark", highContrast);
   const density: Density = state.density ?? (isDesktop ? "compact" : "comfortable");
+
+  useEffect(() => {
+    void hydrateThemePreference();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
