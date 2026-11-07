@@ -236,8 +236,26 @@ if always "Markdown links (offline, as CI)"; then
 fi
 
 if always "secret scan: gitleaks over $BASE..HEAD (redacted)"; then
-    docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT:/repo:ro" -w /repo "$GITLEAKS_IMAGE" \
-        git --no-banner --redact --log-opts="$BASE..HEAD" .
+    # In a worktree, .git is a file naming the common git folder by its absolute path, so that
+    # folder is mounted at the same path; without it git finds no repository, gitleaks scans nothing
+    # and still reports no leaks. A scan that read no commit of a non-empty range fails.
+    common="$(git rev-parse --path-format=absolute --git-common-dir)"
+    expected="$(git rev-list --count "$BASE..HEAD")"
+    docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT:/repo:ro" -v "$common:$common:ro" -w /repo \
+        "$GITLEAKS_IMAGE" git --no-banner --redact --log-opts="$BASE..HEAD" . > "$scratch/gitleaks" 2>&1 \
+        || leaks_status=$?
+    cat "$scratch/gitleaks"
+    # A finding (or any failure of gitleaks itself) fails the step, as before.
+    [ "${leaks_status:-0}" -eq 0 ] || exit "$leaks_status"
+    if grep -q "not a git repository" "$scratch/gitleaks"; then
+        echo "gitleaks could not read the repository: the scan above checked nothing" >&2
+        exit 1
+    fi
+    scanned="$(sed -n 's/.*[^0-9]\([0-9][0-9]*\) commits scanned.*/\1/p' "$scratch/gitleaks" | tail -n 1)"
+    if [ "$expected" -gt 0 ] && [ "${scanned:-0}" -eq 0 ]; then
+        echo "gitleaks scanned no commits of $BASE..HEAD ($expected expected)" >&2
+        exit 1
+    fi
 fi
 
 if always "commitlint over $BASE..HEAD"; then
