@@ -947,3 +947,15 @@ from GitHub's issuer.
 - **Labels (R203, R204)**: the schedule-job check says it is not FR-020's interrupted-run proof
   (Group F's tests are); the header says a hds-postgres pod-template change fails the run, as
   expected, since the only database pod restarts under load.
+
+- **R205**: the allowance compared `HH:MM:SS`, wrong across midnight; FAIL lines and phase markers
+  are full UTC timestamps now (fa0eb9b). The proof passed again: 505 reads, 252 writes, 498 web
+  fetches, 8 failures, all allowed, counted 0, 3:30.
+
+### PR 4 without the x/net raise (the owner's choice, 2026-11-07)
+
+- PR 4 merges without `RCLONE_RAISE=golang.org/x/net@v0.62.0`; it does not wait for 2026-11-10.
+- Until the raise lands, `release.yml` fails at the backup image's vulnerability scan
+  (CVE-2026-78661), so nothing is published to GHCR.
+- The raise is its own small PR from 2026-11-10, proven with `release_gates.sh` (T047
+  follow-ups). The 2026-11-20 rclone 1.76.0 item is unchanged.
