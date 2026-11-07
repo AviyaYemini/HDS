@@ -347,6 +347,41 @@ its roles; with previews off, confirm none is reachable.
 
 ---
 
+### User Story 9 - The app feels finished: motion, loading and words (Priority: P2)
+
+Screens move with short, sharp transitions that suit Option B's square look; waiting shows a thin
+copper-and-tan bar under the header instead of a frozen screen; every word, in Hebrew and English,
+comes from one glossary and one voice. The app opens on a branded splash, and sign-in, the 404 page,
+the offline banner and toasts all look like the same product. [Owner, 2026-11-07: "a polished, well
+structured design and language wise product, with a full set of sub features like tasteful
+animations and custom loading bar." Proposed. X8, E17, AS8's visible part]
+
+**Why this priority**: The owner asked for polish as the goal of the sprint; motion and loading
+feedback also tell users the app is working.
+
+**Independent Test**: Delay one route and confirm the bar appears after about 300 ms and not for a
+fast route; emulate reduce-motion and confirm nothing animates; run the scheduler and watch the bar's
+value rise; open the splash, 404 and offline banner in both languages; compare both locale files.
+
+**Acceptance Scenarios**:
+
+1. **Given** a route or data load longer than about 300 ms, **When** it is pending, **Then** a thin bar
+   under the header shows indeterminate progress; **given** a load under that, **then** no bar flashes.
+2. **Given** a schedule run, **When** it is running, **Then** the bar is determinate, showing elapsed
+   time against the time limit and the best result so far, and its value is announced.
+3. **Given** the device's reduce-motion setting is on, or switched on while the app is open, **When**
+   any screen changes, **Then** nothing animates and the bar shows a still state.
+4. **Given** a sheet or side panel, **When** it opens, **Then** it slides from the leading edge
+   (mirrored in Hebrew), and input is never blocked while anything animates.
+5. **Given** a phone, **When** the user submits availability or assigns a shift, **Then** a light
+   success haptic confirms it.
+6. **Given** the two locale files, **When** they are compared, **Then** they have the same keys, no
+   empty or placeholder strings, and every domain term matches the glossary.
+7. **Given** a first launch, an unknown address or a lost connection, **When** it happens, **Then** the
+   Option B splash, 404 page or offline banner shows in the user's language.
+
+---
+
 ### Edge Cases
 
 - A person's role changes while they are signed in (promoted to manager, made admin, resigns): the next
@@ -590,6 +625,32 @@ its roles; with previews off, confirm none is reachable.
 - **FR-069**: Previews MUST appear only where they are switched on (development and the shared test
   environment) and MUST be unreachable in production. Each later feature replaces its previews.
 
+**Motion, loading and finish** — *Proposed (the owner's note of 2026-11-07)*
+
+- **FR-070**: The design values MUST include motion: three durations (about 120, 200 and 320 ms), a
+  standard and an emphasised easing, and no bounce or overshoot.
+- **FR-071**: Transitions MUST accompany screen changes, sheets and side panels (sliding from the
+  leading edge, mirrored in Hebrew), list rows entering and leaving, status-chip changes, assigning
+  and dragging on the roster, feature panels revealing their clipped corner, and loading
+  placeholders (a shimmer). No animation may block input. [X14]
+- **FR-072**: All motion MUST follow the device's reduce-motion setting, including a change made
+  while the app is open, on phones and on the web. [X8]
+- **FR-073**: Phones MUST give a light haptic on availability cell changes and a success haptic on
+  submitting availability, assigning and publishing. [E17, moved into scope]
+- **FR-074**: A loading bar of the design's own MUST sit under the header: thin, copper and tan, with
+  the clipped-corner motif; indeterminate for route and data loads and shown only after about 300 ms;
+  determinate for schedule runs, showing elapsed time against the time limit and the best result so
+  far. It MUST be exposed as a progress bar with its value announced, and MUST show a still state
+  under reduce-motion. [AS8's visible part]
+- **FR-075**: A glossary MUST fix the Hebrew and English name of every domain term (for example Roster /
+  סידור עבודה, Work log / יומן עבודה, Availability / זמינות), and a short voice-and-tone guide MUST set
+  plain, short, gender-neutral copy, nouns and infinitives on Hebrew buttons, and one format each for
+  dates, times and money. All copy, including every empty state and error, MUST follow both. [D13]
+- **FR-076**: The Hebrew and English locale files MUST have the same keys and no empty or placeholder
+  strings, checked automatically.
+- **FR-077**: The app MUST have an Option B splash screen, app icon and favicon, and a branded sign-in,
+  404 page, offline banner and toasts, with visible focus rings and every theme finished.
+
 ### Key Entities *(include if feature involves data)*
 
 - **Capability map**: for a signed-in person, the set of things they may do (see, change, approve),
@@ -633,6 +694,10 @@ its roles; with previews off, confirm none is reachable.
 - **SC-009**: In production, no preview is reachable; with previews on, each preview listed in the
   working plan's section 6 is present in its place.
 - **SC-010**: Every amount of money shown matches the system's exact value to the agorot.
+- **SC-011**: No loading bar appears for loads under 300 ms; with reduce-motion on, no element on any
+  screen keeps a transition; during a schedule run the bar's value only rises.
+- **SC-012**: The two locale files have identical key sets with no empty or placeholder strings, and
+  every domain term in them matches the glossary.
 
 ## Assumptions
 
@@ -653,5 +718,5 @@ its roles; with previews off, confirm none is reachable.
   them; legal limits wait for the legal review (O10).
 - **Pay rules**: one rule set until feature 017 (O11).
 - **Out of scope**: features 008 to 017 (their screens appear only as previews), tenders, and legal
-  rows L1 to L18. The research's "Could" rows S18, E17 and X9 may be taken if they fit their groups.
+  rows L1 to L18. The research's "Could" rows S18 and X9 may be taken if they fit their groups; E17 (haptics) is in scope (FR-073).
 - **Shipping**: 007 ships in five steps (A; B; C; D with E; F to H), each usable on its own.

@@ -113,8 +113,8 @@ stay open until group A's spike; the spike's result is written into them and int
 
 The prompt names the stack above; four more are needed to meet the spec and are listed here for the
 reviewer: `expo-local-authentication` (FR-010), `expo-calendar` (FR-023; the web gets an `.ics` file
-built by a small helper), `@react-native-async-storage/async-storage` (FR-019) and `expo-font` (the
-Plex families). Each is an Expo-maintained or de-facto standard package and is added in the group
+built by a small helper), `@react-native-async-storage/async-storage` (FR-019), `expo-font` (the
+Plex families), `expo-haptics` (FR-073) and `expo-splash-screen` (FR-077). Each is an Expo-maintained or de-facto standard package and is added in the group
 that first needs it.
 
 ## R10. Phone sessions
@@ -155,3 +155,32 @@ that first needs it.
   dd/MM/yyyy built from `Intl` parts; money via `Intl.NumberFormat` from the Decimal string, never
   through `Number` arithmetic; `@hebcal/core` with `il: true` for holidays and eves; Sunday weeks;
   24-hour times with "+1". The clock icon is not mirrored (O13).
+
+## R14. Motion
+
+- **Decision**: three durations (120, 200, 320 ms) and two easings (standard
+  cubic-bezier(0.2, 0, 0, 1), emphasised cubic-bezier(0.3, 0, 0, 1)) as DTCG `duration` and
+  `cubicBezier` tokens; no springs. Enter uses `base`, exit `fast`, large surfaces (side panels, the
+  clipped-corner reveal) `slow`. Motion runs on the UI thread where the library allows it, and no
+  gesture or press waits for an animation to end. Reduce-motion is read live and sets every duration
+  to 0.
+- **Rationale**: the owner's note; Option B's sharp shapes read best with short, decelerating moves
+  and no bounce; WCAG 2.3.3 and X8.
+- **Alternatives**: springs (overshoot fights the square look); CSS-only on web (two code paths).
+
+## R15. The loading bar
+
+- **Decision**: one `LoadingBar` fed by a small loading store: route changes and any request still
+  pending after 300 ms raise it, and once shown it stays at least 400 ms. Indeterminate is a moving
+  copper segment on a tan track; determinate (schedule runs) is a fill to elapsed / limit, polled
+  from the job, with "best so far" text beside it. Under reduce-motion the indeterminate state is a
+  still, half-filled bar with "Loading…" text for screen readers.
+- **Rationale**: the owner's note, A9 (nothing under a second flashes), AS8's visible part.
+
+## R16. Glossary, voice and locale parity
+
+- **Decision**: `docs/ux/glossary.md` and `docs/ux/voice-and-tone.md` are the source for all copy; a
+  Jest test compares `he.json` and `en.json` key sets and refuses empty values, values equal to their
+  key, and the markers `TODO`, `TBD`, `FIXME`, `lorem`, `xxx`. A second test checks the glossary's
+  terms are used for their keys (for example `nav.roster` is "Roster" / "סידור עבודה").
+- **Rationale**: FR-075, FR-076, D13.

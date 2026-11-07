@@ -56,7 +56,8 @@ Hermes, React Native Web; Python 3.12 for the API (unchanged).
 - Needed by the spec and not named in the prompt (research R9 lists them for review):
   `expo-local-authentication` (biometric unlock, FR-010), `expo-calendar` (add to calendar on
   phones, FR-023), `@react-native-async-storage/async-storage` (availability draft and last-loaded
-  shifts offline, FR-019), `expo-font` for the Plex families. No others are added without an ADR.
+  shifts offline, FR-019), `expo-font` for the Plex families, `expo-haptics` (FR-073) and
+  `expo-splash-screen` (FR-077). No others are added without an ADR.
 
 **Storage**: PostgreSQL 16 (unchanged), five Alembic migrations (025 to 029, data-model.md). On the
 device: secure store for tokens (as today), async storage for drafts and cached lists.
@@ -82,7 +83,7 @@ from the server's Decimal strings (Constitution VII, D10); every string in the l
 (Constitution VIII); previews off in production (FR-069); additive API changes only, so no `/api/v2`
 (Constitution V).
 
-**Scale/Scope**: About 35 screens across four roles plus 12 preview stubs; 69 functional
+**Scale/Scope**: About 35 screens across four roles plus 12 preview stubs; 77 functional
 requirements; tens of users per organisation, as today.
 
 ## Constitution Check
@@ -112,7 +113,7 @@ No violations; Complexity Tracking is empty.
 ```text
 specs/007-ux-redesign/
 ├── plan.md              # This file
-├── research.md          # Phase 0: R1–R13
+├── research.md          # Phase 0: R1–R16
 ├── data-model.md        # Phase 1: migrations 025–028 and the client-side models
 ├── quickstart.md        # Phase 1: how to see each group working
 ├── contracts/
@@ -169,6 +170,45 @@ replaces are updated or removed in the same group (working plan section 5).
 
 Within a group: [CORE] specs and API → [UI] → close (scoped `make ci-local`, `/code-review high`, no
 open ledger row, ≤ 3 risk mutants named up front, one commit). One group at a time on the branch.
+
+## Motion, loading bar and language polish
+
+*Proposed, from the owner's note of 2026-11-07: "a polished, well structured design and language wise
+product, with a full set of sub features like tasteful animations and custom loading bar." Spec
+User Story 9, FR-070 to FR-077.*
+
+- **Motion tokens** ([CORE], group A): `motion.duration.fast` 120 ms, `.base` 200 ms, `.slow` 320 ms;
+  `motion.easing.standard` cubic-bezier(0.2, 0, 0, 1) and `.emphasized` cubic-bezier(0.3, 0, 0, 1);
+  no spring, bounce or overshoot, to suit Option B's square look. In the component tier of the DTCG
+  JSON, generated into the theme like colour (research R14).
+- **Transitions** ([UI]): screen changes, sheets and side panels from the leading edge (mirrored),
+  list rows entering and leaving, status-chip changes, roster assign and drag feedback, the
+  clipped-corner reveal on feature panels, and the skeleton shimmer. Built on the animation layer the
+  R1 library uses (React Native Reanimated where it is the library's own). Never blocking input.
+- **Reduce-motion** ([UI], checked by [CORE] specs): a `useReducedMotion` hook that follows the
+  setting live on native (AccessibilityInfo's change event) and on the web (`prefers-reduced-motion`
+  listener); under it every duration is 0 and the shimmer and bar are still (X8).
+- **Haptics** ([UI]): `expo-haptics`, light on a cell change, success on submit, assign and publish
+  (E17, now in scope).
+- **Loading bar** ([UI], group A component; [CORE] specs in A and E): a 3 px bar under the 64 px
+  header (under the status bar on phones), a `cta.bg` track with an `accent` fill and a clipped
+  leading end. Indeterminate for route and data loads, shown only after 300 ms and kept at least
+  400 ms once shown so it never flickers; determinate for schedule runs, its value elapsed time over
+  the time limit with "best so far: n / m filled" beside it. `role="progressbar"` with
+  `aria-valuenow` on web and `accessibilityRole="progressbar"` with `accessibilityValue` on native;
+  its value announced at 25 % steps; a still bar under reduce-motion (R15).
+- **Language** ([CORE] glossary file, parity test; [UI] copy): `docs/ux/glossary.md` (every domain
+  term in he and en, with the terms to avoid), `docs/ux/voice-and-tone.md` (plain, short, neutral
+  Hebrew; nouns and infinitives on buttons; the one format for dates, times and money; empty-state
+  and error patterns), and `apps/client/tests/unit/locales.parity.test.ts` (same keys, no empty
+  strings, no placeholder markers such as `TODO`, `TBD`, `lorem`, or a value equal to its key)
+  (R16).
+- **Finishing touches** ([UI]): Option B splash (`expo-splash-screen`), app icon and favicon; branded
+  sign-in, 404 (`+not-found`), offline banner and toasts; focus rings; all four themes finished.
+
+Spec additions to Playwright, in the owning group: A (the bar appears for a delayed route and not for
+a fast one; reduce-motion emulated leaves no transition), B (splash, 404 and offline banner in both
+languages), E (the scheduler bar's value rises during a run).
 
 ## Post-design Constitution Check
 
