@@ -39,8 +39,16 @@ jest.mock("expo-router", () => {
 // The design's primitives (specs/007): fonts count as loaded, safe areas are zero, and SVG draws
 // as plain views, so the tests check roles, names and states rather than pixels.
 jest.mock("expo-font", () => ({ useFonts: () => [true, null], loadAsync: jest.fn(async () => undefined), isLoaded: () => true }));
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- a mock factory can only require
-jest.mock("react-native-safe-area-context", () => require("react-native-safe-area-context/jest/mock"));
+jest.mock("react-native-safe-area-context", () => {
+  const insets = { top: 0, bottom: 0, left: 0, right: 0 };
+  return {
+    SafeAreaProvider: ({ children }: { children: unknown }) => children,
+    SafeAreaView: ({ children }: { children: unknown }) => children,
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
+    initialWindowMetrics: { insets, frame: { x: 0, y: 0, width: 390, height: 844 } },
+  };
+});
 jest.mock("react-native-svg", () => {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const React = require("react");
