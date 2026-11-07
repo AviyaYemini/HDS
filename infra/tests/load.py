@@ -1,8 +1,10 @@
 """Steady load through the ingress during a rolling update (specs/006-deploy-operations T060, T059).
 
-Signs in once, then sends 20 requests a second until it is stopped (SIGTERM or SIGINT): reads
-(``GET /api/v1/sites``) and writes (``POST /api/v1/sites``), four reads to a write, with the access
-token in hand, and a refresh every 30 seconds, which rotates the refresh token, as a client would.
+Signs in once, then sends 20 requests a second until it is stopped (SIGTERM or SIGINT): of every
+five, a write (``POST /api/v1/sites``), two reads (``GET /api/v1/sites``) with the access token in
+hand, and two of the web build (``GET /`` and one of its scripts, found in that page), so the web's
+pods are under load too (review R201); and a refresh every 30 seconds, which rotates the refresh
+token, as a client would.
 Any status other than the expected one, any connection error or timeout, and any refresh that fails
 is counted. On stop it prints the totals and each failure, and exits 1 if there was any.
 
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import signal
 import sys
 import time
@@ -40,6 +43,7 @@ class Tally:
 
     reads: int = 0
     writes: int = 0
+    pages: int = 0
     refreshes: int = 0
     failures: list[str] = field(default_factory=list)
 
@@ -69,8 +73,39 @@ async def sign_in(client: httpx.AsyncClient, email: str, password: str) -> Sessi
     return Session(access=body["access_token"], refresh=body["refresh_token"])
 
 
-async def one_request(client: httpx.AsyncClient, session: Session, n: int, tally: Tally) -> None:
-    """Send the n-th request, a read or a write, and count its outcome."""
+async def web_asset(client: httpx.AsyncClient) -> str:
+    """The path of a script the web build's page loads, to fetch it as a browser would.
+
+    Raises:
+        SystemExit: when the page cannot be read or names no script.
+    """
+    response = await client.get("/")
+    found = re.search(r'src="(/[^"]+\.js)"', response.text) if response.status_code == 200 else None
+    if found is None:
+        raise SystemExit(f"the web build's page names no script (HTTP {response.status_code})")
+    return found[1]
+
+
+async def web_request(client: httpx.AsyncClient, path: str, tally: Tally) -> None:
+    """Fetch a page or a script of the web build, and count its outcome."""
+    try:
+        response = await client.get(path)
+    except httpx.HTTPError as error:
+        tally.fail(f"GET {path}: {type(error).__name__}")
+        return
+    if response.status_code != 200:
+        tally.fail(f"GET {path}: HTTP {response.status_code}, not 200")
+        return
+    tally.pages += 1
+
+
+async def one_request(
+    client: httpx.AsyncClient, session: Session, n: int, tally: Tally, asset: str
+) -> None:
+    """Send the n-th request, a write, a read or a web fetch, and count its outcome."""
+    if n % WRITE_EVERY in (1, 2):
+        await web_request(client, "/" if n % WRITE_EVERY == 1 else asset, tally)
+        return
     headers = {"Authorization": f"Bearer {session.access}"}
     write = n % WRITE_EVERY == 0
     try:
@@ -128,6 +163,7 @@ async def run(args: argparse.Namespace, password: str) -> Tally:
         base_url=args.url, headers={"Host": args.host}, timeout=TIMEOUT
     ) as client:
         session = await sign_in(client, args.email, password)
+        asset = await web_asset(client)
         print(f"signed in; {RATE:.0f} requests a second until stopped", flush=True)
         pending: set[asyncio.Task[None]] = set()
         start = time.monotonic()
@@ -140,7 +176,7 @@ async def run(args: argparse.Namespace, password: str) -> Tally:
                 await refresh(client, session, tally)
                 next_refresh = now + REFRESH_EVERY
             n += 1
-            task = asyncio.create_task(one_request(client, session, n, tally))
+            task = asyncio.create_task(one_request(client, session, n, tally, asset))
             pending.add(task)
             task.add_done_callback(pending.discard)
             delay = start + n / RATE - time.monotonic()
@@ -171,8 +207,8 @@ def main() -> int:
             password = handle.read().rstrip("\n")
     tally = asyncio.run(run(args, password))
     print(
-        f"load: {tally.reads} reads, {tally.writes} writes, {tally.refreshes} refreshes, "
-        f"{len(tally.failures)} failures",
+        f"load: {tally.reads} reads, {tally.writes} writes, {tally.pages} web fetches, "
+        f"{tally.refreshes} refreshes, {len(tally.failures)} failures",
         flush=True,
     )
     for failure in tally.failures:

@@ -12,12 +12,16 @@
 #      base's hds-postgres, then its hds, with infra/tests/rolling-update-values.yaml
 #      (ENVIRONMENT=production).
 #   4. The first Admin; load.py through the ingress; a schedule job queued; then hds-postgres and
-#      hds upgraded to the head with --wait; the load stopped.
+#      hds upgraded to the head with --wait, and the head's Deployments rolled once more, so the
+#      pods that stop are the head's own; the load stopped.
 #   5. It fails on any failed request or refresh, on the schedule job not ending succeeded, on a
 #      mail sent, on a FAIL from make ops-status other than the ones a cluster with no monitoring,
 #      Vault or backups gives (listed below), and on the forwarded-address check (ADR 007).
 #   6. infra/tests/flux_verify.sh: Flux's source-controller refuses an unsigned chart and one signed
 #      with another key, and takes one signed with the key it trusts (T047c).
+#
+# A change to hds-postgres's pod template fails this run, as expected: the upgrade restarts the only
+# database pod under load, and one instance cannot roll (review R204).
 #
 # Every tool runs from an image pinned in infra/VERSIONS.md: k3d (with the Docker socket), kubectl
 # (the k3s server's own), helm (on k3d's network). Needs Docker, git, jq, openssl and uv.
@@ -28,7 +32,10 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 K3D_IMAGE="ghcr.io/k3d-io/k3d:5.9.0@sha256:6c1e2bd3b80185499ee6fd2315077e712c6cfa92279dc4bfd7645a5f992a1937"
 HELM_IMAGE="alpine/helm:3.22.1@sha256:8191701ad1f82ee3695c87211fcbfe6d7b1bb7df92ac1c8de9ccdb0995a6a2c1"
 MAILPIT_IMAGE="axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea"
-CLUSTER=hds
+# A cluster of its own, never k3d.yaml's own `hds`, the shared environment's (T063): its name and
+# host ports differ, its shape is the same (review R200; infra/tests/check_deploy_ops.sh checks).
+CLUSTER=hds-rolling
+PORT=18080
 SERVER="k3d-$CLUSTER-server-0"
 NS=hds
 cd "$ROOT"
@@ -39,7 +46,7 @@ chmod 755 "$work"
 
 say() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
-k3d() { docker run --rm -v "$socket:/var/run/docker.sock" -v "$ROOT/infra/cluster:/cfg:ro" "$K3D_IMAGE" "$@"; }
+k3d() { docker run --rm -v "$socket:/var/run/docker.sock" -v "$work/k3d:/cfg:ro" "$K3D_IMAGE" "$@"; }
 kubectl() { docker exec -i "$SERVER" kubectl "$@"; }
 helm() {
     docker run --rm -i --network "k3d-$CLUSTER" -v "$work:/work:ro" -e KUBECONFIG=/work/kubeconfig \
@@ -48,14 +55,24 @@ helm() {
 cleanup() {
     [ -n "${load_pid:-}" ] && kill "$load_pid" 2> /dev/null || true
     for tree in base head; do git -C "$ROOT" worktree remove --force "$work/$tree" > /dev/null 2>&1 || true; done
-    [ "${HDS_KEEP_CLUSTER:-}" = 1 ] || k3d cluster delete "$CLUSTER" > /dev/null 2>&1 || true
+    # Only a cluster this run made is deleted.
+    if [ -n "${created:-}" ] && [ "${HDS_KEEP_CLUSTER:-}" != 1 ]; then
+        k3d cluster delete "$CLUSTER" > /dev/null 2>&1 || true
+    fi
     rm -rf -- "${work:?}"
 }
 trap cleanup EXIT
 
-say "1. a k3d cluster"
-k3d cluster delete "$CLUSTER" > /dev/null 2>&1 || true
+say "1. a k3d cluster, $CLUSTER"
+mkdir "$work/k3d"
+sed -e "s/^  name: hds$/  name: $CLUSTER/" -e "s/port: 8080:80/port: $PORT:80/" -e "s/port: 8443:443/port: 18443:443/" \
+    infra/cluster/k3d.yaml > "$work/k3d/k3d.yaml"
+grep -q "^  name: $CLUSTER$" "$work/k3d/k3d.yaml" || fail "the cluster's name could not be set"
+if k3d cluster list --no-headers 2> /dev/null | awk '{print $1}' | grep -qx "$CLUSTER"; then
+    fail "a k3d cluster $CLUSTER already exists; delete it yourself (k3d cluster delete $CLUSTER), then run again"
+fi
 k3d cluster create --config /cfg/k3d.yaml --kubeconfig-update-default=false > /dev/null
+created=1
 k3d kubeconfig get "$CLUSTER" | sed "s#server: https://[^ ]*#server: https://k3d-$CLUSTER-serverlb:6443#" \
     > "$work/kubeconfig"
 chmod 644 "$work/kubeconfig"
@@ -208,25 +225,35 @@ printf '%s\n' "$admin_password" | kubectl -n "$NS" exec -i deployment/hds-api --
 sign_in() {
     jq -n --arg e "$admin" --arg p "$admin_password" '{email: $e, password: $p}' \
         | curl -fsS -H 'Host: hds.localhost' -H 'Content-Type: application/json' --data @- \
-            http://127.0.0.1:8080/auth/login | jq -r .access_token
+            http://127.0.0.1:$PORT/auth/login | jq -r .access_token
 }
 # The API's own environment (uv sync --extra dev), run with exec, so $! is load.py itself and the
 # TERM below reaches it, not a wrapper.
 printf '%s\n' "$admin_password" | (exec "$ROOT/apps/api/.venv/bin/python" infra/tests/load.py \
-    --email "$admin" --password-file -) > "$work/load.log" 2>&1 &
+    --email "$admin" --password-file - --url "http://127.0.0.1:$PORT") > "$work/load.log" 2>&1 &
 load_pid=$!
 sleep 10
 token=$(sign_in)
 today=$(date -u +%Y-%m-%d)
 job=$(curl -fsS -H 'Host: hds.localhost' -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
     --data "{\"from\": \"$today\", \"to\": \"$today\", \"solver\": \"greedy\"}" \
-    http://127.0.0.1:8080/api/v1/schedule-jobs | jq -r .id)
+    http://127.0.0.1:$PORT/api/v1/schedule-jobs | jq -r .id)
 [ -n "$job" ] && [ "$job" != null ] || fail "the schedule job could not be queued"
 echo "queued schedule job $job"
+echo "$(date +%H:%M:%S) the upgrade, base to head, starts"
 helm upgrade hds-postgres /work/head-charts/hds-postgres --namespace "$NS" --wait --timeout 5m > /dev/null
 # shellcheck disable=SC2046
 helm upgrade hds /work/head-charts/hds --namespace "$NS" -f /work/head-charts/hds/values-local.yaml \
     -f /work/values.yaml $(images head) --wait --timeout 10m > /dev/null
+head_roll=$(date +%H:%M:%S)
+echo "$head_roll the upgrade is done; the head rolls once more"
+# Then a second rollout, head to head, under the same load: in the upgrade above the pods that
+# stop are the base's, so this is what tests the head's own shutdown (its preStop; review R202).
+kubectl -n "$NS" rollout restart deployment/hds-api deployment/hds-web deployment/hds-worker > /dev/null
+for deployment in hds-api hds-web hds-worker; do
+    kubectl -n "$NS" rollout status "deployment/$deployment" --timeout=5m > /dev/null
+done
+echo "$(date +%H:%M:%S) the head's rollout is done"
 sleep 20
 kill -TERM "$load_pid"
 load_status=0
@@ -237,20 +264,36 @@ cat "$work/load.log"
 say "5. the checks"
 failures=0
 check() { if "$@"; then printf 'ok    %s\n' "$label"; else printf 'FAIL  %s\n' "$label"; failures=$((failures + 1)); fi; }
-label="no request failed and the session kept refreshing during the upgrade"; check test "$load_status" -eq 0
-refreshes=$(sed -n 's/^load: [0-9]* reads, [0-9]* writes, \([0-9]*\) refreshes.*/\1/p' "$work/load.log")
+# Every failed request fails the run, with one exception while this feature is unmerged: in the
+# upgrade, base to head, the web pods that stop are the base's, and a base whose web.yaml has no
+# preStop (main's, before review R201) drops a web request or two as nginx stops. Those, and only
+# those, are reported and allowed; the API's, and any during the head's own rollout, never are.
+grep '^  FAIL  ' "$work/load.log" | sed 's/^  FAIL  //' > "$work/failures" || true
+if grep -q 'preStop:' "$work/base/infra/helm/hds/templates/web.yaml"; then
+    cp "$work/failures" "$work/counted"
+else
+    awk -v roll="$head_roll" '!($1 < roll && ($3 == "/" || $3 ~ /^\/_expo\//))' "$work/failures" > "$work/counted"
+    allowed=$(($(wc -l < "$work/failures") - $(wc -l < "$work/counted")))
+    [ "$allowed" -eq 0 ] || echo "allowed: $allowed web request(s) dropped by the base's web pods, which have no preStop (R201)"
+fi
+label="no request failed (counted: $(wc -l < "$work/counted" | tr -d ' ')) and the session kept refreshing"
+# load.py exits non-zero on any failure, and on a sign-in that never worked (no FAIL line then).
+check test ! -s "$work/counted" -a \( "$load_status" -eq 0 -o -s "$work/failures" \)
+refreshes=$(sed -n 's/^load: .* \([0-9]*\) refreshes,.*/\1/p' "$work/load.log")
 label="the load ran through the upgrade, refreshing at least once (${refreshes:-0})"
 check test "${refreshes:-0}" -ge 1
 label="the head runs: its migration was applied"
 check test "$(kubectl -n "$NS" exec hds-postgres-0 -- psql -U hds -d hds -Atc 'SELECT version_num FROM alembic_version')" = 999_rolling_update_scratch
 state=$(curl -fsS -H 'Host: hds.localhost' -H "Authorization: Bearer $(sign_in)" \
-    "http://127.0.0.1:8080/api/v1/schedule-jobs/$job" | jq -r .status)
+    "http://127.0.0.1:$PORT/api/v1/schedule-jobs/$job" | jq -r .status)
 label="the schedule job ended succeeded (it was $state)"; check test "$state" = succeeded
-# Recorded once (FR-020): the proposal is the job row's own result, so one row holds one result; a
-# run the update interrupted may be retried, within the three attempts (review R193).
+# Recorded once: the proposal is the job row's own result, so one row holds one result; a run the
+# update interrupted may be retried, within the three attempts (review R193). Not FR-020's proof:
+# one attempt means the job finished before the old worker stopped; Group F's SIGTERM and
+# lease-expiry tests prove the interrupted path (review R203).
 recorded=$(kubectl -n "$NS" exec hds-postgres-0 -- psql -U hds -d hds -Atc \
     "SELECT (result IS NOT NULL)::text || ' ' || attempts FROM schedule_jobs WHERE id = '$job'")
-label="it holds its one result, after ${recorded#* } attempt(s)"
+label="it holds its one result, after ${recorded#* } attempt(s) (not FR-020's interrupted-run proof: Group F's tests)"
 check test "${recorded% *}" = true -a "${recorded#* }" -le 3
 sent=$(kubectl -n "$NS" exec deployment/mailpit -- wget -qO- http://127.0.0.1:8025/api/v1/messages | jq .total)
 label="no mail was sent ($sent)"; check test "$sent" = 0
@@ -319,7 +362,7 @@ say "the web build on the upgraded cluster (Playwright; review C1)"
 # Admin's address and password in its environment only, never as arguments or in a file.
 if [ -n "${HDS_CLUSTER_SMOKE:-}" ]; then
     label="the first Admin signs in on the web build, opens the main screens and signs out"
-    check env HDS_CLUSTER_URL=http://hds.localhost:8080 HDS_CLUSTER_EMAIL="$admin" \
+    check env HDS_CLUSTER_URL="http://hds.localhost:$PORT" HDS_CLUSTER_EMAIL="$admin" \
         HDS_CLUSTER_PASSWORD="$admin_password" sh -c "$HDS_CLUSTER_SMOKE"
 else
     echo "skipped: HDS_CLUSTER_SMOKE is not set"

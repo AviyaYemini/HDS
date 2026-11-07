@@ -301,5 +301,27 @@ holds "a Vault still sealed is reported" grep -qF "still sealed" <<< "$out"
 out=$(unseal "$key" FAKE_FAIL=unseal || true)
 holds "a refused key is reported" grep -qF "Vault refused the key" <<< "$out"
 
+echo "== the rolling-update proof's cluster is never the shared one (review R200)"
+shared=$(sed -n 's/^  name: //p' "$ROOT/infra/cluster/k3d.yaml" | head -n 1)
+proof=$(sed -n 's/^CLUSTER=//p' "$ROOT/infra/tests/rolling_update.sh")
+proof_port=$(sed -n 's/^PORT=//p' "$ROOT/infra/tests/rolling_update.sh")
+if [ -n "$proof" ] && [ -n "$shared" ] && [ "$proof" != "$shared" ]; then
+    pass "its cluster, $proof, is not k3d.yaml's $shared"
+else
+    flunk "its cluster ($proof) must not be k3d.yaml's ($shared)"
+fi
+if [ -n "$proof_port" ] && ! grep -q "port: $proof_port:" "$ROOT/infra/cluster/k3d.yaml"; then
+    pass "its ingress port, $proof_port, is not the shared cluster's"
+else
+    flunk "its ingress port ($proof_port) must not be one k3d.yaml maps"
+fi
+# shellcheck disable=SC2016 # the script's own text, searched for as it is
+if grep -q 'k3d cluster delete "\$CLUSTER"' "$ROOT/infra/tests/rolling_update.sh" \
+    && grep -q 'if \[ -n "\${created:-}" \]' "$ROOT/infra/tests/rolling_update.sh"; then
+    pass "it deletes only a cluster it made"
+else
+    flunk "it deletes only a cluster it made"
+fi
+
 [ "$failures" -eq 0 ] || { echo "deploy op checks: $failures failed" >&2; exit 1; }
 echo "deploy op checks: all passed"
