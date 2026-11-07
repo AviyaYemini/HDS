@@ -58,7 +58,7 @@ Hermes, React Native Web; Python 3.12 for the API (unchanged).
   phones, FR-023), `@react-native-async-storage/async-storage` (availability draft and last-loaded
   shifts offline, FR-019), `expo-font` for the Plex families. No others are added without an ADR.
 
-**Storage**: PostgreSQL 16 (unchanged), four Alembic migrations (025 to 028, data-model.md). On the
+**Storage**: PostgreSQL 16 (unchanged), five Alembic migrations (025 to 029, data-model.md). On the
 device: secure store for tokens (as today), async storage for drafts and cached lists.
 
 **Testing**: Playwright on the web build under `apps/client/tests/e2e/ux/` (one spec per group, he
@@ -100,7 +100,7 @@ requirements; tens of users per organisation, as today.
 | VII. Money and time | Assignment times are UTC instants; pay uses them through the existing Decimal pipeline; the client never computes money, it formats the server's Decimal strings. |
 | VIII. i18n | All new copy in `en.json` and `he.json`, gender-neutral Hebrew; the ESLint literal-text rule stays on; RTL is covered in every group's spec. |
 | IX. Quality gates | Scoped `make ci-local` per group, `make ci-local-db` once at PR-ready; new CI wiring for the `ux/` specs and the contrast test is a [CORE] task. |
-| X. Migrations | Four new reversible migrations; no applied migration is edited. |
+| X. Migrations | Five new reversible migrations; no applied migration is edited. |
 | XI. Documentation | ADRs for the library choice, the capability map, assignment times, availability submissions and phone sessions; docstrings and endpoint summaries throughout. |
 
 No violations; Complexity Tracking is empty.
@@ -137,7 +137,7 @@ apps/api/src/hds/
 ├── routers/{me,availability,shifts,roster_extras,saved_views,organisation}.py
 ├── scheduling/                   # assignment span + not_submitted reason (pure)
 └── payroll/                      # prices the assignment's own span
-apps/api/alembic/versions/025_…028_…py
+apps/api/alembic/versions/025_…029_…py
 
 packages/api-client/src/schema.d.ts   # regenerated, never hand-edited
 
@@ -161,8 +161,8 @@ replaces are updated or removed in the same group (working plan section 5).
 
 | PR | Groups | [CORE] first | [UI] then |
 | --- | --- | --- | --- |
-| 1 | A | `a-design-system.spec.ts`; tokens JSON + contrast test; gallery route switch; CI for `ux/` | RTL spike + ADR, theme generation, primitives, date picker, locale helpers |
-| 2 | B | `b-roles.spec.ts`; capability map + `/me`; phone sessions; organisation contact; previews switch | shells, homes, refusal page, account screen, contact card, preview stubs |
+| 1 | A | `a-design-system.spec.ts`; tokens JSON + contrast test; the previews switch and gallery route; CI for `ux/` | RTL spike + ADR, theme generation, primitives, date picker, locale helpers |
+| 2 | B | `b-roles.spec.ts`; capability map + `/me`; phone sessions; organisation contact; previews-off CI run | shells, homes, refusal page, account screen, contact card, preview stubs |
 | 3 | C | `c-my-work.spec.ts`; availability submissions, not-submitted rule in scheduling | availability week, my shifts, my pay |
 | 4 | D, E | `d-roster.spec.ts`, `e-schedule-runs.spec.ts`; assignment times through pay and rules; managers' edits; overrides; publish preview; copy week; templates; submission tracker; If-Match | roster web and phone, publish review, schedule runs |
 | 5 | F, G, H | `f-admin.spec.ts`, `g-reports.spec.ts`, `h-a11y-sweep.spec.ts`; saved views; report key figures if missing | admin tables and forms, reports, accessibility pass, statement page |
