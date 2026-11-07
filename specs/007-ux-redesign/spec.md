@@ -47,6 +47,9 @@ only how an original capability looks or behaves.
   come with feature 010.
 - Q: How long does a phone stay signed in with biometric unlock? → A: 30 days rolling on phones,
   unlocked by biometrics; the web stays at 7 days.
+- Q: (Reviewer, 2026-11-07, defaults accepted) Publish notifications, the shift leader's contact and
+  approved hours? → A: Publish records one notification per person for feature 010 to deliver; the
+  project manager's contact stands in for the shift leader; approved hours are a feature 011 preview.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -485,9 +488,10 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-022**: The next shift MUST lead as a card with its date, times ("+1" for overnight), site, post
   and a countdown. [E9]
 - **FR-023**: Each shift MUST open its details (site address, map links, post instructions where they
-  exist, the shift leader's contact) and offer "Add to calendar" on phones and a calendar file on the
+  exist, and the project manager's contact in place of a shift leader, whom HDS does not record) and offer "Add to calendar" on phones and a calendar file on the
   web. [E10, E11]
-- **FR-024**: My pay MUST offer a pay-period picker, an Hours view (scheduled, worked, approved) and a
+- **FR-024**: My pay MUST offer a pay-period picker, an Hours view (scheduled, and worked as the past published shifts; approved hours appear as a
+  preview until feature 011) and a
   Pay view (estimated gross, a breakdown by rate that adds up exactly to the total, the change since
   the last period), labelled "estimate, before tax" until payroll is final. [E12, EMP-3]
 
@@ -520,8 +524,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-035**: The roster MUST show each person's availability (unavailable, prefers, would rather not,
   absence) and list those who prefer a shift first when picking. [S11]
 - **FR-036**: Publishing MUST go through a review stating the exact scope, the number of shifts and
-  people affected, coverage, unfilled slots and open warnings; each affected person MUST be notified
-  once per publish, however many shifts it covers. [S12]
+  people affected, coverage, unfilled slots and open warnings; one notification for each affected person
+  MUST be recorded for delivery per publish, however many shifts it covers, with the publisher's
+  choice to notify or publish silently; feature 010 delivers them. [S12]
 - **FR-037**: Unpublished changes MUST be undoable step by step. [S13]
 - **FR-038**: Managers MUST be able to copy last week (choosing what happens on conflicts), save and
   apply week templates, and bulk edit with a preview that states the scope. [S14, S15]

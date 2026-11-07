@@ -16,7 +16,7 @@ stay open until group A's spike; the spike's result is written into them and int
 - **Rationale**: RTL quality differs most between candidates, and the only evidence so far is their
   2026 GitHub activity (research report X16). NativeWind 4's `rtl:` variants are broken on native;
   React Native Paper looks like Material and has an open RTL issue on web, so both are off the list.
-- **Records**: the result goes here and in `docs/adr/013-component-library.md`.
+- **Records**: the result goes here and in `docs/adr/014-component-library.md`. The spike runs on the web and on whatever simulators or emulators run unattended; R1 and R2 record which platforms were and were not checked..
 
 ## R2. Date picker — open until the spike
 
@@ -125,6 +125,10 @@ that first needs it.
   value; rotation and reuse detection (ADR 006) are unchanged; access tokens stay ≤ 15 min.
   Biometric unlock is a client gate in front of the stored refresh token; no biometric data leaves
   the device.
+- **Accepted limit**: `client_kind` is self-declared, so a browser can claim `native` and get a
+  30-day token. Acceptable because rotation and reuse detection still apply, the web keeps tokens in
+  memory (ADR 010), and biometrics are a convenience gate, not a security boundary. Recorded in ADR
+  016; a test pins that a web sign-in without `client_kind` gets 7 days.
 - **Rationale**: the owner's answer to Q5.
 
 ## R11. Previews
@@ -143,8 +147,8 @@ that first needs it.
   event per affected person (`publish_events`, data-model.md), which feature 010 delivers through
   the inbox and push. In 007 no message is sent, because HDS has no channel for it yet; the review's
   "Notify everyone / Publish silently" choice is stored on the event.
-- **Rationale**: FR-036 asks for one notification per person per publish; the channels arrive in
-  010 (O14). Flagged for the reviewer: 007 records, 010 delivers.
+- **Rationale**: the channels arrive in 010 (O14). Accepted by the reviewer on 2026-11-07: FR-036
+  now reads "recorded for delivery".
 
 ## R13. Locale plumbing
 

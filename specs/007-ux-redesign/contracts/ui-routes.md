@@ -57,6 +57,7 @@ and no live controls.
 | `requests` | client; managers (`client_requests.answer`) | client shell; Manage | 009 |
 | `inbox`, `notification-prefs` | all | header; Account | 010 |
 | `report-hours`, `cant-make-it` | employee | My shifts | 011 |
+| `approved-hours` | employee | My pay › Hours | 011 |
 | `overview` | manager, admin | Manage › Home | 012 |
 | `cost-strip` | `pay.read_others` | Roster | 012 |
 | `exports`, `calendar-feed` | all | Reports; My shifts | 013 |

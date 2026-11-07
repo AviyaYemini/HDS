@@ -151,7 +151,7 @@ apps/client/
 ├── src/locale/                   # polyfills, bidi isolate, dates, money, holidays
 ├── src/screens/{my-work,roster,runs,admin,reports,client,account,previews}/
 └── tests/{unit,e2e/ux}/          # Jest + RNTL; Playwright a–h specs
-docs/adr/013-…017-….md
+docs/adr/014-…018-….md
 ```
 
 **Structure Decision**: Keep the existing two apps (`apps/api`, `apps/client`) and the generated
