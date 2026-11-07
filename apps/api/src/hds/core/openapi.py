@@ -95,6 +95,9 @@ _NEVER_FORBIDDEN = {
     ("/auth/logout", "post"),
     ("/auth/logout-all", "post"),
     ("/me", "get"),
+    ("/me/sessions", "get"),
+    ("/me/sessions/{id}", "delete"),
+    ("/api/v1/organisation/contact", "get"),
 }
 
 

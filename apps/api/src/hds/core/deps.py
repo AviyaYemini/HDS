@@ -12,11 +12,12 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.authz import ensure_self_or_manager
+from hds.core.capabilities import Capability, has
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.exceptions import AuthError, ForbiddenError
 from hds.core.security import decode_access_token
-from hds.models.user import User, UserRole
+from hds.models.user import User
 from hds.repositories.user import UserRepository
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -89,7 +90,8 @@ async def require_manager(
     Raises:
         ForbiddenError: ``users.manager_required`` (HTTP 403).
     """
-    if user.role not in {UserRole.manager, UserRole.admin}:
+    # roster.read: Manager and Admin.
+    if not has(user.role, Capability.ROSTER_READ):
         raise ForbiddenError(
             code="users.manager_required",
             detail="Manager or Admin role required",
@@ -114,7 +116,8 @@ async def require_manager_or_client(
     Raises:
         ForbiddenError: ``users.manager_required`` (HTTP 403) for an Employee.
     """
-    if user.role not in {UserRole.manager, UserRole.admin, UserRole.client}:
+    # projects.read: Manager, Admin and Client.
+    if not has(user.role, Capability.PROJECTS_READ):
         raise ForbiddenError(
             code="users.manager_required",
             detail="Manager or Admin role required",
@@ -139,7 +142,8 @@ async def require_staff(
     Raises:
         ForbiddenError: ``users.forbidden`` (HTTP 403) for a Client account.
     """
-    if user.role == UserRole.client:
+    # my_work.read: Employee, Manager and Admin.
+    if not has(user.role, Capability.MY_WORK_READ):
         raise ForbiddenError(
             code="users.forbidden", detail="Access to this resource is not allowed"
         )
@@ -160,7 +164,8 @@ async def require_admin(
     Raises:
         ForbiddenError: ``users.admin_required`` (HTTP 403).
     """
-    if user.role != UserRole.admin:
+    # staff.delete: Admin only.
+    if not has(user.role, Capability.STAFF_DELETE):
         raise ForbiddenError(
             code="users.admin_required",
             detail="Admin role required",

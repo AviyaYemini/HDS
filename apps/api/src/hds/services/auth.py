@@ -14,7 +14,7 @@ from math import ceil
 from typing import Any, NoReturn
 
 from hds.core import passwords
-from hds.core.exceptions import AuthError, RateLimitedError
+from hds.core.exceptions import AuthError, NotFoundError, RateLimitedError
 from hds.core.security import create_access_token, generate_refresh_token, hash_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -72,7 +72,13 @@ class AuthService:
         self._link_repo = link_repo
         self._throttle = SignInThrottle(throttle_repo, config)
 
-    async def login(self, email: str, password: str, network: str | None = None) -> TokenResponse:
+    async def login(
+        self,
+        email: str,
+        password: str,
+        network: str | None = None,
+        client_kind: str = "web",
+    ) -> TokenResponse:
         """Authenticate by email and password and issue a token pair.
 
         Unknown email, wrong password and an inactive account all return the same
@@ -90,6 +96,11 @@ class AuthService:
             email: Account email, matched without regard to letter case.
             password: Clear-text password.
             network: The client's network address, for the per-network limit.
+            client_kind: ``web`` (default) or ``native``; a native refresh token lasts
+                ``REFRESH_TOKEN_TTL_DAYS_NATIVE`` days, a web one ``REFRESH_TOKEN_TTL_DAYS``. The
+                client declares it, so a browser could claim ``native``; ADR 016 records why that
+                is acceptable (rotation and reuse detection still apply, the web keeps tokens in
+                memory, biometrics are a convenience gate only).
 
         Returns:
             A new access and refresh token.
@@ -158,8 +169,8 @@ class AuthService:
             algorithm=self._config.JWT_ALGORITHM,
         )
         raw_refresh, token_hash = generate_refresh_token()
-        expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
-        await self._token_repo.create(user.id, token_hash, expires_at)
+        expires_at = datetime.now(UTC) + self._refresh_lifetime(client_kind)
+        await self._token_repo.create(user.id, token_hash, expires_at, client_kind)
         await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
@@ -229,11 +240,35 @@ class AuthService:
             algorithm=self._config.JWT_ALGORITHM,
         )
         raw_refresh, new_hash = generate_refresh_token()
-        new_expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
-        await self._token_repo.create(user.id, new_hash, new_expires_at)
+        # The new token keeps the session's kind, so a phone stays signed in while it is used.
+        new_expires_at = datetime.now(UTC) + self._refresh_lifetime(stored.client_kind)
+        await self._token_repo.create(user.id, new_hash, new_expires_at, stored.client_kind)
         await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
+
+    def _refresh_lifetime(self, client_kind: str) -> timedelta:
+        """How long a refresh token of this kind lives (007 FR-010)."""
+        if client_kind == "native":
+            return timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS_NATIVE)
+        return timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
+
+    async def sessions(self, user_id: uuid.UUID) -> list[RefreshToken]:
+        """The caller's signed-in sessions: one live refresh token per device (007 N12)."""
+        return await self._token_repo.live_for_user(user_id, datetime.now(UTC))
+
+    async def end_session(self, user_id: uuid.UUID, session_id: uuid.UUID) -> None:
+        """End one of the caller's sessions by revoking its refresh token.
+
+        The access token that device holds stays valid until it expires (at most 15 minutes,
+        Constitution VI), then its next refresh is refused.
+
+        Raises:
+            NotFoundError: ``resource.not_found`` (HTTP 404) when the id is not one of the
+                caller's live sessions, so another user's session ids cannot be probed.
+        """
+        if not await self._token_repo.revoke_for_user(session_id, user_id, RevocationReason.logout):
+            raise NotFoundError(resource="Session", id=session_id)
 
     async def logout(self, raw_token: str, user_id: uuid.UUID) -> None:
         """Revoke the caller's refresh token, ending that session.

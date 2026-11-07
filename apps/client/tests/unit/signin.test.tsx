@@ -2,7 +2,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import * as Router from "expo-router";
 
-import { Session } from "../../src/api/session";
+import { CLIENT_KIND, Session } from "../../src/api/session";
 import { memoryStore } from "../../src/api/tokens";
 import { SignInScreen } from "../../src/screens/SignInScreen";
 import { BASE, FakeApi, ME, TOKENS, json, problem, renderWith } from "./fakeApi";
@@ -25,6 +25,7 @@ test("a good sign-in opens My availability", async () => {
   expect(api.calls("POST", "/auth/login")[0]!.body).toEqual({
     email: "employee@hds.test",
     password: "Dev1234!",
+    client_kind: CLIENT_KIND, // 007 FR-010: phones get the longer session
   });
 });
 

@@ -38,6 +38,8 @@
 | [010](adr/010-client-stack.md) | One Expo app with a generated API client; web tokens stay in memory |
 | [011](adr/011-solvers-and-job-queue.md) | Two solvers behind one function, and a table that is also the job queue |
 | [012](adr/012-pay-calculation.md) | Pay worked out in one pure package, from settings that projects follow or override |
+| [015](adr/015-capability-map.md) | One capability map serves the API's role checks and the client's navigation |
+| [016](adr/016-phone-sessions.md) | Phone sessions last 30 days and renew on use; the client declares its kind |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 

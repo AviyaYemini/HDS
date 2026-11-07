@@ -86,3 +86,16 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
             ProjectManager.user_id == user_id, ProjectManager.project_id.in_(list(project_ids))
         )
         return set((await self.session.execute(query)).scalars())
+
+    async def managed_by(self, org_id: uuid.UUID, user_id: uuid.UUID) -> list[uuid.UUID]:
+        """Every project of the organisation that ``user_id`` manages, sorted (007 FR-028).
+
+        ``GET /me`` serves this list next to the capabilities, so the client knows where a
+        manager's ``:project`` capabilities apply.
+        """
+        query = (
+            select(ProjectManager.project_id)
+            .where(ProjectManager.organization_id == org_id, ProjectManager.user_id == user_id)
+            .order_by(ProjectManager.project_id)
+        )
+        return list((await self.session.execute(query)).scalars())

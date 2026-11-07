@@ -3,12 +3,19 @@
  * sends the access token and, on a 401, refreshes the tokens once and sends the request again.
  */
 import { createApiClient, type ApiClient, type components } from "@hds/api-client";
+import { Platform } from "react-native";
 
 import { ApiError, call, codeOf } from "./errors";
 import type { TokenStore, Tokens } from "./tokens";
 
-/** The signed-in account. */
-export type Me = components["schemas"]["UserRead"];
+/** The signed-in account, with what it may do (specs/007-ux-redesign FR-001). */
+export type Me = components["schemas"]["MeRead"];
+
+/**
+ * What is signing in: the phone app gets a 30-day refresh token that renews on use, the web keeps
+ * 7 days (specs/007-ux-redesign FR-010, ADR 016).
+ */
+export const CLIENT_KIND: "web" | "native" = Platform.OS === "web" ? "web" : "native";
 
 type Send = (request: Request) => Promise<Response>;
 
@@ -65,7 +72,7 @@ export class Session {
   /** Sign in; answers `null`, or the code of the refusal. */
   async signIn(email: string, password: string): Promise<string | null> {
     try {
-      const answer = await call(this.plain.POST("/auth/login", { body: { email, password } }));
+      const answer = await call(this.plain.POST("/auth/login", { body: { email, password, client_kind: CLIENT_KIND } }));
       await this.keep({ access: answer.access_token, refresh: answer.refresh_token });
       await this.loadMe();
     } catch (error) {

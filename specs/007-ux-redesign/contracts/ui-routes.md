@@ -46,10 +46,46 @@ owner), `/dev/gallery` (previews switch only).
 Persistent on every screen: sign-out (`action-sign-out`), help, contact, the accessibility statement
 (`link-accessibility`).
 
+## Navigation test ids (b-roles.spec.ts)
+
+- **Phone** (`< 768 px` wide): a bottom bar `nav-tabs` whose items are `tab-<key>`. Employee: `home`,
+  `availability`, `my-shifts`, `pay`, `more`. Manager and Admin: `home`, `roster`, `my-work`,
+  `reports`, `more`. Client: `projects`, `billing`, `requests`, `contact`.
+- **Desktop**: a side navigation `nav-side` with groups `nav-group-my-work`, `nav-group-manage`,
+  `nav-group-admin` (client: one group `nav-group-client`) whose items are `nav-<key>`:
+  - Employee: `home`, `availability`, `my-shifts`, `pay`.
+  - Manager: the employee's, plus `roster`, `submissions`, `runs`, `work-log`, `hours`, `staff`,
+    `clients`, `sites`, `projects`, `shift-templates`, `staffing-needs`, `pay-settings`.
+  - Admin: the manager's, plus `special-days`.
+  - Client: `client-home`, `billing`, `requests`, `contact`.
+  - A navigation item that opens a preview carries `data-preview="true"` and is left out of these
+    sets; previews are checked by their routes below.
+- **Every screen**: `action-sign-out`, `link-help`, `link-contact`, `link-accessibility`, and the
+  offline banner `banner-offline` while the network is down.
+- **Pages**: `screen-no-access` with `action-go-home`; `screen-not-found` (an unknown address) with
+  `action-go-home`; `splash` (static markup in the web page, shown until the app has started).
+- **Account**: `screen-account` with the language choice `language-he` and `language-en`
+  (`role="radio"`).
+
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
 Each renders an Option B empty state with `data-testid="preview-<key>"`, the feature that brings it,
-and no live controls.
+and no live controls. Routed previews have their own address; the others sit inside a screen and
+are checked by that screen's group.
+
+| Address | Test id | Roles |
+| --- | --- | --- |
+| `/client/billing` | `preview-billing` | client |
+| `/client/requests` | `preview-requests` | client |
+| `/manage/requests` | `preview-requests` | manager, admin |
+| `/manage/overview` | `preview-overview` | manager, admin |
+| `/manage/approvals` | `preview-approvals` | manager, admin |
+| `/my/requests` | `preview-absence-requests` | employee, manager, admin |
+| `/inbox` | `preview-inbox` | all |
+| `/account/notifications` | `preview-notification-prefs` | all |
+| `/admin/audit-log` | `preview-audit-log` | admin |
+
+In a build with previews off, each of these addresses shows `screen-not-found`.
 
 | Key | Role (capability) | Where | Feature |
 | --- | --- | --- | --- |

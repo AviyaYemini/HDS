@@ -35,6 +35,7 @@ from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.repositories.user import UserRepository
 from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
+from hds.services.organisation_contact import OrganisationContactService
 from hds.services.pay import PayService
 from hds.services.pay_settings import PaySettingsService
 from hds.services.project import ProjectService
@@ -102,6 +103,13 @@ def scheduling_settings(
 ) -> SchedulingSettingsService:
     """FastAPI dependency: the organisation's scheduling limits, in the request's unit of work."""
     return SchedulingSettingsService(organisation_repo=OrganisationRepository(db))
+
+
+def organisation_contact(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> OrganisationContactService:
+    """FastAPI dependency: the organisation's contact card, in the request's unit of work."""
+    return OrganisationContactService(organisation_repo=OrganisationRepository(db))
 
 
 def pay_settings_service(db: AsyncSession) -> PaySettingsService:

@@ -86,6 +86,7 @@ def test_settings_durations_are_positive() -> None:
     for name in (
         "ACCESS_TOKEN_TTL_SECONDS",
         "REFRESH_TOKEN_TTL_DAYS",
+        "REFRESH_TOKEN_TTL_DAYS_NATIVE",
         "LOGIN_MAX_FAILURES",
         "LOGIN_LOCKOUT_MINUTES",
     ):

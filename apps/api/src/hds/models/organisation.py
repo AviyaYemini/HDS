@@ -5,8 +5,10 @@ Layer: models. Depends on ``hds.models.base`` and ``hds.models.pay_columns`` onl
 
 from datetime import time
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import CheckConstraint, Numeric, SmallInteger, Time, text
+from sqlalchemy import JSON, CheckConstraint, Numeric, SmallInteger, String, Time, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from hds.models.base import TimestampedBase
@@ -28,6 +30,11 @@ class Organisation(TimestampedBase):
     value (005 FR-006): normal lengths and the first overtime tier in minutes, rates in percent
     (``NUMERIC(5,2)``), increases in points, and the weekly rest window as weekday (0 Sunday) and
     local time at both ends. Their bounds are in ``hds.models.pay_columns``.
+
+    ``contact_phone``, ``contact_email`` and ``opening_hours`` are the contact card every role
+    sees and only an Admin changes (007 FR-012). ``opening_hours`` is a list of up to seven
+    ``{"weekday": 0-6, "opens": "HH:MM", "closes": "HH:MM"}`` items in the organisation's local
+    time; the router and service validate its shape. All three are optional.
     """
 
     __tablename__ = "organisations"
@@ -76,6 +83,13 @@ class Organisation(TimestampedBase):
     )
     pay_increase2_points: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("50.00"), server_default=text("50.00")
+    )
+
+    contact_phone: Mapped[str | None] = mapped_column(String(32))
+    contact_email: Mapped[str | None] = mapped_column(String(254))
+    # JSONB on PostgreSQL; the SQLite unit-test schema stores it as JSON text.
+    opening_hours: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
     )
 
     __table_args__ = (

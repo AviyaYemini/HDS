@@ -78,7 +78,7 @@ git ls-files -co --exclude-standard -z | rsync -a --from0 --files-from=- ./ "$sc
 status=0
 docker run --rm --ipc=host --add-host=host.docker.internal:host-gateway \
     -v "$scratch/repo:/repo" -v hds-pnpm-store:/pnpm-store -v hds-npm-cache:/root/.npm -w /repo \
-    -e CI=1 -e E2E_EXTERNAL_API=1 -e PREVIEWS="$PREVIEWS" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+    -e CI=1 -e E2E_EXTERNAL_API=1 -e E2E_API_URL=http://host.docker.internal:8100 -e PREVIEWS="$PREVIEWS" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     "$PLAYWRIGHT_IMAGE" bash -c '
         set -e
         trap "chown -R \"\$HOST_UID:\$HOST_GID\" /repo || true" EXIT
