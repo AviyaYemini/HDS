@@ -13,6 +13,9 @@ spec:
   chartRef:
     kind: OCIRepository
     name: hds-postgres
+  # Its password is the hds-api Secret's, which hds-secrets keeps.
+  dependsOn:
+    - name: hds-secrets
   timeout: 10m
   maxHistory: 10
   install:

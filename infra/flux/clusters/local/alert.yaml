@@ -13,7 +13,11 @@ spec:
       name: hds
     - kind: HelmRelease
       name: hds-postgres
+    - kind: HelmRelease
+      name: hds-secrets
     - kind: OCIRepository
       name: hds
     - kind: OCIRepository
       name: hds-postgres
+    - kind: OCIRepository
+      name: hds-secrets

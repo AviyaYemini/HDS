@@ -147,13 +147,15 @@ As before, the error names the setting and never the value (FR-026).
 | Target | Does |
 | --- | --- |
 | `make ops-cluster` | creates the k3d cluster and installs Flux, Vault, the Vault Secrets Operator and the monitoring stack (once per machine) |
-| `make ops-unseal` | unseals Vault after a restart |
+| `make ops-unseal` | unseals Vault after a restart; the key from a silent prompt or a pipe, never an argument |
+| `make ops-vault-configure` | sets Vault up once after init (KV v2 at `hds/`, Kubernetes auth, the `hds` and `vault-snapshot` policies and roles); safe to run again; the token from `VAULT_TOKEN` (**Proposed**, review R143) |
+| `make ops-flux` | hands the three releases to Flux, hds-secrets first, the others once its Secrets are synced (**Proposed**; T063, Group M; reviews R135, R149) |
 | `make ops-status` | for each part, readiness and version; the last backup, restore test and deploy; any firing alert |
 | `make ops-backup` | runs a backup now |
 | `make ops-restore-test` | runs the restore test now |
 | `make ops-backups` | lists the backups on Drive by name, whose names are encrypted there (**Proposed**, review R76) |
 | `make ops-restore BACKUP=<name> [CONFIRM=replace]` | checks the backup first, then, with Flux and the `hds-backup` CronJob suspended, stops the API and worker, restores the backup into the cluster's database, runs `migrate`, starts them again with their earlier replica counts and sets both back; refuses a database with data unless `CONFIRM=replace`. A failure after the database was emptied leaves the API and worker stopped (docs/runbooks/restore.md §1) |
-| `make ops-rollback` | suspends Flux for `hds` and rolls back to the previous Helm revision; code only (FR-021) |
+| `make ops-rollback [REVISION=<n>]` | suspends Flux for `hds` and rolls back to the last deploy before the version running, or to revision `n`; code only (FR-021, review R115) |
 | `make ops-resume` | hands `hds` back to Flux |
 | `make ops-create-admin EMAIL=<address>` | creates the first Admin; reads the password from the terminal |
 

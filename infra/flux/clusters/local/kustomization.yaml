@@ -11,6 +11,8 @@ namespace: flux-system
 resources:
   - oci-repository.yaml
   - oci-repository-postgres.yaml
+  - oci-repository-secrets.yaml
+  - helm-release-secrets.yaml
   - helm-release-postgres.yaml
   - helm-release.yaml
   - alertmanager-provider.yaml

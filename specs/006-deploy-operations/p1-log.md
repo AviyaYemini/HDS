@@ -723,3 +723,59 @@ from GitHub's issuer.
   mutant was a no-op (`return` outside a function) and survived for that reason; the real one fails.
 - **Recommended to the owner, not done here**: protect `main` (a required pull request and passing
   CI), since anyone who can push there can make a validly signed release (R130).
+
+## Group J: Vault and the Vault Secrets Operator (T051 to T054), 2026-11-07
+
+- **The plan, settled with the reviewer first** (R132 to R143):
+  - **A third chart, `hds-secrets`** (R135, research R3 amended): with the operator's objects in
+    `hds`, the first install deadlocks. `hds-postgres` reads `hds-api` before it exists, and the
+    pre-install migration hook runs before any of `hds`'s resources. It is installed first,
+    published and signed like `hds-postgres`, and its VaultStaticSecrets are kept on uninstall.
+    Flux gets the releases only after Vault is written (`make ops-flux`, Group M).
+  - Restart targets: `hds-api` and `hds-smtp` restart `hds-api` and `hds-worker`; `hds-backup`
+    restarts nothing; the database is never restarted (R132, R134).
+  - The database password: Vault first, then `\password hds` (R133). Both Deployments surge, so
+    neither is down. A single key changes with `kv patch KEY=-`, never `kv put` (R136).
+- **Checked against a real Vault 2.0.4**, not as text. `infra/tests/check_vault_policy.sh` runs
+  `vault_configure.sh` twice against a dev server and checks:
+  - the mount, and the auth config with no CA (even after an older set-up wrote one);
+  - both roles bound exactly, with audience `vault` and 10/20 and 5/10 minute tokens;
+  - what each token can and cannot read;
+  - the first write (`kv put PATH -`, JSON on stdin) and the patch keeping the other keys.
+  Two findings came from trying it:
+  - **R141**: `vault operator unseal -` takes "-" as the key ("'key' must be a valid hex or
+    base64 string" on a sealed 2.0.4). `vault write sys/unseal key=-` reads stdin and unsealed it.
+  - Vault checks its pod's CA file exists when only `kubernetes_host` is written: the test gives
+    the dev server a throwaway one. That is what R95 relies on in the cluster.
+- **R142**: roles for the audience `vault` would refuse the snapshot job's API-server token. The
+  snapshot pod mounts none, and gets a projected 10-minute token for `vault`.
+- **kubeconform for the VSO kinds** (R140): strict schemas from the pinned operator chart's CRDs
+  (by SHA-256). They found that VaultConnection requires `skipTLSVerify`. Vault's and the
+  operator's charts are rendered with `infra/cluster`'s values. Vault's NetworkPolicy (Proposed,
+  R137) admits exactly the operator's namespace and the snapshot pods; there is no injector, no UI,
+  no PodDisruptionBudget (R151).
+- **One safety-check stop**: a `bash -c` script with `docker rm` to clean up a throwaway Vault was
+  refused. The container was run with `--rm` and stopped instead; nothing was removed by hand.
+- **Mutants, each failing its test**:
+  - the database among the restart targets;
+  - a VaultStaticSecret not kept on uninstall;
+  - hds-postgres not waiting for hds-secrets;
+  - the snapshot pod with its API-server token;
+  - the policy on `hds/*`;
+  - a role for any ServiceAccount;
+  - the old CA kept (by `patch`, and by writing the pod's CA);
+  - the unseal key as an argument;
+  - hds-secrets not published.
+- Reviews: /hds-review R144 to R147 (the contract, the docs index, the quickstart's rotation,
+  ADR 013's scope); /code-review high R148 to R157:
+  - the 0700 folder Vault could not read on Linux;
+  - signing in for a change with `generate-root`, and `make ops-flux` needing no token;
+  - the private-packages pull secret in `flux-system`;
+  - one chart cache and one Helm wrapper;
+  - one list of fixed-version charts;
+  - the `hds-smtp` readers checked;
+  - `ops-flux` marked Proposed;
+  - stale comments.
+- **R158** (found while fixing ShellCheck's SC2013): a `while read` over the chart list on stdin
+  would have published only the first chart, since helm's `docker run -i` reads stdin. The list is
+  read on descriptor 3; the stand-in helm now reads stdin as docker does, and the mutant fails.

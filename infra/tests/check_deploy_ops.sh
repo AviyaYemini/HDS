@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Checks scripts/ops/rollback.sh, resume.sh and restore.sh (make ops-rollback, ops-resume,
-# ops-restore; specs/006 T049, T049b)
+# Checks scripts/ops/rollback.sh, resume.sh, restore.sh and unseal.sh (make ops-rollback,
+# ops-resume, ops-restore, ops-unseal; specs/006 T049, T049b, T053)
 # against fake flux, helm and kubectl on PATH, which play the cluster's answers and record each call
 # in order. No cluster is needed. Run by the CI lint job: infra/tests/check_deploy_ops.sh
 set -euo pipefail
@@ -69,6 +69,11 @@ case "$tool $*" in
         esac ;;
     "kubectl "*"logs job/"*) echo "a log line" ;;
     "helm "*"get hooks hds"*) printf -- '---\nkind: Job\n' ;;
+    # make ops-unseal: the key arrives on stdin; FAKE_SEALED is what vault status says after.
+    "kubectl -n vault exec -i vault-0 -- vault write sys/unseal key=-")
+        cat > "$FAKE_DIR/unseal-stdin"; [ "${FAKE_FAIL:-}" != unseal ] ;;
+    "kubectl -n vault exec vault-0 -- vault status -format=json")
+        printf '{\n  "sealed": %s\n}\n' "${FAKE_SEALED:-false}" ;;
     *) echo "fake $tool: unexpected: $*" >&2; exit 2 ;;
 esac
 EOF
@@ -280,6 +285,21 @@ check "a running backup refuses it" 1 "is still running: hds-backup-x" \
 never "the refused restore made no Job" called "create -f"
 check "BACKUP is required" 1 "usage: make ops-restore" -- restore.sh
 check "BACKUP must be a backup's name" 1 "usage: make ops-restore" BACKUP="x; rm" -- restore.sh
+
+echo "== unseal"
+key="unseal-$(openssl rand -hex 12)"
+unseal() { : > "$FAKE_LOG"; rm -f "$FAKE_DIR/unseal-stdin"; printf '%s\n' "$1" | env "${@:2}" "$ROOT/scripts/ops/unseal.sh" 2>&1; }
+out=$(unseal "$key" || true)
+holds "a key on stdin unseals Vault" grep -qF "Vault is unsealed" <<< "$out"
+holds "the key reaches Vault's unseal on its stdin" test "$(cat "$FAKE_DIR/unseal-stdin")" = "$key"
+never "the key is in no command line" grep -qF "$key" "$FAKE_LOG"
+out=$(unseal "" || true)
+holds "no key, nothing sent" grep -qF "no unseal key was given" <<< "$out"
+never "nothing was sent without a key" called "sys/unseal"
+out=$(unseal "$key" FAKE_SEALED=true || true)
+holds "a Vault still sealed is reported" grep -qF "still sealed" <<< "$out"
+out=$(unseal "$key" FAKE_FAIL=unseal || true)
+holds "a refused key is reported" grep -qF "Vault refused the key" <<< "$out"
 
 [ "$failures" -eq 0 ] || { echo "deploy op checks: $failures failed" >&2; exit 1; }
 echo "deploy op checks: all passed"

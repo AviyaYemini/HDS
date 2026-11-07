@@ -1,0 +1,37 @@
+# Where Vault is, and how the operator signs in to it for this namespace: Kubernetes auth as the
+# ServiceAccount below, with a 10-minute token for the audience "vault" (specs/006 T052).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.vault.serviceAccount }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+# Only the operator asks for its tokens (TokenRequest); no pod runs as it.
+automountServiceAccountToken: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: hds
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+spec:
+  address: {{ .Values.vault.address | quote }}
+  # The listener is plain HTTP inside the cluster (infra/cluster/vault-values.yaml); no TLS to skip.
+  skipTLSVerify: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: hds
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+spec:
+  vaultConnectionRef: hds
+  method: kubernetes
+  mount: {{ .Values.vault.authMount | quote }}
+  kubernetes:
+    role: {{ .Values.vault.role | quote }}
+    serviceAccount: {{ .Values.vault.serviceAccount | quote }}
+    audiences: ["vault"]
+    tokenExpirationSeconds: 600

@@ -1,0 +1,14 @@
+# The Vault Secrets Operator (specs/006-deploy-operations T052), for its pinned chart
+# (infra/VERSIONS.md), installed into the namespace vault-secrets-operator by `make ops-cluster`
+# (T063); Vault's NetworkPolicy lets that namespace in (infra/cluster/vault-values.yaml). The
+# connection and the sign-in are hds-secrets' own (infra/helm/hds-secrets), so no default ones.
+defaultVaultConnection:
+  enabled: false
+defaultAuthMethod:
+  enabled: false
+controller:
+  replicas: 1
+  manager:
+    # Vault tokens are kept in memory only, never written to a Secret.
+    clientCache:
+      persistenceModel: none

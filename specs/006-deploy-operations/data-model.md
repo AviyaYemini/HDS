@@ -117,10 +117,15 @@ for the shapes.
 
 | Path | Keys | Read by |
 | --- | --- | --- |
-| `hds/api` | `JWT_SECRET_KEY`, `THROTTLE_SECRET_KEY`, `DATABASE_PASSWORD` | API, worker, migration Job, PostgreSQL |
-| `hds/smtp` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM`, `OPERATOR_EMAILS` | API, Alertmanager |
-| `hds/backup` | `RCLONE_CRYPT_PASSWORD`, `RCLONE_CRYPT_SALT`, `DRIVE_TOKEN`, `DRIVE_FOLDER_ID` | backup and restore-test Jobs |
+| `hds/api` | `JWT_SECRET_KEY`, `THROTTLE_SECRET_KEY`, `DATABASE_PASSWORD` | API, worker, migration Job, the backup and restore-test Jobs, PostgreSQL |
+| `hds/smtp` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM`, `OPERATOR_EMAILS` | API, worker, Alertmanager |
+| `hds/backup` | `HDS_CRYPT_PASSWORD`, `HDS_CRYPT_SALT`, `HDS_DRIVE_TOKEN`, `HDS_DRIVE_FOLDER_ID`, optional `HDS_DRIVE_CLIENT_ID` and `HDS_DRIVE_CLIENT_SECRET` | the backup, restore-test and Vault-snapshot Jobs |
 | `hds/registry` | `GHCR_READ_TOKEN` | image pull secret, when the packages are private |
+
+Each path becomes the Kubernetes Secret of the same name in `hds` (`hds-api`, `hds-smtp`,
+`hds-backup`, `hds-registry`), synced by the Vault Secrets Operator from the `hds-secrets` release
+(Group J). The operator copies the keys as they are, so they are the names the pods read (review
+R139); `hds-registry` alone is built, as a `dockerconfigjson` from its token.
 
 Vault's unseal keys, its root token and the age private key for Vault's own snapshots are never
 stored in Vault, in the cluster or in the repository. The age public key is not a secret and sits in

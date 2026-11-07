@@ -1,15 +1,27 @@
 #!/bin/sh
-# A pull request that changes infra/helm/hds-postgres must raise its Chart.yaml version (specs/006
-# T047, review R98): the release pushes that chart only at a version the registry does not have, so
-# a change at an old version would never reach the cluster. hds itself is versioned by the release.
+# A pull request that changes a fixed-version chart (infra/helm/hds-postgres, infra/helm/hds-secrets)
+# must raise its Chart.yaml version (specs/006 T047; reviews R98, R135): the release pushes such a
+# chart only at a version the registry does not have, so a change at an old version would never
+# reach the cluster. hds itself is versioned by the release.
 #
-#   chart_version.sh BASE [CHART_DIR]   BASE is the target branch (origin/main in CI)
+#   chart_version.sh BASE [CHART_DIR]   BASE is the target branch (origin/main in CI); without a
+#                                       CHART_DIR, every chart in infra/helm/fixed-version-charts
 #
 # Run by the CI chart job on pull requests only, with the full history (fetch-depth: 0).
 set -eu
 
 base=${1:?usage: $0 BASE [CHART_DIR]}
-chart=${2:-infra/helm/hds-postgres}
+if [ -z "${2:-}" ]; then
+    list="$(dirname "$0")/../fixed-version-charts"
+    status=0
+    while read -r name; do
+        "$0" "$base" "infra/helm/$name" || status=1
+    done <<EOF_LIST
+$(grep -v '^#' "$list")
+EOF_LIST
+    exit "$status"
+fi
+chart=$2
 fail() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
 
 merge_base=$(git merge-base "$base" HEAD) || fail "no merge base with $base; fetch the full history"

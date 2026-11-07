@@ -104,7 +104,8 @@ passes.
 - The release workflow's Trivy secret scan of the three images finds nothing.
 - Start the API with `ENVIRONMENT=production` and `JWT_SECRET_KEY` set to a value from
   `.env.example`: it refuses and names `JWT_SECRET_KEY`, not the value.
-- In the cluster, write a new `JWT_SECRET_KEY` to Vault at `hds/api`. Within a minute the API pods
+- In the cluster, change `JWT_SECRET_KEY` in Vault with `vault kv patch -mount=hds api JWT_SECRET_KEY=-`
+  (the value on standard input; `kv put` would drop the path's other keys). Within a minute the API pods
   restart one at a time with the new key, and nothing else changes. Access tokens signed with the
   old key stop working, but refresh tokens are opaque and stored in the database, so a signed-in
   client refreshes and stays signed in.

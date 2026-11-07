@@ -49,11 +49,25 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
     its Service, and a NetworkPolicy that lets only the hds pods in. Its password is read by name
     from the `hds-api` Secret's `DATABASE_PASSWORD`.
   - **`infra/helm/hds`**: the API, worker and web Deployments, the migration Job, the backup and
-    restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors, alert rules and the
-    Vault Secrets Operator resources. Its values name the database Service.
+    restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors and alert rules. Its
+    values name the database Service.
+  - **`infra/helm/hds-secrets`** (amended in Group J; review R135): the Vault Secrets Operator's
+    objects, a VaultConnection, a VaultAuth with its ServiceAccount, and one VaultStaticSecret per
+    path. In the `hds` chart, the first install deadlocks: `hds-postgres`, installed first, reads
+    the `hds-api` Secret, which does not exist yet, and `hds`'s pre-install migration hook runs
+    before Helm creates any of `hds`'s resources, the VaultStaticSecrets among them. As hooks they
+    would be deleted and made again at each upgrade, and the operator deletes the Secret it made
+    when its VaultStaticSecret goes. In `hds-postgres` a change to them would raise its version and
+    restart the database (review R98). The VaultStaticSecrets are kept on uninstall
+    (`helm.sh/resource-policy: keep`).
 
   The values have an `environment` block (`local` and `ci`), with no secrets in any values file.
-  Flux installs `hds-postgres` first, and the `hds` HelmRelease `dependsOn` it (Group I).
+  Flux installs `hds-secrets` first, then `hds-postgres`, which `dependsOn` it, then `hds`, which
+  `dependsOn` `hds-postgres` (Groups I and J). `hds-secrets` and `hds-postgres` keep the versions in
+  their `Chart.yaml`; `hds` is versioned by each release. Flux is given the releases only after Vault
+  is unsealed and its paths are written (`make ops-flux`, T063): `hds-secrets` turns Ready once Helm
+  applies its objects, before the operator has synced anything, so `hds-postgres` could otherwise
+  start without its Secret and fail an install that is not retried.
 - **Rationale**: The original names Helm (§7 Deployment). The database is a chart of its own for two
   reasons:
   - **Hook ordering on the first install**: the migration Job is a `pre-install,pre-upgrade` hook
@@ -304,7 +318,26 @@ lines).
   `hds/registry`) into Kubernetes Secrets that the pods read as environment variables (FR-024).
 - **Rotation** (FR-027): the operator writes a new value to Vault. The operator refreshes the
   Secret and restarts the dependent Deployments with `rolloutRestartTargets`, so there is no code
-  change and no outage.
+  change and no outage. Settled in Group J (reviews R132 to R141):
+  - The targets are exactly the Deployments that read each Secret: `hds-api` and `hds-smtp`
+    restart `hds-api` and `hds-worker`; `hds-backup` restarts nothing, since only Jobs read it,
+    when they start; the `hds-postgres` StatefulSet is never a target, since PostgreSQL reads its
+    password only when it creates its data.
+  - The database password changes in Vault first, then in PostgreSQL (`\password hds`) straight
+    after: the new pods cannot sign in until then and do not become ready, while the old ones keep
+    serving on the connections they hold (maxUnavailable 0). The other order fails every running
+    pod's new connections for the minute the operator takes to sync. A single key changes with
+    `vault kv patch ... KEY=-`, never `kv put`, which drops the path's other keys.
+  - The policy `hds` reads `hds/data/*` only (KV v2); `vault-snapshot` reads the raft snapshot
+    only. Each Kubernetes-auth role binds exactly one ServiceAccount in `hds` (`hds-vault`, the
+    operator's sign-in; `hds-vault-snapshot`), for the audience `vault`, with 10- and 5-minute
+    tokens; the snapshot pod gets such a token as a projected volume and no API-server token.
+    `make ops-vault-configure` (Proposed: the set-up commands as a script, so they are tested
+    against a real Vault) writes them, and only `kubernetes_host` in the auth config (review R95).
+  - **Known limit**: Vault listens on plain HTTP inside the cluster, so the secrets cross the
+    pod network unencrypted, on one machine. Vault's NetworkPolicy (Proposed) lets in only the
+    operator's namespace and the snapshot pods. TLS inside the cluster is Proposed with the cloud
+    move, when the network spans machines.
 - **Refusing known values** (FR-026): the settings already refuse the published JWT placeholder and
   short keys. They now also refuse every value written in `.env.example`, the compose file or the
   test settings, such as `hds_dev` or `change-me`, in a password or key, when `ENVIRONMENT` is not a

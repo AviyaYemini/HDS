@@ -51,13 +51,18 @@ jobs:
         with:
           # The whole history, so chart_version.sh finds the merge base with the target branch.
           fetch-depth: 0
-      # Both charts, hds and hds-postgres, for values-local.yaml and values-ci.yaml (specs/006
-      # T033), and Flux's files (T048). Helm, kubeconform and yq run from images pinned in
+      # The three charts (hds for values-local.yaml and values-ci.yaml, hds-postgres, hds-secrets),
+      # Vault's and the operator's charts with infra/cluster's values, and Flux's files (specs/006
+      # T033, T048, T051, T052). Helm, kubeconform and yq run from images pinned in
       # infra/VERSIONS.md.
       - run: infra/helm/tests/assert.sh
-      # A pull request that changes hds-postgres raises its version (T047, review R98).
+      # A pull request that changes a fixed-version chart raises its version (T047, reviews
+      # R98, R135).
       - if: github.event_name == 'pull_request'
         run: infra/helm/tests/chart_version.sh "origin/$GITHUB_BASE_REF"
+      # Vault's policies and roles, as scripts/ops/vault_configure.sh writes them, against a dev
+      # Vault of the cluster's version (T052).
+      - run: infra/tests/check_vault_policy.sh
 
   backup-restore:
     name: Backups and the restore test (compose, encrypted folder remotes)

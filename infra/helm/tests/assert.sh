@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# The chart checks (specs/006-deploy-operations T033): helm lint, kubeconform and assertions on the
-# rendered manifests of both charts, hds and hds-postgres (research R3, amended), for
-# values-local.yaml and values-ci.yaml. Run from anywhere: infra/helm/tests/assert.sh
+# The chart checks (specs/006-deploy-operations T033, T048, T051, T052): helm lint, kubeconform and
+# assertions on the rendered manifests of the three charts, hds (values-local.yaml and
+# values-ci.yaml), hds-postgres and hds-secrets (research R3, amended), of Vault's and the Vault
+# Secrets Operator's pinned charts with infra/cluster's values, and of infra/flux. Run from anywhere:
+# infra/helm/tests/assert.sh
 #
 # Every tool runs from an image pinned by tag and digest (infra/VERSIONS.md); nothing is installed.
 # kubeconform checks against the Kubernetes v1.37.1 schemas (k3s v1.37.1) at a pinned commit of
-# yannh/kubernetes-json-schema, not its default, which follows master. Every kind the charts render
-# is a core kind, so no schema may be missing (-strict, no -ignore-missing-schemas).
+# yannh/kubernetes-json-schema, not its default, which follows master, and against two sets of
+# custom-resource schemas, each pinned by SHA-256: Flux's, and the Vault Secrets Operator's (made
+# strict from its chart's CRDs). No schema may be missing (-strict, no -ignore-missing-schemas).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -15,6 +18,12 @@ KUBECONFORM_IMAGE="ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e
 # Flux's CRD schemas: crd-schemas.tar.gz of the Flux release T063 installs (infra/VERSIONS.md).
 FLUX_VERSION="v2.9.6"
 FLUX_SCHEMAS_SHA256="380b713bd28a2c27cfc7710219aae79e1c9ceff9bee50197c023047190532987"
+# The Vault Secrets Operator's CRDs: those of its pinned chart (infra/VERSIONS.md), turned into
+# strict JSON schemas, so hds-secrets is checked like the rest (review R140).
+VAULT_CHART="https://helm.releases.hashicorp.com/vault-0.34.1.tgz"
+VAULT_CHART_SHA256="df4c37fac32496892ff1e1d6fd7954d3a402cc7b1b2b4c2226af11b8a57564c4"
+VSO_CHART="https://helm.releases.hashicorp.com/vault-secrets-operator-1.6.0.tgz"
+VSO_CHART_SHA256="de3e0a520918fc7281b94fa060fe8d1858c5db5b8fb6b1463024268e7c4541c0"
 YQ_IMAGE="mikefarah/yq:4.54.1@sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e"
 SCHEMA_COMMIT="b2ba4defe30ed5a0104987433896f1fd32807304"
 KUBERNETES_VERSION="1.37.1"
@@ -25,9 +34,29 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 failures=0
 
-helm() {
+# helm_with MOUNT... -- ARGS...: helm from its pinned image, with those folders mounted; every helm
+# run of this script goes through it (review R156).
+helm_with() {
+    local mounts=()
+    while [ "$1" != -- ]; do mounts+=(-v "$1"); shift; done
+    shift
     docker run --rm --user "$(id -u):$(id -g)" -e HELM_CACHE_HOME=/tmp -e HELM_CONFIG_HOME=/tmp \
-        -e HELM_DATA_HOME=/tmp -v "$ROOT/infra/helm:/charts:ro" -w /charts "$HELM_IMAGE" "$@"
+        -e HELM_DATA_HOME=/tmp "${mounts[@]}" -w /charts "$HELM_IMAGE" "$@"
+}
+helm() { helm_with "$ROOT/infra/helm:/charts:ro" -- "$@"; }
+
+# chart URL SHA256: a pinned chart's archive, downloaded once into a cache keyed by its SHA-256 and
+# checked against it; prints the path. A new version is a new file, not a stale one (review R152).
+charts_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/charts"
+chart() {
+    local file="$charts_cache/$2.tgz"
+    mkdir -p "$charts_cache"
+    if [ ! -f "$file" ]; then
+        curl -fsSL -o "$file.part" "$1" && mv "$file.part" "$file"
+    fi
+    echo "$2  $file" | sha256sum -c - > /dev/null \
+        || { echo "$1 does not match its SHA-256" >&2; rm -f "$file"; exit 1; }
+    printf '%s' "$file"
 }
 
 # yq FILE EXPRESSION: the results, one per line, over every document of the rendered file at once
@@ -37,6 +66,13 @@ helm() {
 # that wants nothing.
 yq() {
     docker run --rm -i --user "$(id -u):$(id -g)" -v "$out:/m:ro" "$YQ_IMAGE" ea -N "$2" "/m/$1" \
+        | sed '/^$/d' || echo "YQ-FAILED"
+}
+
+# yq_each FILE EXPRESSION: as yq, but each document on its own (eval, not eval-all), for an
+# expression that joins several of one document's fields: eval-all would mix the documents' values.
+yq_each() {
+    docker run --rm -i --user "$(id -u):$(id -g)" -v "$out:/m:ro" "$YQ_IMAGE" e -N "$2" "/m/$1" \
         | sed '/^$/d' || echo "YQ-FAILED"
 }
 
@@ -57,12 +93,42 @@ for env in local ci; do
 done
 helm lint --strict hds-postgres
 helm template hds-postgres hds-postgres --namespace hds > "$out/hds-postgres.yaml"
+# hds-secrets with its defaults, and with the private registry's pull secret.
+helm lint --strict hds-secrets
+helm template hds-secrets hds-secrets --namespace hds > "$out/hds-secrets.yaml"
+helm template hds-secrets hds-secrets --namespace hds --set registry.enabled=true \
+    > "$out/hds-secrets-registry.yaml"
 # The local values with digests set, to check that images are then referred to by digest.
 helm template hds hds --namespace hds -f hds/values-local.yaml \
     --set "images.api.digest=$DIGEST" --set "images.web.digest=$DIGEST" > "$out/hds-digest.yaml"
 
-docker run --rm -v "$out:/m:ro" "$KUBECONFORM_IMAGE" -strict -summary \
-    -kubernetes-version "$KUBERNETES_VERSION" -schema-location "$SCHEMAS" /m
+vso_tgz=$(chart "$VSO_CHART" "$VSO_CHART_SHA256")
+vso_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/vso-crd-schemas-$VSO_CHART_SHA256"
+if [ ! -f "$vso_cache/vaultstaticsecret-secrets-v1beta1.json" ]; then
+    mkdir -p "$vso_cache"
+    tar -xzf "$vso_tgz" -C "$vso_cache" --strip-components=2 'vault-secrets-operator/crds'
+    for crd in "$vso_cache"/secrets.hashicorp.com_*.yaml; do
+        docker run --rm -i "$YQ_IMAGE" -o=json . < "$crd" > "$vso_cache/crd.json"
+        kind=$(jq -r '.spec.names.kind | ascii_downcase' "$vso_cache/crd.json")
+        for version in $(jq -r '.spec.versions[].name' "$vso_cache/crd.json"); do
+            # Strict, as kubeconform's own schemas are: no property the CRD does not name.
+            jq --arg v "$version" '.spec.versions[] | select(.name == $v) | .schema.openAPIV3Schema
+                | walk(if type == "object" and has("properties") and (has("additionalProperties") | not)
+                    then . + {additionalProperties: false} else . end)' "$vso_cache/crd.json" \
+                > "$vso_cache/$kind-secrets-$version.json"
+        done
+    done
+fi
+# Vault and the operator as the cluster installs them, with infra/cluster's values (T052).
+vault_tgz=$(chart "$VAULT_CHART" "$VAULT_CHART_SHA256")
+helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template vault "/c/$(basename "$vault_tgz")" \
+    --namespace vault -f /v/vault-values.yaml > "$out/vault.yaml"
+helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template vault-secrets-operator \
+    "/c/$(basename "$vso_tgz")" --namespace vault-secrets-operator -f /v/vso-values.yaml \
+    > "$out/vso.yaml"
+docker run --rm -v "$out:/m:ro" -v "$vso_cache:/vso:ro" "$KUBECONFORM_IMAGE" -strict -summary \
+    -kubernetes-version "$KUBERNETES_VERSION" -schema-location "$SCHEMAS" \
+    -schema-location '/vso/{{.ResourceKind}}{{.KindSuffix}}.json' /m
 
 api='select(.kind == "Deployment" and .metadata.name == "hds-api")'
 worker='select(.kind == "Deployment" and .metadata.name == "hds-worker")'
@@ -197,6 +263,9 @@ expect "vault snapshot weekly, as its own ServiceAccount" "0 3 * * 0 hds-vault-s
     "$(yq hds-ci.yaml "[($v | .schedule), ($vp | .serviceAccountName), ($vp | .containers[0].command[0])] | join(\" \")")"
 expect "vault snapshot signs in as the role T052 names" vault-snapshot \
     "$(yq hds-ci.yaml "$vp | .containers[0].env[] | select(.name == \"HDS_VAULT_ROLE\") | .value")"
+expect "vault snapshot signs in with a 10-minute token for Vault only, no API-server token" \
+    "false vault 600 /var/run/secrets/vault" \
+    "$(yq hds-ci.yaml "$vp | (.automountServiceAccountToken | tostring) + \" \" + (.volumes[] | select(.name == \"vault-token\") | .projected.sources[0].serviceAccountToken | .audience + \" \" + (.expirationSeconds | tostring)) + \" \" + (.containers[0].volumeMounts[] | select(.name == \"vault-token\") | .mountPath)")"
 expect "vault snapshot within 30 minutes" 1800 "$(yq hds-ci.yaml "$v | .jobTemplate.spec.activeDeadlineSeconds")"
 expect "vault snapshot to the public key in the values" "age16q9ew59lene00jp303rjfh0c7t8jt9agwsctp27kez526m6hhazsfuev0c" \
     "$(yq hds-ci.yaml "$vp | .containers[0].env[] | select(.name == \"HDS_VAULT_RECIPIENT\") | .value")"
@@ -276,22 +345,25 @@ done > "$out/flux.yaml"
 f="flux.yaml"
 hr='select(.kind == "HelmRelease" and .metadata.name == "hds") | .spec'
 pr='select(.kind == "HelmRelease" and .metadata.name == "hds-postgres") | .spec'
-expect "each release's chart is its own OCIRepository" "hds hds-postgres" \
-    "$(yq "$f" "$hr | .chartRef.name") $(yq "$f" "$pr | .chartRef.name")"
-expect "both OCIRepositories take the newest 0.1 or later, every 5 minutes" \
-    "hds >=0.1.0 5m|hds-postgres >=0.1.0 5m" \
+sr='select(.kind == "HelmRelease" and .metadata.name == "hds-secrets") | .spec'
+expect "each release's chart is its own OCIRepository" "hds hds-postgres hds-secrets" \
+    "$(yq "$f" "$hr | .chartRef.name") $(yq "$f" "$pr | .chartRef.name") $(yq "$f" "$sr | .chartRef.name")"
+expect "hds-postgres waits for hds-secrets, whose Secret it reads" "hds-secrets" \
+    "$(yq "$f" "$pr | .dependsOn[].name")"
+expect "every OCIRepository takes the newest 0.1 or later, every 5 minutes" \
+    "hds >=0.1.0 5m|hds-postgres >=0.1.0 5m|hds-secrets >=0.1.0 5m" \
     "$(yq "$f" 'select(.kind == "OCIRepository") | .metadata.name + " " + .spec.ref.semver + " " + .spec.interval' | sort -u | paste -sd '|' -)"
 expect "the OCIRepositories point at the release's chart paths" \
-    "oci://ghcr.io/aviyayemini/charts/hds oci://ghcr.io/aviyayemini/charts/hds-postgres" \
+    "oci://ghcr.io/aviyayemini/charts/hds oci://ghcr.io/aviyayemini/charts/hds-postgres oci://ghcr.io/aviyayemini/charts/hds-secrets" \
     "$(yq "$f" 'select(.kind == "OCIRepository") | .spec.url' | sort | paste -sd ' ' -)"
 # Signed releases only (T047c): both sources verify with cosign, for exactly one identity, the
 # release workflow on main of this repository, from GitHub's issuer; both patterns anchored.
-expect "both sources install only charts signed by the release workflow on main" \
+expect "every source installs only charts signed by the release workflow on main" \
     "$(printf '%s\n' 'cosign ^https://token\.actions\.githubusercontent\.com$ ^https://github\.com/AviyaYemini/HDS/\.github/workflows/release\.yml@refs/heads/main$ 1' | sort -u)" \
     "$(yq "$f" 'select(.kind == "OCIRepository") | .spec.verify.provider + " " + .spec.verify.matchOIDCIdentity[0].issuer + " " + .spec.verify.matchOIDCIdentity[0].subject + " " + (.spec.verify.matchOIDCIdentity | length | tostring)' | sort -u)"
-expect "and both sources verify" 2 "$(yq "$f" 'select(.kind == "OCIRepository" and .spec.verify.provider == "cosign") | .metadata.name' | sort -u | wc -l | tr -d ' ')"
+expect "and all three sources verify" 3 "$(yq "$f" 'select(.kind == "OCIRepository" and .spec.verify.provider == "cosign") | .metadata.name' | sort -u | wc -l | tr -d ' ')"
 expect "hds waits for hds-postgres" "hds-postgres" "$(yq "$f" "$hr | .dependsOn[].name")"
-expect "both are Helm releases named as such, stored in hds" "hds hds hds|hds-postgres hds hds" \
+expect "each is a Helm release named as such, stored in hds" "hds hds hds|hds-postgres hds hds|hds-secrets hds hds" \
     "$(yq "$f" 'select(.kind == "HelmRelease") | .spec.releaseName + " " + .spec.targetNamespace + " " + .spec.storageNamespace' | sort -u | paste -sd '|' -)"
 expect "a failed hds upgrade rolls back, without retries" "0 0 true rollback 10m 10" \
     "$(yq "$f" "$hr | [.install.remediation.retries, .upgrade.remediation.retries, .upgrade.remediation.remediateLastFailure, .upgrade.remediation.strategy, .timeout, .maxHistory] | join(\" \")")"
@@ -301,9 +373,60 @@ expect "hds takes values-local from the ConfigMap hds-values" "ConfigMap hds-val
     "$(yq "$f" "$hr | .valuesFrom[] | [.kind, .name, .valuesKey] | join(\" \")")"
 expect "release errors go to Alertmanager in monitoring" "error alertmanager alertmanager-operated.monitoring.svc:9093" \
     "$(yq "$f" '[(select(.kind == "Alert") | .spec.eventSeverity, .spec.providerRef.name), (select(.kind == "Provider") | .spec.address | sub("^http://"; "") | sub("/api.*$"; ""))] | join(" ")')"
-expect "the Alert covers both releases and both charts" \
-    "HelmRelease/hds HelmRelease/hds-postgres OCIRepository/hds OCIRepository/hds-postgres" \
+expect "the Alert covers the three releases and their charts" \
+    "HelmRelease/hds HelmRelease/hds-postgres HelmRelease/hds-secrets OCIRepository/hds OCIRepository/hds-postgres OCIRepository/hds-secrets" \
     "$(yq "$f" 'select(.kind == "Alert") | .spec.eventSources[] | .kind + "/" + .name' | sort | paste -sd ' ' -)"
+
+f="vault.yaml"
+echo "== Vault and the Vault Secrets Operator (infra/cluster)"
+vs='select(.kind == "StatefulSet" and .metadata.name == "vault") | .spec'
+expect "Vault: one node, the pinned image, its data on a PVC" \
+    "1 hashicorp/vault:2.0.4@sha256:5be49781ecf78bfe775c5309c6a4d9f4e9e040b6c885c99eb2b12fb69855e1a2 data" \
+    "$(yq "$f" "$vs | (.replicas | tostring) + \" \" + .template.spec.containers[0].image + \" \" + .volumeClaimTemplates[0].metadata.name")"
+expect "Vault stores in raft" yes \
+    "$(yq "$f" 'select(.kind == "ConfigMap") | .data["extraconfig-from-values.hcl"] | select(test("storage \"raft\"")) | "yes"')"
+expect "no PodDisruptionBudget, which would block a drain of the one node" 0 \
+    "$(yq "$f" '[select(.kind == "PodDisruptionBudget")] | length')"
+expect "no injector" 0 "$(yq "$f" '[select(.metadata.name == "vault-agent-injector")] | length')"
+expect "no UI" 0 "$(yq "$f" '[select(.metadata.name == "vault-ui")] | length')"
+expect "Vault's API is reachable from the operator's namespace and the snapshot pods only" \
+    '[{"from":[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"vault-secrets-operator"}}},{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"hds"}},"podSelector":{"matchLabels":{"app.kubernetes.io/component":"vault-snapshot"}}}],"ports":[{"port":8200,"protocol":"TCP"}]}]' \
+    "$(yq "$f" 'select(.kind == "NetworkPolicy") | .spec.ingress | to_json(0)')"
+expect "the operator has no default connection or sign-in" 0 \
+    "$(yq vso.yaml '[select(.kind == "VaultConnection" or .kind == "VaultAuth")] | length')"
+
+# hds-secrets (T051, research R3 amended in Group J): the operator's sign-in, one VaultStaticSecret per
+# path, each kept on uninstall, and each restarting only the Deployments that read it.
+f="hds-secrets.yaml"
+echo "== hds-secrets"
+expect "the VSO objects are hds-secrets', not the hds chart's" "0 0" \
+    "$(yq hds-local.yaml '[select(.apiVersion == "secrets.hashicorp.com/v1beta1")] | length') $(yq hds-ci.yaml '[select(.apiVersion == "secrets.hashicorp.com/v1beta1")] | length')"
+expect "Vault's address and the operator's sign-in" "http://vault.vault.svc:8200 kubernetes kubernetes hds hds-vault vault 600" \
+    "$(yq "$f" '(select(.kind == "VaultConnection") | .spec.address) + " " + (select(.kind == "VaultAuth") | .spec | .method + " " + .mount + " " + .kubernetes.role + " " + .kubernetes.serviceAccount + " " + (.kubernetes.audiences | join(",")) + " " + (.kubernetes.tokenExpirationSeconds | tostring))' | sort -u)"
+expect "its ServiceAccount mounts no token" false \
+    "$(yq "$f" 'select(.kind == "ServiceAccount" and .metadata.name == "hds-vault") | .automountServiceAccountToken')"
+expect "a VaultStaticSecret per path, KV v2, every 60s, into the Secret of its name" \
+    "hds-api api|hds-backup backup|hds-smtp smtp" \
+    "$(yq_each "$f" 'select(.kind == "VaultStaticSecret" and .spec.type == "kv-v2" and .spec.mount == "hds" and .spec.refreshAfter == "60s" and .spec.vaultAuthRef == "hds" and .spec.destination.create == true and .spec.destination.name == .metadata.name) | .metadata.name + " " + .spec.path' | sort -u | paste -sd '|' -)"
+expect "each is kept on uninstall" "keep" \
+    "$(yq "$f" 'select(.kind == "VaultStaticSecret") | .metadata.annotations["helm.sh/resource-policy"]' | sort -u)"
+# The Deployments that read each Secret (hds.apiEnv and hds.apiEnvFrom in the hds chart): the API
+# and the worker read hds-api and hds-smtp; only Jobs read hds-backup; never the database.
+expect "each restarts only the Deployments that read it" \
+    "hds-api: Deployment/hds-api Deployment/hds-worker|hds-backup: |hds-smtp: Deployment/hds-api Deployment/hds-worker" \
+    "$(yq_each "$f" 'select(.kind == "VaultStaticSecret") | .metadata.name + ": " + ([.spec.rolloutRestartTargets[]? | .kind + "/" + .name] | join(" "))' | sort -u | paste -sd '|' -)"
+expect "the hds chart's Deployments that read hds-api are those two" \
+    "hds-api hds-worker" \
+    "$(yq hds-local.yaml 'select(.kind == "Deployment") | select(.spec.template.spec.containers[].env[]?.valueFrom.secretKeyRef.name == "hds-api") | .metadata.name' | sort -u | paste -sd ' ' -)"
+expect "and those that read hds-smtp, through envFrom (review R154)" \
+    "hds-api hds-worker" \
+    "$(yq hds-local.yaml 'select(.kind == "Deployment") | select(.spec.template.spec.containers[].envFrom[]?.secretRef.name == "hds-smtp") | .metadata.name' | sort -u | paste -sd ' ' -)"
+expect "no pull secret unless the packages are private" 0 \
+    "$(yq "$f" '[select(.metadata.name == "hds-registry")] | length')"
+expect "the private registry's pull secret is a dockerconfigjson built from the token" \
+    "kubernetes.io/dockerconfigjson true keep" \
+    "$(yq hds-secrets-registry.yaml 'select(.kind == "VaultStaticSecret" and .metadata.name == "hds-registry") | .spec.destination.type + " " + (.spec.destination.transformation.excludeRaw | tostring) + " " + .metadata.annotations["helm.sh/resource-policy"]')"
+expect "no Secret rendered" 0 "$(yq "$f" '[select(.kind == "Secret")] | length')"
 
 if [ "$failures" -gt 0 ]; then
     echo "chart checks: $failures failed" >&2

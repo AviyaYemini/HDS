@@ -73,8 +73,11 @@ docker run --rm -v "$ROOT:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -no-color -onel
 step "Helm charts: lint, kubeconform and the rendered-manifest checks"
 infra/helm/tests/assert.sh
 
-step "the hds-postgres chart version against $BASE (as CI on a pull request)"
+step "the fixed-version charts against $BASE (as CI on a pull request)"
 infra/helm/tests/chart_version.sh "$BASE"
+
+step "Vault's policies and roles (a dev Vault)"
+infra/tests/check_vault_policy.sh
 
 step "Markdown links (offline, as CI)"
 # Only tracked Markdown, as a clean checkout has it: node_modules and caches hold their own.

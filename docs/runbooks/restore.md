@@ -145,8 +145,10 @@ machine cannot be recovered. Check where each one is now, before you need them.
    rm vault.snap && kubectl -n vault exec vault-0 -- rm /tmp/vault.snap
    ```
 
-7. Let Flux install the rest (hds-postgres, then hds). The Vault Secrets Operator fills the
-   Secrets (`hds-api`, `hds-smtp`, `hds-backup`) from the restored Vault. This works because
+7. Let Flux install the rest: `make ops-flux` (operations.md, section Vault, set-up step 8) installs
+   hds-secrets, then hds-postgres, then hds. The Vault Secrets Operator fills the Secrets
+   (`hds-api`, `hds-smtp`, `hds-backup`) from the restored Vault; the paths are already written, as
+   they came back with the snapshot. This works because
    Vault's Kubernetes auth holds only the cluster's address, `kubernetes_host`, and reads the CA
    and the reviewer token from its own pod (Group J, review R95). A snapshot carrying the old
    cluster's CA would keep every sign-in out.

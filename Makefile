@@ -36,7 +36,8 @@ COMPOSE_READ := JWT_SECRET_KEY="$${JWT_SECRET_KEY:-unused-by-down}" $(COMPOSE)
 POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
 
 .PHONY: env up build down wipe ps logs hooks ci-local ci-local-db
-.PHONY: ops-backup ops-restore-test ops-backups ops-restore ops-rollback ops-resume
+.PHONY: ops-backup ops-restore-test ops-backups ops-restore ops-rollback ops-resume ops-unseal
+.PHONY: ops-vault-configure
 
 # CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
 # interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
@@ -129,6 +130,14 @@ ops-backups:
 # pass through as they are.
 ops-restore:
 	BACKUP="$(BACKUP)" CONFIRM="$(CONFIRM)" scripts/ops/restore.sh
+
+# Vault (specs/006 T052, T053; docs/runbooks/operations.md, section Vault): unseal after a restart;
+# configure once after init, with the root token in VAULT_TOKEN (never an argument).
+ops-unseal:
+	scripts/ops/unseal.sh
+
+ops-vault-configure:
+	scripts/ops/vault_configure.sh
 
 # Deploys (specs/006 T049, FR-021): code only, never a migration downgrade.
 ops-rollback:

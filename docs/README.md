@@ -13,7 +13,7 @@
 | Runbook | When |
 | --- | --- |
 | [`restore.md`](runbooks/restore.md) | Restoring a backup, recovering a lost machine, the Drive set-up, moving to S3 |
-| [`operations.md`](runbooks/operations.md) | Deploys: following one, a failed one, rolling back and resuming, holding a version, the release's dry run |
+| [`operations.md`](runbooks/operations.md) | Deploys (following one, a failed one, rolling back and resuming, holding a version, signed releases, the release's dry run) and Vault (set-up, changing a secret, the database password, unsealing, never uninstalling hds-secrets) |
 
 ## Architecture decisions
 

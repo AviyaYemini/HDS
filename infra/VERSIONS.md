@@ -30,6 +30,7 @@ Chosen on 2026-11-06 (specs/006-deploy-operations, T001).
 | `aquasec/trivy` | `0.76.1` | `sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c` | the release's vulnerability and secret scans (`infra/release/scan.sh`). Never through `aquasecurity/trivy-action` or `setup-trivy`: their tags, and Trivy 0.69.4 to 0.69.6, were hijacked in March 2026 (CVE-2026-33634). 0.76.2 (2026-11-05) was too new |
 | `quay.io/skopeo/stable` | `v1.22.3-immutable` | `sha256:c0ee1f4edca5c01cb8d5611124f92f3cc47196ecab68aee5d0f90834e00574d5` | pushing the scanned image layouts as they are (`infra/release/push_images.sh`). The `-immutable` tag: the plain ones are rebuilt nightly. Built 2026-09-21 |
 | `ghcr.io/sigstore/cosign/cosign` | `v3.1.4` | `sha256:0f06154836d2de34f887a5c273506d52ca43edaa1d9e53e6510fa78a48f69c2d` | signing each pushed image and chart keyless (`infra/release/sign.sh`; T047c, Proposed), and the local proof's key-signed check. 2026-10-20. Flux v2.9.6's source-controller v1.9.6 verifies its v3 bundles as well as v2 signatures |
+| `hashicorp/vault` | `2.0.4` | `sha256:5be49781ecf78bfe775c5309c6a4d9f4e9e040b6c885c99eb2b12fb69855e1a2` | Vault in the cluster (`infra/cluster/vault-values.yaml`, the chart's own version, by digest), and the dev Vault of `infra/tests/check_vault_policy.sh`. 2026-08-04 |
 | `rhysd/actionlint` | `1.7.12` | `sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667` | linting the workflows (CI `lint` job, `make ci-local`) |
 | `moby/buildkit` | `v0.34.1` | `sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c` | the release workflow's builder (`setup-buildx-action`'s `driver-opts`); v0.34.2 (2026-11-03) was too new |
 | `tonistiigi/binfmt` | `qemu-v10.2.3` | `sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0` | the release workflow's arm64 emulation (`setup-qemu-action`) |
@@ -67,8 +68,8 @@ were jq `1.7.1-6+deb13u4`, curl `8.14.1-2+deb13u7` and ca-certificates `20250419
 | k3s | `v1.37.1+k3s1` | 2026-09-30 | the cluster |
 | Helm | `v3.22.1` | 2026-10-15 | installing the chart (Helm 3, as the plan names) |
 | Flux | `v2.9.6` | 2026-10-01 | pulling releases into the cluster; its `crd-schemas.tar.gz` (`sha256:380b713bd28a2c27cfc7710219aae79e1c9ceff9bee50197c023047190532987`, as the release's checksum file) validates `infra/flux` in the `chart` job. v2.10.0 (2026-10-26) was too new |
-| Vault chart (`hashicorp/vault`) | `0.34.1` | 2026-08-13 | secrets |
-| Vault Secrets Operator chart (`hashicorp/vault-secrets-operator`) | `1.6.0` | 2026-09-25 | syncing Vault into Kubernetes Secrets |
+| Vault chart (`hashicorp/vault`) | `0.34.1` | 2026-08-13 | secrets; `vault-0.34.1.tgz` is `sha256:df4c37fac32496892ff1e1d6fd7954d3a402cc7b1b2b4c2226af11b8a57564c4`, rendered with `infra/cluster/vault-values.yaml` in the `chart` job |
+| Vault Secrets Operator chart (`hashicorp/vault-secrets-operator`) | `1.6.0` | 2026-09-25 | syncing Vault into Kubernetes Secrets; `vault-secrets-operator-1.6.0.tgz` is `sha256:de3e0a520918fc7281b94fa060fe8d1858c5db5b8fb6b1463024268e7c4541c0` (as the repository's index), whose CRDs give kubeconform its schemas for `hds-secrets` |
 | kube-prometheus-stack chart | `92.11.0` | 2026-10-20 | Prometheus, Alertmanager, kube-state-metrics |
 | age | `v1.3.2` | 2026-08-29 | encrypting Vault's snapshot |
 

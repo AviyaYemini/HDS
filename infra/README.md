@@ -15,6 +15,10 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 | `tests/check_api_image.sh` | Checks the API image runs as non-root and carries its version (CI `lint` job) |
 | `helm/hds` | The application chart: the API, the worker, the web client, the migration hook, the ingress |
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
+| `helm/hds-secrets` | The Vault Secrets Operator's objects, which keep the `hds-*` Secrets; installed first |
+| `cluster/vault-values.yaml`, `cluster/vso-values.yaml` | Vault (one node, raft, its NetworkPolicy) and the Vault Secrets Operator, for their pinned charts |
+| `cluster/vault-policy.hcl`, `cluster/vault-snapshot-policy.hcl` | Vault's two policies, written by `make ops-vault-configure` |
+| `tests/check_vault_policy.sh` | Those policies and roles against a dev Vault of the cluster's version (CI `chart` job) |
 | `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
 | `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
 | `helm/tests/assert.sh` | Lints, validates and checks the rendered charts and `flux/` (CI `chart` job, `make ci-local`) |
@@ -27,21 +31,21 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 
 ## The Helm charts
 
-Two charts, each its own release (specs/006 research R3, amended). `hds-postgres` holds the
-database, so it exists before the `hds` release's `pre-install` migration hook runs, and its data
-is never touched by an app upgrade or rollback. `hds` reaches it through the Service named in its
-values (`database.host`).
+Three charts, each its own release (specs/006 research R3, amended). `hds-secrets` keeps the
+Secrets, synced from Vault by the Vault Secrets Operator, and is installed first. `hds-postgres`
+holds the database, so it exists before the `hds` release's `pre-install` migration hook runs, and
+its data is never touched by an app upgrade or rollback. `hds` reaches it through the Service named
+in its values (`database.host`).
 
-Neither chart defines a Secret; both read them by name: `hds-api` (`JWT_SECRET_KEY`,
+No chart defines a Secret; `hds` and `hds-postgres` read them by name: `hds-api` (`JWT_SECRET_KEY`,
 `DATABASE_PASSWORD`, which the database's password also comes from, and the optional
 `THROTTLE_SECRET_KEY`), `hds-smtp` (the relay's settings, when `mail.backend` is `smtp`),
 `hds-backup` and `hds-registry`. `DATABASE_PASSWORD` goes into the database URL, so it must be
 URL-safe (`openssl rand -hex 32`). PostgreSQL takes it only when it first creates the database;
-to change it later, set the role's password first, with `\password hds` in `psql` in the pod,
-which sends only its hash (an `ALTER ROLE ... PASSWORD` statement would land in psql's history on
-the data volume, and in the server log if statements are logged), then the Secret, then restart
-the API and the worker. In the other order, the next migration hook cannot
-sign in and the upgrade stops. Only the API, worker, migration and backup pods carry the
+to change it later, change it in Vault, then set the role's password to the same value with
+`\password hds` in `psql` in the pod, which sends only its hash (an `ALTER ROLE ... PASSWORD`
+statement would land in psql's history on the data volume, and in the server log if statements are
+logged). The order and why: [the operations runbook](../docs/runbooks/operations.md#vault). Only the API, worker, migration and backup pods carry the
 `hds/database-client` label that the database's NetworkPolicy lets in; the web pods do not. The
 operations port 9100 is reachable only from the `monitoring` namespace, and the ingress never
 routes it.

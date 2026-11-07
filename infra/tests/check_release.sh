@@ -20,6 +20,14 @@ flunk() { printf 'FAIL  %s\n' "$1"; [ -z "${2:-}" ] || printf '      %s\n' "$2";
 # holds LABEL COMMAND... and never LABEL COMMAND...: the command succeeds, or fails.
 holds() { local label=$1; shift; if "$@"; then pass "$label"; else flunk "$label"; fi; }
 never() { local label=$1; shift; if "$@"; then flunk "$label"; else pass "$label"; fi; }
+same() { if [ "$2" = "$3" ]; then pass "$1"; else flunk "$1" "wanted: $2; got: $3"; fi; }
+# after A B: the first call matching A comes before the first matching B.
+after() {
+    local a b
+    a=$(grep -n -- "$1" "$scratch/calls" | head -n 1 | cut -d: -f1)
+    b=$(grep -n -- "$2" "$scratch/calls" | head -n 1 | cut -d: -f1)
+    [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]
+}
 
 # expect LABEL WANTED_STATUS WANTED_TEXT COMMAND...: the status, and the text in the output.
 expect() {
@@ -91,6 +99,11 @@ expect "a template changed without a new version fails" 1 "is not above 0.1.9" c
 expect "a template changed with a new version passes" 0 "from 0.1.9 to 0.1.10" change template 0.1.10
 expect "a lower version fails, compared as versions" 1 "0.1.8 is not above 0.1.9" change template 0.1.8
 
+echo "== the fixed-version charts"
+listed=$(grep -v '^#' "$ROOT/infra/helm/fixed-version-charts" | sort | paste -sd ' ' -)
+present=$(cd "$ROOT/infra/helm" && find . -maxdepth 2 -name Chart.yaml | cut -d/ -f2 | grep -vx hds | sort | paste -sd ' ' -)
+same "every chart but hds is in infra/helm/fixed-version-charts" "$present" "$listed"
+
 echo "== publish_charts.sh"
 cat > "$scratch/helm" <<FAKE
 #!/bin/sh
@@ -99,6 +112,8 @@ cat > "$scratch/helm" <<FAKE
 printf 'helm %s\n' "\$*" >> "$scratch/calls"
 case "\$1" in
     show)
+        # As helm in docker run -i, it reads its standard input.
+        cat > /dev/null
         case "\${FAKE_SHOW:-missing}" in
             exists) echo "name: hds-postgres" ;;
             missing) echo "Error: ghcr.io/x/charts/hds-postgres:0.1.0: not found" >&2; exit 1 ;;
@@ -136,35 +151,35 @@ publish() {
     : > "$scratch/calls"
     env HDS_HELM="$scratch/helm" HDS_SKOPEO="$scratch/skopeo" HDS_SIGN="$scratch/sign" "$@" \
         "$ROOT/infra/release/publish_charts.sh" aviyayemini 0.1.42 \
-        0123456789abcdef0123456789abcdef01234567 "$A" "$W" "$B"
+        0123456789abcdef0123456789abcdef01234567 "$A" "$W" "$B" < /dev/null
 }
 pushed() { grep -q "^helm push out/$1" "$scratch/calls"; }
-expect "both charts are pushed when hds-postgres's version is missing" 0 \
+expect "the three charts are pushed when the fixed versions are missing" 0 \
     "pushed hds-postgres 0.1.0" publish FAKE_SHOW=missing
+holds "hds-secrets is pushed" pushed "hds-secrets-0.1.0.tgz oci://ghcr.io/aviyayemini/charts"
+holds "hds-secrets goes before hds-postgres" after "^helm push out/hds-secrets" "^helm push out/hds-postgres"
+holds "and hds-postgres before hds" after "^helm push out/hds-postgres" "^helm push out/hds-0.1.42"
 holds "hds is pushed as 0.1.42" pushed "hds-0.1.42.tgz oci://ghcr.io/aviyayemini/charts"
 HDS_DIGEST=$(digest_of "docker://ghcr.io/aviyayemini/charts/hds:0.1.42")
 PG_DIGEST=$(digest_of "docker://ghcr.io/aviyayemini/charts/hds-postgres:0.1.0")
 holds "hds is signed by the digest the registry holds" \
     grep -qx "sign ghcr.io/aviyayemini/charts/hds@$HDS_DIGEST" "$scratch/calls"
 holds "and hds-postgres too" grep -qx "sign ghcr.io/aviyayemini/charts/hds-postgres@$PG_DIGEST" "$scratch/calls"
-# after A B: the first call matching A comes before the first matching B.
-after() {
-    local a b
-    a=$(grep -n -- "$1" "$scratch/calls" | head -n 1 | cut -d: -f1)
-    b=$(grep -n -- "$2" "$scratch/calls" | head -n 1 | cut -d: -f1)
-    [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]
-}
+SECRETS_DIGEST=$(digest_of "docker://ghcr.io/aviyayemini/charts/hds-secrets:0.1.0")
+holds "and hds-secrets" grep -qx "sign ghcr.io/aviyayemini/charts/hds-secrets@$SECRETS_DIGEST" "$scratch/calls"
 holds "each chart is signed after its push" after "^helm push out/hds-0.1.42" "^sign .*charts/hds@"
 holds "hds-postgres's too" after "^helm push out/hds-postgres" "^sign .*charts/hds-postgres@"
 never "nothing is signed by tag" grep -q "^sign [^@]*$" "$scratch/calls"
 expect "hds-postgres at a version already there is not pushed again" 0 "not pushed again" \
     publish FAKE_SHOW=exists
 never "only hds was pushed" pushed hds-postgres
+never "not hds-secrets either" pushed hds-secrets
 holds "but hds-postgres is signed again, in case an earlier sign failed" \
     grep -qx "sign ghcr.io/aviyayemini/charts/hds-postgres@$PG_DIGEST" "$scratch/calls"
 expect "any other registry answer fails and pushes no hds-postgres" 1 "nothing was pushed" \
     publish FAKE_SHOW=denied
 never "no hds-postgres after a 401" pushed hds-postgres
+never "no hds-secrets after it" pushed hds-secrets
 never "and no hds after it either" pushed hds-0.1.42
 never "and nothing signed" grep -q "^sign " "$scratch/calls"
 expect "an image by tag in the packaged chart fails before any push" 1 "not an image of this release" \
@@ -213,7 +228,6 @@ wf() {
     docker run --rm -v "$ROOT/.github/workflows:/w:ro" "$YQ_IMAGE" -N "$1" /w/release.yml \
         || echo "YQ-FAILED"
 }
-same() { if [ "$2" = "$3" ]; then pass "$1"; else flunk "$1" "wanted: $2; got: $3"; fi; }
 same "it runs after CI completes on main, or by hand" "CI completed main workflow_dispatch" \
     "$(wf '[.on.workflow_run.workflows[], .on.workflow_run.types[], .on.workflow_run.branches[],
         (.on | keys | .[] | select(. == "workflow_dispatch"))] | join(" ")')"
