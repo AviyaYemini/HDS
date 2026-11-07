@@ -7,30 +7,41 @@
  * business, not this module's.
  */
 import { isolateLtr } from "./bidi";
-import { daysBetween } from "./plainDate";
+import { calendarDateIn, daysBetween } from "./plainDate";
 
 /** An en dash, the range separator in both languages. */
 export const RANGE_DASH = "–";
 
 const clocks = new Map<string, Intl.DateTimeFormat>();
-const dates = new Map<string, Intl.DateTimeFormat>();
 
+// Every formatter here reads its parts, never a locale's layout: the Intl polyfill on Hermes
+// carries only the app's two languages (research R13).
 function clock(timeZone: string): Intl.DateTimeFormat {
   let found = clocks.get(timeZone);
   if (found === undefined) {
-    found = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+    found = new Intl.DateTimeFormat("en", {
+      timeZone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hourCycle: "h23",
+    });
     clocks.set(timeZone, found);
   }
   return found;
 }
 
-function dateIn(timeZone: string): Intl.DateTimeFormat {
-  let found = dates.get(timeZone);
-  if (found === undefined) {
-    found = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone });
-    dates.set(timeZone, found);
+function wallClock(instant: string | Date, timeZone: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of clock(timeZone).formatToParts(typeof instant === "string" ? new Date(instant) : instant)) {
+    if (part.type !== "literal") out[part.type] = Number(part.value);
   }
-  return found;
+  // Some engines give 24 for midnight under h23 as well.
+  if (out.hour === 24) out.hour = 0;
+  return out;
 }
 
 /** `instant` (an ISO instant or Date) as `HH:mm` in `timeZone`, isolated left to right. */
@@ -39,16 +50,21 @@ export function formatTime(instant: string | Date, timeZone: string): string {
 }
 
 function clockText(instant: string | Date, timeZone: string): string {
-  const text = clock(timeZone).format(typeof instant === "string" ? new Date(instant) : instant);
-  const match = /(\d{2}):(\d{2})/.exec(text);
-  return match ? `${match[1]}:${match[2]}` : text;
+  const { hour, minute } = wallClock(instant, timeZone);
+  return `${String(hour ?? 0).padStart(2, "0")}:${String(minute ?? 0).padStart(2, "0")}`;
 }
 
 /** The calendar date of `instant` in `timeZone`, `YYYY-MM-DD`. */
 export function dateOf(instant: string | Date, timeZone: string): string {
-  const text = dateIn(timeZone).format(typeof instant === "string" ? new Date(instant) : instant);
-  const match = /(\d{4})-(\d{2})-(\d{2})/.exec(text);
-  return match ? `${match[1]}-${match[2]}-${match[3]}` : text;
+  return calendarDateIn(typeof instant === "string" ? new Date(instant) : instant, timeZone);
+}
+
+/** Minutes the zone is ahead of UTC at `instant` (negative when behind). */
+export function zoneOffsetMinutes(instant: string | Date, timeZone: string): number {
+  const date = typeof instant === "string" ? new Date(instant) : instant;
+  const wall = wallClock(date, timeZone);
+  const asUtc = Date.UTC(wall.year!, wall.month! - 1, wall.day!, wall.hour!, wall.minute!, wall.second ?? 0);
+  return Math.round((asUtc - date.getTime() + (date.getTime() % 1000)) / 60_000);
 }
 
 /** How many calendar days after the start's date the end falls, in `timeZone`: 0 the same day. */
@@ -81,14 +97,5 @@ export function durationParts(minutes: number): { hours: number; minutes: number
  * changed in `timeZone` during the span (FR-053: a 7- or 9-hour night).
  */
 export function crossesClockChange(start: string | Date, end: string | Date, timeZone: string): boolean {
-  const a = typeof start === "string" ? new Date(start) : start;
-  const b = typeof end === "string" ? new Date(end) : end;
-  const offsetAt = (instant: Date): number => {
-    const text = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" }).format(instant);
-    const match = /GMT([+-]\d{2}):?(\d{2})?/.exec(text);
-    if (!match) return 0;
-    const sign = match[1]!.startsWith("-") ? -1 : 1;
-    return sign * (Math.abs(Number(match[1])) * 60 + Number(match[2] ?? 0));
-  };
-  return offsetAt(a) !== offsetAt(b);
+  return zoneOffsetMinutes(start, timeZone) !== zoneOffsetMinutes(end, timeZone);
 }

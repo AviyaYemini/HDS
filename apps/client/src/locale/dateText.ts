@@ -11,16 +11,11 @@ import { RANGE_DASH } from "./times";
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
-/** HDS English reads day before month ("7 November"), which is British English's order. */
-function tag(locale: string): string {
-  return locale.toLowerCase().startsWith("en") ? "en-GB" : locale;
-}
-
 function formatter(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const key = `${locale}|${JSON.stringify(options)}`;
   let found = formatters.get(key);
   if (found === undefined) {
-    found = new Intl.DateTimeFormat(tag(locale), { ...options, timeZone: "UTC" });
+    found = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" });
     formatters.set(key, found);
   }
   return found;
@@ -32,8 +27,18 @@ export function atNoonUtc(date: string): Date {
   return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
-/** The parts joined, with a comma after the weekday where the locale leaves it out. */
-function withComma(parts: Intl.DateTimeFormatPart[]): string {
+/**
+ * A header from its parts. HDS English reads day before month ("Saturday, 7 November"), whatever
+ * the engine's English layout, so English is assembled by hand; other languages keep their own
+ * order with a comma after the weekday. Reading parts also keeps the output right on Hermes, whose
+ * Intl polyfill carries only the app's two languages.
+ */
+function header(parts: Intl.DateTimeFormatPart[], locale: string): string {
+  const of = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  if (locale.toLowerCase().startsWith("en")) {
+    const year = of("year");
+    return `${of("weekday")}, ${of("day")} ${of("month")}${year ? ` ${year}` : ""}`;
+  }
   return parts
     .map((part, index) => {
       const previous = parts[index - 1];
@@ -45,13 +50,14 @@ function withComma(parts: Intl.DateTimeFormatPart[]): string {
 
 /** `date` for a header: "Saturday, 7 November" / "יום שבת, 7 בנובמבר" (the weekday spelled out). */
 export function formatHeaderDate(date: string, locale: string): string {
-  return withComma(formatter(locale, { weekday: "long", day: "numeric", month: "long" }).formatToParts(atNoonUtc(date)));
+  return header(formatter(locale, { weekday: "long", day: "numeric", month: "long" }).formatToParts(atNoonUtc(date)), locale);
 }
 
 /** `date` with its year for a header: "Saturday, 7 November 2026". */
 export function formatLongDate(date: string, locale: string): string {
-  return withComma(
+  return header(
     formatter(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" }).formatToParts(atNoonUtc(date)),
+    locale,
   );
 }
 

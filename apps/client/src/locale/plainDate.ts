@@ -123,16 +123,28 @@ export function isWithin(date: string, start: string, end: string): boolean {
  * instant defaults to now, and tests pass a fixed one.
  */
 export function todayIn(timeZone: string, now: Date = new Date()): string {
-  const formatted = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  // en-CA gives YYYY-MM-DD; a polyfilled Intl may add bidi marks, so the digits are picked out.
-  const match = /(\d{4})-(\d{2})-(\d{2})/.exec(formatted);
-  if (!match) throw new Error(`could not read today's date in ${timeZone}: ${formatted}`);
-  return `${match[1]}-${match[2]}-${match[3]}`;
+  return calendarDateIn(now, timeZone);
+}
+
+const dateParts = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * The calendar date of `instant` in `timeZone`, read part by part, so it does not depend on how any
+ * locale lays a date out (the Intl polyfill on Hermes carries only the app's two languages).
+ */
+export function calendarDateIn(instant: Date, timeZone: string): string {
+  let formatter = dateParts.get(timeZone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat("en", { timeZone, year: "numeric", month: "numeric", day: "numeric" });
+    dateParts.set(timeZone, formatter);
+  }
+  const found: Record<string, string> = {};
+  for (const part of formatter.formatToParts(instant)) found[part.type] = part.value;
+  const year = Number(found.year);
+  const month = Number(found.month);
+  const day = Number(found.day);
+  if (!isValidDate(year, month, day)) throw new Error(`could not read the date in ${timeZone}`);
+  return iso(year, month, day);
 }
 
 const TYPED = /^\s*(\d{1,2})\s*[/.\-\s]\s*(\d{1,2})\s*[/.\-\s]\s*(\d{2}|\d{4})\s*$/;
