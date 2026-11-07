@@ -1,0 +1,975 @@
+{
+  "$description": "HDS semantic tokens (DTCG 2025.10): one set of roles per theme. Each text and icon token lists, in $extensions.hds.on, the backgrounds it is used on; tests/unit/tokens.contrast.test.ts checks every pair (FR-062). Light status colours are declared on the canvas and surface only: on a selected row they sit inside a canvas-backed chip (research R3).",
+  "$extensions": {
+    "hds": {
+      "minimum": {
+        "light": {
+          "text": 4.5,
+          "icon": 3
+        },
+        "dark": {
+          "text": 4.5,
+          "icon": 3
+        },
+        "highContrastLight": {
+          "text": 7,
+          "icon": 4.5
+        },
+        "highContrastDark": {
+          "text": 7,
+          "icon": 4.5
+        }
+      }
+    }
+  },
+  "theme": {
+    "light": {
+      "bg": {
+        "canvas": {
+          "$value": "{palette.stone-200}"
+        },
+        "selected": {
+          "$value": "{palette.stone-300}"
+        },
+        "surface": {
+          "$value": "{palette.stone-150}"
+        }
+      },
+      "border": {
+        "subtle": {
+          "$value": "{palette.stone-400}"
+        },
+        "strong": {
+          "$value": "{palette.stone-500}"
+        }
+      },
+      "text": {
+        "primary": {
+          "$value": "{palette.stone-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.stone-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "icon": {
+        "primary": {
+          "$value": "{palette.stone-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.stone-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      },
+      "accent": {
+        "default": {
+          "$value": "{palette.copper-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "pressed": {
+          "$value": "{palette.copper-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "onSelected": {
+          "$value": "{palette.copper-800}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.selected"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "cta": {
+        "bg": {
+          "$value": "{palette.tan-300}"
+        },
+        "text": {
+          "$value": "{palette.ink-950}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "cta.bg"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "inverse": {
+        "bg": {
+          "$value": "{palette.night-950}"
+        },
+        "field": {
+          "$value": "{palette.night-900}"
+        },
+        "border": {
+          "$value": "{palette.night-700}"
+        },
+        "borderStrong": {
+          "$value": "{palette.night-600}"
+        },
+        "text": {
+          "$value": "{palette.night-100}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "textSecondary": {
+          "$value": "{palette.night-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "status": {
+        "warning": {
+          "$value": "{palette.amber-800}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "success": {
+          "$value": "{palette.green-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "danger": {
+          "$value": "{palette.red-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "info": {
+          "$value": "{palette.blue-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "focus": {
+        "ring": {
+          "$value": "{palette.copper-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      }
+    },
+    "dark": {
+      "bg": {
+        "canvas": {
+          "$value": "{palette.night-950}"
+        },
+        "selected": {
+          "$value": "{palette.night-850}"
+        },
+        "surface": {
+          "$value": "{palette.night-900}"
+        }
+      },
+      "border": {
+        "subtle": {
+          "$value": "{palette.night-700}"
+        },
+        "strong": {
+          "$value": "{palette.stone-550}"
+        }
+      },
+      "text": {
+        "primary": {
+          "$value": "{palette.night-100}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.night-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "icon": {
+        "primary": {
+          "$value": "{palette.night-100}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.night-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      },
+      "accent": {
+        "default": {
+          "$value": "{palette.tan-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "pressed": {
+          "$value": "{palette.hc-tan}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "onSelected": {
+          "$value": "{palette.tan-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.selected"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "cta": {
+        "bg": {
+          "$value": "{palette.tan-300}"
+        },
+        "text": {
+          "$value": "{palette.ink-950}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "cta.bg"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "inverse": {
+        "bg": {
+          "$value": "{palette.stone-200}"
+        },
+        "field": {
+          "$value": "{palette.stone-150}"
+        },
+        "border": {
+          "$value": "{palette.stone-400}"
+        },
+        "borderStrong": {
+          "$value": "{palette.stone-500}"
+        },
+        "text": {
+          "$value": "{palette.stone-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "textSecondary": {
+          "$value": "{palette.stone-700}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "status": {
+        "warning": {
+          "$value": "{palette.amber-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "success": {
+          "$value": "{palette.green-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "danger": {
+          "$value": "{palette.red-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "info": {
+          "$value": "{palette.blue-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "focus": {
+        "ring": {
+          "$value": "{palette.tan-300}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      }
+    },
+    "highContrastLight": {
+      "bg": {
+        "canvas": {
+          "$value": "{palette.night-100}"
+        },
+        "selected": {
+          "$value": "{palette.stone-150}"
+        },
+        "surface": {
+          "$value": "{palette.white}"
+        }
+      },
+      "border": {
+        "subtle": {
+          "$value": "{palette.stone-500}"
+        },
+        "strong": {
+          "$value": "{palette.stone-700}"
+        }
+      },
+      "text": {
+        "primary": {
+          "$value": "{palette.hc-ink}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.hc-stone-800}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "icon": {
+        "primary": {
+          "$value": "{palette.hc-ink}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.hc-stone-800}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      },
+      "accent": {
+        "default": {
+          "$value": "{palette.copper-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "pressed": {
+          "$value": "{palette.hc-ink}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "onSelected": {
+          "$value": "{palette.copper-900}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.selected"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "cta": {
+        "bg": {
+          "$value": "{palette.copper-900}"
+        },
+        "text": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "cta.bg"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "inverse": {
+        "bg": {
+          "$value": "{palette.black}"
+        },
+        "field": {
+          "$value": "{palette.night-950}"
+        },
+        "border": {
+          "$value": "{palette.night-600}"
+        },
+        "borderStrong": {
+          "$value": "{palette.stone-500}"
+        },
+        "text": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "textSecondary": {
+          "$value": "{palette.hc-night-200}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "status": {
+        "warning": {
+          "$value": "{palette.hc-amber}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "success": {
+          "$value": "{palette.hc-green}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "danger": {
+          "$value": "{palette.hc-red}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "info": {
+          "$value": "{palette.hc-blue}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "focus": {
+        "ring": {
+          "$value": "{palette.hc-ink}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      }
+    },
+    "highContrastDark": {
+      "bg": {
+        "canvas": {
+          "$value": "{palette.black}"
+        },
+        "selected": {
+          "$value": "{palette.night-950}"
+        },
+        "surface": {
+          "$value": "{palette.night-900}"
+        }
+      },
+      "border": {
+        "subtle": {
+          "$value": "{palette.night-600}"
+        },
+        "strong": {
+          "$value": "{palette.hc-stone-450}"
+        }
+      },
+      "text": {
+        "primary": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.hc-night-200}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "icon": {
+        "primary": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        },
+        "secondary": {
+          "$value": "{palette.hc-night-200}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      },
+      "accent": {
+        "default": {
+          "$value": "{palette.hc-tan}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "pressed": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "onSelected": {
+          "$value": "{palette.hc-tan}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.selected"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "cta": {
+        "bg": {
+          "$value": "{palette.hc-tan}"
+        },
+        "text": {
+          "$value": "{palette.black}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "cta.bg"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "inverse": {
+        "bg": {
+          "$value": "{palette.night-100}"
+        },
+        "field": {
+          "$value": "{palette.white}"
+        },
+        "border": {
+          "$value": "{palette.stone-500}"
+        },
+        "borderStrong": {
+          "$value": "{palette.stone-700}"
+        },
+        "text": {
+          "$value": "{palette.hc-ink}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "textSecondary": {
+          "$value": "{palette.hc-stone-800}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "inverse.bg",
+                "inverse.field"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "status": {
+        "warning": {
+          "$value": "{palette.hc-amber-l}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "success": {
+          "$value": "{palette.hc-green-l}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "danger": {
+          "$value": "{palette.hc-red-l}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        },
+        "info": {
+          "$value": "{palette.hc-blue-l}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "text"
+            }
+          }
+        }
+      },
+      "focus": {
+        "ring": {
+          "$value": "{palette.white}",
+          "$extensions": {
+            "hds": {
+              "on": [
+                "bg.canvas",
+                "bg.selected",
+                "bg.surface"
+              ],
+              "kind": "icon"
+            }
+          }
+        }
+      }
+    }
+  }
+}
