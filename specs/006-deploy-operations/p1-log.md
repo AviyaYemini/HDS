@@ -919,3 +919,31 @@ from GitHub's issuer.
   refused.
 - **New CI jobs, for the ruleset after their first run**: "Rolling update on k3d (base to head,
   under load)" and "Old code on the new schema (compatibility)".
+
+### Group L, the review's fixes (R200–R204)
+
+- **Its own cluster (R200)**: the proof ran `hds`, k3d.yaml's own name, and deleted any cluster of
+  that name; run by hand after T063 it would have wiped the shared cluster. It now runs
+  `hds-rolling` on 18080/18443 from a copy of k3d.yaml, refuses to start if that cluster exists,
+  and deletes only one it made. check_deploy_ops.sh catches the `CLUSTER=hds` mutant.
+- **The web stops cleanly (R201)**: tried first on k3d, web restarts with no preStop dropped
+  requests (a 502, then requests with no answer); two restarts with a 5 s preStop dropped none of
+  about 800. `web.yaml` now has the API's preStop, and load.py fetches `/` and one of its scripts.
+- **A second rollout (R202)**: in the base-to-head upgrade the pods that stop are the base's, so the
+  head's own shutdown was untested. A rollout restart, head to head, under the same load now tests
+  it. Main's web has no preStop, so web drops by the base's pods in the first phase are reported
+  and allowed, and nothing else; after the merge the check is strict throughout.
+- **The run** (ab3aadc, base 4081749): exit 0. load.py: 498 reads, 249 writes, 491 web fetches,
+  2 refreshes, 8 failures, all base web pods in the first phase; counted 0. 3:16 locally, images
+  warm; a cold CI run (six image builds, the Playwright install, two rollouts) is estimated at
+  20–25 minutes.
+- **The mutants**, each in a detached throwaway worktree, removed after, nothing pushed:
+  - the API's preStop removed: fails, counted 17 (12 `GET /api/v1/sites`, 5 `POST`, 502s and read
+    timeouts) in the head's rollout;
+  - the web's preStop removed: fails, counted 14 (7 `GET /`, 7 of its script).
+  The first pair of runs was invalid: the worktrees had no venv, so load.py never ran (the script
+  now makes the venv when missing), and their throwaway commits were made with `--no-verify`. The
+  second pair was committed with the hooks.
+- **Labels (R203, R204)**: the schedule-job check says it is not FR-020's interrupted-run proof
+  (Group F's tests are); the header says a hds-postgres pod-template change fails the run, as
+  expected, since the only database pod restarts under load.
