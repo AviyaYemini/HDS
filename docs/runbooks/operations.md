@@ -29,6 +29,10 @@ Within 5 minutes Flux in the cluster sees the new chart and upgrades the `hds` r
    Expected: `hds` `Ready True` with the new chart version, and `helm history` shows one revision
    per deploy, at most 10 kept. `make ops-status` (Group K) shows the version each pod runs.
 
+   After two merges close together, the Release run for the older one may be red with `CI ran on
+   <commit>, but main is now at <commit>`. That is expected and harmless: only main's newest commit
+   is published, by its own run.
+
 2. **A failed deploy rolls itself back.** The upgrade waits up to 10 minutes for every new pod to
    be ready. If they never are, Flux rolls back to the previous revision and does not retry. The
    old pods serve throughout, because no old pod stops before a new one is ready. Flux's alert

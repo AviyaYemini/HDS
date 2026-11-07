@@ -23,8 +23,10 @@ tool=$1; shift
 case "$tool $*" in
     "flux "*"suspend helmrelease hds"*) [ "${FAKE_FAIL:-}" != suspend ] && touch "$FAKE_DIR/suspended" ;;
     "flux "*"resume helmrelease hds"*) [ "${FAKE_FAIL:-}" != resume ] ;;
+    # FAKE_PG_WAS: whether the hds-postgres HelmRelease was suspended (unset: not).
+    "kubectl "*"get helmrelease hds-postgres"*) printf '%s' "${FAKE_PG_WAS:-}" ;;
     # Before the suspend call, FAKE_FLUX_WAS (unset: not suspended); after it, FAKE_SUSPENDED.
-    "kubectl "*"get helmrelease hds"*)
+    "kubectl "*"get helmrelease hds "*)
         if [ -f "$FAKE_DIR/suspended" ]; then printf '%s' "${FAKE_SUSPENDED-true}";
         else printf '%s' "${FAKE_FLUX_WAS:-}"; fi ;;
     "helm "*"rollback hds"*) [ "${FAKE_FAIL:-}" != rollback ] ;;
@@ -33,7 +35,10 @@ case "$tool $*" in
     # make ops-restore. FAKE_CHECK, FAKE_RUN, FAKE_MIGRATE: each Job's condition (Complete); with
     # Failed, FAKE_<JOB>_EXIT is its container's exit status. FAKE_CRON: hds-backup's suspend.
     # FAKE_TERMINATING: how many polls still find a pod. FAKE_ACTIVE: running backup Jobs.
-    "kubectl "*"get jobs -l "*) printf '%s' "${FAKE_ACTIVE:-}" ;;
+    # The first listing answers FAKE_ACTIVE, later ones FAKE_ACTIVE_LATER (a backup that started).
+    "kubectl "*"get jobs -l "*)
+        if [ -f "$FAKE_DIR/listed" ]; then printf '%s' "${FAKE_ACTIVE_LATER:-}";
+        else touch "$FAKE_DIR/listed"; printf '%s' "${FAKE_ACTIVE:-}"; fi ;;
     # FAKE_SAVED: what an earlier run left in hds-restore-saved ("api worker cron flux").
     "kubectl "*"get configmap hds-restore-saved"*) printf '%s' "${FAKE_SAVED:-}" ;;
     "kubectl "*"create configmap hds-restore-saved"* | "kubectl "*"delete configmap hds-restore-saved"*) ;;
@@ -89,7 +94,7 @@ check() {
     while [ "$1" != -- ]; do vars+=("$1"); shift; done
     shift
     : > "$FAKE_LOG"
-    rm -f "$FAKE_DIR/polls" "$FAKE_DIR/suspended"
+    rm -f "$FAKE_DIR/polls" "$FAKE_DIR/suspended" "$FAKE_DIR/listed"
     set +e
     out=$(env ${vars[@]+"${vars[@]}"} "$ROOT/scripts/ops/$1" "${@:2}" 2>&1)
     status=$?
@@ -102,8 +107,9 @@ check() {
     fi
 }
 
-# called TEXT: whether a recorded call contains TEXT.
+# called TEXT: whether a recorded call contains TEXT; ends TEXT: whether one ends with it.
 called() { grep -qF -- "$1" "$FAKE_LOG"; }
+ends() { awk -v t="$1" 'substr($0, length($0) - length(t) + 1) == t { found = 1 } END { exit !found }' "$FAKE_LOG"; }
 # holds LABEL COMMAND... and never LABEL COMMAND...: the command succeeds, or fails.
 holds() {
     local label=$1; shift
@@ -185,25 +191,52 @@ holds "the API goes back to its 2 replicas after migrate" \
     before "get job hds-restore-migrate" "scale deployment hds-api --replicas=2"
 holds "the worker goes back to its 1 replica" called "scale deployment hds-worker --replicas=1"
 holds "an unsuspended CronJob is unsuspended again" called 'patch cronjob hds-backup --type=merge -p {"spec":{"suspend":false}}'
-holds "Flux resumes last" before "scale deployment hds-worker --replicas=1" "resume helmrelease hds"
+holds "Flux resumes after the scale-up" before "scale deployment hds-worker --replicas=1" "resume helmrelease hds"
+holds "and resumes hds-postgres too" ends "resume helmrelease hds-postgres"
+holds "hds-postgres is suspended before the scale-down" \
+    before "suspend helmrelease hds-postgres" "scale deployment hds-api --replicas=0"
+holds "the Jobs lose the CronJob as their owner" called '{"op": "remove", "path": "/metadata/ownerReferences"}'
+holds "and are kept 7 days after they finish" called '"path": "/spec/ttlSecondsAfterFinished", "value": 604800'
+holds "and its instantiate annotation" \
+    called '{"op": "remove", "path": "/metadata/annotations/cronjob.kubernetes.io~1instantiate"}'
+holds "the Job is component=restore" \
+    called '{"op": "add", "path": "/metadata/labels/app.kubernetes.io~1component", "value": "restore"}'
+holds "and so is its pod" called '"path": "/spec/template/metadata/labels/app.kubernetes.io~1component"'
+never "the database-client label is left alone" called 'hds~1database-client'
+holds "the guard counts running restores too" called "component in (backup,restore-test,restore)"
 
 holds "what runs now is saved before anything is suspended" \
-    before "create configmap hds-restore-saved --from-literal=api=2 --from-literal=worker=1 --from-literal=cron=false --from-literal=flux=false" "suspend helmrelease hds"
+    before "create configmap hds-restore-saved --from-literal=api=2 --from-literal=worker=1 --from-literal=cron=false --from-literal=flux=false --from-literal=pgflux=false" "suspend helmrelease hds"
 holds "the saved state is deleted at the end" called "delete configmap hds-restore-saved"
 
 check "a run after one that stopped midway sets back what that one saved" 0 "hds-api 3 and hds-worker 2 are running" \
-    "$B" CONFIRM=replace FAKE_SAVED="3 2 true false" -- restore.sh
+    "$B" CONFIRM=replace FAKE_SAVED="3 2 true false false" -- restore.sh
 holds "the API goes back to the first run's 3" called "scale deployment hds-api --replicas=3"
 holds "the CronJob goes back to the first run's suspend" \
     test "$(grep -F "patch cronjob hds-backup" "$FAKE_LOG" | tail -n 1 | sed 's/.* -p //')" = '{"spec":{"suspend":true}}'
 never "it saves nothing over the first run's values" called "create configmap"
-check "saved values that are not four fail before anything changes" 1 "not four values" \
+check "saved values that are not five fail before anything changes" 1 "not five values" \
     "$B" FAKE_SAVED="0" -- restore.sh
 never "nothing was suspended then" called "suspend helmrelease"
 
 check "Flux suspended before (ops-rollback) stays suspended" 0 "Flux stays suspended for hds, as it was" \
     "$B" FAKE_FLUX_WAS=true -- restore.sh
-never "Flux is not resumed then" called "resume helmrelease hds"
+never "Flux is not resumed then" ends "resume helmrelease hds"
+holds "hds-postgres, not suspended before, is resumed" ends "resume helmrelease hds-postgres"
+check "hds-postgres suspended before stays suspended" 0 "restored" "$B" FAKE_PG_WAS=true -- restore.sh
+never "hds-postgres is not resumed then" ends "resume helmrelease hds-postgres"
+
+check "a backup that starts during the check stops it, everything set back" 1 \
+    "a backup started: hds-backup-29001. Wait for it and run again; nothing was changed" \
+    "$B" FAKE_ACTIVE_LATER="hds-backup-29001 " -- restore.sh
+never "nothing was scaled" called "scale deployment"
+holds "the CronJob is set back" called '{"spec":{"suspend":false}}'
+holds "Flux is resumed for hds" ends "resume helmrelease hds"
+holds "and the saved state deleted" called "delete configmap hds-restore-saved"
+check "after an earlier run stopped midway, a started backup leaves its state alone" 1 \
+    "stay suspended from the earlier run" \
+    "$B" FAKE_SAVED="3 2 false false false" FAKE_ACTIVE_LATER="hds-backup-29001 " -- restore.sh
+never "the earlier run's state is kept" called "delete configmap"
 
 check "CONFIRM is replace or nothing" 1 "CONFIRM is replace or unset" "$B" CONFIRM=yes -- restore.sh
 never "a bad CONFIRM made no Job" called "create -f"
@@ -226,12 +259,12 @@ never "no migration ran" called "hds-restore-migrate"
 check "a restore that failed midway leaves everything stopped" 1 "stay at 0 and Flux stays suspended" \
     "$B" FAKE_RUN=Failed FAKE_RUN_EXIT=1 -- restore.sh
 never "nothing was scaled back up" called "scale deployment hds-api --replicas=2"
-never "Flux was not resumed" called "resume helmrelease hds"
+never "Flux was not resumed" called "resume helmrelease"
 
 check "a failed migration leaves everything stopped" 1 "restored but not migrated" \
     "$B" FAKE_MIGRATE=Failed -- restore.sh
 never "nothing was scaled back up after it" called "scale deployment hds-api --replicas=2"
-never "Flux was not resumed after it" called "resume helmrelease hds"
+never "Flux was not resumed after it" called "resume helmrelease"
 
 check "hooks that are not one migrate Job stop it before migrating" 1 "not one Job hds-migrate" \
     "$B" FAKE_HOOKS="List/" -- restore.sh

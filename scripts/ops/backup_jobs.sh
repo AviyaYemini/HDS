@@ -8,9 +8,9 @@
 #
 # `run` makes a Job from the CronJob hds-<name>, waits for it, prints its logs, and exits 1 if it
 # failed. A Job made this way skips the CronJob's concurrencyPolicy: Forbid, so it refuses while a
-# Job of the same CronJob is still running. `list` runs hds-rclone.sh in a one-off pod on the
-# backup image with the hds-backup Secret, as the CronJob does: the names are encrypted on Drive, so
-# a browser cannot show them.
+# Job of the same CronJob, or a restore, is still running. `list` runs hds-rclone.sh in a one-off
+# pod on the backup image with the hds-backup Secret, as the CronJob does: the names are encrypted
+# on Drive, so a browser cannot show them.
 #
 # Environment: HDS_NAMESPACE (hds), HDS_JOB_TIMEOUT in seconds (1800).
 set -eu
@@ -24,7 +24,9 @@ k() { kubectl -n "$ns" "$@"; }
 run() {
     cronjob="hds-$1"
     k get cronjob "$cronjob" > /dev/null || fail "no CronJob $cronjob in namespace $ns"
-    active=$(k get jobs -l "app.kubernetes.io/component=$1" \
+    # A restore (make ops-restore, component=restore) replaces the database: no backup or restore
+    # test runs beside it (review R122).
+    active=$(k get jobs -l "app.kubernetes.io/component in ($1,restore)" \
         -o jsonpath='{range .items[?(@.status.active)]}{.metadata.name}{" "}{end}') \
         || fail "the Jobs of $cronjob could not be listed"
     [ -z "$active" ] || fail "a Job of $cronjob is still running: $active; wait for it"

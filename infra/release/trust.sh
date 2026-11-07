@@ -32,7 +32,10 @@ case "${GITHUB_EVENT_NAME:-}" in
             || fail "CI ran on a commit of '$repo', not of $GITHUB_REPOSITORY"
         printf '%s' "$sha" | grep -Eqx '[0-9a-f]{40}' || fail "the head commit '$sha' is not a SHA"
         # Only main's newest commit: CI re-run for an older commit, or finishing after a newer
-        # one's, would otherwise publish older code as a higher version (review R114).
+        # one's, would otherwise publish older code as a higher version (review R114). The run is
+        # then red, and harmless. ls-remote is unauthenticated, which works because the repository
+        # is public; a private one needs the token (git -c http.extraHeader="Authorization: basic
+        # <base64 of x-access-token:$GITHUB_TOKEN>"; review R126).
         tip=${HDS_MAIN_TIP-$(git ls-remote "${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY" \
             refs/heads/main | cut -f 1)}
         [ -n "$tip" ] || fail "main's newest commit could not be read"

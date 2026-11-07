@@ -59,8 +59,8 @@ machine cannot be recovered. Check where each one is now, before you need them.
    == 1. check hds-20261105T033000Z
    restore.sh: hds-20261105T033000Z: downloaded from offsite-crypt; the checksum matches
    restore.sh: hds-20261105T033000Z: verified; it can be restored into hds on hds-postgres; nothing was changed
-   == 2. save what runs now, then suspend Flux for hds, and the hds-backup CronJob
-   saved: hds-api 2, hds-worker 1, hds-backup suspend false, Flux suspend false
+   == 2. save what runs now, then suspend Flux for hds and hds-postgres, and the hds-backup CronJob
+   saved: hds-api 2, hds-worker 1, hds-backup suspend false, Flux suspend false (hds) and false (hds-postgres)
    == 3. stop the API and the worker
    no pod of the API or the worker is left
    == 4. restore hds-20261105T033000Z
@@ -70,9 +70,13 @@ machine cannot be recovered. Check where each one is now, before you need them.
    restored hds-20261105T033000Z; hds-api 2 and hds-worker 1 are running, hds-backup's suspend is false again. Flux manages hds again
    ```
 
+   Its Jobs are `hds-restore-check-<time>`, `hds-restore-run-<time>` and
+   `hds-restore-migrate-<time>`, labelled `component=restore`, owned by no CronJob, and kept for 7
+   days with their logs: `kubectl -n hds logs job/<name>`.
+
    When it fails, its last line says what state it left:
    - **`nothing was changed`**: a checksum mismatch, a backup that is not there, a running backup
-     Job, or pods that would not stop. Everything runs as before; for a mismatch, take the previous
+     Job, a backup that started during the check (`a backup started`), or pods that would not stop. Everything runs as before; for a mismatch, take the previous
      day's backup.
    - **`the restore failed after the database was emptied`**, or **`restored but not
      migrated`**: the API and the worker stay at 0 and Flux stays suspended, so nothing serves a

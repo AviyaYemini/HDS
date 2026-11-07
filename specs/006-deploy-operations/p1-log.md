@@ -672,3 +672,29 @@ Branch `006-deploy-operations-i-l` from `main` at bc68070 (PR 3 merged as #11).
     rollback to the current revision minus one, hds pushed first, no exit-3 trap (it exited 5).
 - Gates: `make ci-local` passed (every check); the backup suite passed; the chart checks passed.
   No API code changed, so the database tests run once before the pull request.
+
+## The reviewer's check of Group I (6a203c7): R122 to R127
+
+- **R122**: `kubectl create job --from=cronjob/...` makes the CronJob the Job's controller
+  (`create_job.go`: the `cronjob.kubernetes.io/instantiate: manual` annotation and an
+  ownerReference with `Controller: true`). ops-restore's patch removes both, labels the Job and its
+  pod `component=restore` (keeping `hds/database-client`) and keeps them 7 days. Applied with the
+  real `kubectl patch --local` (v1.36.1) to a Job built as kubectl builds it from the rendered
+  CronJob: no owner, no annotation, `component=restore` on both, the client label kept, the TTL,
+  command and CONFIRM set. `make ops-backup` refuses while a restore runs.
+- **R123**: step 2 checks for a running Job again after suspending the CronJob.
+- **R124**: Trivy ignores `--platform` with `--input` and reads the layout's first image. Step (e)
+  of `release_gates.sh` first failed on the old scan.sh: `Trivy read 'amd64' for --platform
+  linux/arm64`. So the earlier arm64 results were amd64's. scan.sh now scans each platform's own
+  manifest; rerun of every step on the new one:
+  - (a) exit 1, 143 Debian findings; (b) exit 1 with the key, 0 without; (d) each pushed digest
+    the scanned one;
+  - (c) hds-api and hds-web pass both gates on amd64 and on arm64; hds-backup fails only on
+    rclone's x/net finding, on both;
+  - (e) the arm64-only key fails linux/arm64 and passes linux/amd64; Trivy's report reads amd64
+    and arm64 respectively.
+- **R125**: T063 creates the `hds` namespace. **R126**: trust.sh's comment on a private
+  repository; a red "not the tip" run is expected (operations.md). **R127**: ops-restore suspends
+  the hds-postgres HelmRelease too and sets it back.
+- Mutants, each failing its test: the Job keeping its owner, no second guard, hds-postgres not
+  suspended, the race wiping an earlier run's saved state, `make ops-backup` ignoring a restore.

@@ -339,7 +339,7 @@ broken backup sends an e-mail (Group M).
   1. It checks for k3d, kubectl, helm, flux, vault and rclone, naming any that is missing.
   2. It creates the k3d cluster.
   3. It installs Flux (only the source, helm and notification controllers), Vault, the Vault Secrets Operator and kube-prometheus-stack (in `monitoring`) from the pinned charts, with the values in `infra/cluster/`.
-  4. It creates the ConfigMap `hds-values` in `flux-system` from `infra/helm/hds/values-local.yaml` (key `values.yaml`), then applies `infra/flux/clusters/local/`.
+  4. It creates the `hds` namespace, after Flux and before the apply: both releases install into it, Helm creates no namespace without `install.createNamespace`, and the Vault Secrets Operator writes the `hds-*` Secrets there before `hds` installs (review R125). It creates the ConfigMap `hds-values` in `flux-system` from `infra/helm/hds/values-local.yaml` (key `values.yaml`), then applies `infra/flux/clusters/local/`.
   5. It prints the next steps: init and unseal Vault, write the secrets, create the first Admin.
 - [ ] T064 With the owner, on their machine:
   1. `make ops-cluster`, then Vault init and unseal, then write the `hds/*` paths: the SMTP relay, the Drive token from `rclone authorize drive` with scope `drive.file`, and the crypt passwords.
