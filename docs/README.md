@@ -8,6 +8,13 @@
 | [`hds-api.md`](hds-api.md) | Written API overview: resource groups and conventions |
 | [`architecture-guide.md`](architecture-guide.md) | How the code is organised and why, with a request traced end to end |
 
+## Plans and research
+
+| Document | What it is |
+| --- | --- |
+| [`ux-working-plan.md`](plans/ux-working-plan.md) | The UX working plan: decisions applied, the Option B design language, features 007 to 017, preview stubs and Playwright tests per group (**Proposed**) |
+| [`ux-improvements-2026-11.md`](research/ux-improvements-2026-11.md) | The UX research report behind it: 155 suggestions, owner decisions, and findings held for legal review |
+
 ## Runbooks
 
 | Runbook | When |
