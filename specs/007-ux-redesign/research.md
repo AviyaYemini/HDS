@@ -3,28 +3,59 @@
 Phase 0 of the plan. Each entry gives the decision, the rationale and the alternatives. R1 and R2
 stay open until group A's spike; the spike's result is written into them and into an ADR.
 
-## R1. Component library — open until the spike
+## R1. Component library — decided by the spike: HDS's own components on React Native's primitives
 
-- **Decision**: A one-day Hebrew RTL spike (group A's first task, [UI]) builds a list, a form, tabs,
-  a select, a switch, a bottom sheet and a date-range picker on iOS, Android and web with each
-  candidate, then picks one. **Shortlist:** a Uniwind kit (React Native Reusables or HeroUI Native),
-  Tamagui, or Unistyles with HDS's own components.
-- **Pass criteria** (in this order): mirrors correctly on all three platforms without per-component
-  fixes; can draw Option B exactly (square corners, the clipped corner, 1 px chips, the 2 px
-  active rule); themes generated from the DTCG tokens with four themes and a density token; screen
-  reader roles and focus on web; bundle and start-up cost on a mid-range Android phone.
-- **Rationale**: RTL quality differs most between candidates, and the only evidence so far is their
-  2026 GitHub activity (research report X16). NativeWind 4's `rtl:` variants are broken on native;
-  React Native Paper looks like Material and has an open RTL issue on web, so both are off the list.
-- **Records**: the result goes here and in `docs/adr/014-component-library.md`. The spike runs on the web and on whatever simulators or emulators run unattended; R1 and R2 record which platforms were and were not checked..
+- **Decision** (2026-11-07, group A task T014, ADR 014): HDS draws its own components on React
+  Native's primitives (`View`, `Text`, `Pressable`, `TextInput`, `Modal`), styled with `StyleSheet`
+  from a theme context generated from the DTCG tokens; React Native's `Animated` on the native
+  driver for motion; `react-native-svg` for icons and clipped corners; `expo-font` with the Expo
+  Google Fonts packages for IBM Plex Sans and IBM Plex Sans Hebrew. No styling library is added.
+- **What the spike checked**: a probe screen (list, form, tabs, select, switch, bottom sheet,
+  range picker) per candidate, in a throwaway copy of the app, exported for the web and measured by
+  Playwright at 390 × 844 in Hebrew and English. On the web, React Native primitives mirror rows,
+  tabs, the select's chevron, the switch and text alignment under `dir="rtl"`; logical start/end
+  styles resolve only through React Native Web's `LocaleProvider`, which a `dir` prop on the root
+  View provides (read in `react-native-web/dist/exports/createElement`), so the root screen carries
+  `dir`. Tamagui 3.2.3 did not start with its v5 or v6 default config (`createTamagui` error 008, a
+  token name colliding with a CSS keyword) on this Expo SDK's web export. HeroUI Native 1.0.11 on
+  Uniwind 1.13.2 builds for the web after nine peer packages are pinned, and Tailwind's logical
+  utilities mirror correctly; it needs Nitro Modules, so a development build. Unistyles 3 was not run
+  (also Nitro plus a development build and a Babel plugin); its benefits are small at HDS's size.
+- **iOS, on a development build** (`expo run:ios`, iPhone 16 simulator, iOS 18.3, the device in
+  Hebrew, after the owner installed Xcode and Node): React Native primitives mirror everything on
+  the device too (rows, tabs, the select's chevron, the switch, `paddingStart`, the range picker's
+  Sunday-first headers and its month arrows), so the web result holds natively. HeroUI Native on
+  Uniwind also renders and mirrors there (`flex-row` and `ps-10`), so it is a credible later
+  option. Tamagui needs a per-platform animation driver (`animations-rn` on native, a CSS or
+  Reanimated driver on the web) and, with the native driver set, the probe crashed on an undefined
+  component; it was not pursued further. react-native-paper-dates renders right to left on iOS in
+  Material style.
+- **What the spike could not check**: Android RTL. The Android emulator (API 36.1, Expo Go 58)
+  rendered the primitives probe in English, but Expo Go cannot switch layout direction, and an
+  Android development build (Gradle with the installed JDK 25) was not attempted tonight. Android
+  rests on React Native's own `I18nManager` and start/end handling, which the iOS build verified,
+  and is checked on a device in group H (FR-065).
+- **Why own components**: Option B is square, with one clipped corner, 1 px chips and a 2 px rule;
+  every kit on the shortlist ships rounded, Material- or shadcn-like defaults that would be
+  overridden everywhere, and none adds RTL beyond what React Native already does. Own components
+  keep Expo Go working and add no native module.
+- **Alternatives kept open**: Reanimated behind the same `src/design/motion/` API if a screen needs
+  gesture-driven motion; HeroUI Native if it gains a square theme.
 
-## R2. Date picker — open until the spike
+## R2. Date picker — decided by the spike: HDS's own, on `src/locale/plainDate.ts`
 
-- **Decision**: react-native-ui-datepicker or react-native-paper-dates, chosen in the same spike,
-  with HDS's own preset list, typed entry and keyboard handling on top (D1–D4).
-- **Rationale**: ui-datepicker is unstyled, starts weeks on Sunday and takes a time zone but
-  documents no RTL; paper-dates has Hebrew and RTL but pulls in Paper. Not react-native-calendars,
-  whose RTL issues were closed as stale.
+- **Decision**: `DateField` and `DateRangeField` are HDS's own (`src/design/components/date/`),
+  built on the pure date module: typed entry with any separator (day first), the W3C grid keyboard
+  pattern with `gridcell` roles, presets as a side list on the web and chips on phones, Sunday weeks,
+  Israeli holidays from `@hebcal/core`, two months side by side that do not jump.
+- **What the spike saw**: react-native-ui-datepicker 3.3.0 in range mode renders Sunday-first weeks
+  with Hebrew month and weekday names and mirrors on the web, but has no keyboard grid, typed entry,
+  presets or accessible roles. react-native-paper-dates 0.24.1 renders right to left on the web and on the iOS build with
+  Hebrew registered by hand, but looks Material, needs react-native-paper's provider, and its range
+  header swaps the two dates in Hebrew. react-native-ui-datepicker also mirrored on iOS (see R1).
+- **Rationale**: the spec's picker behaviour (FR-051, FR-052) is mostly what a wrapper would have to
+  add; building the grid on the same primitives as the rest of the design costs about the same and
+  draws Option B exactly.
 
 ## R3. Design tokens
 

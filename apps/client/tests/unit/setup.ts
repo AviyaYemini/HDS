@@ -29,9 +29,38 @@ jest.mock("expo-router", () => {
   return {
     __router: router,
     useRouter: () => router,
+    usePathname: () => "/",
     Redirect: () => null,
     Link: ({ children }: { children: unknown }) => children,
     Slot: () => null,
+  };
+});
+
+// The design's primitives (specs/007): fonts count as loaded, safe areas are zero, and SVG draws
+// as plain views, so the tests check roles, names and states rather than pixels.
+jest.mock("expo-font", () => ({ useFonts: () => [true, null], loadAsync: jest.fn(async () => undefined), isLoaded: () => true }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- a mock factory can only require
+jest.mock("react-native-safe-area-context", () => require("react-native-safe-area-context/jest/mock"));
+jest.mock("react-native-svg", () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const React = require("react");
+  const { View } = require("react-native");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const stub = (name: string) => {
+    const Stub = (props: Record<string, unknown>) => React.createElement(View, { ...props, testID: props.testID ?? `svg-${name}` });
+    Stub.displayName = name;
+    return Stub;
+  };
+  return {
+    __esModule: true,
+    default: stub("Svg"),
+    Svg: stub("Svg"),
+    Path: stub("Path"),
+    Polygon: stub("Polygon"),
+    Polyline: stub("Polyline"),
+    Line: stub("Line"),
+    Circle: stub("Circle"),
+    Rect: stub("Rect"),
   };
 });
 
