@@ -140,22 +140,43 @@ LEDGER_NAME = "review-ledger.md"
 _LEDGER_STATUSES = ("open", "fixed", "won't-fix")
 
 
+def _ledger_status(cell):
+    """The status a ledger cell holds, or None: open, fixed or won't-fix, in any case.
+
+    A won't-fix may carry its reason after a colon (``won't-fix: the check needs it``).
+    """
+    status = cell.split(":", 1)[0].strip().lower()
+    return status if status in _LEDGER_STATUSES else None
+
+
 def ledger_counts(path):
     """How many findings in a review ledger are open, and how many it holds: ``(open, total)``.
 
-    The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``) whose fourth column
-    is the status: open, fixed or won't-fix, in any case. It is read as the second-to-last cell, so
-    a ``|`` inside a finding's text moves nothing. No file counts as ``(0, 0)``.
+    The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``): id, source, finding
+    and status. Ledgers started before 2026-11-07 have a fifth column, the fix commit; the header
+    row says which shape a table has. The status is counted from the end of the row (the last cell,
+    or the second-to-last under a "Fix commit" header), so a ``|`` inside a finding's text moves
+    nothing. A row before any header is read in either shape. No file counts as ``(0, 0)``.
     """
     if not path.exists():
         return 0, 0
     open_rows = total = 0
+    status_at = None  # where the status sits, counted from the row's end; None until a header
     for line in path.read_text(errors="ignore").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 5 or cells[-2].lower() not in _LEDGER_STATUSES:
+        if cells[0] == "ID":
+            status_at = -2 if cells[-1].lower() == "fix commit" else -1
+            continue
+        if len(cells) < 4:
+            continue
+        if status_at is not None:
+            status = _ledger_status(cells[status_at])
+        else:
+            status = _ledger_status(cells[-1]) or (len(cells) >= 5 and _ledger_status(cells[-2]))
+        if not status:
             continue
         total += 1
-        open_rows += cells[-2].lower() == "open"
+        open_rows += status == "open"
     return open_rows, total
 
 
