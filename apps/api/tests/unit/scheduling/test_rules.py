@@ -7,6 +7,7 @@ Covers: 003 FR-116, FR-117, SC-103; docs/hds-spec.md section 5, H1 to H4.
 """
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -272,3 +273,38 @@ def test_a_missed_deadline_block_reports_not_submitted_instead_of_blocked() -> N
     )
 
     assert codes(run(shift(at(1, 7)), entries=(missed,))) == ["warnings.not_submitted"]
+
+
+def _own(slot: ShiftSlot, person: uuid.UUID, start: datetime, end: datetime) -> ShiftSlot:
+    return replace(slot, own_times=((person, start, end),))
+
+
+def test_a_half_shift_is_judged_by_the_hours_worked() -> None:
+    """007 FR-027: Ann leaves at 10:00, so a 19:00 shift that day leaves her 9 hours of rest."""
+    morning = _own(shift(at(1, 6)), ANN, at(1, 6), at(1, 10))
+    evening = shift(at(1, 19))
+    # 10:00 to 19:00 is 9 hours, under 11; from the full shift's 14:00 it would be 5.
+    assert codes(run(evening, (morning,))) == ["warnings.rest_too_short"]
+    full = shift(at(1, 6))
+    late = shift(at(1, 23))  # 14:00 to 23:00 is 9 h after a full shift, 13 h after the half one
+    half = _own(full, ANN, at(1, 6), at(1, 10))
+    assert codes(run(late, (full,))) == ["warnings.rest_too_short"]
+    assert run(late, (half,)) == []
+
+
+def test_two_extra_hours_count_toward_rest_and_the_week() -> None:
+    """Ann stays until 16:00 on a 06:00 to 14:00 shift: the next 01:00 start leaves 9 hours."""
+    extended = _own(shift(at(1, 6)), ANN, at(1, 6), at(1, 16))
+    next_night = shift(at(2, 1))
+    assert codes(run(next_night, (extended,))) == ["warnings.rest_too_short"]
+    week = tuple(shift(at(day, 7), hours=8) for day in range(7, 12))  # 40 hours
+    stretched = _own(week[-1], ANN, at(11, 7), at(11, 17))  # 10 hours instead of 8
+    assert codes(run(stretched, week[:-1])) == []  # 42 hours
+    longer = tuple(_own(s, ANN, s.starts_at, s.ends_at + timedelta(hours=2)) for s in week)
+    assert codes(run(longer[-1], longer[:-1])) == ["warnings.weekly_hours_exceeded"]  # 50 h
+
+
+def test_own_times_do_not_change_the_headcount_or_the_shifts_date() -> None:
+    both = shift(at(1, 6), people=(ANN, BOB), headcount=2)
+    half = _own(both, BOB, at(1, 6), at(1, 10))
+    assert run(half) == []

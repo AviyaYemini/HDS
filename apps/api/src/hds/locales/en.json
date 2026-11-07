@@ -121,5 +121,10 @@
   "reports.start_required": "A report on a site or a group needs a start date.",
   "reports.range_invalid": "A report covers 1 to 366 days and ends on or after its start.",
   "organisation.opening_hours_invalid": "Opening hours need each weekday once, closing after opening.",
-  "warnings.not_submitted": "The employee did not submit availability for this week by the deadline, so they count as unavailable."
+  "warnings.not_submitted": "The employee did not submit availability for this week by the deadline, so they count as unavailable.",
+  "roster.changed": "The roster changed since you read it. Showing the latest version.",
+  "assignment.times_invalid": "Give both a start and an end, the end after the start.",
+  "assignment.times_out_of_range": "A person's times may start at most 4 hours before the shift and end at most 4 hours after it.",
+  "shift.pay_rate_admin_only": "Only an admin sets a shift's pay rate.",
+  "roster.project_not_managed": "Only the project's managers and admins change its roster."
 }

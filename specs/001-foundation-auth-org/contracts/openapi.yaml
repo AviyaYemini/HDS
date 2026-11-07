@@ -1228,7 +1228,10 @@ components:
 
     AssignmentRead:
       type: object
-      required: [id, shift_id, user_id]
+      required: [id, shift_id, user_id, starts_at, ends_at, own_times]
+      description: >
+        An employee on a shift and when they work it: their own times when set (`own_times`),
+        otherwise the shift's (007 FR-026, FR-027).
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
@@ -1236,10 +1239,32 @@ components:
           $ref: "#/components/schemas/UUIDv4"
         user_id:
           $ref: "#/components/schemas/UUIDv4"
+        starts_at:
+          $ref: "#/components/schemas/ISODateTime"
+        ends_at:
+          $ref: "#/components/schemas/ISODateTime"
+        own_times:
+          type: boolean
+
+    AssignmentTimesRequest:
+      type: object
+      required: [starts_at, ends_at]
+      description: >
+        A person's own times in a shift, at most 4 hours before it starts and after it ends; both
+        null gives them the shift's times again.
+      properties:
+        starts_at:
+          oneOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+        ends_at:
+          oneOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
 
     ShiftRead:
       type: object
-      required: [id, project_id, shift_type_id, starts_at, ends_at, timezone, headcount, pay_rate, status, published_at, assignments]
+      required: [id, project_id, shift_type_id, starts_at, ends_at, timezone, headcount, pay_rate, status, published_at, assignments, etag]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
@@ -1272,6 +1297,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssignmentRead"
+        etag:
+          type: string
+          description: The shift's version; send it as If-Match to refuse a stale change (007 FR-041).
 
     RuleWarning:
       type: object
@@ -1305,7 +1333,7 @@ components:
 
     AssignmentAnswer:
       type: object
-      required: [assignment, warnings]
+      required: [assignment, warnings, shift_etag]
       properties:
         assignment:
           $ref: "#/components/schemas/AssignmentRead"
@@ -1313,15 +1341,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RuleWarning"
+        shift_etag:
+          type: string
+          description: The shift's new etag after the change.
 
     WarningsAnswer:
       type: object
-      required: [warnings]
+      required: [warnings, shift_etag]
       properties:
         warnings:
           type: array
           items:
             $ref: "#/components/schemas/RuleWarning"
+        shift_etag:
+          type: string
+          description: The shift's new etag after the change.
 
     ShiftPage:
       type: object
@@ -1389,6 +1423,16 @@ components:
       properties:
         user_id:
           $ref: "#/components/schemas/UUIDv4"
+        starts_at:
+          description: The person's own start, with ends_at; at most 4 hours before the shift starts.
+          oneOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+        ends_at:
+          description: The person's own end, with starts_at; at most 4 hours after the shift ends.
+          oneOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
 
     # ── Publishing and my shifts (003 Part 2) ─────────────────────────────────
 
@@ -1817,6 +1861,13 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
+    PreconditionFailed:
+      description: The record changed since it was read; the If-Match header is stale (roster.changed).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
     NotFound:
       description: Resource not found (or hidden by soft delete / scope filter).
       content:
@@ -4015,6 +4066,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -4031,6 +4084,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
   /shifts/{id}/assignments:
@@ -4077,6 +4132,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
   /assignments/{id}:
@@ -4087,9 +4144,39 @@ paths:
         schema:
           $ref: "#/components/schemas/UUIDv4"
 
+    patch:
+      operationId: assignments_change_times
+      summary: Change a person's own times in a shift (a Manager of the project, or an Admin; 007 FR-027)
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentTimesRequest"
+      responses:
+        "200":
+          description: The assignment, its warnings and the shift's new etag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
     delete:
       operationId: assignments_delete
-      summary: Remove an assignment (Admin)
+      summary: Remove an assignment (a Manager of the project, or an Admin)
       tags: [Shifts]
       responses:
         "200":
@@ -4104,6 +4191,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

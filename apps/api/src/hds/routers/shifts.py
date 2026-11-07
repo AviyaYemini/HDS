@@ -1,7 +1,9 @@
 """Shifts router: the manual roster and its assignments.
 
-Layer: routers. Delegates to ``RosterService``; HTTP only. Only an Admin changes the roster;
-Managers and Admins read it. Every change answers with the warnings it causes.
+Layer: routers. Delegates to ``RosterService``; HTTP only. Managers and Admins read the roster; an
+Admin changes any project's, a Manager the projects they manage (007 FR-028, Proposed). Every change
+answers with the warnings it causes. Each shift carries an ``etag``; a change may send it back as
+``If-Match`` and is refused with 412 (``roster.changed``) when the shift changed since (FR-041).
 """
 
 import base64
@@ -16,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
-from hds.core.deps import require_admin, require_manager
+from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
 from hds.core.types import ChangeRequest, IsoDate, IsoDateTime, Money, StrictDate, omittable
 from hds.models.user import User
@@ -24,6 +26,7 @@ from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.shift import ShiftView
 from hds.routers.roster_wiring import roster_service
 from hds.services.idempotency import IdempotencyService
+from hds.services.roster import etag
 
 router = APIRouter(prefix="/api/v1", tags=["shifts"])
 
@@ -31,11 +34,18 @@ Headcount = Field(ge=1, le=1000, description="How many employees the shift needs
 
 
 class AssignmentRead(BaseModel):
-    """An employee on a shift."""
+    """An employee on a shift, and when they work it.
+
+    ``starts_at`` and ``ends_at`` are when this person works the shift: their own times when set,
+    otherwise the shift's; ``own_times`` says which (007 FR-026, FR-027).
+    """
 
     id: uuid.UUID
     shift_id: uuid.UUID
     user_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    own_times: bool
 
 
 class ShiftRead(BaseModel):
@@ -52,6 +62,7 @@ class ShiftRead(BaseModel):
     status: Literal["draft", "published"]
     published_at: datetime | None
     assignments: list[AssignmentRead]
+    etag: str
 
 
 class WarningRead(BaseModel):
@@ -71,16 +82,18 @@ class ShiftAnswer(BaseModel):
 
 
 class AssignmentAnswer(BaseModel):
-    """A stored assignment and the warnings it caused."""
+    """A stored assignment, the warnings it caused, and its shift's new ``etag``."""
 
     assignment: AssignmentRead
     warnings: list[WarningRead]
+    shift_etag: str
 
 
 class WarningsAnswer(BaseModel):
-    """The warnings a change leaves."""
+    """The warnings a change leaves, and the shift's new ``etag``."""
 
     warnings: list[WarningRead]
+    shift_etag: str
 
 
 class ShiftPage(BaseModel):
@@ -117,9 +130,38 @@ class ShiftUpdateRequest(ChangeRequest):
 
 
 class AssignRequest(BaseModel):
-    """The employee to put on the shift."""
+    """The employee to put on the shift, and optionally their own times in it (007 FR-027)."""
 
     user_id: uuid.UUID
+    starts_at: IsoDateTime | None = None
+    ends_at: IsoDateTime | None = None
+
+
+class AssignmentTimesRequest(BaseModel):
+    """A person's own times in a shift; both null gives them the shift's times again."""
+
+    starts_at: IsoDateTime | None
+    ends_at: IsoDateTime | None
+
+
+IfMatch = Header(
+    default=None,
+    alias="If-Match",
+    max_length=64,
+    description="The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`).",
+)
+
+
+def _assignment(a: Any, shift: Any) -> AssignmentRead:
+    own = a.starts_at is not None and a.ends_at is not None
+    return AssignmentRead(
+        id=a.id,
+        shift_id=a.shift_id,
+        user_id=a.user_id,
+        starts_at=a.starts_at if own else shift.starts_at,
+        ends_at=a.ends_at if own else shift.ends_at,
+        own_times=own,
+    )
 
 
 def _shift(view: ShiftView) -> ShiftRead:
@@ -135,10 +177,8 @@ def _shift(view: ShiftView) -> ShiftRead:
         pay_rate=s.pay_rate if view.rate_shown else None,
         status=s.status,  # type: ignore[arg-type]
         published_at=s.published_at,
-        assignments=[
-            AssignmentRead(id=a.id, shift_id=a.shift_id, user_id=a.user_id)
-            for a in view.assignments
-        ],
+        assignments=[_assignment(a, s) for a in view.assignments],
+        etag=etag(s),
     )
 
 
@@ -244,7 +284,10 @@ async def publish(
     status_code=201,
     summary="Create a shift",
     description=(
-        "Admin only. A draft shift of one of the project's shift types on `date`, at the "
+        "A Manager of the project, or an Admin; only an Admin sets `pay_rate` (403 "
+        "`shift.pay_rate_admin_only`), and a Manager of other projects is refused with 403 "
+        "(`roster.project_not_managed`). "
+        "A draft shift of one of the project's shift types on `date`, at the "
         "type's local times at the project's site unless `starts_at` and `ends_at` are both "
         "given. A type the project does not use is refused with 422 "
         "(`shifts.type_not_in_project`), times that do not end after they start with 422 "
@@ -253,12 +296,12 @@ async def publish(
 )
 async def create_shift(
     body: ShiftCreateRequest,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ShiftAnswer:
     """Create a shift.
 
-    Admin only. The answer lists the warnings the shift causes; none refuses it.
+    A Manager of the project, or an Admin. The answer lists the warnings the shift causes.
     """
     svc = roster_service(db)
     judged = await svc.create_shift(current_user, body.model_dump())
@@ -271,7 +314,9 @@ async def create_shift(
     response_model=ShiftAnswer,
     summary="Change a shift",
     description=(
-        "Admin only. Change the times, headcount or pay rate; a published shift stays published. "
+        "A Manager of the project, or an Admin; only an Admin changes `pay_rate`. Send the "
+        "shift's `etag` as `If-Match` to be refused with 412 (`roster.changed`) if it changed "
+        "since. Change the times, headcount or pay rate; a published shift stays published. "
         "Times that do not end after they start are refused with 422 (`shifts.times_invalid`). "
         "The answer lists the warnings the change causes."
     ),
@@ -279,15 +324,16 @@ async def create_shift(
 async def change_shift(
     id: uuid.UUID,
     body: ShiftUpdateRequest,
-    current_user: User = Depends(require_admin),
+    if_match: str | None = IfMatch,
+    current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> ShiftAnswer:
     """Change a shift.
 
-    Admin only. The answer lists the warnings the change causes; none refuses it.
+    A Manager of the project, or an Admin. The answer lists the warnings the change causes.
     """
     svc = roster_service(db)
-    judged = await svc.change_shift(current_user, id, body.model_dump(exclude_unset=True))
+    judged = await svc.change_shift(current_user, id, body.model_dump(exclude_unset=True), if_match)
     [view] = await svc.views([judged.record])
     return ShiftAnswer(shift=_shift(view), warnings=judged.warnings)  # type: ignore[arg-type]
 
@@ -296,18 +342,22 @@ async def change_shift(
     "/shifts/{id}",
     status_code=204,
     summary="Delete a shift",
-    description="Admin only. Delete the shift and its assignments.",
+    description=(
+        "A Manager of the project, or an Admin. Delete the shift and its assignments; a stale "
+        "`If-Match` is refused with 412 (`roster.changed`)."
+    ),
 )
 async def delete_shift(
     id: uuid.UUID,
-    current_user: User = Depends(require_admin),
+    if_match: str | None = IfMatch,
+    current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> Response:
     """Delete a shift.
 
-    Admin only. Its assignments go with it.
+    A Manager of the project, or an Admin. Its assignments go with it.
     """
-    await roster_service(db).delete_shift(current_user, id)
+    await roster_service(db).delete_shift(current_user, id, if_match)
     return Response(status_code=204)
 
 
@@ -317,7 +367,10 @@ async def delete_shift(
     status_code=201,
     summary="Assign an employee",
     description=(
-        "Admin only. Put an active employee on the shift; the answer lists the warnings it "
+        "A Manager of the project, or an Admin. `starts_at` and `ends_at`, both or neither, are "
+        "the person's own times, at most 4 hours before the shift starts and after it ends (422 "
+        "`assignment.times_out_of_range`). A stale `If-Match` is refused with 412. "
+        "Put an active employee on the shift; the answer lists the warnings it "
         "causes, and none refuses it. An inactive employee is refused with 409 "
         "(`assignments.employee_inactive`), the same employee twice with 409 "
         "(`assignments.duplicate`). With an `Idempotency-Key`, a repeat of the same request in "
@@ -329,22 +382,32 @@ async def assign(
     id: uuid.UUID,
     body: AssignRequest,
     idempotency_key: str | None = Header(default=None, min_length=1, max_length=255),
-    current_user: User = Depends(require_admin),
+    if_match: str | None = IfMatch,
+    current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> Response:
     """Assign an employee.
 
-    Admin only. The answer lists the warnings the assignment causes. A repeat with the same
-    `Idempotency-Key` gets the first answer.
+    A Manager of the project, or an Admin. The answer lists the warnings the assignment causes.
+    A repeat with the same `Idempotency-Key` gets the first answer.
     """
 
     async def run() -> tuple[int, Any]:
         """Make the assignment and build the answer to store and send."""
-        judged = await roster_service(db).assign(current_user, id, body.user_id)
-        a = judged.record
+        svc = roster_service(db)
+        judged = await svc.assign(
+            current_user,
+            id,
+            body.user_id,
+            starts_at=body.starts_at,
+            ends_at=body.ends_at,
+            expected=if_match,
+        )
+        shift = await svc.fresh_shift(current_user, id)
         answer = AssignmentAnswer(
-            assignment=AssignmentRead(id=a.id, shift_id=a.shift_id, user_id=a.user_id),
+            assignment=_assignment(judged.record, shift),
             warnings=judged.warnings,  # type: ignore[arg-type]
+            shift_etag=etag(shift),
         )
         return 201, answer.model_dump(mode="json")
 
@@ -362,18 +425,57 @@ async def assign(
     response_model=WarningsAnswer,
     summary="Remove an assignment",
     description=(
-        "Admin only. Take the employee off the shift; the answer lists the warnings the shift "
-        "has left, for example too few people."
+        "A Manager of the project, or an Admin. Take the employee off the shift; the answer "
+        "lists the warnings the shift has left, for example too few people. A stale `If-Match` "
+        "is refused with 412 (`roster.changed`)."
     ),
 )
 async def unassign(
     id: uuid.UUID,
-    current_user: User = Depends(require_admin),
+    if_match: str | None = IfMatch,
+    current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> WarningsAnswer:
     """Remove an assignment.
 
-    Admin only. The answer lists the warnings the shift has left.
+    A Manager of the project, or an Admin. The answer lists the warnings the shift has left.
     """
-    warnings = await roster_service(db).unassign(current_user, id)
-    return WarningsAnswer(warnings=warnings)  # type: ignore[arg-type]
+    svc = roster_service(db)
+    shift_id, warnings = await svc.unassign_returning_shift(current_user, id, if_match)
+    shift = await svc.fresh_shift(current_user, shift_id)
+    return WarningsAnswer(warnings=warnings, shift_etag=etag(shift))  # type: ignore[arg-type]
+
+
+@router.patch(
+    "/assignments/{id}",
+    response_model=AssignmentAnswer,
+    summary="Change a person's own times in a shift",
+    description=(
+        "A Manager of the project, or an Admin. Set the person's own `starts_at` and `ends_at` "
+        "in the shift, at most 4 hours before it starts and after it ends (422 "
+        "`assignment.times_out_of_range`), or both null for the shift's times (007 FR-027). Pay, "
+        "the rule checks and reports use the person's times. A stale `If-Match` is refused with "
+        "412 (`roster.changed`)."
+    ),
+)
+async def change_assignment_times(
+    id: uuid.UUID,
+    body: AssignmentTimesRequest,
+    if_match: str | None = IfMatch,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AssignmentAnswer:
+    """Change a person's own times in a shift.
+
+    A Manager of the project, or an Admin; both null gives them the shift's times again.
+    """
+    svc = roster_service(db)
+    judged = await svc.change_assignment_times(
+        current_user, id, body.starts_at, body.ends_at, if_match
+    )
+    shift = await svc.fresh_shift(current_user, judged.record.shift_id)
+    return AssignmentAnswer(
+        assignment=_assignment(judged.record, shift),
+        warnings=judged.warnings,  # type: ignore[arg-type]
+        shift_etag=etag(shift),
+    )

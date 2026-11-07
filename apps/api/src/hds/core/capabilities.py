@@ -26,7 +26,7 @@ class Capability(StrEnum):
     MY_WORK_AVAILABILITY = "my_work.availability"
     ROSTER_READ = "roster.read"
     ROSTER_EDIT_PROJECT = "roster.edit:project"
-    ROSTER_PUBLISH_PROJECT = "roster.publish:project"
+    ROSTER_PUBLISH = "roster.publish"
     ROSTER_OVERRIDE_PROJECT = "roster.override:project"
     SCHEDULE_GENERATE = "schedule.generate"
     AVAILABILITY_READ_OTHERS = "availability.read_others"
@@ -59,7 +59,8 @@ _MANAGER = _EMPLOYEE | frozenset(
     {
         C.ROSTER_READ,
         C.ROSTER_EDIT_PROJECT,
-        C.ROSTER_PUBLISH_PROJECT,
+        # Publishing stays open to every Manager, as in the original (not scoped to projects).
+        C.ROSTER_PUBLISH,
         C.ROSTER_OVERRIDE_PROJECT,
         C.SCHEDULE_GENERATE,
         C.AVAILABILITY_READ_OTHERS,

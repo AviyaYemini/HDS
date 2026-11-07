@@ -237,6 +237,7 @@ class ScheduleInputService:
                 zone=s.zone,
                 headcount=s.headcount,
                 assigned=tuple(p for p in s.people if p in relevant),
+                own_times=tuple(t for t in s.own_times if t[0] in relevant),
             )
             for s in shifts
             if s.id not in used_drafts and any(p in relevant for p in s.people)
@@ -348,6 +349,8 @@ def fingerprint(
         "fixed": [
             [str(f.id), str(f.shift_type_id), at(f.starts_at), at(f.ends_at), f.zone]
             + sorted(str(p) for p in f.assigned)
+            # Only when set, so the fingerprints of proposals made before 007 still match.
+            + sorted(f"{p}@{at(a)}/{at(b)}" for p, a, b in f.own_times)
             for f in sorted(problem.fixed, key=lambda f: str(f.id))
         ],
         "candidates": sorted(f"{c.id}:{c.is_active}" for c in problem.candidates),

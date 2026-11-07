@@ -80,6 +80,12 @@ class Assignment(TimestampedBase):
     Removed with its shift (``ON DELETE CASCADE``). ``assigned_by`` is who made it: the Admin of a
     manual assignment, or the Manager or Admin who accepted a generated one. ``source`` is
     ``manual`` or ``generated`` (004 research G10).
+
+    ``starts_at`` and ``ends_at`` are this person's own times in the shift, both set or both null
+    (null: the shift's times), the end after the start (007 FR-027, research R5). The service keeps
+    them within 4 hours of the shift's own start and end, so a half shift or two extra hours fit.
+    Pay, the rule checks, the reports and My shifts read the person's times; the shift's date,
+    status and headcount stay the shift's.
     """
 
     __tablename__ = "assignments"
@@ -95,9 +101,17 @@ class Assignment(TimestampedBase):
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="manual", server_default="manual"
     )
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("shift_id", "user_id", name="uq_assignments_shift_user"),
         CheckConstraint("source IN ('manual', 'generated')", name="ck_assignments_source"),
+        CheckConstraint(
+            "(starts_at IS NULL) = (ends_at IS NULL)", name="ck_assignments_times_paired"
+        ),
+        CheckConstraint(
+            "starts_at IS NULL OR ends_at > starts_at", name="ck_assignments_times_order"
+        ),
         Index("idx_assignments_user", "user_id"),
     )

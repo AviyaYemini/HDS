@@ -79,15 +79,12 @@ class Roster:
         self._weeks: dict[str, date] = {}
         zone = problem.settings.week_zone
         for shift in problem.fixed:
-            booking = Booking(
-                f"fixed:{shift.id}",
-                shift.starts_at,
-                shift.ends_at,
-                local_day(shift.starts_at, shift.zone),
-                week_start(shift.starts_at, zone),
-                True,
-            )
+            day = local_day(shift.starts_at, shift.zone)
+            week = week_start(shift.starts_at, zone)
             for person in shift.assigned:
+                # Each person by the times they work it (007 FR-027); the date stays the shift's.
+                starts_at, ends_at = shift.span(person)
+                booking = Booking(f"fixed:{shift.id}", starts_at, ends_at, day, week, True)
                 self._booked.setdefault(person, {})[booking.key] = booking
         for slot in problem.slots:
             for person in slot.kept:

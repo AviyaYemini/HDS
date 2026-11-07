@@ -43,6 +43,15 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     # own profile
     ("GET", "/me"): ANY,
     ("PATCH", "/me"): ANY,
+    # sessions and the contact card (007 FR-009, FR-012)
+    ("GET", "/me/sessions"): ANY,
+    ("DELETE", "/me/sessions/{id}"): ANY,
+    ("GET", "/api/v1/organisation/contact"): ANY,
+    ("PATCH", "/api/v1/organisation/contact"): ADMIN,
+    # availability submissions (007 FR-014)
+    ("GET", "/me/availability-submissions"): STAFF,
+    ("POST", "/me/availability-submissions"): STAFF,
+    ("POST", "/api/v1/employees/{id}/availability-submissions"): ADMIN,
     # employees (FR-008, FR-009, FR-016)
     ("GET", "/api/v1/employees"): MGR,
     ("POST", "/api/v1/employees"): MGR,
@@ -126,15 +135,18 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("GET", "/me/pay"): STAFF,
     ("GET", "/api/v1/reports/work-log"): MGR,
     ("GET", "/api/v1/reports/hours"): MGR,
-    # the manual roster (003 FR-113 to FR-120)
+    # the manual roster (003 FR-113 to FR-120); managers edit their own projects' since 007
+    # (FR-028): another project's answers roster.project_not_managed, which is not a role gate
     ("GET", "/api/v1/shifts"): MGR,
-    ("POST", "/api/v1/shifts"): ADMIN,
-    ("PATCH", "/api/v1/shifts/{id}"): ADMIN,
-    ("DELETE", "/api/v1/shifts/{id}"): ADMIN,
-    ("POST", "/api/v1/shifts/{id}/assignments"): ADMIN,
-    ("DELETE", "/api/v1/assignments/{id}"): ADMIN,
+    ("POST", "/api/v1/shifts"): MGR,
+    ("PATCH", "/api/v1/shifts/{id}"): MGR,
+    ("DELETE", "/api/v1/shifts/{id}"): MGR,
+    ("POST", "/api/v1/shifts/{id}/assignments"): MGR,
+    ("PATCH", "/api/v1/assignments/{id}"): MGR,
+    ("DELETE", "/api/v1/assignments/{id}"): MGR,
     ("POST", P + "/publish"): MGR,
     ("GET", "/me/shifts"): STAFF,
+    ("GET", "/me/shifts/{id}"): STAFF,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}
