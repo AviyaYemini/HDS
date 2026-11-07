@@ -1,8 +1,8 @@
 """027 assignment times.
 
 What changes: ``assignments`` gains ``starts_at`` and ``ends_at`` (``TIMESTAMPTZ``, nullable) with
-the checks ``ck_assignments_times_paired`` (both set or both null) and ``ck_assignments_times_order``
-(the end after the start).
+the checks ``ck_assignments_times_paired`` (both set or both null) and
+``ck_assignments_times_order`` (the end after the start).
 
 Why: each person's work in a shift gets its own start and end, defaulting to the shift's, so the
 roster can show a half shift or two extra hours, and pay and the rule checks use the real times

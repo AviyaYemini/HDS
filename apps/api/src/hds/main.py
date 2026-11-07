@@ -130,6 +130,7 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     from hds.routers.qualifications import router as qualifications_router
     from hds.routers.reports import router as reports_router
     from hds.routers.requirements import router as requirements_router
+    from hds.routers.roster_extras import router as roster_extras_router
     from hds.routers.schedule_jobs import router as schedule_jobs_router
     from hds.routers.scheduling_settings import router as scheduling_settings_router
     from hds.routers.shift_types import router as shift_types_router
@@ -150,6 +151,7 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     application.include_router(availability_router)
     application.include_router(shift_types_router)
     application.include_router(shifts_router)
+    application.include_router(roster_extras_router)
     application.include_router(me_shifts_router)
     application.include_router(me_availability_router)
     application.include_router(on_behalf_router)

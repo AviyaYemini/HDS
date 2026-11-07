@@ -147,6 +147,16 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("POST", P + "/publish"): MGR,
     ("GET", "/me/shifts"): STAFF,
     ("GET", "/me/shifts/{id}"): STAFF,
+    # the roster tools (007 FR-034 to FR-040)
+    ("POST", "/api/v1/assignments/{id}/overrides"): MGR,
+    ("GET", P + "/publish-preview"): MGR,
+    ("POST", P + "/copy-week"): MGR,
+    ("GET", P + "/week-templates"): MGR,
+    ("POST", P + "/week-templates"): MGR,
+    ("DELETE", P + "/week-templates/{template_id}"): MGR,
+    ("POST", P + "/week-templates/{template_id}/apply"): MGR,
+    ("POST", P + "/roster/bulk"): MGR,
+    ("GET", "/api/v1/availability-windows/{id}/submissions"): MGR,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}
@@ -167,7 +177,7 @@ def test_matrix_covers_every_operation_in_the_openapi_document() -> None:
 def _check(env: RoleEnv, principal: str, op: tuple[str, str], ids: Any, body: Any) -> None:
     method, path = op
     allowed = MATRIX[op]
-    params = {"id": str(ids[0]), "user_id": str(ids[1])}
+    params = {"id": str(ids[0]), "user_id": str(ids[1]), "template_id": str(ids[0])}
     status, code = env.call(principal, method, path, body, params)
     where = f"{principal} {method} {path} -> {status} {code!r}"
 

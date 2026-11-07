@@ -208,6 +208,30 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         result = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id).limit(limit))
         return list(result.scalars().all())
 
+    async def in_project(
+        self,
+        org_id: uuid.UUID,
+        project_id: uuid.UUID,
+        starts_from: datetime,
+        starts_before: datetime,
+        status: str | None = None,
+    ) -> list[Shift]:
+        """A project's shifts that start in ``[starts_from, starts_before)``, by start.
+
+        ``status`` limits them to ``draft`` or ``published`` when given (007 publish review, copy
+        week, bulk edit).
+        """
+        stmt = select(Shift).where(
+            Shift.organization_id == org_id,
+            Shift.project_id == project_id,
+            Shift.starts_at >= starts_from,
+            Shift.starts_at < starts_before,
+        )
+        if status is not None:
+            stmt = stmt.where(Shift.status == status)
+        result = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id))
+        return list(result.scalars())
+
     async def publish(
         self,
         org_id: uuid.UUID,

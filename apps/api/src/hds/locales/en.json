@@ -126,5 +126,10 @@
   "assignment.times_invalid": "Give both a start and an end, the end after the start.",
   "assignment.times_out_of_range": "A person's times may start at most 4 hours before the shift and end at most 4 hours after it.",
   "shift.pay_rate_admin_only": "Only an admin sets a shift's pay rate.",
-  "roster.project_not_managed": "Only the project's managers and admins change its roster."
+  "roster.project_not_managed": "Only the project's managers and admins change its roster.",
+  "override.warning_not_found": "The assignment does not have that warning now.",
+  "override.duplicate": "This warning already has a recorded reason.",
+  "templates.duplicate_name": "The project already has a template by that name.",
+  "roster.week_not_sunday": "A week starts on a Sunday.",
+  "roster.bulk_change_invalid": "Choose either a new headcount or removal."
 }

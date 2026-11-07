@@ -24,13 +24,22 @@ from hds.core.types import ChangeRequest, IsoDate, IsoDateTime, Money, StrictDat
 from hds.models.user import User
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.shift import ShiftView
-from hds.routers.roster_wiring import roster_service
+from hds.routers.roster_wiring import roster_service, roster_tools
 from hds.services.idempotency import IdempotencyService
 from hds.services.roster import etag
 
 router = APIRouter(prefix="/api/v1", tags=["shifts"])
 
 Headcount = Field(ge=1, le=1000, description="How many employees the shift needs.")
+
+
+class OverrideRead(BaseModel):
+    """A recorded reason for keeping an assignment despite a warning (007 FR-034)."""
+
+    warning_code: str
+    reason: str
+    created_by: uuid.UUID
+    created_at: datetime
 
 
 class AssignmentRead(BaseModel):
@@ -46,6 +55,7 @@ class AssignmentRead(BaseModel):
     starts_at: datetime
     ends_at: datetime
     own_times: bool
+    overrides: list[OverrideRead] = []
 
 
 class ShiftRead(BaseModel):
@@ -152,7 +162,7 @@ IfMatch = Header(
 )
 
 
-def _assignment(a: Any, shift: Any) -> AssignmentRead:
+def _assignment(a: Any, shift: Any, overrides: list[Any] | None = None) -> AssignmentRead:
     own = a.starts_at is not None and a.ends_at is not None
     return AssignmentRead(
         id=a.id,
@@ -161,10 +171,19 @@ def _assignment(a: Any, shift: Any) -> AssignmentRead:
         starts_at=a.starts_at if own else shift.starts_at,
         ends_at=a.ends_at if own else shift.ends_at,
         own_times=own,
+        overrides=[
+            OverrideRead(
+                warning_code=o.warning_code,
+                reason=o.reason,
+                created_by=o.created_by,
+                created_at=o.created_at,
+            )
+            for o in overrides or []
+        ],
     )
 
 
-def _shift(view: ShiftView) -> ShiftRead:
+def _shift(view: ShiftView, overrides: dict[uuid.UUID, list[Any]] | None = None) -> ShiftRead:
     s = view.shift
     return ShiftRead(
         id=s.id,
@@ -177,7 +196,7 @@ def _shift(view: ShiftView) -> ShiftRead:
         pay_rate=s.pay_rate if view.rate_shown else None,
         status=s.status,  # type: ignore[arg-type]
         published_at=s.published_at,
-        assignments=[_assignment(a, s) for a in view.assignments],
+        assignments=[_assignment(a, s, (overrides or {}).get(a.id)) for a in view.assignments],
         etag=etag(s),
     )
 
@@ -236,14 +255,26 @@ async def list_shifts(
         after=_position(cursor),
         limit=limit,
     )
-    return ShiftPage(items=[_shift(v) for v in views], next_cursor=_cursor(following))
+    ids = [a.id for v in views for a in v.assignments]
+    by_assignment: dict[uuid.UUID, list[Any]] = {}
+    for o in await roster_tools(db).overrides_for(current_user, ids):
+        by_assignment.setdefault(o.assignment_id, []).append(o)
+    return ShiftPage(
+        items=[_shift(v, by_assignment) for v in views], next_cursor=_cursor(following)
+    )
 
 
 class PublishRequest(BaseModel):
-    """The dates, at the project's site, whose drafts to publish."""
+    """The dates, at the project's site, whose drafts to publish.
+
+    ``notify`` is the publish review's choice between Notify everyone (the default) and Publish
+    silently; one event per affected person is recorded either way, for feature 010 to deliver
+    (007 FR-036, research R12).
+    """
 
     first: StrictDate = Field(alias="from")
     last: StrictDate = Field(alias="to")
+    notify: bool = True
 
     model_config = {"populate_by_name": True}
 
@@ -261,7 +292,9 @@ class PublishAnswer(BaseModel):
     description=(
         "Manager or Admin. Publish the project's draft shifts that start on `from` to `to` "
         "(dates at the project's site); published ones are left as they are. A range "
-        "that ends before it starts is refused with 422 (`shifts.date_range_invalid`)."
+        "that ends before it starts is refused with 422 (`shifts.date_range_invalid`). One "
+        "event per person on the published shifts is recorded for delivery, with `notify` "
+        "(default true) as the publisher's choice."
     ),
 )
 async def publish(
@@ -274,7 +307,7 @@ async def publish(
 
     Manager or Admin. Publish the project's drafts in the range; answers how many.
     """
-    count = await roster_service(db).publish(current_user, id, body.first, body.last)
+    count = await roster_tools(db).publish(current_user, id, body.first, body.last, body.notify)
     return PublishAnswer(published=count)
 
 

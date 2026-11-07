@@ -589,6 +589,18 @@ class RosterService:
 
     # ---------------------------------------------------------------- warnings
 
+    async def require_edit(self, actor: User, project_id: uuid.UUID) -> None:
+        """Refuse unless ``actor`` may edit the project's roster; see :meth:`_require_edit`."""
+        await self._require_edit(actor, project_id)
+
+    async def judge(self, actor: User, focus: Collection[uuid.UUID]) -> list[dict[str, Any]]:
+        """The warnings the shifts in ``focus`` have now (for the publish review, 007 FR-036)."""
+        return await self._judge(actor, focus)
+
+    async def site_zone(self, project_id: uuid.UUID) -> str:
+        """The IANA time zone of the project's site, where its shifts' dates are."""
+        return await self._shifts.site_timezone(project_id)
+
     async def _org(self, actor: User) -> Any:
         org = await self._orgs.get_by_id(actor.organization_id)
         assert org is not None, "the caller's organisation exists"

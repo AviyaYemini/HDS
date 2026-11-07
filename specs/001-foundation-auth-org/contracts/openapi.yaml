@@ -242,6 +242,380 @@ components:
           items:
             $ref: "#/components/schemas/OpeningHours"
 
+    OverrideRequest:
+      description: The warning to keep the assignment despite, and why.
+      properties:
+        reason:
+          maxLength: 500
+          minLength: 1
+          title: Reason
+          type: string
+        warning_code:
+          maxLength: 64
+          minLength: 1
+          title: Warning Code
+          type: string
+      required:
+      - warning_code
+      - reason
+      title: OverrideRequest
+      type: object
+
+    OverrideCreated:
+      description: A recorded override.
+      properties:
+        assignment_id:
+          format: uuid
+          title: Assignment Id
+          type: string
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        created_by:
+          format: uuid
+          title: Created By
+          type: string
+        id:
+          format: uuid
+          title: Id
+          type: string
+        reason:
+          title: Reason
+          type: string
+        warning_code:
+          title: Warning Code
+          type: string
+      required:
+      - id
+      - assignment_id
+      - warning_code
+      - reason
+      - created_by
+      - created_at
+      title: OverrideCreated
+      type: object
+
+    PublishPreviewRead:
+      description: What publishing the project's drafts on those dates would make live (FR-036).
+      properties:
+        filled:
+          title: Filled
+          type: integer
+        open_warnings:
+          title: Open Warnings
+          type: integer
+        people:
+          title: People
+          type: integer
+        required:
+          title: Required
+          type: integer
+        shifts:
+          title: Shifts
+          type: integer
+        unfilled:
+          title: Unfilled
+          type: integer
+      required:
+      - shifts
+      - people
+      - filled
+      - required
+      - unfilled
+      - open_warnings
+      title: PublishPreviewRead
+      type: object
+
+    CopyWeekRequest:
+      description: Copy one week of the project's roster to another; both weeks start on a Sunday.
+      properties:
+        dry_run:
+          default: false
+          title: Dry Run
+          type: boolean
+        from_week:
+          format: date
+          title: From Week
+          type: string
+        on_conflict:
+          default: allow
+          enum:
+          - allow
+          - overwrite
+          - unfilled
+          title: On Conflict
+          type: string
+        to_week:
+          format: date
+          title: To Week
+          type: string
+      required:
+      - from_week
+      - to_week
+      title: CopyWeekRequest
+      type: object
+
+    PlanAnswer:
+      description: A plan's changes; on a dry run nothing was changed and there are no warnings.
+      properties:
+        changes:
+          items:
+            $ref: '#/components/schemas/PlannedChangeRead'
+          title: Changes
+          type: array
+        dry_run:
+          title: Dry Run
+          type: boolean
+        warnings:
+          items:
+            $ref: '#/components/schemas/WarningLine'
+          title: Warnings
+          type: array
+      required:
+      - dry_run
+      - changes
+      - warnings
+      title: PlanAnswer
+      type: object
+
+    PlannedChangeRead:
+      description: 'One line of a plan: what happens to one shift.'
+      properties:
+        action:
+          enum:
+          - create
+          - replace
+          - skip
+          - change
+          - remove
+          title: Action
+          type: string
+        ends_at:
+          format: date-time
+          title: Ends At
+          type: string
+        headcount:
+          title: Headcount
+          type: integer
+        people:
+          title: People
+          type: integer
+        shift_id:
+          anyOf:
+          - format: uuid
+            type: string
+          - type: 'null'
+          title: Shift Id
+        shift_type_id:
+          format: uuid
+          title: Shift Type Id
+          type: string
+        starts_at:
+          format: date-time
+          title: Starts At
+          type: string
+      required:
+      - action
+      - starts_at
+      - ends_at
+      - shift_type_id
+      - headcount
+      - people
+      - shift_id
+      title: PlannedChangeRead
+      type: object
+
+    WarningLine:
+      description: A warning applying a plan caused; nothing was refused.
+      properties:
+        code:
+          title: Code
+          type: string
+        detail:
+          title: Detail
+          type: string
+        employee_id:
+          anyOf:
+          - format: uuid
+            type: string
+          - type: 'null'
+          title: Employee Id
+        shift_ids:
+          items:
+            format: uuid
+            type: string
+          title: Shift Ids
+          type: array
+      required:
+      - code
+      - employee_id
+      - shift_ids
+      - detail
+      title: WarningLine
+      type: object
+
+    TemplateList:
+      description: The project's saved weeks, by name.
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TemplateRead'
+          title: Items
+          type: array
+      required:
+      - items
+      title: TemplateList
+      type: object
+
+    TemplateRead:
+      description: 'A saved week: its name and how many shifts it holds.'
+      properties:
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        id:
+          format: uuid
+          title: Id
+          type: string
+        name:
+          title: Name
+          type: string
+        shifts:
+          title: Shifts
+          type: integer
+      required:
+      - id
+      - name
+      - shifts
+      - created_at
+      title: TemplateRead
+      type: object
+
+    TemplateCreate:
+      description: Save the project's week starting on Sunday ``week`` under ``name``.
+      properties:
+        name:
+          maxLength: 80
+          minLength: 1
+          title: Name
+          type: string
+        week:
+          format: date
+          title: Week
+          type: string
+      required:
+      - name
+      - week
+      title: TemplateCreate
+      type: object
+
+    TemplateApply:
+      description: Apply a saved week to the week starting on Sunday ``week``.
+      properties:
+        dry_run:
+          default: false
+          title: Dry Run
+          type: boolean
+        on_conflict:
+          default: allow
+          enum:
+          - allow
+          - overwrite
+          - unfilled
+          title: On Conflict
+          type: string
+        week:
+          format: date
+          title: Week
+          type: string
+      required:
+      - week
+      title: TemplateApply
+      type: object
+
+    BulkRequest:
+      description: 'Change every draft of the project on ``from`` to ``to``: a new headcount, or remove.'
+      properties:
+        dry_run:
+          default: false
+          title: Dry Run
+          type: boolean
+        from:
+          format: date
+          title: From
+          type: string
+        headcount:
+          anyOf:
+          - maximum: 1000.0
+            minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Headcount
+        remove:
+          default: false
+          title: Remove
+          type: boolean
+        to:
+          format: date
+          title: To
+          type: string
+      required:
+      - from
+      - to
+      title: BulkRequest
+      type: object
+
+    TrackerRead:
+      description: Every active staff member's availability for the window, by name (FR-040).
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TrackedRead'
+          title: Items
+          type: array
+      required:
+      - items
+      title: TrackerRead
+      type: object
+
+    TrackedRead:
+      description: One employee's availability for the window.
+      properties:
+        counted_unavailable:
+          title: Counted Unavailable
+          type: boolean
+        full_name:
+          title: Full Name
+          type: string
+        status:
+          enum:
+          - not_submitted
+          - draft
+          - submitted
+          - locked
+          title: Status
+          type: string
+        submitted_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Submitted At
+        user_id:
+          format: uuid
+          title: User Id
+          type: string
+      required:
+      - user_id
+      - full_name
+      - status
+      - submitted_at
+      - counted_unavailable
+      title: TrackedRead
+      type: object
+
     UserRead:
       type: object
       required: [id, organization_id, email, full_name, role, is_active, created_at, updated_at]
@@ -1079,7 +1453,7 @@ components:
 
     JobSummary:
       type: object
-      required: [id, status, from, to, project_ids, solver, requested_by, settings, created_at]
+      required: [id, status, from, to, project_ids, solver, requested_by, settings, created_at, time_limit_seconds]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
@@ -1122,6 +1496,9 @@ components:
           type: string
           nullable: true
           enum: [open, accepted, discarded, expired]
+        time_limit_seconds:
+          type: integer
+          description: How long the solver may search, the progress bar's whole (007 FR-074).
 
     JobRead:
       allOf:
@@ -1245,6 +1622,21 @@ components:
           $ref: "#/components/schemas/ISODateTime"
         own_times:
           type: boolean
+        overrides:
+          type: array
+          description: Recorded reasons for keeping this assignment despite a warning (007 FR-034).
+          items:
+            type: object
+            required: [warning_code, reason, created_by, created_at]
+            properties:
+              warning_code:
+                type: string
+              reason:
+                type: string
+              created_by:
+                $ref: "#/components/schemas/UUIDv4"
+              created_at:
+                $ref: "#/components/schemas/ISODateTime"
 
     AssignmentTimesRequest:
       type: object
@@ -1445,6 +1837,12 @@ components:
           $ref: "#/components/schemas/ISODate"
         to:
           $ref: "#/components/schemas/ISODate"
+        notify:
+          type: boolean
+          default: true
+          description: >
+            Notify everyone (true) or publish silently; one event per affected person is recorded
+            either way, for feature 010 to deliver (007 FR-036).
 
     PublishAnswer:
       type: object
@@ -4388,6 +4786,559 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Roster tools (007 FR-034 to FR-040), from the implementation ───────
+  /assignments/{id}/overrides:
+    post:
+      description: A Manager of the project, or an Admin. Record why the assignment stays despite one of its
+        current warnings; the publish review then no longer counts that warning as open. A code the assignment
+        does not have now is refused with 422 (`override.warning_not_found`), a second override of the same
+        warning with 409 (`override.duplicate`). Hard stops have no override.
+      operationId: override_api_v1_assignments__id__overrides_post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideCreated'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '409':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request conflicts with the current state (duplicate, last admin, in use).
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Keep an assignment despite a warning
+      tags:
+      - roster tools
+
+  /projects/{id}/publish-preview:
+    get:
+      description: 'Manager or Admin. What publishing the project''s drafts that start on `from` to `to` (dates
+        at the site) would make live: the shifts, the people on them, filled against required, unfilled seats,
+        and warnings without an override.'
+      operationId: publish_preview_api_v1_projects__id__publish_preview_get
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      - in: query
+        name: from
+        required: true
+        schema:
+          format: date
+          title: From
+          type: string
+      - in: query
+        name: to
+        required: true
+        schema:
+          format: date
+          title: To
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishPreviewRead'
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Review a publish before making it
+      tags:
+      - roster tools
+
+  /projects/{id}/copy-week:
+    post:
+      description: 'A Manager of the project, or an Admin. Copy the week starting on Sunday `from_week` to
+        the one starting on `to_week`, at the same local times, with the same people and their own times.
+        Where a shift of the same type already starts at that time, `on_conflict` decides: `allow` adds it
+        anyway, `overwrite` replaces a draft (never a published shift), `unfilled` adds it without people.
+        `dry_run` answers the plan and changes nothing. A week that does not start on a Sunday is refused
+        with 422 (`roster.week_not_sunday`).'
+      operationId: copy_week_api_v1_projects__id__copy_week_post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CopyWeekRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanAnswer'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Copy a week of the roster
+      tags:
+      - roster tools
+
+  /projects/{id}/week-templates:
+    get:
+      description: Manager or Admin. The project's week templates, by name.
+      operationId: list_templates_api_v1_projects__id__week_templates_get
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateList'
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: List the project's saved weeks
+      tags:
+      - roster tools
+    post:
+      description: A Manager of the project, or an Admin. Save the project's week starting on Sunday `week`
+        under `name`, unique per project (409 `templates.duplicate_name`).
+      operationId: save_template_api_v1_projects__id__week_templates_post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateRead'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '409':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request conflicts with the current state (duplicate, last admin, in use).
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Save a week as a template
+      tags:
+      - roster tools
+
+  /projects/{id}/week-templates/{template_id}:
+    delete:
+      description: A Manager of the project, or an Admin. Remove one of the project's templates.
+      operationId: delete_template_api_v1_projects__id__week_templates__template_id__delete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          format: uuid
+          title: Template Id
+          type: string
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Remove a saved week
+      tags:
+      - roster tools
+
+  /projects/{id}/week-templates/{template_id}/apply:
+    post:
+      description: A Manager of the project, or an Admin. Create the template's shifts in the week starting
+        on Sunday `week`; `on_conflict` and `dry_run` work as for copy week.
+      operationId: apply_template_api_v1_projects__id__week_templates__template_id__apply_post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          format: uuid
+          title: Template Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateApply'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanAnswer'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Apply a saved week
+      tags:
+      - roster tools
+
+  /projects/{id}/roster/bulk:
+    post:
+      description: A Manager of the project, or an Admin. Give every draft of the project that starts on `from`
+        to `to` a new `headcount`, or `remove` them; published shifts are never touched. Exactly one of the
+        two (422 `roster.bulk_change_invalid`). `dry_run` lists exactly the drafts it would hit and changes
+        nothing.
+      operationId: bulk_api_v1_projects__id__roster_bulk_post
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanAnswer'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Change many drafts at once
+      tags:
+      - roster tools
+
+  /availability-windows/{id}/submissions:
+    get:
+      description: Manager or Admin. Every active employee, manager and admin with their availability status
+        for the window, and after the deadline whether they count as unavailable for not submitting.
+      operationId: tracker_api_v1_availability_windows__id__submissions_get
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerRead'
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Track who has submitted availability
+      tags:
+      - roster tools
+
 
   # ── Pay settings, special days and managers on projects (005) ──────────────
   /organisation/pay-settings:

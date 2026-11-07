@@ -92,6 +92,45 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
   `view-pay` (`role="radio"`); `pay-total` and `pay-breakdown-row` items, each with `data-amount`
   (the exact decimal string from the API); `pay-estimate-label`. In Hours: `preview-approved-hours`.
 
+## Roster test ids (d-roster.spec.ts)
+
+- **Week** (`/roster?project=<id>&week=YYYY-MM-DD`, the week's Sunday): `screen-roster`; seven
+  `roster-day` columns with `data-date`; a `roster-row` per shift template with
+  `data-shift-type`; each shift a `roster-block` with `data-shift-id`, `data-status` (`draft`,
+  `published`, `changed`) and `data-editable` (`true` or `false`); its `block-coverage` reads
+  filled over required (`2/3`); each person a `block-person` with `data-user-id` and
+  `data-own-times`, drawn as a `person-bar` whose box is the person's own times against the block's
+  (a half shift narrower than the block, extra hours past its edge); each unfilled seat an
+  `empty-seat`. An overnight shift sits on the day it starts, with a `roster-continuation`
+  (`data-shift-id`) on the next day, and its time shows "+1".
+- **Assigning without dragging**: tapping a block or an `empty-seat` opens `assign-sheet` with
+  `assign-option` items (`data-user-id`, those who prefer the shift first); choosing one assigns.
+  At most three taps from the roster to an assigned seat. Tapping a `block-person` offers
+  `action-unassign` and changing their own times.
+- **Warnings**: `block-warning-badge` (its text is the count) opens `warning-detail`, which names
+  the person, the rule and the numbers; `action-override` asks for `override-reason` and
+  `action-confirm-override`.
+- **Publishing**: `action-publish` opens `publish-review` with `review-shifts`, `review-people`,
+  `review-unfilled` and `review-warnings` (each holds its number), `notify-everyone` and
+  `publish-silently` (`role="radio"`), and `action-confirm-publish`. `action-undo-roster` steps
+  back one unpublished change.
+- **Stale save**: `banner-roster-changed`.
+- **Submissions** (`/roster/submissions?window=<id>`): `screen-submissions` with
+  `submission-row` items (`data-user-id`, `data-status`).
+- **Phone**: `roster-agenda`, one day's shifts as `roster-block` items, with the same assign path
+  and `action-publish`.
+- Previews here: `preview-cost-strip` (pay viewers), `preview-qualification-expiry` in the
+  assign sheet.
+
+## Schedule run test ids (e-schedule-runs.spec.ts)
+
+- `/runs`: `screen-runs`, `run-row` items (`data-job-id`, `data-status`); `action-new-run` opens
+  the generate form with `date-range` (the presets of the date picker) and `action-generate`.
+- `/runs/<id>`: `screen-run`; while it runs, the `loading-bar` is determinate
+  (`aria-valuenow` from elapsed over `time_limit_seconds`, only rising); when done,
+  `run-honesty-label` ("Optimal" or "Best found in N s"), `run-filled` (filled over required),
+  `action-accept` and `action-discard`; `preview-proposal-diff` while previews are on.
+
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
 Each renders an Option B empty state with `data-testid="preview-<key>"`, the feature that brings it,

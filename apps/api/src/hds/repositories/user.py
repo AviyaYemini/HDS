@@ -168,6 +168,23 @@ class UserRepository(OrgScopedRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def staff_of(self, org_id: uuid.UUID) -> list[User]:
+        """The organisation's active, undeleted Employees, Managers and Admins, by name.
+
+        The people who submit availability, for the submission tracker (007 FR-040).
+        """
+        result = await self.session.execute(
+            select(User)
+            .where(
+                User.organization_id == org_id,
+                User.is_active.is_(True),
+                User.is_deleted.is_(False),
+                User.role.in_([UserRole.employee, UserRole.manager, UserRole.admin]),
+            )
+            .order_by(User.full_name, User.id)
+        )
+        return list(result.scalars())
+
     async def lock_user(self, user_id: uuid.UUID) -> None:
         """Lock the user's row until the unit of work ends (see `lock_user_row`).
 
