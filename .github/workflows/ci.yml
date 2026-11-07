@@ -22,12 +22,36 @@ jobs:
         working-directory: apps/api
       # The API image runs as non-root and carries its version (specs/006 T005).
       - run: infra/tests/check_api_image.sh
+      # make ops-backup and ops-restore-test, against a fake kubectl (specs/006 T045b).
+      - run: infra/tests/check_backup_jobs.sh
       # The operations scripts, POSIX sh (specs/006). Version as infra/VERSIONS.md.
       - name: ShellCheck
         run: |
           docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
-            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            scripts/ops/*.sh infra/tests/*.sh
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d -x \
+            scripts/ops/*.sh infra/tests/*.sh infra/helm/tests/*.sh infra/backup/*.sh \
+            infra/backup/tests/*.sh
+
+  chart:
+    name: Helm charts (lint, kubeconform, rendered-manifest checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # Both charts, hds and hds-postgres, for values-local.yaml and values-ci.yaml (specs/006
+      # T033). Helm, kubeconform and yq run from images pinned in infra/VERSIONS.md.
+      - run: infra/helm/tests/assert.sh
+
+  backup-restore:
+    name: Backups and the restore test (compose, encrypted folder remotes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # A backup to both places, nothing readable stored, the restore test from the offsite copy,
+      # its failures (row counts, revision, checksum), an unreachable offsite, pruning and a
+      # guarded restore (specs/006 T038, FR-011 to FR-014). Passwords are made for the run.
+      - run: infra/backup/tests/run.sh
 
   quickstart:
     name: Quickstart from a clean checkout (make env, make up)

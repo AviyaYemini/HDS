@@ -151,6 +151,7 @@ As before, the error names the setting and never the value (FR-026).
 | `make ops-status` | for each part, readiness and version; the last backup, restore test and deploy; any firing alert |
 | `make ops-backup` | runs a backup now |
 | `make ops-restore-test` | runs the restore test now |
+| `make ops-backups` | lists the backups on Drive by name, whose names are encrypted there (**Proposed**, review R76) |
 | `make ops-restore BACKUP=<name> [CONFIRM=replace]` | restores a backup into the cluster's database, runs `migrate`, then starts the API and worker again; refuses a database with data unless `CONFIRM=replace` |
 | `make ops-rollback` | suspends Flux for `hds` and rolls back to the previous Helm revision; code only (FR-021) |
 | `make ops-resume` | hands `hds` back to Flux |

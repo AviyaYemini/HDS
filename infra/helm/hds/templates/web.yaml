@@ -1,0 +1,70 @@
+# The web client: the Expo web export served by unprivileged nginx on 8080 (research R2).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hds.name" . }}-web
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "hds.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hds.labels" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "hds.name" . }}-web
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "hds.podSecurity" (dict "uid" 101) | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "hds.image" (dict "root" . "part" "web") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet: {path: /, port: 8080}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /, port: 8080}
+            periodSeconds: 5
+          securityContext:
+            {{- include "hds.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            # nginx writes its pid and temporary files here.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hds.name" . }}-web
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  selector:
+    {{- include "hds.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

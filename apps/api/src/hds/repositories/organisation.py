@@ -34,6 +34,17 @@ class OrganisationRepository(BaseRepository[Organisation]):
         await self.session.refresh(org)
         return org
 
+    async def all(self) -> list[Organisation]:
+        """Every organisation, oldest first. For operations tooling only (the restore check).
+
+        Returns:
+            The organisations; a deployment normally has one.
+        """
+        result = await self.session.execute(
+            select(Organisation).order_by(Organisation.created_at, Organisation.id)
+        )
+        return list(result.scalars())
+
     async def get_by_id(self, id: uuid.UUID) -> Organisation | None:
         """Fetch an organisation by id.
 

@@ -1,0 +1,9 @@
+# The operator's k3d cluster (specs/006 US3 to US6): a production environment.
+settings:
+  environment: production
+  trustedProxyCount: 1
+  corsOrigins: ["http://hds.localhost"]
+mail:
+  backend: smtp
+ingress:
+  host: hds.localhost

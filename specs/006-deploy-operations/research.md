@@ -43,12 +43,26 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
 
 ## R3. Packaging: one Helm chart, `infra/helm/hds`
 
-- **Decision**: One chart with templates for the API Deployment, the worker Deployment, the web
-  Deployment, PostgreSQL (a StatefulSet on the official `postgres:16` image), a migration Job, the
-  backup and restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors, alert rules
-  and the Vault Secrets Operator resources. The values have an `environment` block (`local` and
-  `ci`), with no secrets in any values file.
-- **Rationale**: The original names Helm (§7 Deployment). One chart keeps the parts on one version.
+- **Decision**: Two charts, as two Helm releases (amended in Group G, the owner's choice: "Yes,
+  split it"):
+  - **`infra/helm/hds-postgres`**: PostgreSQL, a StatefulSet on the official `postgres:16` image,
+    its Service, and a NetworkPolicy that lets only the hds pods in. Its password is read by name
+    from the `hds-api` Secret's `DATABASE_PASSWORD`.
+  - **`infra/helm/hds`**: the API, worker and web Deployments, the migration Job, the backup and
+    restore-test CronJobs, the Ingress, PodDisruptionBudgets, ServiceMonitors, alert rules and the
+    Vault Secrets Operator resources. Its values name the database Service.
+
+  The values have an `environment` block (`local` and `ci`), with no secrets in any values file.
+  Flux installs `hds-postgres` first, and the `hds` HelmRelease `dependsOn` it (Group I).
+- **Rationale**: The original names Helm (§7 Deployment). The database is a chart of its own for two
+  reasons:
+  - **Hook ordering on the first install**: the migration Job is a `pre-install,pre-upgrade` hook
+    (R5), and Helm runs pre-install hooks before it creates any of the release's resources. In one
+    chart the first install's migration would have no database. The other ways out deadlock or
+    drift: a `post-install` hook runs only after `--wait` sees the API ready, which it never is
+    before migrating, and PostgreSQL rendered as hooks would sit outside the release's tracking.
+  - **The database's lifecycle**: backups, restores and major upgrades are kept apart from app
+    releases and rollbacks, so `helm uninstall hds` or `helm rollback hds` never touches the data.
 - **Alternatives**: the Bitnami PostgreSQL chart (its free images moved behind a subscription in
   2025, and it brings far more than one instance needs); CloudNativePG (an operator for one
   database; a good later step, not needed for a daily dump).
@@ -251,9 +265,9 @@ lines).
 
 ## R11. Backups: a daily `pg_dump`, encrypted by rclone, to the machine and Google Drive
 
-**Backup**: a CronJob runs at 02:30 in the organisation's zone, with `startingDeadlineSeconds:
-86400`, so a run missed while the machine slept happens when it wakes. It runs in the `hds-backup`
-image:
+**Backup**: a CronJob runs at 03:30 in the organisation's zone (not 02:30, which the clocks skip
+on the spring-forward day; review R83), with `startingDeadlineSeconds: 86400`, so a run missed
+while the machine slept happens when it wakes. It runs in the `hds-backup` image:
 
 1. `pg_dump --format=custom`, which is one consistent snapshot of the database (FR-012).
 2. A manifest: the migration version, the time, the row count of every table, the size and a

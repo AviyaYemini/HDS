@@ -1,7 +1,8 @@
 #!/bin/sh
 # `make ci-local`: CI's jobs that need no database, on this machine, in CI's order of cost
 # (.github/workflows/ci.yml). It stops at the first failure. The database suites, the migration
-# check and the quickstart are not here; `make ci-local-db` runs the first two on hds_p3_test.
+# check, the quickstart and the backup-restore test are not here; `make ci-local-db` runs the first
+# two on hds_p3_test, and infra/backup/tests/run.sh is the last (it builds its own images).
 #
 # Needs uv and Docker. The client's checks run in the pinned Node image, so no Node is needed here.
 # The secret scan and commitlint cover the commits from CI_LOCAL_BASE (origin/main by default) to
@@ -52,8 +53,15 @@ HDS_GENERATE_EXAMPLES=1000 api uv run pytest tests/unit/ tests/property/ -q -p n
 step "the API image"
 infra/tests/check_api_image.sh
 
+step "the backup make targets (a fake kubectl)"
+infra/tests/check_backup_jobs.sh
+
 step "ShellCheck"
-docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" scripts/ops/*.sh infra/tests/*.sh
+docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -x scripts/ops/*.sh infra/tests/*.sh \
+    infra/helm/tests/*.sh infra/backup/*.sh infra/backup/tests/*.sh
+
+step "Helm charts: lint, kubeconform and the rendered-manifest checks"
+infra/helm/tests/assert.sh
 
 step "Markdown links (offline, as CI)"
 # Only tracked Markdown, as a clean checkout has it: node_modules and caches hold their own.

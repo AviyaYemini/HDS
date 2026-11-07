@@ -1,0 +1,10 @@
+apiVersion: v2
+name: hds-postgres
+description: >-
+  PostgreSQL for HDS 2.0, as a release of its own (specs/006-deploy-operations research R3,
+  amended). The hds release's migration hook needs the database before it installs, and the data's
+  lifecycle stays apart from app releases and rollbacks.
+type: application
+version: 0.1.0
+appVersion: "16.15"
+kubeVersion: ">=1.33.0-0"

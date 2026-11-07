@@ -1,0 +1,30 @@
+# The API's prefixes to the API, everything else to the web (research R2). Neither the health
+# paths nor the operations port 9100 is routed (FR-009, contracts/ops.md section 1).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "hds.name" . }}
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "ingress") | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range .Values.ingress.apiPrefixes }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "hds.name" $ }}-api
+                port:
+                  number: 8000
+          {{- end }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "hds.name" . }}-web
+                port:
+                  number: 8080

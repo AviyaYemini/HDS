@@ -235,3 +235,36 @@ async def test_a_second_sigterm_stops_the_worker_at_once(
     assert status == -signal.SIGTERM
     held = await job_row(test_db, job["id"])
     assert (held["status"], held["attempts"]) == ("running", 1)
+
+
+async def test_a_taken_ops_port_never_cuts_a_job_off(
+    async_client: AsyncClient,
+    seed_users: dict[str, User],
+    test_db: AsyncSession,
+    migrated_test_db: str,
+    tmp_path: Path,
+) -> None:
+    # T032b, review R45: uvicorn exits when its port is taken. The worker then drains and exits
+    # non-zero; the job is stored, or was never claimed, but is never left half-run.
+    manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)
+    job = (await ask(async_client, manager)).json()
+
+    with socket.socket() as holder:
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        holder.bind(("0.0.0.0", 0))
+        holder.listen()
+        port = holder.getsockname()[1]
+        with worker_process(migrated_test_db, "slow-solve", tmp_path, metrics_port=port) as (
+            process,
+            _,
+        ):
+            try:
+                status = process.wait(timeout=REACH_SECONDS)
+            except subprocess.TimeoutExpired:
+                pytest.fail(f"the worker did not exit:\n{(tmp_path / 'worker.log').read_text()}")
+    log = (tmp_path / "worker.log").read_text()
+    assert status not in (0, -signal.SIGTERM, -signal.SIGKILL), log
+    assert "operations server" in log
+    row = await job_row(test_db, job["id"])
+    assert (row["status"], row["attempts"]) in {("succeeded", 1), ("queued", 0)}, log

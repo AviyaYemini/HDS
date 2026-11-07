@@ -1,0 +1,54 @@
+# The backup and restore test's environment (specs/006-deploy-operations T038), run by run.sh: the
+# application's database, an empty one to restore into, the API image (migrations, the seed, the
+# checks) and the backup image. The two crypt remotes are encrypted folders under HDS_TEST_DIR,
+# standing in for the machine and for Drive. Every password is made by run.sh for this one run.
+name: hds-backup-test
+
+x-postgres: &postgres
+  image: postgres:16.15@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
+  environment:
+    POSTGRES_DB: hds
+    POSTGRES_USER: hds
+    POSTGRES_PASSWORD: ${HDS_TEST_DB_PASSWORD:?run.sh sets it}
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U hds"]
+    interval: 2s
+    timeout: 5s
+    retries: 30
+
+services:
+  db: *postgres
+  # The restore test's throwaway database, recreated empty for each restore.
+  scratch: *postgres
+
+  api:
+    build:
+      context: ../../..
+      dockerfile: infra/Dockerfile.api
+    profiles: [run]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hds:${HDS_TEST_DB_PASSWORD}@db:5432/hds
+      ENVIRONMENT: test
+      JWT_SECRET_KEY: ${HDS_TEST_JWT_SECRET:?run.sh sets it}
+
+  backup:
+    build:
+      context: ../../..
+      dockerfile: infra/Dockerfile.backup
+    profiles: [run]
+    # This user owns the test folder, which may be private to it (mktemp -d is 0700).
+    user: "${HDS_UID:?}:${HDS_GID:?}"
+    environment:
+      PGHOST: db
+      PGUSER: hds
+      PGPASSWORD: ${HDS_TEST_DB_PASSWORD}
+      PGDATABASE: hds
+      HDS_CRYPT_PASSWORD: ${HDS_CRYPT_PASSWORD:?run.sh sets it}
+      HDS_CRYPT_SALT: ${HDS_CRYPT_SALT:?run.sh sets it}
+      HDS_BACKUP_DIR: /backups
+      HDS_OFFSITE_PATH: /offsite/hds
+      # Drive is replaced by a folder: only the [offsite] remote's type changes.
+      RCLONE_CONFIG_OFFSITE_TYPE: local
+    volumes:
+      - ${HDS_TEST_DIR:?}/local:/backups
+      - ${HDS_TEST_DIR}/offsite:/offsite

@@ -1,0 +1,122 @@
+# HDS 2.0 (specs/006-deploy-operations). No secret is set in any values file: Secrets are referred
+# to by name and filled from Vault (Group J):
+#   hds-api       JWT_SECRET_KEY, DATABASE_PASSWORD, optional THROTTLE_SECRET_KEY
+#   hds-smtp      SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, MAIL_FROM (MAIL_BACKEND=smtp)
+#   hds-backup    HDS_CRYPT_PASSWORD, HDS_CRYPT_SALT (the crypt remotes), HDS_DRIVE_TOKEN,
+#                 HDS_DRIVE_FOLDER_ID, optional HDS_DRIVE_CLIENT_ID and HDS_DRIVE_CLIENT_SECRET
+#   hds-registry  the image pull secret, when the packages are private (imagePullSecrets)
+#
+# Release history: Flux's HelmRelease keeps maxHistory: 10 revisions (infra/flux, Group I), the
+# record of every deploy (FR-022) and what `make ops-rollback` rolls back to.
+
+images:
+  # By tag, the chart's appVersion (the commit) unless set; by digest whenever digest is set, as the
+  # release workflow does, so the cluster runs exactly what CI scanned (research R2).
+  api:
+    repository: ghcr.io/aviyayemini/hds-api
+    tag: ""
+    digest: ""
+  web:
+    repository: ghcr.io/aviyayemini/hds-web
+    tag: ""
+    digest: ""
+  backup:
+    repository: ghcr.io/aviyayemini/hds-backup
+    tag: ""
+    digest: ""
+  # The restore test's empty database: the cluster's PostgreSQL (infra/VERSIONS.md).
+  postgres:
+    repository: postgres
+    tag: "16.15"
+    digest: sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
+  pullPolicy: IfNotPresent
+
+# Pull secrets by name, e.g. [hds-registry] when the images are private (research R4).
+imagePullSecrets: []
+
+# The database: the hds-postgres release's Service (research R3, amended).
+database:
+  host: hds-postgres
+  port: 5432
+  name: hds
+  user: hds
+
+settings:
+  environment: production
+  # One proxy, the ingress controller, in front of the API.
+  trustedProxyCount: 1
+  corsOrigins: []
+  scheduleTimeLimitSeconds: 20
+  # Spans go over OTLP only when this is set (research R8).
+  otlpEndpoint: ""
+
+mail:
+  # smtp reads the hds-smtp Secret; outbox is for development and test environments only.
+  backend: smtp
+
+api:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+worker:
+  replicas: 1
+  resources:
+    requests: {cpu: 250m, memory: 384Mi}
+    limits: {memory: 1Gi}
+
+web:
+  replicas: 1
+  resources:
+    requests: {cpu: 20m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+ingress:
+  className: traefik
+  host: hds.localhost
+  # Paths sent to the API; everything else goes to the web. The health paths are not routed, and
+  # neither is the operations port (FR-009). apps/api/tests/unit/test_ingress_prefixes.py checks
+  # that every route in the OpenAPI document starts with one of these (research R2).
+  apiPrefixes:
+    - /api
+    - /auth
+    - /me
+
+# The namespace that alone may reach the operations port 9100 (metrics, the worker's probes).
+monitoring:
+  namespace: monitoring
+
+# The backups (research R11): daily at 03:30 in the organisation's zone, then pruning; a run missed
+# while the machine slept runs when it wakes (startingDeadlineSeconds 86400). Not 02:30: in
+# Asia/Jerusalem that time does not exist on the day the clocks go forward (02:00 to 03:00), and the
+# CronJob controller then never schedules it (review R83). The local copy is on the hds-backups
+# volume, which outlives the release.
+backup:
+  schedule: "30 3 * * *"
+  timeZone: Asia/Jerusalem
+  retentionDays: 30
+  # The folder on Drive (or, later, the S3 bucket's prefix).
+  offsitePath: hds
+  storage:
+    size: 20Gi
+    # Empty: the cluster's default class (k3s: local-path).
+    storageClassName: ""
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+# The restore test (FR-014): Sundays at 04:00, the newest off-machine backup into an empty database
+# in its own pod, then migrate and check_restore on the release's own API image.
+restoreTest:
+  schedule: "0 4 * * 0"
+
+# Vault's weekly snapshot, encrypted with age to snapshotRecipient: a PUBLIC key, not a secret, so
+# the cluster can write snapshots and never read them. The private key is kept off the machine
+# (docs/runbooks/restore.md). Empty: no snapshot job is rendered.
+vault:
+  address: http://vault.vault.svc:8200
+  # The Vault Kubernetes-auth role bound to the hds-vault-snapshot ServiceAccount (Group J).
+  role: vault-snapshot
+  snapshotSchedule: "0 3 * * 0"
+  snapshotRecipient: ""

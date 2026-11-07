@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hds-postgres.name" . }}
+  labels:
+    {{- include "hds-postgres.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "hds-postgres.selector" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.database.port }}
+      targetPort: postgres

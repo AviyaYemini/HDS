@@ -17,7 +17,8 @@ src/hds/
   wiring.py        builds services for routers and the worker
   core/            settings, security, errors, i18n, logging, dependencies
   locales/         translation files keyed by error code
-  scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records, create_admin
+  scripts/         seed_dev, export_openapi, dev_issue_link, purge_expired_records, create_admin,
+                   migrate, check_restore
   tools/           check_imports (the layering checker)
 alembic/           database migrations
 tests/             unit, integration, contract and performance tests
@@ -130,7 +131,21 @@ uv run python -m hds.scripts.export_openapi      # print the OpenAPI document
 uv run python -m hds.scripts.dev_issue_link EMAIL invite   # development only: show a token once
 uv run python -m hds.scripts.purge_expired_records         # bulk clean; nothing depends on scheduling it
 uv run python -m hds.scripts.create_admin --email EMAIL --organisation NAME --timezone ZONE  # once
+uv run python -m hds.scripts.migrate             # the cluster's migration Job: locked, once
+uv run python -m hds.scripts.check_restore       # the restore test's last step, on a restored copy
 ```
+
+`migrate` is the Helm chart's migration hook (specs/006 FR-016). It holds a PostgreSQL advisory
+lock while it runs `alembic upgrade head`, so two runs at once (a retried hook, two releases) never
+migrate together: the second waits, then finds the database at head and does nothing. A database at
+a revision this code does not know is newer, as after a rollback to the previous image; it is left
+as it is and the command exits 0. Exit status is otherwise Alembic's, or 1 when the database cannot
+be reached.
+
+`check_restore` is the weekly restore test's last step (specs/006 FR-014), run on the restored copy
+after `migrate`. It runs the ready checks, then loads every organisation, its users and its last
+month's shifts through the repositories, in read-only transactions. It prints counts only, never a
+name or an address, and exits 1 when the copy is not ready or holds no organisation.
 
 `create_admin` makes the organisation and its first Admin in an empty database, for an
 environment that has no seed (specs/006 research R13); it refuses once any user exists. It reads

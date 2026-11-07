@@ -1,0 +1,124 @@
+# The weekly restore test (research R11, FR-014). The pod has its own empty PostgreSQL as a native
+# sidecar (an init container that keeps running), listed first and with a startup probe: Kubernetes
+# starts the next init container only once that probe passes. The hds-backup init container then
+# downloads the newest off-machine backup (never the local copy), checks its checksum, restores it
+# and compares it with its manifest. The hds-api container last runs migrate and check_restore on
+# the release's own API image, so the check uses the running code. The sidecar listens on the pod's
+# loopback only, so nothing outside the pod reaches the copy; the pod never touches the
+# application's database, and has no database-client label.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "hds.name" . }}-restore-test
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "restore-test") | nindent 4 }}
+spec:
+  schedule: {{ .Values.restoreTest.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  startingDeadlineSeconds: 86400
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      # A Job made by hand (`make ops-backup`, `make ops-restore-test`) carries these too, so it is
+      # found while it runs.
+      labels:
+        {{- include "hds.labels" (dict "root" . "component" "restore-test") | nindent 8 }}
+    spec:
+      backoffLimit: 0
+      # A test that hangs fails after two hours instead of holding off every later one.
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            {{- include "hds.labels" (dict "root" . "component" "restore-test") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "hds.name" . }}-backup
+          automountServiceAccountToken: false
+          securityContext:
+            {{- include "hds.podSecurity" (dict "uid" 999) | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- range . }}
+            - name: {{ . }}
+            {{- end }}
+          {{- end }}
+          initContainers:
+            - name: postgres
+              image: {{ include "hds.image" (dict "root" . "part" "postgres") }}
+              restartPolicy: Always
+              args: ["-c", "listen_addresses=127.0.0.1"]
+              env:
+                - name: POSTGRES_DB
+                  value: {{ .Values.database.name | quote }}
+                - name: POSTGRES_USER
+                  value: {{ .Values.database.user | quote }}
+                # Loopback only, inside one pod, for a copy that dies with it.
+                - name: POSTGRES_HOST_AUTH_METHOD
+                  value: trust
+                - name: PGDATA
+                  value: /var/lib/postgresql/data/pgdata
+              startupProbe:
+                exec:
+                  command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U {{ .Values.database.user }}"]
+                periodSeconds: 2
+                failureThreshold: 90
+              securityContext:
+                {{- include "hds.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - name: scratch
+                  mountPath: /var/lib/postgresql/data
+                - name: pgrun
+                  mountPath: /var/run/postgresql
+                - name: pgtmp
+                  mountPath: /tmp
+            - name: hds-backup
+              {{- include "hds.backupContainer" (dict "root" .) | nindent 14 }}
+              command: ["restore-test.sh"]
+              env:
+                {{- include "hds.backupEnv" (dict "root" .) | nindent 16 }}
+                - name: PGHOST
+                  value: 127.0.0.1
+                - name: PGUSER
+                  value: {{ .Values.database.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.database.name | quote }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          containers:
+            - name: hds-api
+              image: {{ include "hds.image" (dict "root" . "part" "api") }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command:
+                - sh
+                - -c
+                - python -m hds.scripts.migrate && python -m hds.scripts.check_restore
+              env:
+                {{- $copy := printf "postgresql+asyncpg://%s@127.0.0.1:5432/%s"
+                    .Values.database.user .Values.database.name }}
+                {{- $env := dict "root" . "service" "hds-restore-test" "databaseUrl" $copy }}
+                {{- include "hds.apiEnv" $env | nindent 16 }}
+              {{- include "hds.apiEnvFrom" (dict "root" .) | nindent 14 }}
+              # The API image's own user, as in the migrate Job; the pod's 999 is PostgreSQL's.
+              securityContext:
+                runAsUser: 10001
+                runAsGroup: 10001
+                {{- include "hds.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                {{- include "hds.apiMounts" (dict "root" .) | nindent 16 }}
+          volumes:
+            - name: scratch
+              emptyDir: {}
+            - name: pgrun
+              emptyDir: {}
+            - name: pgtmp
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}
+            {{- if eq .Values.mail.backend "outbox" }}
+            - name: outbox
+              emptyDir: {}
+            {{- end }}

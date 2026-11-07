@@ -461,3 +461,134 @@ the postgres healthcheck over TCP, a follow-up from PR 9's CodeRabbit review.
   both now start lower-case. Group E's line keeps the subject that was used.
 - Missed locally because this session's git hooks predate PR 9's `make hooks`, which installs the
   commit-msg check, and the pre-bash hook does not check subject case.
+
+## PR 10's review: T032b and T032c (PR 3)
+
+- **T032c** (`fb21e72`): the SMTP log test captured every logger, so "a delivery is logged" passed
+  on the test relay's and asyncio's records. With the sender's log line removed, the old test still
+  passed. It now needs an `hds.mail` record and checks every `hds` record; the same mutant fails it.
+- **T032b** (`ec3d823`): a taken ops port made uvicorn's `SystemExit` escape the loop and cancel the job.
+  `_serve_ops` ends it there, so the drain path runs: the job finishes, and the exit is non-zero.
+  A unit test, with `serve()` raising `SystemExit` mid-job, and a held-port case in
+  `test_worker_drain` both failed first and fail again with the wrapper removed. All 6 drain tests
+  pass on `hds_p3_test`.
+
+## Group G: the Helm charts and the locked migration (PR 3)
+
+- **The split** (`c69ddaf`, ledger R47): a single chart could not install, since its `pre-install`
+  migration hook ran before Helm created the database. By the owner's choice PostgreSQL is now its
+  own chart and release, `infra/helm/hds-postgres`, and `hds` reaches it through the Service named
+  in its values.
+- **T033** `infra/helm/tests/assert.sh`, the CI `chart` job, and a step in `make ci-local`: helm
+  lint `--strict`, kubeconform `-strict` against the pinned Kubernetes v1.37.1 schemas, and yq
+  assertions on both charts for both values files. Helm, kubeconform and yq run from images
+  pinned by digest (`infra/VERSIONS.md`); nothing is installed. It failed first on the missing
+  charts, and now passes with 48 resources valid.
+- **Mutants**: each chart rule was broken in a template, then restored.
+  - Caught: maxUnavailable 1, no preStop, `/metrics` routed, the hook moved to post-install, a
+    digest ignored, worker grace 30, the API allowed root, postgres open to every namespace, postgres
+    probed over the socket, a Secret in a template, and a literal password in `values-local.yaml`.
+  - **One survived: 9100 opened to every source.** The check read only rules that had a `from`
+    list, but a rule without `from` admits everyone, and one without `ports` covers every port. The
+    check now counts both, and the mutant and a rule open to every port and source both fail.
+  - The values-file rule ("no Secret holds a literal value in either values file") was missing from
+    the first draft and was added: no key named like a secret holds a scalar.
+- **T034** `test_ingress_prefixes.py`: every path in the OpenAPI document starts with one of
+  `ingress.apiPrefixes`, apart from the health paths, which the ingress does not route. It failed
+  on the missing values file; it passes now. It reads the document, not `app.routes` (review R50).
+- **T036** `hds.scripts.migrate`: `pg_try_advisory_lock`, otherwise a logged blocking wait;
+  then it leaves a newer revision alone, does nothing at head, or runs `alembic upgrade head`. The
+  test holds the lock first, so both processes are certain to wait. Mutants (no lock wait, the newer
+  revision upgraded, the upgrade run twice) all fail it. Both tests pass on `hds_p3_test` at group end.
+- Gates: ruff, format, mypy --strict, interrogate 100%, the import graph, pip-audit, 1252 unit
+  tests, ShellCheck on `infra/helm/tests/*.sh`. /hds-review: R48 to R51 (README entries for
+  `migrate` and the charts, and the T033/T034 wording), all fixed here.
+- /code-review high: R52 to R62.
+  - **R52** would have failed every check in CI and was invisible here: yq ran as the image's own
+    user, which cannot read the runner's 0700 temporary folder on Linux, while Docker Desktop on
+    macOS ignores ownership. **R53**: such a failure printed nothing, and the checks expecting
+    nothing then passed. Both are fixed.
+  - Chart: the database now gets a TCP startup probe (R54) and `PGPORT` (R57). Database access has
+    a label of its own, which the web pods lack (R56). The README gives the order for rotating the
+    password (R55). `hds-postgres` is rendered once (R60). Mutants for each new rule fail.
+  - `migrate`: it retries its first connection (6 × 5 s) and gives separate messages for "could not
+    be reached" and "failed on the database"; a bare `InterfaceError` now exits 1 (R58). Its new
+    unit tests failed first. Mutants (no retry, start-up not waited for, one message for both, the
+    `InterfaceError` escaping) all fail them; "no retry" survived until a test went through
+    `migrate()` itself.
+  - `test_migrate_lock` counts lock waits in its own database only and kills a timed-out child (R59).
+  - Won't-fix: one yq container per check (R61, so each failure stays named), and the shared test
+    helpers (R62, the same pattern as migration tests 021 to 024).
+
+## The helper's review of Group G (0cbda96): R63 to R71
+
+- Four NetworkPolicy mutants, run on copies of the committed charts, all passed assert.sh:
+  - the worker's policy selecting nothing;
+  - the worker's policy set to Egress only;
+  - a second database rule with no `from`;
+  - `namespaceSelector: {}` on the database's peer.
+- My mutants had only changed rules inside policies that still selected the right pods. None
+  removed the policy's selection or added a rule.
+- The checks now require each of the API, the worker and the database to be selected by a policy
+  with exactly its workload's selector and with `Ingress` in its `policyTypes`. The database's
+  whole `.spec.ingress` must equal one exact value, and a 9100 rule counts by the port's name or
+  by a range too.
+- The four mutants, and a rule naming port `ops` that is open to all, now fail.
+- The client-page test (R69) failed first under a mutant that adds `/pay`, a real page, to the API
+  prefixes. The policy comment (R68), the rotation advice (R70) and the CronJob label path for Group
+  H (R71) are corrected.
+
+## Group H: encrypted backups and the restore test (PR 3)
+
+- **T038** `infra/backup/tests/run.sh`, the CI `backup-restore` job: compose with the application's
+  database, an empty one, the API image and the backup image. The remotes are crypt over folders.
+  Every password comes from `openssl rand` at run time.
+  - All eight steps pass, plus 6b: a dump that is not stored leaves no manifest.
+  - The scripts were written before the test, not after it; the mutants below stand in for "fails
+    first".
+  - It found three faults of its own: compose options placed after the service, GNU `date` run on
+    the Mac, and `rclone move` treating its destination as a folder.
+- **T039 to T042**:
+  - The image: PostgreSQL 16.15's tools, rclone, jq and curl pinned by version, and age v1.3.2 by
+    checksum; uid 999.
+  - The rclone template, rendered by awk from ENVIRON, so no secret is ever an argument.
+  - backup.sh takes the dump and the counts in one exported snapshot, so a write in between changes
+    neither. The manifest is written last.
+  - prune.sh, restore-test.sh and restore.sh. restore.sh only restores: its cluster mode went with
+    R78.
+  - check_restore reads through the repositories in read-only transactions, and prints counts only.
+- **T043**: the backup (03:30, not 02:30, R83), the restore test (the native postgres sidecar first,
+  on loopback; hds-backup; then hds-api on the release's image) and Vault's snapshot, which has its
+  own ServiceAccount and no Role. The chart checks cover each rule.
+- **T044** `docs/runbooks/restore.md`: numbered steps with expected output. `make ops-restore`
+  arrives with Group I (T049b), and §1 says so.
+- **T045b**: `make ops-backup`, `ops-restore-test` and `ops-backups`, through
+  `scripts/ops/backup_jobs.sh`. They refuse while a Job is active, and are checked against a fake
+  kubectl. The reviewer's split, R76 to R79.
+- **Mutants**:
+  - T045's four all fail the test: the manifest written before the dump, prune deleting the newest,
+    the restore test using the local copy, and no checksum check.
+  - The order mutant survived at first: step 6b's size filter made rclone refuse both files.
+    rclone's filters refuse `copyto` outright, so the "stored" check guarded nothing and went; a
+    10 kB transfer limit now fails only the dump.
+  - Also failing their tests: check_restore without its ready check, with an empty restore
+    accepted, with a name printed, or with future shifts counted. Chart mutants: the sidecar not
+    native or not first, the check on the application's database, the backup without the client
+    label, the volume not kept. The helper ignoring a failure or an active Job, and prune stopped
+    by an unreadable manifest.
+- Reviews: /hds-review R72 to R76; /code-review high R80 to R89 (R88 won't-fix).
+
+## The reviewer's check of Group H (d0866bd): R90 to R95
+
+- **R90**: prune.sh would delete every expired backup in a place where none verified. A failed
+  download also counted as "does not verify", because the pipeline's status was jq's. A machine off
+  for 30 days plus one Drive quota error would have emptied Drive. A failed download now stops that
+  place, and no valid backup means nothing is deleted there. Step 7b covers it: the mutant without
+  the guard fails, and the clean run passes.
+- **R91**: the apt version pins would break the build at trixie's next security update; dropped.
+  **R92**: the lost-machine restore picks its backup by name, with the new cluster's backups
+  suspended until it is done. **R93**: the Vault role is `vault-snapshot`, as T052 names it.
+  **R94**: the snapshot job no longer needs the crypt keys. **R95**: noted for Group J in T052.
+- The reviewer approved bb37450, with two notes. R96: step 7c breaks a stored ciphertext so a
+  download fails; a mutant that counts a failed download as a bad backup now fails it. R97: T048
+  leaves Flux's drift detection off, so runbook §2's suspended CronJob stays suspended.

@@ -314,6 +314,20 @@ class _OpsServer(uvicorn.Server):
         yield
 
 
+async def _serve_ops(server: _OpsServer) -> None:
+    """Run the operations server; its ``SystemExit`` ends it like any other stop.
+
+    uvicorn calls ``sys.exit(1)`` when its port is taken. Raised in a task, that ``SystemExit``
+    would escape the event loop and ``asyncio.run`` would cancel the job loop mid-job, which the
+    drain forbids. Ended here instead, it takes the "ended on its own" path: the job finishes, then
+    the worker exits non-zero (T032b, review R45).
+    """
+    try:
+        await server.serve()
+    except SystemExit as stop:
+        logger.error("the operations server could not run (exit %s)", stop.code)
+
+
 async def serve(factory: async_sessionmaker[AsyncSession], port: int) -> None:
     """Run the job loop and, on ``port`` unless it is 0, the operations app, until SIGTERM.
 
@@ -359,7 +373,7 @@ async def serve(factory: async_sessionmaker[AsyncSession], port: int) -> None:
         app = ops_app(ops.pulse, health, counts, ops.metrics)
         config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
         server = _OpsServer(config)
-        ops_task = asyncio.create_task(server.serve())
+        ops_task = asyncio.create_task(_serve_ops(server))
         await asyncio.wait([jobs, ops_task], return_when=asyncio.FIRST_COMPLETED)
         ops_ended = ops_task.done() and not stopping.is_set()
         if ops_ended:

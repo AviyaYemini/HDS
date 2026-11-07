@@ -133,3 +133,31 @@ async def test_an_ops_server_that_ends_on_its_own_drains_and_fails_the_process(
     with pytest.raises(RuntimeError, match="operations server"):
         await worker.serve(cast(Any, fake_session), 9999)
     assert drained == [True]
+
+
+async def test_a_taken_ops_port_still_lets_the_current_job_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # T032b, review R45: uvicorn calls sys.exit(1) when its port is taken. That SystemExit must not
+    # escape the loop and cancel the job; the job finishes, then the worker exits with an error.
+    events: list[str] = []
+
+    async def loop(factory: object, ops: object, stopping: asyncio.Event) -> None:
+        events.append("job started")
+        await asyncio.sleep(0.2)  # the job runs on while the ops server fails
+        events.append("job stored")
+        await stopping.wait()
+
+    async def port_taken(self: object, sockets: object = None) -> None:
+        await asyncio.sleep(0.05)
+        raise SystemExit(1)
+
+    monkeypatch.setattr(worker, "migrations", lambda: None)
+    monkeypatch.setattr(worker, "health_service", lambda *a, **k: object())
+    monkeypatch.setattr(worker, "ops_app", lambda *a, **k: object())
+    monkeypatch.setattr(worker, "run_forever", loop)
+    monkeypatch.setattr(worker._OpsServer, "serve", port_taken)
+    monkeypatch.setattr("hds.core.database.get_health_session_factory", lambda: None)
+    with pytest.raises(RuntimeError, match="operations server"):
+        await worker.serve(cast(Any, fake_session), 9999)
+    assert events == ["job started", "job stored"]

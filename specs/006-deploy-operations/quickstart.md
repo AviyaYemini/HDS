@@ -47,7 +47,7 @@ cluster, port 9100 is not reachable through `hds.localhost`.
 ## 3. Backup and restore (US3, FR-011 to FR-014, SC-005, SC-006)
 
 ```bash
-make ops-backup                      # now, instead of waiting for 02:30
+make ops-backup                      # now, instead of waiting for 03:30
 make ops-status                      # last backup: just now, both places
 rclone lsf offsite-crypt:            # the dump and its manifest
 ```

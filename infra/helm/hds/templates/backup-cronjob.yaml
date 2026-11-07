@@ -1,0 +1,94 @@
+# The daily backup, then pruning (research R11, FR-011, FR-012). A run missed while the machine
+# slept still runs when it wakes, within a day (startingDeadlineSeconds); two never overlap. It
+# reaches the database through the Service the values name, which the hds-postgres release provides
+# (research R3, amended), and so it carries the database-client label.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hds.name" . }}-backups
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "backup") | nindent 4 }}
+  annotations:
+    # The local copies outlive the release: uninstalling hds never deletes them.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.backup.storage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage.size }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "hds.name" . }}-backup
+  labels:
+    {{- include "hds.labels" (dict "root" . "component" "backup") | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  startingDeadlineSeconds: 86400
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      # A Job made by hand (`make ops-backup`, `make ops-restore-test`) carries these too, so it is
+      # found while it runs.
+      labels:
+        {{- include "hds.labels" (dict "root" . "component" "backup") | nindent 8 }}
+    spec:
+      # No retry: a second run on the same night would write a second local dump. A run that hangs
+      # (a lock pg_dump waits on, say) is stopped after an hour, so it fails and alerts instead of
+      # holding off every later run under Forbid.
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "hds.labels" (dict "root" . "component" "backup") | nindent 12 }}
+            {{- include "hds.databaseClient" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "hds.name" . }}-backup
+          automountServiceAccountToken: false
+          securityContext:
+            {{- include "hds.podSecurity" (dict "uid" 999) | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- range . }}
+            - name: {{ . }}
+            {{- end }}
+          {{- end }}
+          containers:
+            - name: backup
+              {{- include "hds.backupContainer" (dict "root" .) | nindent 14 }}
+              # Pruning runs even when the backup failed (Drive unreachable, say), so the local
+              # copies never pile up; the Job still fails, and alerts, when either did.
+              command: ["sh", "-c", "backup.sh; status=$?; prune.sh || status=1; exit $status"]
+              env:
+                {{- include "hds.backupEnv" (dict "root" .) | nindent 16 }}
+                - name: PGHOST
+                  value: {{ .Values.database.host | quote }}
+                - name: PGPORT
+                  value: {{ .Values.database.port | quote }}
+                - name: PGUSER
+                  value: {{ .Values.database.user | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.database.name | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: hds-api, key: DATABASE_PASSWORD}
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "hds.name" . }}-backups
+            - name: tmp
+              emptyDir: {}

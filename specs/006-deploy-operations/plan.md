@@ -155,6 +155,7 @@ infra/
 ├── docker-compose.yml          # migrate, web; ops ports; healthchecks on /readyz
 ├── backup/{backup,restore,restore-test,prune,vault-snapshot}.sh
 ├── helm/hds/                   # Chart.yaml, values.yaml, values-{local,ci}.yaml, templates/...
+├── helm/hds-postgres/          # PostgreSQL: StatefulSet, Service, NetworkPolicy (research R3)
 ├── flux/clusters/local/        # OCIRepository, HelmRelease, Alertmanager provider and alerts
 ├── cluster/                    # k3d config, Vault and VSO values, kube-prometheus-stack values
 └── README.md
