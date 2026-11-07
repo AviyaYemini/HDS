@@ -121,7 +121,7 @@ dead ends; account, sessions, contact card, previews.
 - [x] T032 [US1] [CORE] Client capability layer `apps/client/src/capabilities/`: `useCapabilities()` from `/me`, `<Gate need=…>`, a route guard that renders the no-access page and refreshes `/me` after any 403; `client_kind: native` sent from phones in `apps/client/src/api/session.ts`
 - [x] T033 [US1] [CORE] Update or retire the old specs this group replaces: `apps/client/tests/e2e/test_us1_signin.spec.ts`, `test_rtl.spec.ts`, `test_us5_client_portal.spec.ts` (skipped today; its checks move into b-roles), `test_us2_profile.spec.ts`
 - [x] T097 [CORE] Make the secret-scan step of `scripts/ops/ci_local.sh` work from a git worktree and never pass vacuously: mount the common git folder (`git rev-parse --git-common-dir`) into the container at its own path, and fail when the scanner reports "not a git repository" or scans no commit of a non-empty range; check it on a worktree and on the main tree (found in PR 1)
-- [ ] T034 [CORE] Commit group B's [CORE] tasks (`feat(api): serve capabilities on me and add the contact card and phone sessions`, `test(client): add group b's failing roles spec`)
+- [x] T034 [CORE] Commit group B's [CORE] tasks (`feat(api): serve capabilities on me and add the contact card and phone sessions`, `test(client): add group b's failing roles spec`)
 
 ### [UI] then
 
