@@ -72,10 +72,13 @@ export async function checkA11y(page: Page, context: string): Promise<void> {
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
   const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(
-    blocking.map((v) => `${v.id}: ${v.help} (${v.nodes.length} node(s))`),
-    `axe on ${context}`,
-  ).toEqual([]);
+  // Each finding names its elements (the first five selectors), so a failure says what to fix.
+  const described = blocking.map((v) => {
+    const targets = v.nodes.slice(0, 5).map((n) => n.target.join(" "));
+    const more = v.nodes.length > 5 ? ` and ${v.nodes.length - 5} more` : "";
+    return `${v.id}: ${v.help} (${v.nodes.length} node(s): ${targets.join(" | ")}${more})`;
+  });
+  expect(described, `axe on ${context}`).toEqual([]);
 }
 
 /** A colour as the browser reports it, from `#RRGGBB`. */
