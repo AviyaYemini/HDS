@@ -24,9 +24,10 @@ log() {
     printf '%s %s: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(basename "$0")" "$*" >&2
 }
 
+# The status is HDS_FAIL_STATUS (1): restore.sh sets 3 while it has changed nothing.
 fail() {
     log "FAILED: $*"
-    exit 1
+    exit "${HDS_FAIL_STATUS:-1}"
 }
 
 now() {

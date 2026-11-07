@@ -1,0 +1,17 @@
+# What Flux runs in the shared environment (specs/006-deploy-operations T048, research R3 amended,
+# R4). Applied once with `kubectl apply -k` (T063), after the Flux controllers; from then on Flux
+# pulls each release from GHCR, and nothing reaches into the machine.
+#
+# The hds release's values are the chart's values-local.yaml, from the ConfigMap hds-values in
+# flux-system (key values.yaml). T063 creates it from infra/helm/hds/values-local.yaml, since
+# kustomize reads no file outside this folder.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - oci-repository.yaml
+  - oci-repository-postgres.yaml
+  - helm-release-postgres.yaml
+  - helm-release.yaml
+  - alertmanager-provider.yaml
+  - alert.yaml

@@ -1,0 +1,19 @@
+# A failed install, upgrade or rollback of either release, or a chart Flux cannot fetch (specs/006
+# T048, FR-018): errors only, forwarded to Alertmanager.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: hds-releases
+spec:
+  providerRef:
+    name: alertmanager
+  eventSeverity: error
+  eventSources:
+    - kind: HelmRelease
+      name: hds
+    - kind: HelmRelease
+      name: hds-postgres
+    - kind: OCIRepository
+      name: hds
+    - kind: OCIRepository
+      name: hds-postgres

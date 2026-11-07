@@ -1,0 +1,9 @@
+# Flux's events to Alertmanager in the monitoring namespace (specs/006 T048, FR-010a, FR-018,
+# research R9), which e-mails the operators (Group K).
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: alertmanager
+spec:
+  type: alertmanager
+  address: http://alertmanager-operated.monitoring.svc:9093/api/v2/alerts/

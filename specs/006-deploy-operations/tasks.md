@@ -234,32 +234,42 @@ quickstart scenario 3 in the cluster (Group M).
 **Goal**: FR-015, FR-018, FR-021 to FR-023, SC-002, SC-008. **Independent test**: quickstart scenario 4
 (Group M); in CI, the release workflow's dry run.
 
-- [ ] T046 [US4] Failing test, a workflow `.github/workflows/release.yml` with a `workflow_dispatch` dry-run input that builds and scans but does not push. Prove both gates fail on purpose:
+- [X] T046 [US4] Failing test, a workflow `.github/workflows/release.yml` with a `workflow_dispatch` dry-run input that builds and scans but does not push. Prove both gates fail on purpose:
   - a branch that pins a base image with a known critical CVE makes the Trivy step exit non-zero;
   - a sample key placed in the image makes the Trivy secret step exit non-zero.
 
-  Record both runs in the log
-- [ ] T047 [US4] Fill in `.github/workflows/release.yml`:
+  Record both runs in the log. GitHub dispatches only a workflow on the default branch, so the workflow's own dry run cannot run before the merge (review R99): `infra/tests/release_gates.sh` proves both gates locally with the workflow's scripts and flags (`infra/release/scan.sh`, the pinned Trivy image), on `infra/Dockerfile.backup` over an old `postgres` base pinned by digest and on the real image with a private key generated at run time; and proves that the pushed images are the scanned layouts, against a throwaway local registry. `dry_run=false` fails at once. **After the merge, the user**: `gh workflow run release.yml -f dry_run=true`
+- [X] T047 [US4] Fill in `.github/workflows/release.yml`:
   - **Trigger**: `on: workflow_run` for `CI`, only when `conclusion == 'success'` and the branch is `main`, with `concurrency: { group: release, cancel-in-progress: false }`.
   - **Build**: build `hds-api`, `hds-web` and `hds-backup` for `linux/amd64,linux/arm64` with `HDS_VERSION` set to the SHA.
   - **Scan**: run Trivy for vulnerabilities (HIGH and CRITICAL fail) and for secrets.
   - **Publish**: push to `ghcr.io/${{ github.repository_owner }}` tagged with the SHA. Then `helm package` with `--app-version <sha> --version 0.1.<run_number>` and the image digests written into values, and `helm push` to `oci://ghcr.io/<owner>/charts`.
   - **Permissions**: `packages: write` and `contents: read` only.
-- [ ] T048 [P] [US4] Add `infra/flux/clusters/local/`: Leave helm-controller's drift detection off for `hds` (`driftDetection.mode` unset or `disabled`): runbook §2 step 7 suspends the `hds-backup` CronJob with `kubectl patch`, which drift correction would undo on the next reconcile (review R97)
+  - **Settled in Group I** (reviews R98 to R101, research R4):
+    - **Trust**: the job also requires CI's run to be for a `push` from this repository (a fork's pull request from a branch named `main` passes `branches: [main]`), and `infra/release/trust.sh` checks the event again before any of the tested commit's code runs; the release checks out `head_sha`. Every action is pinned by commit.
+    - **Build once**: each image is built for both platforms into an OCI image layout, scanned per platform, and pushed as it is by `skopeo copy --all --preserve-digests` (`infra/release/push_images.sh`), which checks each pushed digest against the layout's.
+    - **Both charts** (`infra/release/publish_charts.sh`): `hds` at `0.1.<run number>` with the digests in its values, rendered first to check every image is by digest; `hds-postgres` at its own `Chart.yaml` version, pushed only when the registry answers "not found". The `chart` job, on pull requests, fails a change to `infra/helm/hds-postgres` that does not raise its version (`infra/helm/tests/chart_version.sh`, full history).
+    - **Scan**: `--ignore-unfixed` (the owner's reading of FR-015, Proposed). Fixed findings are raised, not ignored: the web image runs `apk upgrade` over its base; the backup image drops `gosu` and builds rclone v1.75.2 and age v1.3.2 from source with Go 1.27.3.
+    - **actionlint** checks both workflows in the CI `lint` job and `make ci-local` (review R110), since this one can write packages.
+  - **Follow-ups**:
+    - **On or after 2026-11-10**: set `RCLONE_RAISE=golang.org/x/net@v0.62.0` in `infra/Dockerfile.backup` (the modules it raises with it are all older than two weeks; the go.mod diff is in the log), rescan, and record it. Until then the backup image fails the gate on CVE-2026-78661, as it should.
+    - **At the first real release**: if GHCR answers "denied" rather than "not found" for the `hds-postgres` package before it exists, the release fails with nothing pushed (review R117); then decide with the reviewer how to publish its first version.
+    - **On or after 2026-11-20**: when rclone 1.76.0 is two weeks old, scan its official binary; if it is clean, go back to copying it from `rclone/rclone` by digest and drop the source build.
+- [X] T048 [P] [US4] Add `infra/flux/clusters/local/`: Leave helm-controller's drift detection off for `hds` (`driftDetection.mode` unset or `disabled`): runbook §2 step 7 suspends the `hds-backup` CronJob with `kubectl patch`, which drift correction would undo on the next reconcile (review R97)
   - `kustomization.yaml`;
-  - `oci-repository.yaml`, with `semver: ">=0.1.0"` and `interval: 5m`;
+  - `oci-repository.yaml` and `oci-repository-postgres.yaml`, one for each chart (review R98), with `semver: ">=0.1.0"` and `interval: 5m`;
   - `helm-release-postgres.yaml`, the `hds-postgres` release, installed first (research R3, amended);
   - `helm-release.yaml`, with `dependsOn` the `hds-postgres` release, `install.remediation.retries: 0`, `upgrade.remediation.retries: 0`, `upgrade.remediation.strategy: rollback`, `timeout: 10m`, `maxHistory: 10`, and `values-local` from a ConfigMap;
   - `alertmanager-provider.yaml` and `alert.yaml`, which forward `HelmRelease` errors to Alertmanager (FR-010a, FR-018).
 
-  A CI step validates them with kubeconform and Flux's CRD schemas
-- [ ] T049 [US4] `scripts/ops/rollback.sh` and `scripts/ops/resume.sh`, called by `make ops-rollback` and `make ops-resume`:
+  A CI step validates them with kubeconform and Flux's CRD schemas (the `crd-schemas.tar.gz` of Flux v2.9.6, which T063 installs, by SHA-256). The HelmReleases live in `flux-system` with `releaseName`, `targetNamespace` and `storageNamespace` set, so `helm -n hds` finds the releases; `upgrade.remediation.remediateLastFailure: true`, without which `retries: 0` never rolls back (review R102); `values-local` comes from the ConfigMap `hds-values` in `flux-system`, which T063 creates from `infra/helm/hds/values-local.yaml`
+- [X] T049 [US4] `scripts/ops/rollback.sh` and `scripts/ops/resume.sh`, called by `make ops-rollback` and `make ops-resume`:
   - **rollback**: `flux suspend helmrelease hds`, then `helm rollback hds` to the previous revision with `--wait`, then print the version now running. It never runs a migration downgrade (FR-021).
   - **resume**: `flux resume`.
 
   Add them to `Makefile`, and add `docs/runbooks/operations.md` §Deploys
-- [ ] T049b [US3] `scripts/ops/restore.sh`, called by `make ops-restore BACKUP=<name> [CONFIRM=replace]`, from the operator's machine with kubectl (review R76, R77): suspend the `hds` HelmRelease; save each Deployment's replica count; scale the API and the worker to 0 and wait until no pod is left, counting pods still in their grace period (`.status.replicas` already leaves those out, review R80); run `infra/backup/restore.sh` in a Job on the backup image; run `migrate` in a Job on the API image the Deployment runs (the release's own migrate Job, from `helm get hooks hds`); scale back to the saved counts; resume. Flux stays suspended for the whole run, so a release applied mid-restore cannot run its pre-upgrade migrate hook against a half-restored database or reset the replica counts. Settle the expected output in `docs/runbooks/restore.md` §1
-- [ ] T050 [US4] Mutation checks: release on a failed CI; no concurrency group; rollback without suspend. Then the gates, ShellCheck, both reviews, the log, and a commit `feat(infra): publish scanned releases to GHCR for Flux to install (006 Group I)`
+- [X] T049b [US3] `scripts/ops/restore.sh`, called by `make ops-restore BACKUP=<name> [CONFIRM=replace]`, from the operator's machine with kubectl (review R76, R77): suspend the `hds` HelmRelease; save each Deployment's replica count; scale the API and the worker to 0 and wait until no pod is left, counting pods still in their grace period (`.status.replicas` already leaves those out, review R80); run `infra/backup/restore.sh` in a Job on the backup image; run `migrate` in a Job on the API image the Deployment runs (the release's own migrate Job, from `helm get hooks hds`); scale back to the saved counts; resume. Flux stays suspended for the whole run, so a release applied mid-restore cannot run its pre-upgrade migrate hook against a half-restored database or reset the replica counts. Settle the expected output in `docs/runbooks/restore.md` §1. Settled in Group I: it runs `infra/backup/restore.sh --check` first, while the API still serves, so a refusal stops nothing; it suspends the `hds-backup` CronJob too and sets its `suspend` back to the value it found (runbook §2 keeps it suspended until its step 10); `restore.sh` exits 3 when it failed having changed nothing, and only then are the API and the worker started again; any other failure leaves them at 0 with Flux suspended
+- [X] T050 [US4] Mutation checks: release on a failed CI; no concurrency group; rollback without suspend. Then the gates, ShellCheck, both reviews, the log, and a commit `feat(infra): publish scanned releases to GHCR for Flux to install (006 Group I)`
 
 ## Phase 10: Group J, Vault and the Vault Secrets Operator (US6, P1)
 
@@ -283,8 +293,10 @@ broken backup sends an e-mail (Group M).
   - `kube_cronjob_status_last_successful_time` older than 26 h for the backup and 8 d for the restore test;
   - a failed `hds-restore-test` or `vault-snapshot` Job.
 
+  The names are the real CronJobs' (`hds-backup`, `hds-restore-test`, `hds-vault-snapshot`; their Jobs' names derive from them), not shortened ones
+
   `HdsBackupMissing` and `HdsRestoreTestMissing` carry `for: 1h`: a case where the series turns stale and recovers within the hour (the Mac waking after a day off and the catch-up run finishing) sends nothing. Each one stays quiet on healthy series, and no rule uses `hds_http_*` (Clarifications: no rules on error rates)
-- [ ] T056 [US3] Add `infra/helm/hds/templates/prometheus-rules.yaml` (the five job alerts, the two "missing" ones with `for: 1h`) and `servicemonitors.yaml` (the API and the worker on port 9100). Add `infra/cluster/monitoring-values.yaml` for kube-prometheus-stack: Grafana off; Alertmanager with one e-mail receiver using `smarthost`, `auth_username` and `auth_password` from the `hds-smtp` Secret, `require_tls: true`, and `to` from `OPERATOR_EMAILS`; message templates naming the alert, the object, the time and the summary only (FR-010a)
+- [ ] T056 [US3] (kube-prometheus-stack goes in the namespace `values.monitoring.namespace`, `monitoring`, which the NetworkPolicy and Flux's Alertmanager provider rely on) Add `infra/helm/hds/templates/prometheus-rules.yaml` (the five job alerts, the two "missing" ones with `for: 1h`) and `servicemonitors.yaml` (the API and the worker on port 9100). Add `infra/cluster/monitoring-values.yaml` for kube-prometheus-stack: Grafana off; Alertmanager with one e-mail receiver using `smarthost`, `auth_username` and `auth_password` from the `hds-smtp` Secret, `require_tls: true`, and `to` from `OPERATOR_EMAILS`; message templates naming the alert, the object, the time and the summary only (FR-010a)
 - [ ] T057 [US2] `scripts/ops/status.sh` (`make ops-status`) prints:
   - per Deployment, ready over desired and the image version;
   - the last successful and the last failed backup and restore test;
@@ -302,7 +314,7 @@ broken backup sends an e-mail (Group M).
 - [ ] T059 [US5] Failing test, a CI job `rolling-update` with the script `infra/tests/rolling_update.sh`:
   1. Create a k3d cluster from `infra/cluster/k3d.yaml`.
   2. Build the images at the pull request's base commit and the head, and import them with `k3d image import`. The head's API image gets one extra throwaway additive migration (a nullable column on a scratch table) on top, built only in this job, so every run upgrades across a migration even when the pull request has none.
-  3. Create the `hds-*` Secrets from throwaway values, and install the chart at the base with `values-ci.yaml` (`ENVIRONMENT=production`, SMTP pointed at an in-cluster fake server).
+  3. Create the `hds-*` Secrets from throwaway values, and install both charts at the base, `hds-postgres` first, then `hds` with `values-ci.yaml` (`ENVIRONMENT=production`, SMTP pointed at an in-cluster fake server).
   4. Create the first Admin.
   5. Start `infra/tests/load.py`, which runs for the whole upgrade: 20 requests a second, signed-in reads and writes, plus a refresh every 30 s.
   6. Queue a schedule job, then run `helm upgrade --wait` to the head.
@@ -316,7 +328,7 @@ broken backup sends an e-mail (Group M).
 
   It also runs the Playwright smoke journeys against the upgraded cluster's ingress, and checks the hop we control (ADR 007, research R14): two pods inside the cluster, with different pod addresses, call Traefik's Service and fail sign-in, and their failures count separately; a third request with a forged `X-Forwarded-For` is still counted under its own pod's address
 - [ ] T060 [US5] Add `infra/tests/load.py` (httpx, using only API dependencies already present, which prints totals and the failures) and `infra/cluster/k3d.yaml` (one server, ports 8080:80 and 8443:443, local-path)
-- [ ] T061 [P] [US5] Failing test, a CI job `compatibility` with the script `infra/tests/compat.sh`: check out the base commit into a temporary worktree, copy the head's `apps/api/alembic/versions/` over the base's (keeping the base's `env.py`), and run the base's integration tests with the base's code, skipping the base's own `test_migration_*` tests, which pin the old head. After the run, assert that `alembic_version` holds the head's revision. Files are copied rather than a conftest switch added, because the base has no such switch until this feature merges. A change that drops or renames a column the base uses fails here (FR-016). Prove it on a throwaway branch with a migration that renames `shifts.headcount`, and record the failing run in the log
+- [ ] T061 [P] [US5] Failing test, a CI job `compatibility` with the script `infra/tests/compat.sh`: check out the base commit into a temporary worktree, copy the head's `apps/api/alembic/versions/` over the base's (keeping the base's `env.py`), and run the base's integration tests with the base's code, skipping the base's own `test_migration_*` tests, which pin the old head. After the run, assert that `alembic_version` holds the head's revision. Files are copied rather than a conftest switch added, because the base has no such switch until this feature merges. A change that drops or renames a column the base uses fails here (FR-016). Prove it on a throwaway branch with a migration that renames `shifts.headcount`, and record the failing run in the log. That branch, like every mutant, lives only in a local throwaway branch or worktree, is deleted after, and is never pushed
 - [ ] T062 [US5] Gates, ShellCheck, both reviews, the log, and a commit `test(infra): prove zero-downtime updates and old-new compatibility (006 Group L)`
 
 ## Phase 13: Group M, the shared environment end to end (US1 to US6; run with the owner)
@@ -326,8 +338,8 @@ broken backup sends an e-mail (Group M).
 - [ ] T063 Add `scripts/ops/cluster.sh` (`make ops-cluster`), which runs once per machine and is safe to run again:
   1. It checks for k3d, kubectl, helm, flux, vault and rclone, naming any that is missing.
   2. It creates the k3d cluster.
-  3. It installs Flux (only the source, helm and notification controllers), Vault, the Vault Secrets Operator and kube-prometheus-stack from the pinned charts, with the values in `infra/cluster/`.
-  4. It applies `infra/flux/clusters/local/`.
+  3. It installs Flux (only the source, helm and notification controllers), Vault, the Vault Secrets Operator and kube-prometheus-stack (in `monitoring`) from the pinned charts, with the values in `infra/cluster/`.
+  4. It creates the ConfigMap `hds-values` in `flux-system` from `infra/helm/hds/values-local.yaml` (key `values.yaml`), then applies `infra/flux/clusters/local/`.
   5. It prints the next steps: init and unseal Vault, write the secrets, create the first Admin.
 - [ ] T064 With the owner, on their machine:
   1. `make ops-cluster`, then Vault init and unseal, then write the `hds/*` paths: the SMTP relay, the Drive token from `rclone authorize drive` with scope `drive.file`, and the crypt passwords.
@@ -340,7 +352,7 @@ broken backup sends an e-mail (Group M).
   8. Rotate `JWT_SECRET_KEY` and stay signed in.
 
   Record each outcome, with times, in the log
-- [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys, Vault with the operator, the private metrics port, traces through the job row, the SMTP relay, backups through rclone, Vault's snapshot through age, and the accepted limit that the client's address is lost before Traefik on a Mac (research R14; revisiting it with the cloud move is Proposed), with the rejected alternatives from research.md. Add the same limit to the proxy note in `infra/README.md`. Add it to the index in `docs/`
+- [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys (with Group I's choices, research R4: the trust check on `workflow_run`, one build per release scanned and pushed as it is, `--ignore-unfixed` as Proposed, `hds-postgres` versioned by hand; review R111), Vault with the operator, the private metrics port, traces through the job row, the SMTP relay, backups through rclone, Vault's snapshot through age, and the accepted limit that the client's address is lost before Traefik on a Mac (research R14; revisiting it with the cloud move is Proposed), with the rejected alternatives from research.md. Add the same limit to the proxy note in `infra/README.md`. Add it to the index in `docs/`
 - [ ] T066 [P] Update `docs/hds-api.md` §9 with an operations note linking the runbooks, and §12 decision 8 as settled (a local k3d cluster). Also add `apps/api/README.md` for the new settings, `infra/README.md` for the shared environment, the `docs/` index, and `.env.example` for the new optional settings, leaving secrets empty
 - [ ] T067 Final gates on the whole branch, the Markdown link check, `/hds-review`, `/code-review high`, the log, and a commit `docs(spec): close 006`
 

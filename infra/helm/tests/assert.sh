@@ -12,6 +12,9 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 HELM_IMAGE="alpine/helm:3.22.1@sha256:8191701ad1f82ee3695c87211fcbfe6d7b1bb7df92ac1c8de9ccdb0995a6a2c1"
 KUBECONFORM_IMAGE="ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e"
+# Flux's CRD schemas: crd-schemas.tar.gz of the Flux release T063 installs (infra/VERSIONS.md).
+FLUX_VERSION="v2.9.6"
+FLUX_SCHEMAS_SHA256="380b713bd28a2c27cfc7710219aae79e1c9ceff9bee50197c023047190532987"
 YQ_IMAGE="mikefarah/yq:4.54.1@sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e"
 SCHEMA_COMMIT="b2ba4defe30ed5a0104987433896f1fd32807304"
 KUBERNETES_VERSION="1.37.1"
@@ -246,6 +249,55 @@ expect "postgres listens on the Service's port" "5432 5432" \
 expect "postgres startup probe over TCP, up to 5 min" "pg_isready -h 127.0.0.1 -U hds 300" \
     "$(yq "$f" "$pg | .containers[0].startupProbe | [.exec.command[2], .periodSeconds * .failureThreshold] | join(\" \")")"
 expect "no Secret rendered" 0 "$(yq "$f" '[select(.kind == "Secret")] | length')"
+
+# Flux's files (T048): kubeconform against the CRD schemas of the Flux release the cluster runs
+# (infra/VERSIONS.md), checked by SHA-256 and kept in a cache; then the settings the runbooks rely on.
+echo "== infra/flux/clusters/local"
+flux_dir="$ROOT/infra/flux/clusters/local"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/flux-crd-schemas-$FLUX_VERSION"
+if [ ! -f "$cache/helmrelease-helm-v2.json" ]; then
+    mkdir -p "$cache"
+    curl -fsSL -o "$cache/crd-schemas.tar.gz" \
+        "https://github.com/fluxcd/flux2/releases/download/$FLUX_VERSION/crd-schemas.tar.gz"
+    echo "$FLUX_SCHEMAS_SHA256  $cache/crd-schemas.tar.gz" | sha256sum -c - > /dev/null \
+        || { echo "the Flux CRD schemas do not match their SHA-256" >&2; rm -rf "$cache"; exit 1; }
+    tar -xzf "$cache/crd-schemas.tar.gz" -C "$cache"
+fi
+docker run --rm -v "$flux_dir:/f:ro" -v "$cache:/s:ro" "$KUBECONFORM_IMAGE" -strict -summary \
+    -kubernetes-version "$KUBERNETES_VERSION" -schema-location "$SCHEMAS" \
+    -schema-location '/s/{{.ResourceKind}}{{.KindSuffix}}.json' \
+    -ignore-filename-pattern 'kustomization\.yaml' /f
+expect "the kustomization lists every Flux file" \
+    "$(find "$flux_dir" -maxdepth 1 -name '*.yaml' ! -name kustomization.yaml -exec basename {} \; | sort | tr '\n' ' ')" \
+    "$(sed -n 's/^  - //p' "$flux_dir/kustomization.yaml" | sort | tr '\n' ' ')"
+for file in "$flux_dir"/*.yaml; do
+    [ "$(basename "$file")" = kustomization.yaml ] || { cat "$file"; echo "---"; }
+done > "$out/flux.yaml"
+f="flux.yaml"
+hr='select(.kind == "HelmRelease" and .metadata.name == "hds") | .spec'
+pr='select(.kind == "HelmRelease" and .metadata.name == "hds-postgres") | .spec'
+expect "each release's chart is its own OCIRepository" "hds hds-postgres" \
+    "$(yq "$f" "$hr | .chartRef.name") $(yq "$f" "$pr | .chartRef.name")"
+expect "both OCIRepositories take the newest 0.1 or later, every 5 minutes" \
+    "hds >=0.1.0 5m|hds-postgres >=0.1.0 5m" \
+    "$(yq "$f" 'select(.kind == "OCIRepository") | .metadata.name + " " + .spec.ref.semver + " " + .spec.interval' | sort -u | paste -sd '|' -)"
+expect "the OCIRepositories point at the release's chart paths" \
+    "oci://ghcr.io/aviyayemini/charts/hds oci://ghcr.io/aviyayemini/charts/hds-postgres" \
+    "$(yq "$f" 'select(.kind == "OCIRepository") | .spec.url' | sort | paste -sd ' ' -)"
+expect "hds waits for hds-postgres" "hds-postgres" "$(yq "$f" "$hr | .dependsOn[].name")"
+expect "both are Helm releases named as such, stored in hds" "hds hds hds|hds-postgres hds hds" \
+    "$(yq "$f" 'select(.kind == "HelmRelease") | .spec.releaseName + " " + .spec.targetNamespace + " " + .spec.storageNamespace' | sort -u | paste -sd '|' -)"
+expect "a failed hds upgrade rolls back, without retries" "0 0 true rollback 10m 10" \
+    "$(yq "$f" "$hr | [.install.remediation.retries, .upgrade.remediation.retries, .upgrade.remediation.remediateLastFailure, .upgrade.remediation.strategy, .timeout, .maxHistory] | join(\" \")")"
+expect "drift detection is off for hds (review R97)" "disabled" \
+    "$(yq "$f" "$hr | .driftDetection.mode // \"disabled\"")"
+expect "hds takes values-local from the ConfigMap hds-values" "ConfigMap hds-values values.yaml" \
+    "$(yq "$f" "$hr | .valuesFrom[] | [.kind, .name, .valuesKey] | join(\" \")")"
+expect "release errors go to Alertmanager in monitoring" "error alertmanager alertmanager-operated.monitoring.svc:9093" \
+    "$(yq "$f" '[(select(.kind == "Alert") | .spec.eventSeverity, .spec.providerRef.name), (select(.kind == "Provider") | .spec.address | sub("^http://"; "") | sub("/api.*$"; ""))] | join(" ")')"
+expect "the Alert covers both releases and both charts" \
+    "HelmRelease/hds HelmRelease/hds-postgres OCIRepository/hds OCIRepository/hds-postgres" \
+    "$(yq "$f" 'select(.kind == "Alert") | .spec.eventSources[] | .kind + "/" + .name' | sort | paste -sd ' ' -)"
 
 if [ "$failures" -gt 0 ]; then
     echo "chart checks: $failures failed" >&2

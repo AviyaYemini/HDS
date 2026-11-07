@@ -1,0 +1,15 @@
+# The hds chart in GHCR (specs/006 T048, research R4): the API, the worker, the web client and the jobs; a new version every release (0.1.<run number>).
+# Polled every 5 minutes; the newest version at or above 0.1.0 is installed. Pin the range here to
+# hold a version for good. When the packages are private, add secretRef: {name: hds-registry}.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: hds
+spec:
+  interval: 5m
+  url: oci://ghcr.io/aviyayemini/charts/hds
+  ref:
+    semver: ">=0.1.0"
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

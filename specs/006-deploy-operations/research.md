@@ -74,10 +74,36 @@ expected later. Every other decision below follows the constitution, `docs/hds-s
      `main`, with `concurrency: release` (FR-023). It builds the three images, scans them with Trivy
      and fails on a high or critical finding (FR-015, §9 Security, §10 Dependencies). Then it pushes
      the images, packages the chart with `appVersion` set to the SHA and `version: 0.1.<run
-     number>`, and pushes the chart to GHCR as an OCI artefact.
+     number>`, and pushes the chart to GHCR as an OCI artefact. In detail (Group I):
+     - **Trust** (review R99): `branches: [main]` and `head_branch` match only a branch's name,
+       which a fork's pull request can share. The job also requires CI's run to be for a `push`
+       from this repository, and `infra/release/trust.sh` checks it all again from the event
+       before any of the tested commit's code runs; the release then builds exactly CI's
+       `head_sha`. A manual run is a dry run only.
+     - **The bytes scanned are the bytes pushed** (review R100): each image is built once for both
+       platforms into an OCI image layout; Trivy scans each platform of that layout; `skopeo copy
+       --all --preserve-digests` pushes the layout as it is, and the pushed index is read back and
+       must have the layout's digest. Nothing is rebuilt between scan and push.
+     - **"High-severity" is a fixed HIGH or CRITICAL finding** (Proposed; the owner's choice on
+       2026-11-07, "Skip unfixed ones"): the vulnerability scan runs with `--ignore-unfixed`, a
+       reading of FR-015. An unfixed finding in a Debian or Alpine base has no version to move to,
+       so it would stop every release and nothing on our side could clear it. A fixed one still
+       stops the release: the base or the binary is raised instead, and nothing is ignored
+       (review R101).
+     - **Known limit**: the gate scans the three images the release builds. The `postgres:16.15`
+       image the cluster runs for `hds-postgres` and the restore test's sidecar is the official
+       one, not rebuilt, and is not scanned; its `gosu` carries an old Go's fixed findings (the
+       backup image removes its copy). Raising that image is a change of its own.
+     - **Two charts** (research R3, amended; review R98): `hds-postgres` keeps the version in its
+       `Chart.yaml`, raised by hand, because its pod template carries the chart's version and a new
+       one each release would restart the database. The release pushes it only when the registry
+       answers that the version is not there; any other answer fails the release. A pull request
+       that changes the chart without raising its version fails CI (`chart_version.sh`).
   2. **Flux** (source-controller, helm-controller and notification-controller only) runs in the
-     cluster. An `OCIRepository` watches the chart with `semver: ">=0.1.0"` and polls every 5
-     minutes. A `HelmRelease` installs it. This is all outbound: nothing reaches into the machine.
+     cluster. An `OCIRepository` for each chart watches it with `semver: ">=0.1.0"` and polls every 5
+     minutes. A `HelmRelease` installs each, `hds` after `hds-postgres`. A failed upgrade rolls
+     back: with `retries: 0`, Flux remediates only with `remediateLastFailure: true` (review R102).
+     This is all outbound: nothing reaches into the machine.
   3. **Records** (FR-022): Helm's release history keeps each revision with its version, time and
      status, and Flux records an event for each one.
 - **Why the chart is published, not a commit to `main`**: CI never writes to the protected branch,

@@ -1,7 +1,8 @@
 # Infrastructure
 
-The local environment, the images, the Helm charts and the pinned versions. The shared environment
-(specs/006-deploy-operations) adds the cluster files next; nothing deploys the charts yet.
+The local environment, the images, the Helm charts, the release and what Flux runs in the shared
+environment, and the pinned versions (specs/006-deploy-operations). The cluster's own set-up
+(`make ops-cluster`) arrives with Group M.
 
 | File | Purpose |
 | --- | --- |
@@ -16,7 +17,13 @@ The local environment, the images, the Helm charts and the pinned versions. The 
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
 | `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
 | `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
-| `helm/tests/assert.sh` | Lints, validates and checks the rendered charts (CI `chart` job, `make ci-local`) |
+| `helm/tests/assert.sh` | Lints, validates and checks the rendered charts and `flux/` (CI `chart` job, `make ci-local`) |
+| `helm/tests/chart_version.sh` | Fails a pull request that changes `helm/hds-postgres` without raising its version (CI `chart` job) |
+| `release/` | The release workflow's scripts: `trust.sh` (may this run publish), `scan.sh` (Trivy), `push_images.sh` (skopeo), `publish_charts.sh` (both charts) |
+| `flux/clusters/local/` | What Flux runs in the cluster: an OCIRepository and a HelmRelease for each chart, and its alerts to Alertmanager |
+| `tests/check_backup_jobs.sh`, `tests/check_deploy_ops.sh` | The `make ops-*` scripts against fake kubectl, flux and helm (CI `lint` job) |
+| `tests/check_release.sh` | The release's scripts and workflow, without GitHub or a registry (CI `lint` job) |
+| `tests/release_gates.sh` | The release's scan gates and its push, proven locally with throwaway images and registry; run by hand |
 
 ## The Helm charts
 
@@ -42,6 +49,15 @@ routes it.
 `helm/tests/assert.sh` runs `helm lint`, kubeconform (Kubernetes v1.37.1 schemas) and assertions
 on the rendered manifests: `hds` for `values-local.yaml` and `values-ci.yaml`, and `hds-postgres`
 with its defaults. Every tool runs from an image pinned in `VERSIONS.md`; only Docker is needed.
+
+## Releases
+
+A merge to `main` that passes CI runs `.github/workflows/release.yml`: it builds the three images
+once for amd64 and arm64, scans each platform with Trivy (a fixed HIGH or CRITICAL finding, or any
+secret, stops it), pushes those same images, and publishes the `hds` chart as `0.1.<run number>`
+with the images' digests in its values. `hds-postgres` is published only when its version is
+raised. Flux (`flux/clusters/local/`) pulls the newest chart every 5 minutes; a failed upgrade rolls
+back. Deploys, rollbacks and the dry run: [the operations runbook](../docs/runbooks/operations.md).
 
 ## Backups
 

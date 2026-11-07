@@ -1,7 +1,35 @@
 # The backup image (specs/006-deploy-operations research R11): the PostgreSQL 16 client tools of the
 # cluster's database image, rclone for the encrypted copies, jq and curl for the manifests and
 # Vault's API, and age for Vault's snapshot. Every base and binary is pinned (infra/VERSIONS.md).
-FROM rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5 AS rclone
+# rclone and age, built from source with a current Go (infra/VERSIONS.md, review R101): the release
+# binaries' Go carries fixed HIGH findings the release's scan stops on. Each stage runs on the build
+# machine and cross-compiles, with no cgo, the local toolchain only, and Go's checksum database
+# verifying every module, as the release tarballs' SHA-256 did.
+FROM --platform=$BUILDPLATFORM golang:1.27.3-trixie@sha256:af1bfc2614ebb1dbd31af514b78740fd678850e76498762b425ecee4c5c6ea80 AS go
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+ARG TARGETOS TARGETARCH
+
+FROM go AS rclone
+ARG RCLONE_VERSION=v1.75.2
+# Modules raised above rclone's own go.mod, each two weeks old or more (infra/VERSIONS.md); none
+# yet. golang.org/x/net v0.62.0 fixes CVE-2026-78661 and turns two weeks old on 2026-11-10; until
+# then the scan stops on it, as it should (tasks.md T047).
+ARG RCLONE_RAISE=""
+RUN go mod download "github.com/rclone/rclone@$RCLONE_VERSION" \
+    && cp -R "$(go env GOMODCACHE)/github.com/rclone/rclone@$RCLONE_VERSION" /src \
+    && chmod -R u+w /src \
+    && cd /src \
+    && cp go.mod /tmp/go.mod.upstream \
+    && if [ -n "$RCLONE_RAISE" ]; then go get $RCLONE_RAISE; fi \
+    && { diff -u /tmp/go.mod.upstream go.mod || true; } \
+    && GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -o /out/rclone \
+        -ldflags "-s -w -X github.com/rclone/rclone/fs.Version=$RCLONE_VERSION-hds" .
+
+FROM go AS age
+RUN mkdir /work && cd /work && go mod init build \
+    && go get filippo.io/age/cmd/age@v1.3.2 \
+    && GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -o /out/age \
+        -ldflags "-s -w -X main.Version=v1.3.2" filippo.io/age/cmd/age
 
 FROM postgres:16.15@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
 
@@ -12,22 +40,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends jq curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# age v1.3.2 from its GitHub release, checked against the SHA-256 recorded in infra/VERSIONS.md.
-ARG TARGETARCH
-RUN set -eu; \
-    case "$TARGETARCH" in \
-        amd64) sum=cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 ;; \
-        arm64) sum=6b8dc4333c53a5a57c9e5834e3a48f92605d7154014cd07269ff3327db5d37f4 ;; \
-        *) echo "no age build for $TARGETARCH" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /tmp/age.tar.gz \
-        "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-${TARGETARCH}.tar.gz"; \
-    echo "$sum  /tmp/age.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/age.tar.gz -C /tmp; \
-    install -m 0755 /tmp/age/age /usr/local/bin/age; \
-    rm -rf /tmp/age /tmp/age.tar.gz
+# The postgres base's gosu, which the image never uses (it runs as 999 and never switches user), is
+# removed: it is built with an old Go, and the release's scan would fail on it (review R101).
+RUN rm /usr/local/bin/gosu
 
-COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
+COPY --from=age /out/age /usr/local/bin/age
+COPY --from=rclone /out/rclone /usr/local/bin/rclone
 COPY infra/backup/*.sh infra/backup/rclone.conf.tmpl /opt/hds-backup/
 
 ARG HDS_VERSION=dev

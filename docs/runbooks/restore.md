@@ -9,8 +9,8 @@ Background: research R11 in `specs/006-deploy-operations/research.md`. A daily b
 machine (`local-crypt:`, the `hds-backups` volume) and on Drive (`offsite-crypt:`). Vault's weekly
 snapshot is `vault-<UTC time>.snap.age`, encrypted with age, on the plain `local:` and `offsite:`
 remotes. The `make ops-*` targets are the ones `contracts/ops.md` §5 lists, run from the operator's
-machine with kubectl. `make ops-restore` arrives with Group I (T049b); until then, section 1 cannot
-be run in the cluster.
+machine with flux, helm and kubectl (`scripts/ops/restore.sh` describes each step of
+`make ops-restore`).
 
 **The recovery kit, kept outside the machine**: Vault's unseal keys, the age private key for
 Vault's snapshots, and the Google account that holds the Drive folder. Without all three, a lost
@@ -27,16 +27,23 @@ machine cannot be recovered. Check where each one is now, before you need them.
    Expected: one `hds-<time>.dump` and one `hds-<time>.manifest.json` per day, for 30 days.
 
 2. Pick the backup by its time, `hds-20261105T033000Z` say, and restore it. `make ops-restore`
-   suspends Flux for its whole run, so no release can start mid-restore, and resumes it at the end:
+   first checks, while the API still serves, that the backup downloads and matches its checksum
+   and that the database may be replaced; only then does it suspend Flux and the `hds-backup`
+   CronJob, so no release or backup can start mid-restore:
 
    ```bash
    make ops-restore BACKUP=hds-20261105T033000Z
    ```
 
-   Expected, since the database has data: it refuses and changes nothing.
+   Expected, since the database has data: the check refuses, and nothing is changed or stopped.
+   Job logs carry a `[pod/<name>/backup]` prefix, left out here:
 
    ```text
+   == 1. check hds-20261105T033000Z
+   created Job hds-restore-check-20261105101500
+   --- the logs of hds-restore-check-20261105101500
    restore.sh: FAILED: hds on hds-postgres holds data; nothing was changed. Set CONFIRM=replace to replace it
+   FAILED: the check failed (see its logs above); nothing was changed or stopped
    ```
 
 3. Replace it, knowing that everything after the backup's time is lost:
@@ -45,18 +52,35 @@ machine cannot be recovered. Check where each one is now, before you need them.
    make ops-restore BACKUP=hds-20261105T033000Z CONFIRM=replace
    ```
 
-   Expected: the API and the worker stop, the backup is restored and migrated, and they start
-   again with their earlier replica counts. The restore's own lines are:
+   Expected: six numbered steps, and the last line names what runs again. The API and the worker
+   are unavailable from step 3 to step 6, a few minutes for a backup of this size:
 
    ```text
+   == 1. check hds-20261105T033000Z
    restore.sh: hds-20261105T033000Z: downloaded from offsite-crypt; the checksum matches
+   restore.sh: hds-20261105T033000Z: verified; it can be restored into hds on hds-postgres; nothing was changed
+   == 2. save what runs now, then suspend Flux for hds, and the hds-backup CronJob
+   saved: hds-api 2, hds-worker 1, hds-backup suspend false, Flux suspend false
+   == 3. stop the API and the worker
+   no pod of the API or the worker is left
+   == 4. restore hds-20261105T033000Z
    restore.sh: hds-20261105T033000Z: restored into hds on hds-postgres; run migrate next
+   == 5. migrate
+   == 6. start the API and the worker again
+   restored hds-20261105T033000Z; hds-api 2 and hds-worker 1 are running, hds-backup's suspend is false again. Flux manages hds again
    ```
 
-   T049b settles the whole output.
-
-   A checksum mismatch stops it before anything changes; take the previous day's backup. If the
-   restore itself fails, the database is empty: run step 3 again with an older backup.
+   When it fails, its last line says what state it left:
+   - **`nothing was changed`**: a checksum mismatch, a backup that is not there, a running backup
+     Job, or pods that would not stop. Everything runs as before; for a mismatch, take the previous
+     day's backup.
+   - **`the restore failed after the database was emptied`**, or **`restored but not
+     migrated`**: the API and the worker stay at 0 and Flux stays suspended, so nothing serves a
+     half-restored database. Fix the cause (the Job's logs above say it), then run step 3 again,
+     with an older backup if this one is at fault. The rerun says `an earlier run stopped midway`
+     and starts the API and the worker with the counts the first run saved (in the ConfigMap
+     `hds-restore-saved`), not the 0 it left. `make ops-resume` alone would start a release
+     on it; do not run it first.
 
 4. Check the service:
 
@@ -143,7 +167,9 @@ machine cannot be recovered. Check where each one is now, before you need them.
    make ops-restore BACKUP=hds-20261105T033000Z
    ```
 
-   Expected: the output of section 1, step 3.
+   Expected: the output of section 1, step 3, except that its last line says `hds-backup's suspend
+   is true again`: `make ops-restore` sets the CronJob back to what it found, so the backups stay
+   stopped until step 10.
 
 9. Check the service, as in section 1, step 4, and sign in as a known user.
 

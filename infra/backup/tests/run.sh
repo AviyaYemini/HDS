@@ -45,14 +45,18 @@ rcl() { backup_run hds-rclone.sh "$@"; }
 sql() { dc exec -T db psql -X -q -At -U hds -d hds -v ON_ERROR_STOP=1 -c "$1"; }
 fresh_scratch() { dc up -d --wait --force-recreate --renew-anon-volumes scratch > /dev/null 2>&1; }
 # Expect a command to fail with MESSAGE in its output: refuses LABEL MESSAGE COMMAND...
-refuses() {
-    local label=$1 message=$2 out status
-    shift 2
+refuses() { refuses_with any "$@"; }
+# The same, with exit status STATUS (any: any but 0): refuses_with STATUS LABEL MESSAGE COMMAND...
+refuses_with() {
+    local want=$1 label=$2 message=$3 out status
+    shift 3
     set +e
     out=$("$@" 2>&1)
     status=$?
     set -e
     [ "$status" -ne 0 ] || fail "$label: it succeeded; the output was: $out"
+    [ "$want" = any ] || [ "$status" = "$want" ] \
+        || fail "$label: it exited $status, not $want; the output was: $out"
     grep -qF -- "$message" <<< "$out" || fail "$label: the output lacks '$message': $out"
     ok "$label"
 }
@@ -213,8 +217,25 @@ ok "local-crypt still holds $before_prune"
 cp "$work/files/stored.dump" "$work/local/db/$stored"
 
 step "8: restore.sh refuses a database with data unless CONFIRM=replace"
-refuses "a database with data" "holds data; nothing was changed" backup_run restore.sh "$name"
-[ "$(sql "$SHIFTS")" = "$shifts_at_backup" ] || fail "the refused restore changed the shifts"
+# Exit 3 means nothing was changed, so make ops-restore can start the API and the worker again.
+refuses_with 3 "a database with data" "holds data; nothing was changed" backup_run restore.sh "$name"
+refuses_with 3 "--check refuses it too" "holds data; nothing was changed" \
+    backup_run restore.sh --check "$name"
+refuses_with 3 "a backup that is not there" "the manifest could not be read" \
+    backup_run -e CONFIRM=replace restore.sh --check hds-19700101T000000Z
+# A manifest jq cannot read stops set -e, not fail(): that too is "nothing was changed".
+broken=hds-19990101T000000Z
+printf 'not json' | rcl rcat "local-crypt:$broken.manifest.json"
+printf 'not a dump' | rcl rcat "local-crypt:$broken.dump"
+refuses_with 3 "a manifest that is not JSON" "" \
+    backup_run -e CONFIRM=replace -e HDS_RESTORE_FROM=local-crypt restore.sh --check "$broken"
+rcl deletefile "local-crypt:$broken.manifest.json"
+rcl deletefile "local-crypt:$broken.dump"
+out=$(backup_run -e CONFIRM=replace restore.sh --check "$name" 2>&1) \
+    || fail "--check with CONFIRM=replace failed: $out"
+grep -qF "$name: verified; it can be restored" <<< "$out" || fail "--check said: $out"
+[ "$(sql "$SHIFTS")" = "$shifts_at_backup" ] || fail "the refused restore or the check changed the shifts"
+ok "--check with CONFIRM=replace verifies the backup and changes nothing"
 sql "DELETE FROM shifts WHERE id = (SELECT min(id::text)::uuid FROM shifts)" > /dev/null
 [ "$(sql "$SHIFTS")" != "$shifts_at_backup" ] || fail "the shifts did not change"
 backup_run -e CONFIRM=replace restore.sh "$name"

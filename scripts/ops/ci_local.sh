@@ -16,6 +16,7 @@ BASE="${CI_LOCAL_BASE:-origin/main}"
 NODE_IMAGE="node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d"
 SHELLCHECK_IMAGE="koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d"
 GITLEAKS_IMAGE="ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+ACTIONLINT_IMAGE="rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667"
 LYCHEE_IMAGE="lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d"
 
 # CI's settings for the API's checks: an explicit environment and a published, refused-elsewhere key.
@@ -56,12 +57,24 @@ infra/tests/check_api_image.sh
 step "the backup make targets (a fake kubectl)"
 infra/tests/check_backup_jobs.sh
 
+step "the rollback and resume targets (fake flux, helm and kubectl)"
+infra/tests/check_deploy_ops.sh
+
+step "the release's scripts and workflow"
+infra/tests/check_release.sh
+
 step "ShellCheck"
 docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -x scripts/ops/*.sh infra/tests/*.sh \
-    infra/helm/tests/*.sh infra/backup/*.sh infra/backup/tests/*.sh
+    infra/helm/tests/*.sh infra/backup/*.sh infra/backup/tests/*.sh infra/release/*.sh
+
+step "actionlint"
+docker run --rm -v "$ROOT:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -no-color -oneline
 
 step "Helm charts: lint, kubeconform and the rendered-manifest checks"
 infra/helm/tests/assert.sh
+
+step "the hds-postgres chart version against $BASE (as CI on a pull request)"
+infra/helm/tests/chart_version.sh "$BASE"
 
 step "Markdown links (offline, as CI)"
 # Only tracked Markdown, as a clean checkout has it: node_modules and caches hold their own.
