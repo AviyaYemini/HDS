@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run feature 007's Playwright specs (apps/client/tests/e2e/ux/) on this machine, which has no Node.
+# Run feature 007's Playwright specs (apps/client/tests/e2e/ux/) on this machine, in CI's image.
 #
 #   scripts/ops/e2e_ux.sh                 every ux spec, both viewports
 #   scripts/ops/e2e_ux.sh a-design-system  one group's spec (any Playwright filter works)
@@ -7,10 +7,11 @@
 #
 # The API runs here (uv) on port 8100 against hds_p3_test, migrated and seeded first; the web build
 # and Playwright run in the pinned Playwright image on a copy of the tracked files, never on this
-# checkout, so node_modules here is never replaced with Linux builds. The browser in the container
-# reaches the API through host.docker.internal. One run at a time, across every session and
-# worktree: the script takes a lock in the shared git folder, refuses while ports 8100 or 3000 are
-# taken, and refuses while another session is connected to hds_p3_test (the test-database rule).
+# checkout: the browser and the build match CI's exactly, and node_modules here is never replaced
+# with Linux builds. The browser in the container reaches the API through host.docker.internal.
+# One run at a time, across every session and worktree: the script takes a lock in the shared git
+# folder, refuses while ports 8100 or 3000 are taken, and refuses while another session is
+# connected to hds_p3_test (the test-database rule).
 # Each refusal names the holder.
 set -euo pipefail
 
