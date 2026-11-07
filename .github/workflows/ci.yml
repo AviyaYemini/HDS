@@ -528,6 +528,13 @@ jobs:
         working-directory: apps/client
       - run: pnpm e2e
         working-directory: apps/client
+      # The same specs against a build made without previews: no preview address may resolve
+      # (specs/007-ux-redesign FR-069, T025). Only the tests tagged @previews-off run here.
+      - name: Previews switched off
+        run: |
+          EXPO_PUBLIC_API_URL=http://localhost:8100 pnpm exec expo export --platform web --output-dir dist
+          PREVIEWS=0 pnpm exec playwright test --project=ux-desktop --grep @previews-off
+        working-directory: apps/client
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

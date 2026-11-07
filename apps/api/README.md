@@ -57,7 +57,8 @@ fails until you do.
 | `DATABASE_URL` | Async SQLAlchemy URL. Outside development its password must not be a published one | local development database |
 | `CORS_ORIGINS` | JSON list of allowed origins; `*` is rejected | `localhost:3000`, `localhost:8081` |
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `900` |
-| `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `7` |
+| `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime (web sessions) | `7` |
+| `REFRESH_TOKEN_TTL_DAYS_NATIVE` | Refresh-token lifetime of phone sessions, renewed on every refresh (ADR 016) | `30` |
 | `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MINUTES` | Account lockout: the account locks on the failure that reaches the limit, and the count restarts when the lock ends | `5`, `15` |
 | `REFRESH_REUSE_GRACE_SECONDS` | A refresh token used a second time within this many seconds is refused and nothing else happens; later, every session of the user ends. Must be greater than 0 | `10` |
 | `LOGIN_RATE_LIMIT_PER_NETWORK` | Failed sign-ins allowed from one network address in one window of `LOGIN_LOCKOUT_MINUTES`; a success does not clear the count; `0` turns the limit off | `30` |

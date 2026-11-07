@@ -4,6 +4,8 @@ Layer: routers. Delegates to ``AuthService``; the only public endpoints are logi
 Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the other routers.
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,10 +26,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
-    """Credentials for ``POST /auth/login``."""
+    """Credentials for ``POST /auth/login``.
+
+    ``client_kind`` says what is signing in: ``web`` (the default) or ``native`` (the phone
+    app), whose refresh token lasts longer (007 FR-010, ADR 016).
+    """
 
     email: Email
     password: Password
+    client_kind: Literal["web", "native"] = "web"
 
 
 class TokenResponse(BaseModel):
@@ -75,7 +82,10 @@ def _make_service(db: AsyncSession) -> AuthService:
         "window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; "
         "a successful sign-in does not clear that count. "
         "Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue "
-        "is full; nothing is changed."
+        "is full; nothing is changed. "
+        "`client_kind` `native` (the phone app) gets a refresh token that lasts "
+        "`REFRESH_TOKEN_TTL_DAYS_NATIVE` days (30) and renews on every refresh; `web`, the "
+        "default, keeps `REFRESH_TOKEN_TTL_DAYS` (7)."
     ),
 )
 async def login(
@@ -95,12 +105,12 @@ async def login(
     (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not
     clear that count.
     Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
-    nothing is changed.
+    nothing is changed. `client_kind` `native` gets a 30-day refresh token, `web` keeps 7 days.
     """
     settings = get_settings()
     svc = _make_service(db)
     network = client_address(request, settings.TRUSTED_PROXY_COUNT)
-    result = await svc.login(str(body.email), body.password, network)
+    result = await svc.login(str(body.email), body.password, network, body.client_kind)
     return TokenResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,

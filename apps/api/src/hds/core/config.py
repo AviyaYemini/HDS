@@ -85,7 +85,10 @@ class Settings(BaseSettings):
             the placeholder and must be at least 32 bytes.
         JWT_ALGORITHM: Signature algorithm; the only one accepted when decoding.
         ACCESS_TOKEN_TTL_SECONDS: Access-token lifetime; Constitution VI caps it at 15 minutes.
-        REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again.
+        REFRESH_TOKEN_TTL_DAYS: Refresh-token lifetime before sign-in is required again, for a web
+            session (the default kind).
+        REFRESH_TOKEN_TTL_DAYS_NATIVE: The same for a phone session (``client_kind`` ``native``),
+            renewed on every refresh; 30 days by the owner's choice (007 FR-010, ADR 016).
         LOGIN_MAX_FAILURES: Consecutive failed sign-ins before the account locks.
         THROTTLE_SECRET_KEY: Keys the HMAC of the addresses in the throttle table. Without it a key
             is derived from ``JWT_SECRET_KEY``. Changing either restarts every count.
@@ -142,6 +145,7 @@ class Settings(BaseSettings):
     THROTTLE_SECRET_KEY: SecretStr | None = None
     ACCESS_TOKEN_TTL_SECONDS: int = 900  # 15 minutes
     REFRESH_TOKEN_TTL_DAYS: int = 7
+    REFRESH_TOKEN_TTL_DAYS_NATIVE: int = Field(default=30, gt=0)
     LOGIN_MAX_FAILURES: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
     REFRESH_REUSE_GRACE_SECONDS: int = Field(default=10, gt=0)

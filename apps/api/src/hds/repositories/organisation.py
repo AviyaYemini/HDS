@@ -81,6 +81,30 @@ class OrganisationRepository(BaseRepository[Organisation]):
         )
         return result.scalar_one_or_none()
 
+    async def update_contact(self, id: uuid.UUID, values: Mapping[str, Any]) -> Organisation | None:
+        """Set the contact card's columns from ``values`` (007 FR-012).
+
+        Args:
+            id: Organisation id, taken from the authenticated user.
+            values: Any of ``contact_phone``, ``contact_email`` and ``opening_hours``; a ``None``
+                clears that column, and others stay.
+
+        Returns:
+            The organisation as stored, or ``None``.
+        """
+        fields = ("contact_phone", "contact_email", "opening_hours")
+        changes = {f: values[f] for f in fields if f in values}
+        if not changes:
+            return await self.get_by_id(id)
+        result = await self.session.execute(
+            update(Organisation)
+            .where(Organisation.id == id)
+            .values(**changes)
+            .returning(Organisation)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def update_pay(self, id: uuid.UUID, values: Mapping[str, Any]) -> Organisation | None:
         """Set premium default columns (``pay_*``) of the organisation (005 FR-006).
 

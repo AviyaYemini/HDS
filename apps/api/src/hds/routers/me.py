@@ -1,12 +1,19 @@
-"""Me router: current-user profile endpoints.
+"""Me router: the signed-in user's own profile, capabilities and sessions.
 
-Layer: routers. Open to every authenticated role; it only ever touches the caller's own row.
+Layer: routers. Open to every authenticated role; it only ever touches the caller's own rows.
+``GET /me`` also serves the caller's capabilities, the one list the client gates its navigation by
+(007 FR-001, research R4).
 """
 
-from fastapi import APIRouter, Depends
+import uuid
+from datetime import datetime
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import get_current_user
 from hds.core.types import Name, Phone, omittable
@@ -14,11 +21,14 @@ from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
 from hds.routers.user_schemas import UserRead
+from hds.services.auth import AuthService
+from hds.services.capabilities import CapabilityService
 from hds.services.employee import EmployeeService
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -39,22 +49,122 @@ class ProfileUpdate(BaseModel):
     phone: Phone | None = None
 
 
+class MeRead(UserRead):
+    """The signed-in user's profile, with what they may do.
+
+    ``capabilities`` are the names in ``hds.core.capabilities``, sorted. ``managed_project_ids``
+    are the projects a Manager manages, where their ``:project`` capabilities apply; it is empty
+    for every other role (an Admin's scoped capabilities cover every project).
+    """
+
+    capabilities: list[str]
+    managed_project_ids: list[uuid.UUID]
+
+
+class SessionRead(BaseModel):
+    """One signed-in device: its live refresh token, never the token itself.
+
+    ``last_refreshed_at`` is when the device last signed in or refreshed; ``expires_at`` when the
+    session ends unless it refreshes again.
+    """
+
+    id: uuid.UUID
+    client_kind: Literal["web", "native"]
+    last_refreshed_at: datetime
+    expires_at: datetime
+
+
 @router.get(
     "",
-    response_model=UserRead,
+    response_model=MeRead,
     summary="Get my profile",
     description=(
         "Return the signed-in user's own profile, including their default hourly rate "
-        "(view only). Available to every role."
+        "(view only), the capabilities they hold now and, for a Manager, the projects they "
+        "manage. The client draws its navigation from `capabilities` only. Available to every "
+        "role."
     ),
 )
-async def get_me(current_user: User = Depends(get_current_user)) -> User:
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> MeRead:
     """Get my profile.
 
-    Return the signed-in user's own profile, including their default hourly rate (view only).
-    Available to every role.
+    Return the signed-in user's own profile, including their default hourly rate (view only), the
+    capabilities they hold now and, for a Manager, the projects they manage. Available to every
+    role.
     """
-    return current_user
+    caps = await CapabilityService(ProjectManagerRepository(db)).for_user(current_user)
+    profile = UserRead.model_validate(current_user).model_dump()
+    return MeRead(
+        **profile,
+        capabilities=caps.capabilities,
+        managed_project_ids=caps.managed_project_ids,
+    )
+
+
+def _auth(db: AsyncSession) -> AuthService:
+    return AuthService(
+        user_repo=UserRepository(db),
+        token_repo=RefreshTokenRepository(db),
+        config=get_settings(),
+        link_repo=InvitationTokenRepository(db),
+        throttle_repo=LoginThrottleRepository(db),
+    )
+
+
+@router.get(
+    "/sessions",
+    response_model=list[SessionRead],
+    summary="List my sessions",
+    description=(
+        "The signed-in user's live sessions, one per device, newest first. Available to every "
+        "role. `POST /auth/logout-all` ends them all."
+    ),
+)
+async def list_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> list[SessionRead]:
+    """List my sessions.
+
+    The signed-in user's live sessions, one per device, newest first. Available to every role.
+    """
+    tokens = await _auth(db).sessions(current_user.id)
+    return [
+        SessionRead(
+            id=t.id,
+            client_kind="native" if t.client_kind == "native" else "web",
+            last_refreshed_at=t.created_at,
+            expires_at=t.expires_at,
+        )
+        for t in tokens
+    ]
+
+
+@router.delete(
+    "/sessions/{id}",
+    status_code=204,
+    summary="End one of my sessions",
+    description=(
+        "Sign one device out by revoking its refresh token; its access token lapses within 15 "
+        "minutes. Answers 404 (`resource.not_found`) for an id that is not one of the caller's "
+        "live sessions. Available to every role."
+    ),
+)
+async def end_session(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> Response:
+    """End one of my sessions.
+
+    Sign one device out by revoking its refresh token. Answers 404 for an id that is not one of the
+    caller's live sessions. Available to every role.
+    """
+    await _auth(db).end_session(current_user.id, id)
+    return Response(status_code=204)
 
 
 @router.patch(

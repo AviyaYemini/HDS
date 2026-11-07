@@ -6,7 +6,7 @@
  * fails on serious and critical issues (FR-064, FR-065).
  */
 import { AxeBuilder } from "@axe-core/playwright";
-import { expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 
 /** The two languages every screen is checked in. */
 export const LANGUAGES = ["he", "en"] as const;
@@ -77,4 +77,20 @@ export async function movingElements(page: Page, rootTestId: string): Promise<st
     }
     return moving;
   });
+}
+
+/** The API the specs set data up through: the host's API from inside the Playwright image. */
+export const API_URL = process.env.E2E_API_URL ?? "http://localhost:8100";
+
+/** Whether this run's build has the previews switched on (`PREVIEWS=0` for the previews-off run). */
+export const PREVIEWS_ON = process.env.PREVIEWS !== "0";
+
+/** Sign a seeded role in through the API and return its bearer header, for setting data up. */
+export async function apiHeaders(request: APIRequestContext, role: Role): Promise<Record<string, string>> {
+  const response = await request.post(`${API_URL}/auth/login`, {
+    data: { email: USERS[role], password: PASSWORD },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const { access_token } = (await response.json()) as { access_token: string };
+  return { Authorization: `Bearer ${access_token}` };
 }
