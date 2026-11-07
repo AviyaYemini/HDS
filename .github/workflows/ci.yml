@@ -220,9 +220,64 @@ jobs:
       - run: uv run pytest tests/unit/ tests/property/ -v --tb=short
         working-directory: apps/api
 
-  test-integration:
-    name: Integration and contract tests (PostgreSQL 16)
+  # Whether a pull request touches what the database jobs test: the API (code, tests, migrations,
+  # pyproject.toml, uv.lock), the OpenAPI contract its tests and the drift check read, or this
+  # workflow. Those jobs skip otherwise, by a job-level `if:`, so their checks show as Skipped and
+  # still pass; a workflow-level `paths` filter would leave required checks pending forever. A push
+  # to main always runs everything: the Release workflow publishes only after CI passes there. Keep
+  # this job a required check, or a failure here would skip the database jobs unnoticed.
+  changes:
+    name: Changed paths (API, contract or CI)
     runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.diff.outputs.api }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Only a pull request can skip, and only when git can tell: a failed diff runs everything.
+          api=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && changed=$(git diff --name-only \
+            "$BASE...$HEAD_SHA" -- apps/api/ specs/001-foundation-auth-org/contracts/openapi.yaml \
+            .github/workflows/ci.yml); then
+            printf '%s\n' "$changed"
+            [ -n "$changed" ] || api=false
+          fi
+          echo "api=$api" | tee -a "$GITHUB_OUTPUT"
+
+  # The integration, contract and concurrency suites in five shards at once, each on a PostgreSQL of
+  # its own: one after another they took about 34 minutes. The split follows CI's timings (6 to 7.5
+  # minutes of tests each), and together the shards run exactly the tests the one job ran. The
+  # integration files split by the letter after `test_`; the third shard takes every name the first
+  # two do not, so a new file always runs, and the result job below fails on a test file outside
+  # them. Rebalance by moving letters, keeping the third shard the complement of the first two.
+  test-integration:
+    name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one failure does not hide another.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Integration tests 1 of 3 (PostgreSQL 16)
+            tests: "tests/integration/test_[a-c]*.py"
+          - name: Integration tests 2 of 3 (PostgreSQL 16)
+            tests: "tests/integration/test_[d-o]*.py"
+          - name: Integration tests 3 of 3 (PostgreSQL 16)
+            tests: "tests/integration/test_[!a-o]*.py"
+          - name: Contract tests in pytest (PostgreSQL 16)
+            tests: tests/contract/
+          # tests/concurrency needs real parallelism on PostgreSQL, so it runs here; the single-use
+          # and last-Admin guarantees would otherwise have no automated guard.
+          - name: Concurrency tests (PostgreSQL 16)
+            tests: tests/concurrency/
     services:
       postgres:
         image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
@@ -255,13 +310,52 @@ jobs:
         working-directory: apps/api
       - run: uv run alembic upgrade head
         working-directory: apps/api
-      # tests/concurrency needs real parallelism on PostgreSQL, so it runs in this job; the
-      # single-use and last-Admin guarantees would otherwise have no automated guard.
-      - run: uv run pytest tests/integration/ tests/contract/ tests/concurrency/ -v --tb=short
+      # Unquoted, so the shell expands the shard's glob; one that matches nothing fails the run.
+      - run: |
+          # shellcheck disable=SC2086
+          uv run pytest $TESTS -v --tb=short
         working-directory: apps/api
+        env:
+          TESTS: ${{ matrix.tests }}
+
+  # The one check to require for the shards above. A skipped matrix job reports under another name
+  # than its shards, so the shards' own names cannot be required: they would wait forever on a pull
+  # request that skips them. This job always runs, and passes only when every shard passed, or when
+  # all were skipped because the API did not change.
+  test-integration-result:
+    name: Integration and contract tests (PostgreSQL 16)
+    needs: [changes, test-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The integration shards take top-level tests/integration/test_*.py files by glob, where the
+      # one job ran the whole folder. A file pytest would collect anywhere else there, in a
+      # subfolder or named *_test.py (pytest's default python_files; pyproject.toml sets none),
+      # would run in no shard, so it fails here.
+      - name: Every integration test file is in a shard
+        run: |
+          stray=$(find apps/api/tests/integration -type f \
+            \( -name 'test_*.py' -o -name '*_test.py' \) \
+            | grep -vE '^apps/api/tests/integration/test_[^/]*\.py$' || true)
+          [ -z "$stray" ] && exit 0
+          printf '%s\n' "$stray" | while read -r file; do
+            echo "::error file=$file::no shard runs it; integration tests are top-level test_*.py"
+          done
+          exit 1
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          API: ${{ needs.changes.outputs.api }}
+          SHARDS: ${{ needs.test-integration.result }}
+        run: |
+          echo "changes: $CHANGES (api=$API); shards: $SHARDS"
+          [ "$CHANGES" = success ]
+          if [ "$API" = true ]; then [ "$SHARDS" = success ]; else [ "$SHARDS" = skipped ]; fi
 
   migration-check:
     name: Migration check (alembic check)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -295,6 +389,8 @@ jobs:
 
   contract:
     name: Contract tests (Schemathesis)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
