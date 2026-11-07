@@ -14,7 +14,7 @@ from math import ceil
 from typing import Any, NoReturn
 
 from hds.core import passwords
-from hds.core.exceptions import AuthError, NotFoundError, RateLimitedError
+from hds.core.exceptions import AuthError, ConflictError, NotFoundError, RateLimitedError
 from hds.core.security import create_access_token, generate_refresh_token, hash_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
 from hds.models.user import User
@@ -274,6 +274,35 @@ class AuthService:
         """
         if not await self._token_repo.revoke_for_user(session_id, user_id, RevocationReason.logout):
             raise NotFoundError(resource="Session", id=session_id)
+
+    async def end_other_sessions(self, user_id: uuid.UUID, current: uuid.UUID | None) -> int:
+        """Sign every other device out, keeping the caller's own session (007 FR-009, T039).
+
+        Fails safe when the caller's session is not known: an access token from before sessions
+        were marked carries no ``sid``, and a session revoked meanwhile is no longer live. Ending
+        every session would sign the caller out too, and ending none would claim a success that did
+        not happen, so both are refused instead.
+
+        Args:
+            user_id: The caller.
+            current: The caller's session, from the access token's ``sid``, or ``None``.
+
+        Returns:
+            How many sessions were ended.
+
+        Raises:
+            ConflictError: ``session.current_unknown`` (HTTP 409) when ``current`` is ``None`` or
+                not one of the caller's live sessions; signing in again gives a marked token.
+        """
+        live = await self._token_repo.live_for_user(user_id, datetime.now(UTC))
+        if current is None or current not in {t.id for t in live}:
+            raise ConflictError(
+                code="session.current_unknown",
+                detail="This device's session is not known; sign in again, then try once more",
+            )
+        return await self._token_repo.revoke_others_for_user(
+            user_id, current, RevocationReason.logout
+        )
 
     async def logout(self, raw_token: str, user_id: uuid.UUID) -> None:
         """Revoke the caller's refresh token, ending that session.

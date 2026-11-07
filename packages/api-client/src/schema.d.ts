@@ -1146,6 +1146,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/logout-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out of my other devices
+         * @description Revoke every refresh token of the signed-in user except the one of the session this request was made in (007 FR-009). Answers 409 (`session.current_unknown`) when that session is not known, for an access token issued before sessions were marked: nothing is revoked, and signing in again fixes it.
+         */
+        post: operations["logout_others_auth_logout_others_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/password-reset/confirm": {
         parameters: {
             query?: never;
@@ -8978,6 +8998,42 @@ export interface operations {
             };
             /** @description Missing, invalid or expired credentials. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    logout_others_auth_logout_others_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -43,6 +43,12 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     # own profile
     ("GET", "/me"): ANY,
     ("PATCH", "/me"): ANY,
+    # sessions and the contact card (007 FR-009, FR-012)
+    ("GET", "/me/sessions"): ANY,
+    ("DELETE", "/me/sessions/{id}"): ANY,
+    ("POST", "/auth/logout-others"): ANY,
+    ("GET", "/api/v1/organisation/contact"): ANY,
+    ("PATCH", "/api/v1/organisation/contact"): ADMIN,
     # employees (FR-008, FR-009, FR-016)
     ("GET", "/api/v1/employees"): MGR,
     ("POST", "/api/v1/employees"): MGR,

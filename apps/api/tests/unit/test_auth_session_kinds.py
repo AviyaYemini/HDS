@@ -12,7 +12,7 @@ import pytest
 
 from hds.core import passwords
 from hds.core.deps import current_session_id
-from hds.core.exceptions import NotFoundError
+from hds.core.exceptions import ConflictError, NotFoundError
 from hds.core.security import create_access_token, decode_access_token
 from hds.models.user import UserRole
 from hds.services.auth import AuthService
@@ -130,3 +130,35 @@ def test_the_session_id_is_read_from_the_token_and_absent_without_one() -> None:
         assert current_session_id(unmarked) is None
         assert current_session_id(None) is None
         assert current_session_id("not a token") is None
+
+
+def _live(*ids: uuid.UUID) -> list[MagicMock]:
+    return [MagicMock(id=i) for i in ids]
+
+
+@pytest.mark.asyncio
+async def test_signing_out_of_other_devices_keeps_the_callers_session() -> None:
+    """007 T039: every other live session ends; the caller's own stays."""
+    service, tokens = _signed_in_service()
+    mine, other = uuid.uuid4(), uuid.uuid4()
+    tokens.live_for_user.return_value = _live(mine, other)
+    tokens.revoke_others_for_user.return_value = 1
+    assert await service.end_other_sessions(uuid.uuid4(), mine) == 1
+    args = tokens.revoke_others_for_user.await_args.args
+    assert args[1] == mine
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("current", [None, "revoked"])
+async def test_signing_out_of_other_devices_ends_nothing_when_the_session_is_unknown(
+    current: str | None,
+) -> None:
+    """No sid (a token from before the marker), or a session no longer live: 409, nothing ends."""
+    service, tokens = _signed_in_service()
+    tokens.live_for_user.return_value = _live(uuid.uuid4(), uuid.uuid4())
+    sid = None if current is None else uuid.uuid4()
+    with pytest.raises(ConflictError) as refused:
+        await service.end_other_sessions(uuid.uuid4(), sid)
+    assert refused.value.code == "session.current_unknown"
+    tokens.revoke_others_for_user.assert_not_called()
+    tokens.revoke_all_for_user.assert_not_called()

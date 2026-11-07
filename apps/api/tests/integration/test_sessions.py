@@ -5,9 +5,12 @@ Covers: 007 FR-009, FR-010, N12 (research R10, ADR 016, task T027). A web sign-i
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from httpx import AsyncClient
 
+from hds.core.config import get_settings
+from hds.core.security import create_access_token
 from hds.models.user import User
 
 PASSWORD = "Dev1234!"
@@ -25,7 +28,7 @@ def _bearer(tokens: dict[str, str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 
-async def _sessions(client: AsyncClient, tokens: dict[str, str]) -> list[dict[str, str]]:
+async def _sessions(client: AsyncClient, tokens: dict[str, str]) -> list[dict[str, Any]]:
     response = await client.get("/me/sessions", headers=_bearer(tokens))
     assert response.status_code == 200, response.text
     return list(response.json())
@@ -121,3 +124,48 @@ async def test_each_device_sees_its_own_session_marked_current_even_after_a_refr
     [current] = [s for s in after if s["current"]]
     assert current["client_kind"] == "native"
     assert current["id"] not in {s["id"] for s in from_phone}
+
+
+async def test_signing_out_of_other_devices_keeps_only_this_one(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """007 T039: the other devices' refresh tokens are refused afterwards; this one still works."""
+    phone = await _sign_in(async_client, client_kind="native")
+    other_web = await _sign_in(async_client)
+    web = await _sign_in(async_client)
+    ended = await async_client.post("/auth/logout-others", headers=_bearer(web))
+    assert ended.status_code == 204
+    for gone in (phone, other_web):
+        refused = await async_client.post(
+            "/auth/refresh", json={"refresh_token": gone["refresh_token"]}
+        )
+        assert refused.status_code == 401
+    left = await _sessions(async_client, web)
+    assert [s["current"] for s in left] == [True]
+    kept = await async_client.post("/auth/refresh", json={"refresh_token": web["refresh_token"]})
+    assert kept.status_code == 200
+
+
+async def test_signing_out_of_other_devices_without_a_marked_token_ends_nothing(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """An access token from before the marker has no sid: 409, and every session survives."""
+    phone = await _sign_in(async_client, client_kind="native")
+    web = await _sign_in(async_client)
+    user = seed_users["employee"]
+    settings = get_settings()
+    unmarked = create_access_token(
+        user.id,
+        user.organization_id,
+        user.role,
+        60,
+        settings.JWT_SECRET_KEY.get_secret_value(),
+        settings.JWT_ALGORITHM,
+    )
+    refused = await async_client.post(
+        "/auth/logout-others", headers={"Authorization": f"Bearer {unmarked}"}
+    )
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "session.current_unknown"
+    assert len(await _sessions(async_client, web)) == 2
+    assert len(await _sessions(async_client, phone)) == 2

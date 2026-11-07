@@ -1,9 +1,10 @@
-"""Auth router: login, refresh, logout, logout-all.
+"""Auth router: login, refresh, logout, logout-others, logout-all.
 
 Layer: routers. Delegates to ``AuthService``; the only public endpoints are login and refresh.
 Paths are served under ``/auth`` without the ``/api/v1`` prefix used by the other routers.
 """
 
+import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.client_address import client_address
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
-from hds.core.deps import get_current_user
+from hds.core.deps import current_session_id, get_current_user
 from hds.core.types import Email, Password, Token
 from hds.models.user import User
 from hds.repositories.invitation_token import InvitationTokenRepository
@@ -176,6 +177,29 @@ async def logout(
     """
     svc = _make_service(db)
     await svc.logout(body.refresh_token, current_user.id)
+
+
+@router.post(
+    "/logout-others",
+    status_code=204,
+    summary="Sign out of my other devices",
+    description=(
+        "Revoke every refresh token of the signed-in user except the one of the session this "
+        "request was made in (007 FR-009). Answers 409 (`session.current_unknown`) when that "
+        "session is not known, for an access token issued before sessions were marked: nothing "
+        "is revoked, and signing in again fixes it."
+    ),
+)
+async def logout_others(
+    current_user: User = Depends(get_current_user),
+    session_id: uuid.UUID | None = Depends(current_session_id),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> None:
+    """Sign out of my other devices.
+
+    Keeps the caller's own session; refuses with 409 when it is not known, revoking nothing.
+    """
+    await _make_service(db).end_other_sessions(current_user.id, session_id)
 
 
 @router.post(

@@ -1957,6 +1957,23 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /auth/logout-others:
+    post:
+      operationId: auth_logout_others
+      summary: Sign out of the current user's other devices (007 FR-009)
+      description: >
+        Ends every live session except the one the request was made in. When that session is not
+        known (an access token issued before sessions were marked), nothing is ended and the
+        answer is 409 `session.current_unknown`; signing in again fixes it.
+      tags: [Auth]
+      responses:
+        "204":
+          description: Every other session ended; their access tokens lapse within 15 minutes.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /auth/logout-all:
     post:
       operationId: auth_logout_all
