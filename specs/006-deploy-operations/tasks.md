@@ -13,13 +13,29 @@ for the right reason before the code that satisfies it exists. Infrastructure ha
 
 Tests run on the private database `hds_p3_test`, one run at a time.
 
-**Each group ends with**:
+**Groups A to L ended with**:
 1. mutation checks, where code was written;
 2. the gates: ruff, format, `mypy --strict src/ tests/`, interrogate, the import graph,
    `alembic check`, plus ShellCheck and `helm lint` where they apply;
 3. `/hds-review` and `/code-review high`;
 4. the log (`p1-log.md`);
 5. a commit.
+
+**From Group M on, each group ends with** (the owner's decision of 2026-11-07,
+`.claude/hds/process-cuts-proposal.md`):
+1. the scoped `make ci-local` green: the checks for the paths the branch changed;
+2. `/code-review high`, each finding a row in `review-ledger.md`, none open;
+3. the mutants named in the closing task, if any: at most three, and only where a passing test
+   could be hollow (a test that could not fail first, or a security, money, time or data-loss
+   rule); one at a time, with the hooks on;
+4. one commit, whose message names the ledger rows it fixes, for example `(R12, R13)`.
+
+No log: `p1-log.md` stays as it is and gets no new entries. An owner's choice or an accepted limit
+goes in the commit message, this file or `research.md`.
+
+**When the pull request is ready to push, once**: `make ci-local-full`; `make ci-local-db` if
+`apps/api/` or `specs/001-foundation-auth-org/contracts/openapi.yaml` changed; `/hds-review`; the
+reviewer session; their fixes in one commit. The full suite runs only in CI.
 
 **Organization**: one group per plan phase, in plan order. Each group ends green and is committed.
 
@@ -359,10 +375,10 @@ broken backup sends an e-mail (Group M).
   7. `make ops-rollback`, then `make ops-resume`, timed (SC-008).
   8. Rotate `JWT_SECRET_KEY` and stay signed in.
 
-  Record each outcome, with times, in the log
+  Record each outcome, with times, in the group's commit message (there is no log from Group M on)
 - [ ] T065 [P] Add ADR 013 `docs/adr/013-deployment-and-operations.md`: the cluster, the pull-based deploys (with Group I's choices, research R4: the trust check on `workflow_run`, one build per release scanned and pushed as it is, `--ignore-unfixed` as Proposed, `hds-postgres` versioned by hand; review R111; keyless signing and Flux's verification of the charts, Proposed, with their limit that whoever can push to `main` can sign, T047c), Vault with the operator (with Group J's choices: the third chart `hds-secrets` and the first-install deadlock it avoids, Flux given the releases only after Vault is written, the restart targets, the database password's rotation order, the stdin-only handling of keys and tokens; review R147), the private metrics port, the alerts (with Group K's choices: Alertmanager's configuration rendered from Vault in `monitoring`, owner-based selection of the backup Jobs, no default rules and so `make ops-status` checking alerting itself; review R172), traces through the job row, the SMTP relay, backups through rclone, Vault's snapshot through age, and the accepted limit that the client's address is lost before Traefik on a Mac (research R14; revisiting it with the cloud move is Proposed), with the rejected alternatives from research.md. Add the same limit to the proxy note in `infra/README.md`. Add it to the index in `docs/`
 - [ ] T066 [P] Update `docs/hds-api.md` §9 with an operations note linking the runbooks, and §12 decision 8 as settled (a local k3d cluster). Also add `apps/api/README.md` for the new settings, `infra/README.md` for the shared environment, the `docs/` index, and `.env.example` for the new optional settings, leaving secrets empty
-- [ ] T067 Final gates on the whole branch, the Markdown link check, `/hds-review`, `/code-review high`, the log, and a commit `docs(spec): close 006`
+- [ ] T067 The group's close: the scoped `make ci-local` and `/code-review high` (no mutants are named for Group M). Then, the pull request being ready, once: `make ci-local-full`, `make ci-local-db` if `apps/api/` or the 001 contract changed, `/hds-review`, the reviewer session, and their fixes in one commit. Then a commit `docs(spec): close 006`
 
 ## Dependencies
 

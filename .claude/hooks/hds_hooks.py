@@ -140,22 +140,43 @@ LEDGER_NAME = "review-ledger.md"
 _LEDGER_STATUSES = ("open", "fixed", "won't-fix")
 
 
+def _ledger_status(cell):
+    """The status a ledger cell holds, or None: open, fixed or won't-fix, in any case.
+
+    A won't-fix may carry its reason after a colon (``won't-fix: the check needs it``).
+    """
+    status = cell.split(":", 1)[0].strip().lower()
+    return status if status in _LEDGER_STATUSES else None
+
+
 def ledger_counts(path):
     """How many findings in a review ledger are open, and how many it holds: ``(open, total)``.
 
-    The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``) whose fourth column
-    is the status: open, fixed or won't-fix, in any case. It is read as the second-to-last cell, so
-    a ``|`` inside a finding's text moves nothing. No file counts as ``(0, 0)``.
+    The ledger is a Markdown table (``.claude/hds/review-ledger-template.md``): id, source, finding
+    and status. Ledgers started before 2026-11-07 have a fifth column, the fix commit; the header
+    row says which shape a table has. The status is counted from the end of the row (the last cell,
+    or the second-to-last under a "Fix commit" header), so a ``|`` inside a finding's text moves
+    nothing. A row before any header is read in either shape. No file counts as ``(0, 0)``.
     """
     if not path.exists():
         return 0, 0
     open_rows = total = 0
+    status_at = None  # where the status sits, counted from the row's end; None until a header
     for line in path.read_text(errors="ignore").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 5 or cells[-2].lower() not in _LEDGER_STATUSES:
+        if cells[0] == "ID":
+            status_at = -2 if cells[-1].lower() == "fix commit" else -1
+            continue
+        if len(cells) < 4:
+            continue
+        if status_at is not None:
+            status = _ledger_status(cells[status_at])
+        else:
+            status = _ledger_status(cells[-1]) or (len(cells) >= 5 and _ledger_status(cells[-2]))
+        if not status:
             continue
         total += 1
-        open_rows += cells[-2].lower() == "open"
+        open_rows += status == "open"
     return open_rows, total
 
 
@@ -668,6 +689,61 @@ def strip_message_arguments(cmd):
     return "".join(out)
 
 
+# git's options that name where it works; replayed to ask the branch the same way. `-c` is not:
+# configuration taken from a command string is never run before the command is approved.
+_GIT_PATH_OPTIONS = ("--git-dir", "--work-tree")
+_GIT_VALUED_OPTIONS = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env")
+
+
+def _expand(path):
+    return os.path.expandvars(os.path.expanduser(path))
+
+
+def git_commits(cmd, cwd):
+    """Where each ``git commit`` in ``cmd`` would commit: ``(directory, options)`` pairs.
+
+    The directory starts at ``cwd`` and follows the command's own ``cd`` and ``pushd`` and each
+    ``git -C``, so ``git -C ../other commit`` and ``cd ../other && git commit`` are judged by the
+    checkout they commit to, not the session's. ``--git-dir`` and ``--work-tree`` come back as
+    options, to ask git the branch the same way. None when the command cannot be split into words.
+    """
+    segments = _segments(cmd)
+    if segments is None:
+        return None
+    here, found = Path(cwd), []
+    for words in segments:
+        at = command_word_index(words)
+        if at >= len(words):
+            continue
+        name, args = words[at].rsplit("/", 1)[-1], words[at + 1 :]
+        if name in ("cd", "pushd"):
+            target = next((a for a in args if not a.startswith("-")), "~")
+            here = here / _expand(target)
+        elif name == "git":
+            where, options, i = here, [], 0
+            while i < len(args) and args[i].startswith("-"):
+                flag = args[i]
+                if flag in _GIT_VALUED_OPTIONS and i + 1 < len(args):
+                    if flag == "-C":
+                        where = where / _expand(args[i + 1])
+                    elif flag in _GIT_PATH_OPTIONS:
+                        options += [flag, _expand(args[i + 1])]
+                    i += 2
+                    continue
+                if flag.startswith(tuple(o + "=" for o in _GIT_PATH_OPTIONS)):
+                    options.append(flag)
+                i += 1
+            if i < len(args) and args[i] == "commit":
+                found.append((where, options))
+    return found
+
+
+def commit_branch(where, options):
+    """The branch a commit made in ``where`` with git's ``options`` lands on; "" if git cannot tell."""
+    rc, out = run(["git", *options, "rev-parse", "--abbrev-ref", "HEAD"], cwd=where)
+    return out if rc == 0 else ""
+
+
 def pre_bash(d):
     cmd = (d.get("tool_input") or {}).get("command") or ""
     scanned = strip_message_arguments(cmd)
@@ -680,8 +756,15 @@ def pre_bash(d):
     if leak:
         return block(f"Blocked command: {leak}.")
 
-    if re.search(r"\bgit\s+commit\b", cmd):
-        if git_branch() in ("main", "master") and not os.environ.get("HDS_ALLOW_MAIN"):
+    cwd = d.get("cwd") or os.getcwd()
+    commits = git_commits(scanned, cwd)
+    if not commits and re.search(r"\bgit\s+commit\b", cmd):
+        # Not found as a command of its own (inside a heredoc for a shell, say): judged where the
+        # session is, as before.
+        commits = [(Path(cwd), [])]
+    if commits:
+        if not os.environ.get("HDS_ALLOW_MAIN") and \
+                any(commit_branch(where, options) in ("main", "master") for where, options in commits):
             return block("Blocked: do not commit on main. Create the feature branch first, for example "
                          "`git switch -c 001-foundation-auth-org`. (Override on purpose: HDS_ALLOW_MAIN=1.)")
         if "$(" not in cmd and "<<" not in cmd:
@@ -945,10 +1028,38 @@ EVENTS = {
     "stop": stop,
 }
 
+
+def event_root(d):
+    """The checkout an event happened in: the git top level of its ``cwd``, else ``ROOT``.
+
+    Claude Code sets ``CLAUDE_PROJECT_DIR`` to the project's main checkout, also for a session in a
+    linked worktree (``.claude/worktrees/<name>``). Read from there, a worktree's files have paths
+    under ``.claude/worktrees/`` and a commit is judged by the main checkout's branch, so the
+    edit gates, the main-branch check and the Stop gate would look at the wrong checkout. The
+    event's ``cwd`` (the process's, without one) is the session's own checkout.
+    """
+    cwd = d.get("cwd") or os.getcwd()
+    rc, out = run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    return Path(out).resolve() if rc == 0 and out else ROOT
+
+
+def use_root(root):
+    """Make ``root`` the repository every check of this event reads, and its own state folder."""
+    global ROOT, API, _GIT_DIR, STATE_DIR
+    ROOT = root
+    API = ROOT / "apps" / "api"
+    _GIT_DIR = _git_dir()
+    STATE_DIR = _GIT_DIR / "hds-hooks" if _GIT_DIR else None
+
+
 if __name__ == "__main__":
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     handler = EVENTS.get(event)
     if not handler:
         print(f"unknown event: {event}", file=sys.stderr)
         sys.exit(1)
-    sys.exit(handler(read_input() if event not in ("session-start", "status") else {}))
+    data = read_input() if event not in ("session-start", "status") else {}
+    root = event_root(data)
+    if root != ROOT:
+        use_root(root)
+    sys.exit(handler(data))

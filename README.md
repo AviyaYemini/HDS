@@ -58,15 +58,23 @@ make build  # only rebuild the images (make up also does)
 make ps     # state of the containers
 make logs   # follow the logs; `make logs S=api` for one service
 make hooks  # once per clone: install the git hooks (needs uv)
-make ci-local     # CI's checks that need no database, here (needs uv and Docker; a few minutes)
-make ci-local-db  # opt in, about 25 minutes: the migration check and the database suites
+make ci-local       # CI's checks that need no database, for what the branch changed (uv, Docker)
+make ci-local-full  # all of them, once, when the pull request is ready to push
+make ci-local-db    # about 25 minutes, at PR-ready if the API changed: the database suites
 ```
 
-`make ci-local` runs what CI runs without a database: ruff, format, interrogate, `mypy --strict`,
-the import graph, pip-audit, the unit and property tests, the API image check, ShellCheck, the
-Markdown links, and gitleaks and commitlint over `origin/main..HEAD` (`CI_LOCAL_BASE` moves the
-start); the client's checks run in the pinned Node image, so no Node is needed. `make ci-local-db`
-adds the migration check on a throwaway database and the database suites on `hds_p3_test`.
+`make ci-local-full` runs what CI runs without a database: ruff, format, interrogate,
+`mypy --strict`, the import graph, pip-audit, the unit and property tests, the API image check,
+the ops targets and release scripts against fakes, ShellCheck, actionlint, the Helm charts, Vault's
+policies, the alert rules, the Markdown links, gitleaks and commitlint over `origin/main..HEAD`
+(`CI_LOCAL_BASE` moves the start), and the client; the client's checks run in the pinned Node
+image, so no Node is needed. `make ci-local` runs only the steps for the paths changed since the
+merge base with `origin/main`: the API's for `apps/api/` or the 001 contract, the client's for
+`apps/client/`, `packages/` and the workspace files (an API change alone runs the generated
+client's drift check), and each infra check for its own files; the Markdown links, gitleaks and
+commitlint always run. It ends with what ran and what was skipped, and why; a docs-only change
+should take about a minute (an estimate from the steps' times). `make ci-local-db` adds the migration check on a throwaway database and the
+database suites on `hds_p3_test`. The full suite runs in CI.
 
 `make hooks` installs pre-commit 4.7.0 as a uv tool (`uv tool install`, so it outlives
 `uv cache clean`), then the git hooks from `.pre-commit-config.yaml`. Each commit then runs ruff, ruff format and `mypy --strict` on `apps/api` (the project's own
