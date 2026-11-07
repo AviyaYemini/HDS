@@ -8,8 +8,10 @@
 # The API runs here (uv) on port 8100 against hds_p3_test, migrated and seeded first; the web build
 # and Playwright run in the pinned Playwright image on a copy of the tracked files, never on this
 # checkout, so node_modules here is never replaced with Linux builds. The browser in the container
-# reaches the API through host.docker.internal. One run at a time on hds_p3_test (the test-database
-# rule): the script refuses to start while another session is connected to it.
+# reaches the API through host.docker.internal. One run at a time, across every session and
+# worktree: the script takes a lock in the shared git folder, refuses while ports 8100 or 3000 are
+# taken, and refuses while another session is connected to hds_p3_test (the test-database rule).
+# Each refusal names the holder.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -22,9 +24,27 @@ DATABASE_URL="postgresql+asyncpg://hds:hds_dev@localhost:5432/$DB_NAME"
 PORT=8100
 PREVIEWS="${PREVIEWS:-1}"
 
+# The lock lives in the common git folder, so worktrees of this clone share it. mkdir is atomic.
+LOCK="$(git rev-parse --git-common-dir)/hds-e2e-ux.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    echo "e2e_ux: another run holds $LOCK: $(cat "$LOCK/holder" 2>/dev/null || echo unknown)" >&2
+    exit 1
+fi
+printf '%s pid %s in %s since %s\n' "${HDS_SESSION_NAME:-$(whoami)}" "$$" "$ROOT" "$(date -u +%H:%M:%SZ)" \
+    > "$LOCK/holder"
+for port in "$PORT" 3000; do
+    if holder=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1 " pid " $2}') \
+        && [ -n "$holder" ]; then
+        rm -rf "$LOCK"
+        echo "e2e_ux: port $port is taken by $holder" >&2
+        exit 1
+    fi
+done
+
 busy=$(docker exec infra-postgres-1 psql -U hds -d postgres -tAc \
     "SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid()")
 if [ "$busy" != "0" ]; then
+    rm -rf "$LOCK"
     echo "e2e_ux: $DB_NAME has $busy other connection(s); another run may be using it" >&2
     exit 1
 fi
@@ -35,7 +55,7 @@ api_pid=""
 # shellcheck disable=SC2329
 cleanup() {
     if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
-    rm -rf "$scratch"
+    rm -rf "$scratch" "$LOCK"
 }
 trap cleanup EXIT
 
