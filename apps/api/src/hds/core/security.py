@@ -78,6 +78,7 @@ def create_access_token(
     ttl_seconds: int,
     secret: str,
     algorithm: str = "HS256",
+    sid: uuid.UUID | None = None,
 ) -> str:
     """Sign a short-lived access token.
 
@@ -91,18 +92,22 @@ def create_access_token(
         ttl_seconds: Lifetime; the ``exp`` claim is issued-at plus this.
         secret: HMAC signing key.
         algorithm: JWT algorithm name.
+        sid: The session the token belongs to, the id of the refresh token issued with it,
+            stored as ``sid`` so ``GET /me/sessions`` can mark the caller's own (007 T039).
 
     Returns:
         The compact JWT.
     """
     now = datetime.now(UTC)
-    payload = {
+    payload: dict[str, Any] = {
         "sub": str(sub),
         "org": str(org),
         "role": role.value,
         "iat": now,
         "exp": now + timedelta(seconds=ttl_seconds),
     }
+    if sid is not None:
+        payload["sid"] = str(sid)
     token: str = jwt.encode(payload, secret, algorithm=algorithm)
     return token
 

@@ -11,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hds.core import passwords
+from hds.core.deps import current_session_id
 from hds.core.exceptions import NotFoundError
+from hds.core.security import create_access_token, decode_access_token
+from hds.models.user import UserRole
 from hds.services.auth import AuthService
 from tests.unit.test_auth_service import _make_config, _make_user, _no_counts
 
@@ -96,3 +99,34 @@ async def test_ending_ones_own_session_revokes_it_as_a_sign_out() -> None:
     user_id, session_id = uuid.uuid4(), uuid.uuid4()
     await service.end_session(user_id, session_id)
     tokens.revoke_for_user.assert_awaited_once_with(session_id, user_id, "logout")
+
+
+def _sid(access_token: str) -> str:
+    secret = _config().JWT_SECRET_KEY.get_secret_value()
+    return str(decode_access_token(access_token, secret=secret)["sid"])
+
+
+@pytest.mark.asyncio
+async def test_the_access_token_names_the_session_it_was_issued_with() -> None:
+    """007 T039: the sid claim is the id of the refresh token stored with it."""
+    service, tokens = _signed_in_service()
+    row = MagicMock(id=uuid.uuid4())
+    tokens.create.return_value = row
+    with patch.object(passwords, "verify_password", AsyncMock(return_value=True)):
+        answer = await service.login("test@hds.test", "password")
+    assert _sid(answer.access_token) == str(row.id)
+
+
+def test_the_session_id_is_read_from_the_token_and_absent_without_one() -> None:
+    secret = _config().JWT_SECRET_KEY.get_secret_value()
+    sid = uuid.uuid4()
+    with patch("hds.core.deps.get_settings") as settings:
+        settings.return_value.JWT_SECRET_KEY.get_secret_value.return_value = secret
+        settings.return_value.JWT_ALGORITHM = "HS256"
+        user, org = uuid.uuid4(), uuid.uuid4()
+        marked = create_access_token(user, org, UserRole.employee, 60, secret, sid=sid)
+        unmarked = create_access_token(user, org, UserRole.employee, 60, secret)
+        assert current_session_id(marked) == sid
+        assert current_session_id(unmarked) is None
+        assert current_session_id(None) is None
+        assert current_session_id("not a token") is None

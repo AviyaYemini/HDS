@@ -17,6 +17,7 @@ from hds.core import passwords
 from hds.core.exceptions import AuthError, NotFoundError, RateLimitedError
 from hds.core.security import create_access_token, generate_refresh_token, hash_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
+from hds.models.user import User
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -160,17 +161,10 @@ class AuthService:
         if locked_until is not None:
             raise _locked(locked_until)
 
-        access_token = create_access_token(
-            sub=user.id,
-            org=user.organization_id,
-            role=user.role,
-            ttl_seconds=self._config.ACCESS_TOKEN_TTL_SECONDS,
-            secret=self._config.JWT_SECRET_KEY.get_secret_value(),
-            algorithm=self._config.JWT_ALGORITHM,
-        )
         raw_refresh, token_hash = generate_refresh_token()
         expires_at = datetime.now(UTC) + self._refresh_lifetime(client_kind)
-        await self._token_repo.create(user.id, token_hash, expires_at, client_kind)
+        session = await self._token_repo.create(user.id, token_hash, expires_at, client_kind)
+        access_token = self._access_token(user, session.id)
         await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
@@ -231,21 +225,32 @@ class AuthService:
                 raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
             await self._refuse_reuse(current)
 
-        access_token = create_access_token(
+        raw_refresh, new_hash = generate_refresh_token()
+        # The new token keeps the session's kind, so a phone stays signed in while it is used.
+        new_expires_at = datetime.now(UTC) + self._refresh_lifetime(stored.client_kind)
+        session = await self._token_repo.create(
+            user.id, new_hash, new_expires_at, stored.client_kind
+        )
+        access_token = self._access_token(user, session.id)
+        await self._remove_expired_records(user.id)
+
+        return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
+
+    def _access_token(self, user: User, session_id: uuid.UUID) -> str:
+        """An access token for ``user`` in the session whose live refresh token is ``session_id``.
+
+        The session id changes on every refresh, as the refresh token rotates; the access token
+        issued with it carries the new one (007 T039).
+        """
+        return create_access_token(
             sub=user.id,
             org=user.organization_id,
             role=user.role,
             ttl_seconds=self._config.ACCESS_TOKEN_TTL_SECONDS,
             secret=self._config.JWT_SECRET_KEY.get_secret_value(),
             algorithm=self._config.JWT_ALGORITHM,
+            sid=session_id,
         )
-        raw_refresh, new_hash = generate_refresh_token()
-        # The new token keeps the session's kind, so a phone stays signed in while it is used.
-        new_expires_at = datetime.now(UTC) + self._refresh_lifetime(stored.client_kind)
-        await self._token_repo.create(user.id, new_hash, new_expires_at, stored.client_kind)
-        await self._remove_expired_records(user.id)
-
-        return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
     def _refresh_lifetime(self, client_kind: str) -> timedelta:
         """How long a refresh token of this kind lives (007 FR-010)."""

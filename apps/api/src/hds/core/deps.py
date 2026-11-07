@@ -173,6 +173,32 @@ async def require_admin(
     return user
 
 
+def current_session_id(token: str | None = Depends(oauth2_scheme)) -> uuid.UUID | None:
+    """The session the caller's access token belongs to, from its ``sid`` claim (007 T039).
+
+    Used beside :func:`get_current_user`, which has already refused a bad token; this only reads
+    the claim. A token issued before sessions were marked carries none, and answers ``None``.
+
+    Args:
+        token: Bearer token from the ``Authorization`` header, if any.
+
+    Returns:
+        The id of the live refresh token issued with the access token, or ``None``.
+    """
+    if token is None:
+        return None
+    settings = get_settings()
+    try:
+        payload = decode_access_token(
+            token,
+            secret=settings.JWT_SECRET_KEY.get_secret_value(),
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        return uuid.UUID(str(payload["sid"]))
+    except (ValueError, KeyError):
+        return None
+
+
 async def get_current_user_or_self(
     id: uuid.UUID,
     user: User = Depends(get_current_user),

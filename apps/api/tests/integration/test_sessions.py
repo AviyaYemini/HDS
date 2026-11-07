@@ -99,3 +99,25 @@ async def test_another_users_session_cannot_be_ended(
     )
     assert response.status_code == 404
     assert len(await _sessions(async_client, mine)) == 1
+
+
+async def test_each_device_sees_its_own_session_marked_current_even_after_a_refresh(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """007 T039: "sign out of other devices" needs to know which session is the caller's."""
+    phone = await _sign_in(async_client, client_kind="native")
+    web = await _sign_in(async_client)
+    from_web = await _sessions(async_client, web)
+    assert [s["client_kind"] for s in from_web if s["current"]] == ["web"]
+    from_phone = await _sessions(async_client, phone)
+    assert [s["client_kind"] for s in from_phone if s["current"]] == ["native"]
+
+    # A refresh rotates the token, so the session's id changes; the new access token follows it.
+    renewed = await async_client.post(
+        "/auth/refresh", json={"refresh_token": phone["refresh_token"]}
+    )
+    assert renewed.status_code == 200
+    after = await _sessions(async_client, renewed.json())
+    [current] = [s for s in after if s["current"]]
+    assert current["client_kind"] == "native"
+    assert current["id"] not in {s["id"] for s in from_phone}

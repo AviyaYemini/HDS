@@ -1259,7 +1259,7 @@ export interface paths {
         };
         /**
          * List my sessions
-         * @description The signed-in user's live sessions, one per device, newest first. Available to every role. `POST /auth/logout-all` ends them all.
+         * @description The signed-in user's live sessions, one per device, newest first, with `current` set on the one this request was made in. Available to every role. `POST /auth/logout-all` ends them all.
          */
         get: operations["list_sessions_me_sessions_get"];
         put?: never;
@@ -2844,7 +2844,8 @@ export interface components {
          * @description One signed-in device: its live refresh token, never the token itself.
          *
          *     ``last_refreshed_at`` is when the device last signed in or refreshed; ``expires_at`` when the
-         *     session ends unless it refreshes again.
+         *     session ends unless it refreshes again. ``current`` marks the session of the request itself,
+         *     so "sign out of other devices" can end every other one.
          */
         SessionRead: {
             /**
@@ -2852,6 +2853,8 @@ export interface components {
              * @enum {string}
              */
             client_kind: "web" | "native";
+            /** Current */
+            current: boolean;
             /**
              * Expires At
              * Format: date-time

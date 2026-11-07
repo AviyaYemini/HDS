@@ -219,7 +219,9 @@ components:
 
     SessionRead:
       type: object
-      required: [id, client_kind, last_refreshed_at, expires_at]
+      description: >
+        One signed-in device (007 FR-009); `current` marks the session the request was made in.
+      required: [id, client_kind, last_refreshed_at, expires_at, current]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
@@ -232,6 +234,8 @@ components:
         expires_at:
           type: string
           format: date-time
+        current:
+          type: boolean
 
     OpeningHours:
       type: object

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.capabilities import Capability
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
-from hds.core.deps import get_current_user
+from hds.core.deps import current_session_id, get_current_user
 from hds.core.types import Name, Phone, omittable
 from hds.models.user import User
 from hds.repositories.client import ClientRepository
@@ -66,13 +66,15 @@ class SessionRead(BaseModel):
     """One signed-in device: its live refresh token, never the token itself.
 
     ``last_refreshed_at`` is when the device last signed in or refreshed; ``expires_at`` when the
-    session ends unless it refreshes again.
+    session ends unless it refreshes again. ``current`` marks the session of the request itself,
+    so "sign out of other devices" can end every other one.
     """
 
     id: uuid.UUID
     client_kind: Literal["web", "native"]
     last_refreshed_at: datetime
     expires_at: datetime
+    current: bool
 
 
 @router.get(
@@ -120,12 +122,14 @@ def _auth(db: AsyncSession) -> AuthService:
     response_model=list[SessionRead],
     summary="List my sessions",
     description=(
-        "The signed-in user's live sessions, one per device, newest first. Available to every "
-        "role. `POST /auth/logout-all` ends them all."
+        "The signed-in user's live sessions, one per device, newest first, with `current` set on "
+        "the one this request was made in. Available to every role. `POST /auth/logout-all` ends "
+        "them all."
     ),
 )
 async def list_sessions(
     current_user: User = Depends(get_current_user),
+    session_id: uuid.UUID | None = Depends(current_session_id),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> list[SessionRead]:
     """List my sessions.
@@ -139,6 +143,7 @@ async def list_sessions(
             client_kind="native" if t.client_kind == "native" else "web",
             last_refreshed_at=t.created_at,
             expires_at=t.expires_at,
+            current=t.id == session_id,
         )
         for t in tokens
     ]

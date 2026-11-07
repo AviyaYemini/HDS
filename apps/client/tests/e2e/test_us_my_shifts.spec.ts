@@ -36,9 +36,10 @@ test.beforeAll(async () => {
 
 test("an employee sees their published night shift at the site's times", async ({ page }) => {
   await signIn(page, "employee");
-  await expect(page).toHaveURL(/\/availability$/);
-  await page.getByTestId("nav-shifts").click();
-  await expect(page).toHaveURL(/\/shifts$/);
+  // Sign-in lands on the role's home; My shifts is under My work (007 contracts/ui-routes.md).
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByTestId("nav-my-shifts").click();
+  await expect(page).toHaveURL(/\/my\/shifts/);
   const card = page.getByTestId(`shift-${shiftId}`);
   await expect(card).toContainText("Mon, Jul 1");
   await expect(card).toContainText("23:00 – 07:00 (Tue, Jul 2)");
