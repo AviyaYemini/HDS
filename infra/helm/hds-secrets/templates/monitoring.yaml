@@ -1,0 +1,80 @@
+# Alertmanager's configuration from Vault (specs/006 T056; reviews R159, R164): in the monitoring
+# namespace, with its own sign-in (role alertmanager, which reads hds/smtp only), a VaultStaticSecret
+# that renders the whole alertmanager.yaml (files/alertmanager.yaml.tmpl), and the message templates
+# (files/hds.tmpl). Both files are read as they are, so Helm renders neither. The relay's password
+# and the operators' addresses are in no values file.
+{{- $ns := .Values.monitoring.namespace }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.monitoring.serviceAccount }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: hds
+  namespace: {{ $ns }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+spec:
+  address: {{ .Values.vault.address | quote }}
+  skipTLSVerify: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: alertmanager
+  namespace: {{ $ns }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+spec:
+  vaultConnectionRef: hds
+  method: kubernetes
+  mount: {{ .Values.vault.authMount | quote }}
+  kubernetes:
+    role: {{ .Values.monitoring.role | quote }}
+    serviceAccount: {{ .Values.monitoring.serviceAccount | quote }}
+    audiences: ["vault"]
+    tokenExpirationSeconds: 600
+---
+# Kept on uninstall, as the others: deleting it would delete Alertmanager's configuration.
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: alertmanager-hds
+  namespace: {{ $ns }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  vaultAuthRef: alertmanager
+  type: kv-v2
+  mount: {{ .Values.vault.mount | quote }}
+  path: smtp
+  refreshAfter: {{ .Values.vault.refreshAfter | quote }}
+  destination:
+    name: alertmanager-hds
+    create: true
+    transformation:
+      excludeRaw: true
+      excludes: [".*"]
+      templates:
+        alertmanager.yaml:
+          text: |
+            {{- .Files.Get "files/alertmanager.yaml.tmpl" | nindent 12 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-hds-templates
+  namespace: {{ $ns }}
+  labels:
+    {{- include "hds-secrets.labels" . | nindent 4 }}
+data:
+  hds.tmpl: |
+    {{- .Files.Get "files/hds.tmpl" | nindent 4 }}

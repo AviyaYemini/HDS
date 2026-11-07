@@ -1,0 +1,129 @@
+# Release (specs/006-deploy-operations T046, T047; research R2, R3 amended, R4; FR-015, FR-023).
+#
+# After CI succeeds on a push to main: build hds-api, hds-web and hds-backup once for linux/amd64
+# and linux/arm64 into OCI image layouts, scan every platform of each for vulnerabilities and
+# secrets, push those same layouts (the bytes scanned are the bytes pushed), then package and push
+# the charts with the images' digests. Each image and chart is signed keyless by digest as it is
+# pushed (T047c, Proposed). Flux in the cluster pulls the new chart, only with this workflow's
+# signature (infra/flux).
+#
+# A manual run (workflow_dispatch) is a dry run: it builds and scans, and publishes nothing; with
+# dry_run=false it fails at once. Runs never overlap and are never cancelled midway.
+#
+# Actions are pinned by commit; Trivy, skopeo, Helm and yq run from images pinned by digest
+# (infra/VERSIONS.md). trivy-action and setup-trivy are never used (CVE-2026-33634).
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and scan only; nothing is published (a dispatched run is always a dry run)
+        type: boolean
+        default: true
+
+# Real releases queue in `release`; a dry run has its own group, since GitHub keeps one pending run
+# per group and would otherwise drop a pending release for it (review R116).
+concurrency:
+  group: ${{ github.event_name == 'workflow_run' && 'release' || 'release-dry-run' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    name: Build, scan and publish
+    # A first filter; infra/release/trust.sh checks the same and fails the run when it does not hold
+    # (review R99): a fork's pull request from a branch named main passes branches: [main] alone.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # id-token: write only here: the OIDC token cosign signs with, keyless (T047c, FR-028, Proposed).
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    env:
+      HDS_TRIVY_CACHE: hds-trivy-cache
+    steps:
+      # Only the trust check, from the default branch, before any code of the tested commit runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: infra/release/trust.sh
+          sparse-checkout-cone-mode: false
+          path: trust
+      - name: Decide whether this run publishes
+        id: trust
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: trust/infra/release/trust.sh
+
+      # Exactly the commit CI tested.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ steps.trust.outputs.sha }}
+          path: src
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+
+      - name: Build the images once, for both platforms
+        working-directory: src
+        env:
+          SHA: ${{ steps.trust.outputs.sha }}
+        run: |
+          for name in api web backup; do
+            docker buildx build --platform linux/amd64,linux/arm64 --build-arg "HDS_VERSION=$SHA" \
+              -f "infra/Dockerfile.$name" --output "type=oci,dest=../layouts/hds-$name,tar=false" .
+          done
+
+      - name: Scan every platform of every image
+        working-directory: src
+        run: |
+          for name in api web backup; do
+            for platform in linux/amd64 linux/arm64; do
+              infra/release/scan.sh vuln "../layouts/hds-$name" "$platform"
+              infra/release/scan.sh secret "../layouts/hds-$name" "$platform"
+            done
+          done
+
+      - name: Push the scanned images
+        id: images
+        if: steps.trust.outputs.publish == 'true'
+        working-directory: src
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.trust.outputs.sha }}
+        run: infra/release/push_images.sh "${GITHUB_REPOSITORY_OWNER,,}" "$SHA" ../layouts
+
+      - name: Package and push the charts
+        if: steps.trust.outputs.publish == 'true'
+        working-directory: src
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.trust.outputs.sha }}
+          VERSION: 0.1.${{ github.run_number }}
+          API: ${{ steps.images.outputs.api_digest }}
+          WEB: ${{ steps.images.outputs.web_digest }}
+          BACKUP: ${{ steps.images.outputs.backup_digest }}
+        run: |
+          infra/release/publish_charts.sh "${GITHUB_REPOSITORY_OWNER,,}" "$VERSION" "$SHA" \
+            "$API" "$WEB" "$BACKUP"

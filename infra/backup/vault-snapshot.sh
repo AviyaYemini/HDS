@@ -20,7 +20,8 @@ rclone_config plain
 
 if [ -z "${VAULT_TOKEN:-}" ]; then
     : "${HDS_VAULT_ROLE:?set VAULT_TOKEN or HDS_VAULT_ROLE}"
-    jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    # The pod's token for the audience "vault" (a projected volume), not its API-server token.
+    jwt=$(cat "${HDS_VAULT_JWT:-/var/run/secrets/vault/token}")
     VAULT_TOKEN=$(jq -n --arg role "$HDS_VAULT_ROLE" --arg jwt "$jwt" '{role: $role, jwt: $jwt}' \
         | curl -fsS --data @- "$VAULT_ADDR/v1/auth/kubernetes/login" | jq -er .auth.client_token) \
         || fail "Vault refused the ServiceAccount's sign-in for role $HDS_VAULT_ROLE"

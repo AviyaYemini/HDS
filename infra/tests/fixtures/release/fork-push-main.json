@@ -1,0 +1,11 @@
+{
+  "workflow_run": {
+    "event": "push",
+    "head_branch": "main",
+    "conclusion": "success",
+    "head_sha": "0123456789abcdef0123456789abcdef01234567",
+    "head_repository": {
+      "full_name": "someone/HDS"
+    }
+  }
+}

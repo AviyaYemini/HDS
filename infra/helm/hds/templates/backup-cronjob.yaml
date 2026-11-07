@@ -2,24 +2,11 @@
 # slept still runs when it wakes, within a day (startingDeadlineSeconds); two never overlap. It
 # reaches the database through the Service the values name, which the hds-postgres release provides
 # (research R3, amended), and so it carries the database-client label.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ include "hds.name" . }}-backups
-  labels:
-    {{- include "hds.labels" (dict "root" . "component" "backup") | nindent 4 }}
-  annotations:
-    # The local copies outlive the release: uninstalling hds never deletes them.
-    helm.sh/resource-policy: keep
-spec:
-  accessModes: ["ReadWriteOnce"]
-  {{- with .Values.backup.storage.storageClassName }}
-  storageClassName: {{ . }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.backup.storage.size }}
----
+#
+# The local copies are on the claim the values name, made outside Helm by infra/cluster/
+# backup-pvc.yaml (review R189): a claim in the chart would stay Pending under a
+# WaitForFirstConsumer class (k3s's local-path) until the first backup, and Helm's --wait, Flux's
+# among them, would time out on it at every install.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -89,6 +76,6 @@ spec:
           volumes:
             - name: backups
               persistentVolumeClaim:
-                claimName: {{ include "hds.name" . }}-backups
+                claimName: {{ .Values.backup.storage.claimName | quote }}
             - name: tmp
               emptyDir: {}

@@ -1,0 +1,80 @@
+# HDS's alert rules (specs/006-deploy-operations T055, T056; contracts/ops.md section 3), read as is
+# into the PrometheusRule (templates/prometheus-rules.yaml) and by promtool's tests
+# (infra/cluster/alerts/tests.yaml). There are no others: no rule on error rates or latency, and none
+# on hds_http_* (spec, Clarifications).
+#
+# A Job is the backup's, the restore test's or the snapshot's by its owner, the CronJob, as
+# kube-state-metrics reports it (review R159): a Job made by `make ops-backup` from the CronJob is
+# owned by it, and alerts; a Job of `make ops-restore`, which has no owner (review R122), never
+# does. Only the newest Job of each CronJob counts, so an old failure stops alerting once a later
+# run succeeds. A Job has failed when its Failed condition is true (kube_job_failed), as
+# `make ops-status` reads it, not when it counts failed pods (review R179). The two recording rules
+# are helpers for that, not alerts.
+groups:
+  - name: hds-jobs
+    rules:
+      - record: hds:job_owned_start_time
+        expr: |
+          max by (namespace, job_name) (kube_job_status_start_time)
+            * on (namespace, job_name) group_left (owner_name)
+          max by (namespace, job_name, owner_name) (
+            kube_job_owner{owner_kind="CronJob", owner_name=~"hds-backup|hds-restore-test|hds-vault-snapshot"}
+          )
+      - record: hds:job_newest_failed
+        expr: |
+          (
+            hds:job_owned_start_time
+              == on (namespace, owner_name) group_left
+            max by (namespace, owner_name) (hds:job_owned_start_time)
+          )
+          and on (namespace, job_name)
+          (max by (namespace, job_name) (kube_job_failed{condition="true"}) == 1)
+
+      - alert: HdsBackupFailed
+        expr: hds:job_newest_failed{owner_name="hds-backup"}
+        labels:
+          severity: page
+        annotations:
+          summary: "The newest backup ({{ $labels.job_name }}) failed: on the machine, off it, or both."
+      - alert: HdsRestoreTestFailed
+        expr: hds:job_newest_failed{owner_name="hds-restore-test"}
+        labels:
+          severity: page
+        annotations:
+          summary: "The newest restore test ({{ $labels.job_name }}) failed."
+      - alert: HdsVaultSnapshotFailed
+        expr: hds:job_newest_failed{owner_name="hds-vault-snapshot"}
+        labels:
+          severity: page
+        annotations:
+          summary: "The newest Vault snapshot ({{ $labels.job_name }}) failed; after a restart, Vault may be sealed."
+
+      # No success for 26 h (one missed or stuck run), or none at all 26 h after the CronJob was made
+      # (the series only exists once one succeeds). For 1 h: a Mac waking after a day off runs the
+      # missed backup at once, and its success clears this before anything is sent.
+      - alert: HdsBackupMissing
+        expr: |
+          (time() - max by (namespace) (kube_cronjob_status_last_successful_time{cronjob="hds-backup"}) > 26 * 3600)
+          or
+          (
+            time() - max by (namespace) (kube_cronjob_created{cronjob="hds-backup"}) > 26 * 3600
+            unless on (namespace) kube_cronjob_status_last_successful_time{cronjob="hds-backup"}
+          )
+        for: 1h
+        labels:
+          severity: page
+        annotations:
+          summary: "No backup has succeeded for more than 26 hours."
+      - alert: HdsRestoreTestMissing
+        expr: |
+          (time() - max by (namespace) (kube_cronjob_status_last_successful_time{cronjob="hds-restore-test"}) > 8 * 86400)
+          or
+          (
+            time() - max by (namespace) (kube_cronjob_created{cronjob="hds-restore-test"}) > 8 * 86400
+            unless on (namespace) kube_cronjob_status_last_successful_time{cronjob="hds-restore-test"}
+          )
+        for: 1h
+        labels:
+          severity: page
+        annotations:
+          summary: "No restore test has succeeded for more than 8 days."

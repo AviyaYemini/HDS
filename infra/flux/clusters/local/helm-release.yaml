@@ -1,0 +1,38 @@
+# The hds release (specs/006 T048, research R4, FR-018, FR-022).
+# - In flux-system, with the Helm release itself named hds and stored in hds, so `helm -n hds`
+#   (make ops-rollback, make ops-restore) finds it.
+# - A failed install or upgrade is not retried. A failed upgrade rolls back to the previous revision:
+#   with retries 0, Flux remediates the last failure only when remediateLastFailure is set.
+# - Drift detection stays off: runbook docs/runbooks/restore.md section 2 suspends the hds-backup
+#   CronJob with kubectl patch, which drift correction would undo (review R97).
+# - maxHistory keeps 10 revisions, the record of every deploy and what a rollback goes back to.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hds
+spec:
+  interval: 5m
+  releaseName: hds
+  targetNamespace: hds
+  storageNamespace: hds
+  chartRef:
+    kind: OCIRepository
+    name: hds
+  dependsOn:
+    - name: hds-postgres
+  timeout: 10m
+  maxHistory: 10
+  driftDetection:
+    mode: disabled
+  install:
+    remediation:
+      retries: 0
+  upgrade:
+    remediation:
+      retries: 0
+      remediateLastFailure: true
+      strategy: rollback
+  valuesFrom:
+    - kind: ConfigMap
+      name: hds-values
+      valuesKey: values.yaml

@@ -24,13 +24,25 @@ jobs:
       - run: infra/tests/check_api_image.sh
       # make ops-backup and ops-restore-test, against a fake kubectl (specs/006 T045b).
       - run: infra/tests/check_backup_jobs.sh
+      # make ops-rollback and ops-resume against fake flux, helm and kubectl; the release's scripts
+      # and workflow, without GitHub or a registry (specs/006 T046 to T049).
+      - run: infra/tests/check_deploy_ops.sh
+      - run: infra/tests/check_release.sh
+      # make ops-status against a fake kubectl and helm (T057).
+      - run: infra/tests/check_status.sh
       # The operations scripts, POSIX sh (specs/006). Version as infra/VERSIONS.md.
       - name: ShellCheck
         run: |
           docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d -x \
             scripts/ops/*.sh infra/tests/*.sh infra/helm/tests/*.sh infra/backup/*.sh \
-            infra/backup/tests/*.sh
+            infra/backup/tests/*.sh infra/release/*.sh
+      # The workflows (specs/006 T047). Version as infra/VERSIONS.md.
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
+            -no-color -oneline
 
   chart:
     name: Helm charts (lint, kubeconform, rendered-manifest checks)
@@ -38,9 +50,25 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      # Both charts, hds and hds-postgres, for values-local.yaml and values-ci.yaml (specs/006
-      # T033). Helm, kubeconform and yq run from images pinned in infra/VERSIONS.md.
+        with:
+          # The whole history, so chart_version.sh finds the merge base with the target branch.
+          fetch-depth: 0
+      # The three charts (hds for values-local.yaml and values-ci.yaml, hds-postgres, hds-secrets),
+      # Vault's and the operator's charts with infra/cluster's values, and Flux's files (specs/006
+      # T033, T048, T051, T052). Helm, kubeconform and yq run from images pinned in
+      # infra/VERSIONS.md.
       - run: infra/helm/tests/assert.sh
+      # A pull request that changes a fixed-version chart raises its version (T047, reviews
+      # R98, R135).
+      - if: github.event_name == 'pull_request'
+        run: infra/helm/tests/chart_version.sh "origin/$GITHUB_BASE_REF"
+      # Vault's policies and roles, as scripts/ops/vault_configure.sh writes them, against a dev
+      # Vault of the cluster's version (T052).
+      - run: infra/tests/check_vault_policy.sh
+      # The alert rules with promtool, and Alertmanager's configuration and e-mails with amtool,
+      # both of the cluster's versions (T055, T056).
+      - run: infra/tests/check_alerts.sh
+      - run: infra/tests/check_alertmanager.sh
 
   backup-restore:
     name: Backups and the restore test (compose, encrypted folder remotes)
@@ -203,6 +231,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       api: ${{ steps.diff.outputs.api }}
+      deploy: ${{ steps.diff.outputs.deploy }}
+      compat: ${{ steps.diff.outputs.compat }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -221,6 +251,26 @@ jobs:
             [ -n "$changed" ] || api=false
           fi
           echo "api=$api" | tee -a "$GITHUB_OUTPUT"
+          # What a rolling update must prove (specs/006 T059): the code, the charts, the cluster's
+          # shape, and the proof itself. Not apps/api alone: a chart-only change (probes, strategy,
+          # the PDB, the NetworkPolicies) is exactly what it checks.
+          deploy=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && changed=$(git diff --name-only \
+            "$BASE...$HEAD_SHA" -- apps/ infra/helm/ infra/cluster/k3d.yaml \
+            infra/cluster/backup-pvc.yaml 'infra/Dockerfile.*' infra/backup/ infra/web/ \
+            scripts/ops/status.sh infra/tests/rolling_update.sh infra/tests/rolling-update-values.yaml \
+            infra/tests/load.py infra/tests/flux_verify.sh .github/workflows/ci.yml); then
+            [ -n "$changed" ] || deploy=false
+          fi
+          echo "deploy=$deploy" | tee -a "$GITHUB_OUTPUT"
+          # The compatibility check (specs/006 T061): the API's paths, as above, and its own script
+          # (review R198), without widening `api`, which the database jobs read.
+          compat=$api
+          if [ "$compat" = false ] && changed=$(git diff --name-only "$BASE...$HEAD_SHA" -- \
+            infra/tests/compat.sh); then
+            [ -z "$changed" ] || compat=true
+          fi
+          echo "compat=$compat" | tee -a "$GITHUB_OUTPUT"
 
   # The integration, contract and concurrency suites in five shards at once, each on a PostgreSQL of
   # its own: one after another they took about 34 minutes. The split follows CI's timings (6 to 7.5
@@ -481,3 +531,61 @@ jobs:
         with:
           name: playwright-report
           path: apps/client/playwright-report/
+
+  # The base's release upgraded to the head's on k3d, under signed-in load, with Flux's signature
+  # check and the web build on the upgraded cluster (specs/006 T059, FR-017, FR-019, FR-020).
+  rolling-update:
+    name: Rolling update on k3d (base to head, under load)
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: 0.13.5  # infra/VERSIONS.md
+      - run: uv sync --extra dev
+        working-directory: apps/api
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: apps/client
+      # The base: the pull request's, or for a push the commit before it (the first commit of a
+      # branch has none: its parent then).
+      - env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          HDS_CLUSTER_SMOKE: cd apps/client && pnpm exec playwright test -c tests/cluster/playwright.cluster.config.ts
+        run: |
+          base=${PR_BASE:-$BEFORE}
+          case $base in "" | 0000000000000000000000000000000000000000) base=$(git rev-parse HEAD~1) ;; esac
+          infra/tests/rolling_update.sh "$base"
+
+  # The base's code and integration tests on the head's schema (specs/006 T061, FR-016).
+  compatibility:
+    name: Old code on the new schema (compatibility)
+    needs: changes
+    if: needs.changes.outputs.compat == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: 0.13.5  # infra/VERSIONS.md
+      - env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=${PR_BASE:-$BEFORE}
+          case $base in "" | 0000000000000000000000000000000000000000) base=$(git rev-parse HEAD~1) ;; esac
+          infra/tests/compat.sh "$base"

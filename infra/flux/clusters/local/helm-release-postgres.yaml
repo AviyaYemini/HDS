@@ -1,0 +1,26 @@
+# The hds-postgres release (specs/006 T048, research R3 amended): installed before hds, whose
+# pre-install migration hook needs the database. Its lifecycle is the data's: neither a rollback
+# of hds nor a release of the app touches it.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hds-postgres
+spec:
+  interval: 10m
+  releaseName: hds-postgres
+  targetNamespace: hds
+  storageNamespace: hds
+  chartRef:
+    kind: OCIRepository
+    name: hds-postgres
+  # Its password is the hds-api Secret's, which hds-secrets keeps.
+  dependsOn:
+    - name: hds-secrets
+  timeout: 10m
+  maxHistory: 10
+  install:
+    remediation:
+      retries: 0
+  upgrade:
+    remediation:
+      retries: 0

@@ -83,15 +83,19 @@ ingress:
     - /auth
     - /me
 
-# The namespace that alone may reach the operations port 9100 (metrics, the worker's probes).
+# The namespace that alone may reach the operations port 9100 (metrics, the worker's probes), and
+# whether the chart renders its ServiceMonitors and PrometheusRule (kube-prometheus-stack's kinds;
+# off in a cluster without it, such as CI's).
 monitoring:
   namespace: monitoring
+  enabled: true
 
 # The backups (research R11): daily at 03:30 in the organisation's zone, then pruning; a run missed
 # while the machine slept runs when it wakes (startingDeadlineSeconds 86400). Not 02:30: in
 # Asia/Jerusalem that time does not exist on the day the clocks go forward (02:00 to 03:00), and the
-# CronJob controller then never schedules it (review R83). The local copy is on the hds-backups
-# volume, which outlives the release.
+# CronJob controller then never schedules it (review R83). The local copy is on the claim
+# storage.claimName, made outside the chart (infra/cluster/backup-pvc.yaml; review R189), which
+# Helm neither waits for nor deletes.
 backup:
   schedule: "30 3 * * *"
   timeZone: Asia/Jerusalem
@@ -99,9 +103,7 @@ backup:
   # The folder on Drive (or, later, the S3 bucket's prefix).
   offsitePath: hds
   storage:
-    size: 20Gi
-    # Empty: the cluster's default class (k3s: local-path).
-    storageClassName: ""
+    claimName: hds-backups
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {memory: 512Mi}
