@@ -300,6 +300,21 @@ lines).
   and links nowhere outside the cluster.
 - **Shown with the health status**: `make ops-status` prints the parts' readiness and versions, the
   last backup, the last restore test and the last deploy, with any alert that is firing.
+- **Settled in Group K** (reviews R159 to R168):
+  - **Alertmanager's configuration from Vault**: Alertmanager runs in `monitoring` and cannot read
+    `hds-smtp`, and `OPERATOR_EMAILS` are personal addresses, so no values file may hold them. A
+    VaultStaticSecret in `monitoring` (in hds-secrets, with its own sign-in: the Vault role
+    `alertmanager` reads `hds/data/smtp` only) renders the whole `alertmanager.yaml`, each value as
+    a JSON string so no character can break it. One receiver, no sub-routes.
+  - **The message**: Alertmanager's `email.default.subject` and `email.default.html` are replaced
+    from a ConfigMap: the alert, the object, the time, the summary.
+  - **Which Job is the backup's**: by its owner, the CronJob, and only each CronJob's newest Job,
+    so `make ops-backup`'s failures alert and `make ops-restore`'s Jobs (no owner) never do. The
+    "missing" alerts also fire when a CronJob has never succeeded.
+  - **Flux's alerts** keep Flux's names (`Flux<Kind><Reason>`); there is no `HdsDeployFailed`.
+  - **No other rules**: the stack's default rules are off, its Watchdog among them. So
+    `make ops-status` checks that Prometheus and Alertmanager are ready and Alertmanager's
+    configuration is present: nothing else would say alerting is down.
 
 **Alternatives**: a chat webhook (a second channel, and application mail still needs SMTP);
 `aiosmtplib` (a new dependency for a few messages a day).

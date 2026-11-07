@@ -1,0 +1,15 @@
+{{/*
+  HDS's alert e-mails (specs/006-deploy-operations T056, FR-010a), replacing Alertmanager's default
+  subject and body: each alert's name, the object it is about, when it started and its one-line
+  summary, and nothing else (no labels list, no log line, no link). Mounted from the ConfigMap
+  alertmanager-hds-templates; infra/tests/check_alertmanager.sh renders them.
+*/}}
+{{ define "email.default.subject" }}[HDS] {{ if eq .Status "firing" }}{{ .Alerts.Firing | len }} firing{{ else }}resolved{{ end }}: {{ .CommonLabels.alertname }}{{ end }}
+
+{{ define "hds.object" }}{{ if .Labels.job_name }}Job {{ .Labels.job_name }}{{ else if .Labels.name }}{{ .Labels.kind }} {{ .Labels.namespace }}/{{ .Labels.name }}{{ else }}namespace {{ .Labels.namespace }}{{ end }}{{ end }}
+
+{{ define "email.default.html" }}<html><body>
+{{ range .Alerts }}<p><b>{{ .Labels.alertname }}</b> ({{ .Status }})<br>
+{{ template "hds.object" . }}, since {{ .StartsAt.UTC.Format "2006-01-02 15:04 UTC" }}<br>
+{{ or .Annotations.summary .Annotations.message }}</p>
+{{ end }}</body></html>{{ end }}

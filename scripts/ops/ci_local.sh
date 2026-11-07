@@ -63,6 +63,9 @@ infra/tests/check_deploy_ops.sh
 step "the release's scripts and workflow"
 infra/tests/check_release.sh
 
+step "make ops-status (a fake kubectl and helm)"
+infra/tests/check_status.sh
+
 step "ShellCheck"
 docker run --rm -v "$ROOT:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -x scripts/ops/*.sh infra/tests/*.sh \
     infra/helm/tests/*.sh infra/backup/*.sh infra/backup/tests/*.sh infra/release/*.sh
@@ -78,6 +81,10 @@ infra/helm/tests/chart_version.sh "$BASE"
 
 step "Vault's policies and roles (a dev Vault)"
 infra/tests/check_vault_policy.sh
+
+step "the alert rules (promtool) and Alertmanager's configuration (amtool)"
+infra/tests/check_alerts.sh
+infra/tests/check_alertmanager.sh
 
 step "Markdown links (offline, as CI)"
 # Only tracked Markdown, as a clean checkout has it: node_modules and caches hold their own.

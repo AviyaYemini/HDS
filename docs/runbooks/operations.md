@@ -159,7 +159,10 @@ After `make ops-cluster` and before Flux installs anything (specs/006 T063, T064
    ```
 
 4. Configure it: `make ops-vault-configure`. Expected: `Vault is configured: hds/ (KV v2),
-   Kubernetes auth, the hds and vault-snapshot roles`. It is safe to run again.
+   Kubernetes auth, the hds, vault-snapshot and alertmanager roles`. It is safe to run again, and
+   is run again after an update that adds a role or a policy (signed in as in "Signing in for a
+   change"): the alertmanager role came with Group K, and without it Alertmanager's sign-in is
+   refused and its configuration never arrives.
 
 5. Write the four paths. Each value is typed at a silent prompt or made by `openssl`, and reaches
    Vault as one JSON object on its standard input (`printf` is the shell's own, so no value is an
@@ -282,3 +285,50 @@ remove them on purpose, knowing every Secret in `hds` goes with them: suspend Fl
 releases (`flux -n flux-system suspend helmrelease <name>` for `hds`, `hds-postgres` and
 `hds-secrets`), then `kubectl -n hds delete vaultstaticsecret --all`, then
 `helm -n hds uninstall hds-secrets`.
+
+## Alerts and status
+
+Prometheus (in `monitoring`) scrapes the API and the worker on their operations port and reads
+the backups' Jobs from kube-state-metrics. Alertmanager e-mails `OPERATOR_EMAILS` (from `hds/smtp`)
+through the relay, for HDS's five alerts (contracts/ops.md section 3) and for every error Flux
+forwards, under Flux's own names (`FluxHelmReleaseUpgradeFailed`, `FluxOCIRepositoryVerificationError`
+and so on). There are no other rules.
+
+**What an e-mail holds**: the subject `[HDS] 1 firing: HdsBackupFailed`, and for each alert its name,
+the object (`Job hds-backup-29001`, `HelmRelease flux-system/hds`), the time it started (UTC) and
+its one-line summary. No labels list, log line or link.
+
+**At a glance**: `make ops-status`. Expected, when all is well, every line `ok` and exit 0:
+
+```text
+Deployments in hds
+  ok    hds-api: 2/2 ready, version <commit>
+  ok    hds-worker: 1/1 ready, version <commit>
+  ok    hds-web: 1/1 ready, version <commit>
+Backups
+  ok    backup: last success <time>
+  ok    restore test: last success <time>
+  ok    vault snapshot: last success <time>
+Deploys of hds
+  <the last three helm history rows>
+Alerting
+  ok    prometheus ready
+  ok    alertmanager ready
+  ok    Alertmanager's configuration (alertmanager-hds) is present
+  ok    no alert firing
+Vault
+  ok    unsealed
+```
+
+Each failing item reads `FAIL` and says what is wrong; the exit status is 1. Alerting checks itself
+here, since nothing e-mails when Alertmanager or Prometheus is down: run it after a restart of the
+machine.
+
+- **Right after set-up**, Alertmanager is not ready until `make ops-flux` has synced its
+  configuration: the Secret `alertmanager-hds`, rendered from `hds/smtp` by hds-secrets. That is
+  expected, not a fault.
+- **Changing the recipients or the relay**: `vault kv patch -mount=hds smtp OPERATOR_EMAILS=-` (and
+  the like, as in section Vault). Within a minute the Secret is rendered again and Alertmanager
+  reloads it; the API and the worker restart for the relay's settings.
+- **A refused `make ops-restore`** does not alert: its Jobs belong to no CronJob. A failed
+  `make ops-backup` does, as a scheduled one would.

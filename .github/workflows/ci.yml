@@ -28,6 +28,8 @@ jobs:
       # and workflow, without GitHub or a registry (specs/006 T046 to T049).
       - run: infra/tests/check_deploy_ops.sh
       - run: infra/tests/check_release.sh
+      # make ops-status against a fake kubectl and helm (T057).
+      - run: infra/tests/check_status.sh
       # The operations scripts, POSIX sh (specs/006). Version as infra/VERSIONS.md.
       - name: ShellCheck
         run: |
@@ -63,6 +65,10 @@ jobs:
       # Vault's policies and roles, as scripts/ops/vault_configure.sh writes them, against a dev
       # Vault of the cluster's version (T052).
       - run: infra/tests/check_vault_policy.sh
+      # The alert rules with promtool, and Alertmanager's configuration and e-mails with amtool,
+      # both of the cluster's versions (T055, T056).
+      - run: infra/tests/check_alerts.sh
+      - run: infra/tests/check_alertmanager.sh
 
   backup-restore:
     name: Backups and the restore test (compose, encrypted folder remotes)

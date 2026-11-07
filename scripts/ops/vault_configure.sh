@@ -8,9 +8,11 @@
 #   2. Kubernetes auth, with only kubernetes_host in its config: Vault reads the CA and the
 #      reviewer token from its own pod, so a snapshot restored onto a new cluster still lets the
 #      Vault Secrets Operator and the snapshot job sign in (review R95);
-#   3. the policies hds (read hds/data/*) and vault-snapshot (the raft snapshot only);
-#   4. the roles, each bound to exactly one ServiceAccount in namespace hds, with short tokens:
-#      hds for hds-vault (the VaultAuth's), vault-snapshot for hds-vault-snapshot.
+#   3. the policies hds (read hds/data/*), vault-snapshot (the raft snapshot only) and alertmanager
+#      (read hds/data/smtp only);
+#   4. the roles, each bound to exactly one ServiceAccount, with short tokens: hds for hds-vault
+#      and vault-snapshot for hds-vault-snapshot, in hds; alertmanager for hds-alertmanager-vault,
+#      in monitoring (review R164).
 #
 # Environment: VAULT_ADDR and VAULT_TOKEN, as the vault CLI reads them; HDS_VAULT ("vault"), the
 # command that runs the CLI (the checks run it in a container); HDS_KUBERNETES_HOST
@@ -47,6 +49,8 @@ v policy write hds - < "$ROOT/infra/cluster/vault-policy.hcl" > /dev/null \
     || fail "the hds policy could not be written"
 v policy write vault-snapshot - < "$ROOT/infra/cluster/vault-snapshot-policy.hcl" > /dev/null \
     || fail "the vault-snapshot policy could not be written"
+v policy write alertmanager - < "$ROOT/infra/cluster/vault-alertmanager-policy.hcl" > /dev/null \
+    || fail "the alertmanager policy could not be written"
 
 v write auth/kubernetes/role/hds bound_service_account_names=hds-vault \
     bound_service_account_namespaces=hds policies=hds token_ttl=10m token_max_ttl=20m \
@@ -54,4 +58,7 @@ v write auth/kubernetes/role/hds bound_service_account_names=hds-vault \
 v write auth/kubernetes/role/vault-snapshot bound_service_account_names=hds-vault-snapshot \
     bound_service_account_namespaces=hds policies=vault-snapshot token_ttl=5m token_max_ttl=10m \
     audience=vault > /dev/null || fail "the vault-snapshot role could not be written"
-say "Vault is configured: hds/ (KV v2), Kubernetes auth, the hds and vault-snapshot roles"
+v write auth/kubernetes/role/alertmanager bound_service_account_names=hds-alertmanager-vault \
+    bound_service_account_namespaces=monitoring policies=alertmanager token_ttl=10m \
+    token_max_ttl=20m audience=vault > /dev/null || fail "the alertmanager role could not be written"
+say "Vault is configured: hds/ (KV v2), Kubernetes auth, the hds, vault-snapshot and alertmanager roles"

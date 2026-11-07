@@ -87,19 +87,23 @@ only the `monitoring` namespace may connect to it (FR-009).
 
 ### Kubernetes, through kube-state-metrics
 
-`kube_cronjob_status_last_successful_time` and `kube_job_status_failed` for `hds-backup`,
-`hds-restore-test` and `vault-snapshot`.
+`kube_cronjob_status_last_successful_time`, `kube_cronjob_created`, `kube_job_owner`,
+`kube_job_status_start_time` and `kube_job_status_failed`, for the CronJobs `hds-backup`,
+`hds-restore-test` and `hds-vault-snapshot` and the Jobs they own (review R162). A Job counts as a
+CronJob's by its owner, so `make ops-backup`'s Jobs do, and `make ops-restore`'s, which have none,
+do not; only each CronJob's newest Job counts. Two recording rules, `hds:job_owned_start_time` and
+`hds:job_newest_failed`, are helpers for that, not alerts.
 
 ## 3. Alerts (Alertmanager, by e-mail to `OPERATOR_EMAILS`)
 
 | Alert | Fires when |
 | --- | --- |
 | `HdsBackupFailed` | the newest `hds-backup` Job failed, including when only the off-machine copy failed |
-| `HdsBackupMissing` | no successful backup for 26 h (a missed or stuck run), for 1 h (`for: 1h`), so waking the Mac after a day off does not e-mail before the catch-up run ends |
+| `HdsBackupMissing` | no successful backup for 26 h (a missed or stuck run), or none at all 26 h after the CronJob was made, for 1 h (`for: 1h`), so waking the Mac after a day off does not e-mail before the catch-up run ends |
 | `HdsRestoreTestFailed` | the newest `hds-restore-test` Job failed |
-| `HdsRestoreTestMissing` | no successful restore test for 8 days, for 1 h (`for: 1h`) |
-| `HdsVaultSnapshotFailed` | the newest `vault-snapshot` Job failed; while Vault is sealed after a restart this fires, as a reminder to unseal |
-| `HdsDeployFailed` | Flux reports the `hds` HelmRelease failed (forwarded by Flux's Alertmanager provider) |
+| `HdsRestoreTestMissing` | no successful restore test for 8 days, or none 8 days after the CronJob was made, for 1 h (`for: 1h`) |
+| `HdsVaultSnapshotFailed` | the newest `hds-vault-snapshot` Job failed; while Vault is sealed after a restart this fires, as a reminder to unseal |
+| Flux's own, `Flux<Kind><Reason>` (for example `FluxHelmReleaseUpgradeFailed`, `FluxOCIRepositoryVerificationError`) | Flux reports an error on one of the three HelmReleases or their OCIRepositories (forwarded by Flux's Alertmanager provider, under the name Flux gives it; review R162). Earlier named `HdsDeployFailed` here, which Flux cannot send |
 
 Each message gives the alert's name, the object, the time and a one-line reason (FR-010a). It never
 quotes a log line, a secret or any personal data. There are no other rules: rules on error rates or
@@ -148,9 +152,9 @@ As before, the error names the setting and never the value (FR-026).
 | --- | --- |
 | `make ops-cluster` | creates the k3d cluster and installs Flux, Vault, the Vault Secrets Operator and the monitoring stack (once per machine) |
 | `make ops-unseal` | unseals Vault after a restart; the key from a silent prompt or a pipe, never an argument |
-| `make ops-vault-configure` | sets Vault up once after init (KV v2 at `hds/`, Kubernetes auth, the `hds` and `vault-snapshot` policies and roles); safe to run again; the token from `VAULT_TOKEN` (**Proposed**, review R143) |
+| `make ops-vault-configure` | sets Vault up once after init (KV v2 at `hds/`, Kubernetes auth, and three policies with their roles: `hds`, reading `hds/*`, for `hds-vault` in `hds`; `vault-snapshot`, the raft snapshot only, for `hds-vault-snapshot` in `hds`; `alertmanager`, reading `hds/smtp` only, for `hds-alertmanager-vault` in `monitoring`); safe to run again; the token from `VAULT_TOKEN` (**Proposed**, reviews R143, R180) |
 | `make ops-flux` | hands the three releases to Flux, hds-secrets first, the others once its Secrets are synced (**Proposed**; T063, Group M; reviews R135, R149) |
-| `make ops-status` | for each part, readiness and version; the last backup, restore test and deploy; any firing alert |
+| `make ops-status` | for each part, readiness and version; the last backup, restore test and deploy; any firing alert. **Proposed** (Group K; reviews R138, R161, R173, R177, R181): the snapshot's last success and a snapshot not configured, the database's StatefulSet among the parts, the newest deploy not deployed as a failure, Prometheus, Alertmanager and kube-state-metrics ready and Alertmanager's configuration present, Vault sealed; each failing item marked `FAIL`, and exit 1 |
 | `make ops-backup` | runs a backup now |
 | `make ops-restore-test` | runs the restore test now |
 | `make ops-backups` | lists the backups on Drive by name, whose names are encrypted there (**Proposed**, review R76) |

@@ -30,6 +30,13 @@ secrets:
     path: backup
     restart: []
 
+# Alertmanager's configuration (templates/monitoring.yaml): in the monitoring stack's namespace,
+# signed in as its own ServiceAccount under the Vault role alertmanager, which reads hds/smtp only.
+monitoring:
+  namespace: monitoring
+  serviceAccount: hds-alertmanager-vault
+  role: alertmanager
+
 # The image pull secret hds-registry, from hds/registry's GHCR_READ_TOKEN, only when the packages
 # are private (data-model.md); then set imagePullSecrets: [hds-registry] in the hds values too.
 registry:

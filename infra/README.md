@@ -17,8 +17,13 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 | `helm/hds-postgres` | PostgreSQL as a release of its own, installed before `hds` |
 | `helm/hds-secrets` | The Vault Secrets Operator's objects, which keep the `hds-*` Secrets; installed first |
 | `cluster/vault-values.yaml`, `cluster/vso-values.yaml` | Vault (one node, raft, its NetworkPolicy) and the Vault Secrets Operator, for their pinned charts |
-| `cluster/vault-policy.hcl`, `cluster/vault-snapshot-policy.hcl` | Vault's two policies, written by `make ops-vault-configure` |
+| `cluster/vault-policy.hcl`, `cluster/vault-snapshot-policy.hcl`, `cluster/vault-alertmanager-policy.hcl` | Vault's three policies, written by `make ops-vault-configure` |
 | `tests/check_vault_policy.sh` | Those policies and roles against a dev Vault of the cluster's version (CI `chart` job) |
+| `helm/hds/files/alert-rules.yaml`, `cluster/alerts/tests.yaml` | The alert rules, read as they are into the PrometheusRule, and their promtool tests (`tests/check_alerts.sh`, CI `chart` job) |
+| `cluster/monitoring-values.yaml` | kube-prometheus-stack: Prometheus, Alertmanager (its configuration from Vault, through hds-secrets), kube-state-metrics; no Grafana, no default rules |
+| `cluster/vault-alertmanager-policy.hcl` | Vault's policy for Alertmanager's sign-in: `hds/smtp` only |
+| `tests/check_alertmanager.sh` | Alertmanager's configuration filled with hostile values, and its e-mails, with amtool (CI `chart` job) |
+| `tests/check_status.sh` | `make ops-status` against a fake kubectl and helm (CI `lint` job) |
 | `Dockerfile.backup` | The backup image: PostgreSQL 16's client tools, rclone, jq, curl and age; runs as uid 999 |
 | `backup/` | The backup scripts (`backup.sh`, `prune.sh`, `restore-test.sh`, `restore.sh`, `vault-snapshot.sh`), the remotes (`rclone.conf.tmpl`) and their test (`tests/run.sh`, CI `backup-restore`) |
 | `helm/tests/assert.sh` | Lints, validates and checks the rendered charts and `flux/` (CI `chart` job, `make ci-local`) |

@@ -83,9 +83,12 @@ ingress:
     - /auth
     - /me
 
-# The namespace that alone may reach the operations port 9100 (metrics, the worker's probes).
+# The namespace that alone may reach the operations port 9100 (metrics, the worker's probes), and
+# whether the chart renders its ServiceMonitors and PrometheusRule (kube-prometheus-stack's kinds;
+# off in a cluster without it, such as CI's).
 monitoring:
   namespace: monitoring
+  enabled: true
 
 # The backups (research R11): daily at 03:30 in the organisation's zone, then pruning; a run missed
 # while the machine slept runs when it wakes (startingDeadlineSeconds 86400). Not 02:30: in

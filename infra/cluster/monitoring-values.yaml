@@ -1,0 +1,64 @@
+# kube-prometheus-stack in the shared environment (specs/006-deploy-operations T056, research R7,
+# R9), for its pinned chart (infra/VERSIONS.md), installed into the namespace monitoring by
+# `make ops-cluster` (T063); the hds pods' NetworkPolicies let that namespace reach port 9100.
+#
+# Prometheus, kube-state-metrics (whose kube_job_* and kube_cronjob_* series the alerts read) and
+# Alertmanager. No Grafana, and none of the stack's own rules: HDS's PrometheusRule is the only one
+# (contracts/ops.md section 3: "There are no other rules"); the stack's Watchdog would otherwise
+# e-mail every few minutes. Checked by infra/helm/tests/assert.sh.
+grafana:
+  enabled: false
+defaultRules:
+  create: false
+# k3s runs these inside its own process; nothing scrapes them, and no rule reads them.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+nodeExporter:
+  enabled: false
+windowsMonitoring:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: true
+# Every family kube-state-metrics has; no allow or deny list that could drop kube_job_* or
+# kube_cronjob_* (review R163).
+kube-state-metrics:
+  metricAllowlist: []
+  metricDenylist: []
+
+prometheus:
+  prometheusSpec:
+    image:
+      registry: quay.io
+      repository: prometheus/prometheus
+      tag: v3.15.0-distroless
+      sha: b2a413d5a03ea6a76782a508d1c7947440bba3b973931a25676e278431891b01
+    # Select every ServiceMonitor and PrometheusRule, whatever its labels, in every namespace:
+    # HDS's carry no label tied to this stack's release name (review R160).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    retention: 15d
+
+alertmanager:
+  alertmanagerSpec:
+    image:
+      registry: quay.io
+      repository: prometheus/alertmanager
+      tag: v0.34.1
+      sha: e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    # The configuration is the Secret alertmanager-hds, rendered by the Vault Secrets Operator from
+    # hds/smtp (infra/helm/hds-secrets): the relay's password and the operators' addresses are in no
+    # file here. Until `make ops-flux` has synced it, Alertmanager is not Ready (T063).
+    useExistingSecret: true
+    configSecret: alertmanager-hds
+    # The message templates, mounted at /etc/alertmanager/configmaps/alertmanager-hds-templates/.
+    configMaps:
+      - alertmanager-hds-templates

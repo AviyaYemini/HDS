@@ -779,3 +779,69 @@ from GitHub's issuer.
 - **R158** (found while fixing ShellCheck's SC2013): a `while read` over the chart list on stdin
   would have published only the first chart, since helm's `docker run -i` reads stdin. The list is
   read on descriptor 3; the stand-in helm now reads stdin as docker does, and the mutant fails.
+
+## Group K: monitoring and failure messages (T055 to T058), 2026-11-07
+
+- **Settled with the reviewer** (R159 to R168):
+  - **Alertmanager's configuration from Vault**: Alertmanager in `monitoring` cannot read `hds-smtp`,
+    and the operators' addresses are personal. A VaultStaticSecret in `monitoring` (hds-secrets,
+    role `alertmanager`, `hds/data/smtp` only) renders the whole `alertmanager.yaml`, each value as
+    `toJson`. The e-mail templates replace Alertmanager's own, from a ConfigMap; both files are
+    read by `.Files.Get`, so the three template layers never meet.
+  - **Selection**: Prometheus selects every ServiceMonitor and rule, whatever their labels. The
+    stack's default rules are off: its Watchdog would e-mail constantly, and the contract allows
+    no other rules. kube-state-metrics filters nothing.
+  - **Which Job counts**: a CronJob's own (`kube_job_owner`), only the newest, failed by its
+    condition (R179). Two recording rules do it. "Missing" also covers a CronJob that never
+    succeeded (R166).
+  - Flux's alerts keep Flux's names; the contract's `HdsDeployFailed` row and the snapshot's
+    CronJob name are corrected (R162).
+- **Checks, all on pinned images, no cluster**:
+  - `check_alerts.sh`: promtool (Prometheus 3.15.0) checks the rules and runs 11 test cases:
+    - the newest Job failed, and an older failure cleared by a newer success;
+    - a failed `make ops-backup` alerts, a refused restore does not;
+    - the restore test and the snapshot, each on its own;
+    - "missing" after 26 h and an hour, stale-then-recovered within the hour, and never
+      succeeded;
+    - a healthy week, and the restore test's 8 days;
+    - a Job failed by its condition alone.
+    One test first failed on its own sampling: samples 10 minutes apart go stale under the
+    5-minute lookback, which resets `for:`.
+  - `check_alertmanager.sh`: the operator's template uses only `toJson` insertions. Filled with a
+    password holding `"`, `: y # z` and a newline, and with two addresses, it passes
+    `amtool check-config`, and the password parses back byte for byte. The route has one receiver,
+    and a Flux alert routes to it (`amtool config routes test`). The rendered e-mail names the
+    alert, the object, the time and the summary, and leaves out labels, addresses and links.
+  - assert.sh renders kube-prometheus-stack 92.11.0 (by SHA-256) with monitoring-values.yaml and
+    checks its CRD kinds strictly (schemas from its own CRDs). It checks the selectors, no rule of
+    the stack's, no Grafana, kube-state-metrics, the images by digest, the config Secret and the
+    templates' names matching hds-secrets', the ServiceMonitors reaching the Services' ops port,
+    the Ingress routing neither 9100 nor `/metrics`, and the PrometheusRule equal to the tested
+    rules file.
+  - `check_vault_policy.sh`: the `alertmanager` role reads `hds/smtp` and nothing else.
+  - `check_status.sh`: `make ops-status` against a fake kubectl and helm, a case per FAIL.
+- **Mutants, each failing its test**:
+  - rules: any failed Job rather than the newest; an ownerless Job counted; no `for: 1h`; the
+    never-succeeded case dropped; failed pods rather than the condition;
+  - Alertmanager: the password without `toJson`; a route dropping Flux (two forms); a body listing
+    every label;
+  - the policy reading all of `hds`;
+  - the stack: default rules on; selection by release label;
+  - ops-status: alerting down reported ok; restore Jobs counted as backups; a failed deploy
+    passed; no kube-state-metrics check; Deployments only.
+- **Reviews**:
+  - /hds-review R169 to R172: research R9, T055's name, the quickstart's ops-status line, ADR 013's
+    scope.
+  - /code-review high R173 to R182: a failed deploy now fails ops-status; the vault_configure
+    output in the runbook; the CRD cache made fail-safe; the Jobs read once, and unreadable as a
+    FAIL; kube-state-metrics and the database's StatefulSet checked; the failed condition in the
+    rules; the third policy named in the contract and README; ops-status's additions marked
+    Proposed; the header.
+- No new CI job: `check_alerts.sh` and `check_alertmanager.sh` are steps of the `chart` job,
+  `check_status.sh` of `lint`.
+- **R183, a regression from Group J found here**: the first ci-local of Group K failed one unit test,
+  `test_every_value_the_repository_publishes_is_on_the_refused_list` (FR-026). Group J's committed
+  `check_vault_policy.sh` wrote literal secret values, which the test finds by scanning tracked
+  files; J's ci-local had passed only because the file was not tracked yet. 9455551 is red on that
+  test; this commit fixes it with run-time values. From now on new files are staged with
+  `git add -N` before ci-local.

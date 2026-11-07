@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # The chart checks (specs/006-deploy-operations T033, T048, T051, T052): helm lint, kubeconform and
 # assertions on the rendered manifests of the three charts, hds (values-local.yaml and
-# values-ci.yaml), hds-postgres and hds-secrets (research R3, amended), of Vault's and the Vault
-# Secrets Operator's pinned charts with infra/cluster's values, and of infra/flux. Run from anywhere:
+# values-ci.yaml), hds-postgres and hds-secrets (research R3, amended), of Vault's, the Vault
+# Secrets Operator's and kube-prometheus-stack's pinned charts with infra/cluster's values, and of
+# infra/flux. Run from anywhere:
 # infra/helm/tests/assert.sh
 #
 # Every tool runs from an image pinned by tag and digest (infra/VERSIONS.md); nothing is installed.
 # kubeconform checks against the Kubernetes v1.37.1 schemas (k3s v1.37.1) at a pinned commit of
-# yannh/kubernetes-json-schema, not its default, which follows master, and against two sets of
-# custom-resource schemas, each pinned by SHA-256: Flux's, and the Vault Secrets Operator's (made
-# strict from its chart's CRDs). No schema may be missing (-strict, no -ignore-missing-schemas).
+# yannh/kubernetes-json-schema, not its default, which follows master, and against three sets of
+# custom-resource schemas, each pinned by SHA-256: Flux's, the Vault Secrets Operator's and
+# kube-prometheus-stack's (the last two made strict from their charts' CRDs). It also renders
+# kube-prometheus-stack with infra/cluster/monitoring-values.yaml. No schema may be missing
+# (-strict, no -ignore-missing-schemas).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -22,6 +25,8 @@ FLUX_SCHEMAS_SHA256="380b713bd28a2c27cfc7710219aae79e1c9ceff9bee50197c0230471905
 # strict JSON schemas, so hds-secrets is checked like the rest (review R140).
 VAULT_CHART="https://helm.releases.hashicorp.com/vault-0.34.1.tgz"
 VAULT_CHART_SHA256="df4c37fac32496892ff1e1d6fd7954d3a402cc7b1b2b4c2226af11b8a57564c4"
+KPS_CHART="https://github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-92.11.0/kube-prometheus-stack-92.11.0.tgz"
+KPS_CHART_SHA256="c357a259965187edcbed86591461bfbd56997591afba09be3a49a09b2bec8a2c"
 VSO_CHART="https://helm.releases.hashicorp.com/vault-secrets-operator-1.6.0.tgz"
 VSO_CHART_SHA256="de3e0a520918fc7281b94fa060fe8d1858c5db5b8fb6b1463024268e7c4541c0"
 YQ_IMAGE="mikefarah/yq:4.54.1@sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e"
@@ -102,23 +107,41 @@ helm template hds-secrets hds-secrets --namespace hds --set registry.enabled=tru
 helm template hds hds --namespace hds -f hds/values-local.yaml \
     --set "images.api.digest=$DIGEST" --set "images.web.digest=$DIGEST" > "$out/hds-digest.yaml"
 
-vso_tgz=$(chart "$VSO_CHART" "$VSO_CHART_SHA256")
-vso_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/vso-crd-schemas-$VSO_CHART_SHA256"
-if [ ! -f "$vso_cache/vaultstaticsecret-secrets-v1beta1.json" ]; then
-    mkdir -p "$vso_cache"
-    tar -xzf "$vso_tgz" -C "$vso_cache" --strip-components=2 'vault-secrets-operator/crds'
-    for crd in "$vso_cache"/secrets.hashicorp.com_*.yaml; do
-        docker run --rm -i "$YQ_IMAGE" -o=json . < "$crd" > "$vso_cache/crd.json"
-        kind=$(jq -r '.spec.names.kind | ascii_downcase' "$vso_cache/crd.json")
-        for version in $(jq -r '.spec.versions[].name' "$vso_cache/crd.json"); do
-            # Strict, as kubeconform's own schemas are: no property the CRD does not name.
+# crd_schemas TGZ DIR NAME: the strict JSON schemas of the CRDs in a chart's DIR, into a cache keyed
+# by the chart's file (and so its SHA-256), as <kind>-<group's first part>-<version>.json, the names
+# kubeconform's KindSuffix looks for; prints the cache. Strict, as kubeconform's own schemas are: no
+# property the CRD does not name (reviews R140, R160). It runs inside $(...), where set -e does not
+# hold, so each step checks its own status, and the cache is built aside and moved in only when
+# every CRD is done: a failure leaves no cache to trust (review R175).
+crd_schemas() {
+    local cache building crd kind group version count=0
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/crd-json-schemas-$3-$(basename "$1" .tgz)"
+    if [ -d "$cache" ]; then printf '%s' "$cache"; return 0; fi
+    building=$(mktemp -d "$(dirname "$cache").XXXXXX") || return 1
+    mkdir -p "$building/crds" || return 1
+    tar -xzf "$1" -C "$building/crds" "$2" >&2 || { echo "no $2 in $1" >&2; return 1; }
+    for crd in $(find "$building/crds" -name '*.yaml' | sort); do
+        docker run --rm -i "$YQ_IMAGE" -o=json . < "$crd" > "$building/crd.json" || return 1
+        [ "$(jq -r .kind "$building/crd.json")" = CustomResourceDefinition ] || continue
+        kind=$(jq -r '.spec.names.kind | ascii_downcase' "$building/crd.json") || return 1
+        group=$(jq -r '.spec.group | split(".")[0]' "$building/crd.json") || return 1
+        for version in $(jq -r '.spec.versions[].name' "$building/crd.json"); do
             jq --arg v "$version" '.spec.versions[] | select(.name == $v) | .schema.openAPIV3Schema
                 | walk(if type == "object" and has("properties") and (has("additionalProperties") | not)
-                    then . + {additionalProperties: false} else . end)' "$vso_cache/crd.json" \
-                > "$vso_cache/$kind-secrets-$version.json"
+                    then . + {additionalProperties: false} else . end)' "$building/crd.json" \
+                > "$building/$kind-$group-$version.json" || return 1
+            count=$((count + 1))
         done
     done
-fi
+    [ "$count" -gt 0 ] || { echo "no CRD schema came from $2" >&2; return 1; }
+    rm -rf -- "${building:?}/crds" "${building:?}/crd.json"
+    mkdir -p "$(dirname "$cache")" && mv "$building" "$cache" || return 1
+    printf '%s' "$cache"
+}
+vso_tgz=$(chart "$VSO_CHART" "$VSO_CHART_SHA256")
+vso_cache=$(crd_schemas "$vso_tgz" vault-secrets-operator/crds vso) || exit 1
+kps_tgz=$(chart "$KPS_CHART" "$KPS_CHART_SHA256")
+kps_cache=$(crd_schemas "$kps_tgz" kube-prometheus-stack/charts/crds/crds kps) || exit 1
 # Vault and the operator as the cluster installs them, with infra/cluster's values (T052).
 vault_tgz=$(chart "$VAULT_CHART" "$VAULT_CHART_SHA256")
 helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template vault "/c/$(basename "$vault_tgz")" \
@@ -126,9 +149,13 @@ helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template vault "/
 helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template vault-secrets-operator \
     "/c/$(basename "$vso_tgz")" --namespace vault-secrets-operator -f /v/vso-values.yaml \
     > "$out/vso.yaml"
-docker run --rm -v "$out:/m:ro" -v "$vso_cache:/vso:ro" "$KUBECONFORM_IMAGE" -strict -summary \
-    -kubernetes-version "$KUBERNETES_VERSION" -schema-location "$SCHEMAS" \
-    -schema-location '/vso/{{.ResourceKind}}{{.KindSuffix}}.json' /m
+# kube-prometheus-stack as the cluster installs it, with infra/cluster's values (T056).
+helm_with "$charts_cache:/c:ro" "$ROOT/infra/cluster:/v:ro" -- template kube-prometheus-stack \
+    "/c/$(basename "$kps_tgz")" --namespace monitoring -f /v/monitoring-values.yaml > "$out/kps.yaml"
+docker run --rm -v "$out:/m:ro" -v "$vso_cache:/vso:ro" -v "$kps_cache:/kps:ro" "$KUBECONFORM_IMAGE" \
+    -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -schema-location "$SCHEMAS" \
+    -schema-location '/vso/{{.ResourceKind}}{{.KindSuffix}}.json' \
+    -schema-location '/kps/{{.ResourceKind}}{{.KindSuffix}}.json' /m
 
 api='select(.kind == "Deployment" and .metadata.name == "hds-api")'
 worker='select(.kind == "Deployment" and .metadata.name == "hds-worker")'
@@ -395,6 +422,61 @@ expect "Vault's API is reachable from the operator's namespace and the snapshot 
 expect "the operator has no default connection or sign-in" 0 \
     "$(yq vso.yaml '[select(.kind == "VaultConnection" or .kind == "VaultAuth")] | length')"
 
+f="kps.yaml"
+echo "== kube-prometheus-stack (infra/cluster/monitoring-values.yaml)"
+prom='select(.kind == "Prometheus") | .spec'
+expect "Prometheus selects every ServiceMonitor and PrometheusRule, whatever their labels (review R160)" \
+    '{} {} {} {}' \
+    "$(yq_each "$f" "$prom | (.serviceMonitorSelector | to_json(0)) + \" \" + (.serviceMonitorNamespaceSelector | to_json(0)) + \" \" + (.ruleSelector | to_json(0)) + \" \" + (.ruleNamespaceSelector | to_json(0))")"
+expect "none of the stack's own rules, so HDS's PrometheusRule is the only one (no Watchdog)" 0 \
+    "$(yq "$f" '[select(.kind == "PrometheusRule")] | length')"
+expect "no Grafana" 0 "$(yq "$f" '[select(.metadata.name | test("grafana"))] | length')"
+expect "kube-state-metrics runs, filtering no metric family (review R163)" "1 none" \
+    "$(yq "$f" '[select(.kind == "Deployment" and .metadata.name | test("kube-state-metrics"))] | length') $(yq "$f" 'select(.kind == "Deployment" and .metadata.name | test("kube-state-metrics")) | .spec.template.spec.containers[0].args[] | select(test("metric-(allow|deny)list"))' | head -n 1 | grep . || echo none)"
+expect "Prometheus and Alertmanager by digest" \
+    "quay.io/prometheus/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a quay.io/prometheus/prometheus:v3.15.0-distroless@sha256:b2a413d5a03ea6a76782a508d1c7947440bba3b973931a25676e278431891b01" \
+    "$(yq "$f" 'select(.kind == "Prometheus" or .kind == "Alertmanager") | .spec.image' | sort | paste -sd ' ' -)"
+am='select(.kind == "Alertmanager") | .spec'
+expect "Alertmanager's configuration is hds-secrets' alertmanager-hds, its templates its ConfigMap" \
+    "alertmanager-hds alertmanager-hds-templates" \
+    "$(yq "$f" "$am | .configSecret") $(yq "$f" "$am | .configMaps[]")"
+expect "the stack writes no Alertmanager configuration of its own" 0 \
+    "$(yq "$f" '[select(.kind == "Secret" and (.metadata.name | test("^alertmanager-")))] | length')"
+expect "and they are the names hds-secrets makes, in monitoring" "alertmanager-hds monitoring alertmanager-hds-templates monitoring" \
+    "$(yq_each hds-secrets.yaml 'select(.kind == "VaultStaticSecret" and .metadata.namespace == "monitoring") | .spec.destination.name + " " + .metadata.namespace') $(yq_each hds-secrets.yaml 'select(.kind == "ConfigMap") | .metadata.name + " " + .metadata.namespace')"
+expect "Alertmanager's sign-in is its own ServiceAccount and role, kept on uninstall" \
+    "alertmanager hds-alertmanager-vault keep false" \
+    "$(yq_each hds-secrets.yaml 'select(.kind == "VaultAuth" and .metadata.namespace == "monitoring") | .spec.kubernetes.role + " " + .spec.kubernetes.serviceAccount') $(yq_each hds-secrets.yaml 'select(.kind == "VaultStaticSecret" and .metadata.namespace == "monitoring") | .metadata.annotations["helm.sh/resource-policy"]') $(yq_each hds-secrets.yaml 'select(.kind == "ServiceAccount" and .metadata.namespace == "monitoring") | .automountServiceAccountToken')"
+
+echo "== hds: scraping and rules (T056)"
+expect "with monitoring.enabled false (CI) none of the stack's kinds renders" 0 \
+    "$(yq hds-ci.yaml '[select(.apiVersion == "monitoring.coreos.com/v1")] | length')"
+f="hds-local.yaml"
+expect "a ServiceMonitor each for the API and the worker, on their Services' ops port" \
+    "hds-api ops /metrics|hds-worker ops /metrics" \
+    "$(yq_each "$f" 'select(.kind == "ServiceMonitor") | .metadata.name + " " + .spec.endpoints[0].port + " " + .spec.endpoints[0].path' | sort | paste -sd '|' -)"
+expect "the Services they select expose ops on 9100" "hds-api 9100|hds-worker 9100" \
+    "$(yq_each "$f" 'select(.kind == "Service" and (.metadata.name == "hds-api" or .metadata.name == "hds-worker")) | .metadata.name + " " + (.spec.ports[] | select(.name == "ops") | .port | tostring)' | sort | paste -sd '|' -)"
+# monitor_selects NAME: whether ServiceMonitor NAME's matchLabels are all on Service NAME.
+monitor_selects() {
+    local selector labels
+    selector=$(yq_each "$f" "select(.kind == \"ServiceMonitor\" and .metadata.name == \"$1\") | .spec.selector.matchLabels | to_entries | .[] | .key + \"=\" + .value")
+    labels=$(yq_each "$f" "select(.kind == \"Service\" and .metadata.name == \"$1\") | .metadata.labels | to_entries | .[] | .key + \"=\" + .value")
+    [ -n "$selector" ] && [ -z "$(comm -23 <(sort <<< "$selector") <(sort <<< "$labels"))" ]
+}
+for svc in hds-api hds-worker; do
+    if monitor_selects "$svc"; then
+        expect "the $svc ServiceMonitor selects the $svc Service" yes yes
+    else
+        expect "the $svc ServiceMonitor selects the $svc Service" yes no
+    fi
+done
+expect "the ingress routes neither the ops port nor /metrics" "" \
+    "$(yq "$f" 'select(.kind == "Ingress") | .spec.rules[].http.paths[] | select(.backend.service.port.number == 9100 or .backend.service.port.name == "ops" or (.path | test("metrics")))' )"
+expect "the PrometheusRule is the rules file promtool tests, as it is" \
+    "$(docker run --rm -i "$YQ_IMAGE" -o=json '.groups' < "$ROOT/infra/helm/hds/files/alert-rules.yaml" | jq -c .)" \
+    "$(yq_each "$f" 'select(.kind == "PrometheusRule") | .spec.groups' | docker run --rm -i "$YQ_IMAGE" -o=json . | jq -c .)"
+
 # hds-secrets (T051, research R3 amended in Group J): the operator's sign-in, one VaultStaticSecret per
 # path, each kept on uninstall, and each restarting only the Deployments that read it.
 f="hds-secrets.yaml"
@@ -402,7 +484,7 @@ echo "== hds-secrets"
 expect "the VSO objects are hds-secrets', not the hds chart's" "0 0" \
     "$(yq hds-local.yaml '[select(.apiVersion == "secrets.hashicorp.com/v1beta1")] | length') $(yq hds-ci.yaml '[select(.apiVersion == "secrets.hashicorp.com/v1beta1")] | length')"
 expect "Vault's address and the operator's sign-in" "http://vault.vault.svc:8200 kubernetes kubernetes hds hds-vault vault 600" \
-    "$(yq "$f" '(select(.kind == "VaultConnection") | .spec.address) + " " + (select(.kind == "VaultAuth") | .spec | .method + " " + .mount + " " + .kubernetes.role + " " + .kubernetes.serviceAccount + " " + (.kubernetes.audiences | join(",")) + " " + (.kubernetes.tokenExpirationSeconds | tostring))' | sort -u)"
+    "$(yq "$f" '(select(.kind == "VaultConnection" and (.metadata.namespace // "hds") == "hds") | .spec.address) + " " + (select(.kind == "VaultAuth" and (.metadata.namespace // "hds") == "hds") | .spec | .method + " " + .mount + " " + .kubernetes.role + " " + .kubernetes.serviceAccount + " " + (.kubernetes.audiences | join(",")) + " " + (.kubernetes.tokenExpirationSeconds | tostring))' | sort -u)"
 expect "its ServiceAccount mounts no token" false \
     "$(yq "$f" 'select(.kind == "ServiceAccount" and .metadata.name == "hds-vault") | .automountServiceAccountToken')"
 expect "a VaultStaticSecret per path, KV v2, every 60s, into the Secret of its name" \
@@ -414,7 +496,7 @@ expect "each is kept on uninstall" "keep" \
 # and the worker read hds-api and hds-smtp; only Jobs read hds-backup; never the database.
 expect "each restarts only the Deployments that read it" \
     "hds-api: Deployment/hds-api Deployment/hds-worker|hds-backup: |hds-smtp: Deployment/hds-api Deployment/hds-worker" \
-    "$(yq_each "$f" 'select(.kind == "VaultStaticSecret") | .metadata.name + ": " + ([.spec.rolloutRestartTargets[]? | .kind + "/" + .name] | join(" "))' | sort -u | paste -sd '|' -)"
+    "$(yq_each "$f" 'select(.kind == "VaultStaticSecret" and (.metadata.namespace // "hds") == "hds") | .metadata.name + ": " + ([.spec.rolloutRestartTargets[]? | .kind + "/" + .name] | join(" "))' | sort -u | paste -sd '|' -)"
 expect "the hds chart's Deployments that read hds-api are those two" \
     "hds-api hds-worker" \
     "$(yq hds-local.yaml 'select(.kind == "Deployment") | select(.spec.template.spec.containers[].env[]?.valueFrom.secretKeyRef.name == "hds-api") | .metadata.name' | sort -u | paste -sd ' ' -)"

@@ -48,7 +48,7 @@ cluster, port 9100 is not reachable through `hds.localhost`.
 
 ```bash
 make ops-backup                      # now, instead of waiting for 03:30
-make ops-status                      # last backup: just now, both places
+make ops-status                      # backup: last success just now (both places: its log)
 rclone lsf offsite-crypt:            # the dump and its manifest
 ```
 
