@@ -95,10 +95,10 @@ export function Table<Row>({
   const widthOf = (column: Column<Row>): ViewStyle =>
     column.width !== undefined ? { width: column.width, flexGrow: 0, flexShrink: 0 } : { flex: 1, minWidth: 0 };
 
-  const header = (column: Column<Row>, index: number, plain = false) => {
+  const header = (column: Column<Row>, index: number, plain = false, interactive = true) => {
     const active = sort?.key === column.key ? sort.direction : null;
     const next: SortDirection = active === "asc" ? "desc" : "asc";
-    const sortable = column.sortable && onSort;
+    const sortable = interactive && column.sortable && onSort;
     const sortProps = webProps({ "aria-sort": sortable ? ariaSort(active) : undefined });
     const label = (
       <Txt role="eyebrow" tone={active ? "primary" : "secondary"} numberOfLines={1} style={column.numeric ? styles.end : null}>
@@ -161,10 +161,10 @@ export function Table<Row>({
     );
   };
 
-  const line = (row: Row, only?: readonly Column<Row>[]) => {
+  const line = (row: Row, only?: readonly Column<Row>[], interactive = true) => {
     const key = keyOf(row);
     const selected = key === selectedKey;
-    const pressable = !!onRowPress;
+    const pressable = interactive && !!onRowPress;
     const content = (state?: PressState) => (
       <View
         style={[
@@ -178,7 +178,13 @@ export function Table<Row>({
         {(only ?? columns).map((column, index) => cell(row, column, only ? 0 : index))}
       </View>
     );
-    if (!pressable) return <View key={key} role="row" aria-selected={selected || undefined}>{content()}</View>;
+    if (!pressable) {
+      return (
+        <View key={key} role={interactive ? "row" : undefined} aria-selected={interactive && selected ? true : undefined}>
+          {content()}
+        </View>
+      );
+    }
     return (
       <Pressable
         key={key}
@@ -231,9 +237,9 @@ export function Table<Row>({
           style={[styles.frozen, { width: first.width, backgroundColor: colors.bg.canvas, borderEndColor: colors.border.subtle }]}
         >
           <View style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}>
-            {header(first, 0)}
+            {header(first, 0, true, false)}
           </View>
-          {loading || rows.length === 0 ? null : rows.map((row) => line(row, [first]))}
+          {loading || rows.length === 0 ? null : rows.map((row) => line(row, [first], false))}
         </View>
       ) : null}
     </View>

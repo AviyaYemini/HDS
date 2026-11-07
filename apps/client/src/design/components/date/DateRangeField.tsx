@@ -7,7 +7,7 @@
  * does not jump while the range stays in sight. A hand change turns the preset to Custom; an end
  * before the start is refused with a reason. Typed From and To fields accept any separator.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
@@ -31,12 +31,16 @@ import {
 import { useKeyboardMode } from "../../focus";
 import { useTheme } from "../../theme/ThemeProvider";
 import { component } from "../../theme/theme.generated";
-import { webProps } from "../../web";
+import { isRtlLanguage } from "../../../i18n";
+import { webProps, type WebKeyEvent } from "../../web";
 import { Button, focusRing, type PressState } from "../Button";
 import { Txt } from "../Text";
 import { CalendarMonth } from "./CalendarMonth";
 import { DateField } from "./DateField";
 import { useCalendarKeys } from "./useCalendarKeys";
+
+/** Anything the web can move focus to. */
+type Focusable = { focus?: () => void };
 
 export interface DateRangeFieldProps {
   label: string;
@@ -91,11 +95,19 @@ export function DateRangeField({
   }
   const presetKeys: PresetKey[] = [...presets, "custom"];
 
-  const visible = Array.from({ length: months }, (_, i) => addMonths(anchor, i));
+  const visible = useMemo(() => Array.from({ length: months }, (_, i) => addMonths(anchor, i)), [anchor, months]);
   const holidays = useMemo(
-    () => holidaysBetween(visible[0]!, endOfMonth(visible[visible.length - 1]!), i18n.language),
-    [visible, i18n.language],
+    () => holidaysBetween(anchor, endOfMonth(addMonths(anchor, months - 1)), i18n.language),
+    [anchor, months, i18n.language],
   );
+
+  /** Bring the month holding `date` into view, moving as little as possible. */
+  const reveal = (date: string): void => {
+    const month = startOfMonth(date);
+    const last = addMonths(anchor, months - 1);
+    if (compareDates(month, anchor) < 0) setAnchor(month);
+    else if (compareDates(month, last) > 0) setAnchor(addMonths(month, -(months - 1)));
+  };
 
   const apply = (range: DateRange): void => {
     setEndError(null);
@@ -124,6 +136,7 @@ export function DateRangeField({
     onMove: (date) => {
       setFocusOn(true);
       setFocusedDate(date);
+      reveal(date);
     },
     onChoose: pick,
     minDate,
@@ -132,18 +145,44 @@ export function DateRangeField({
 
   const summary = formatNumericRange(value.start, value.end);
 
+  // The presets are one radio group: arrow keys move the choice (the forward arrow is the one that
+  // points forward in the language) and focus follows; Custom is a state, chosen by the calendar.
+  const rtl = isRtlLanguage(i18n.language);
+  const presetRefs = useRef<(Focusable | null)[]>([]);
+  const [presetFocus, setPresetFocus] = useState<number | null>(null);
+  useEffect(() => {
+    if (presetFocus !== null) presetRefs.current[presetFocus]?.focus?.();
+  }, [presetFocus]);
+  const onPresetKey = (index: number) => (event: WebKeyEvent) => {
+    const forward = rtl ? "ArrowLeft" : "ArrowRight";
+    const back = rtl ? "ArrowRight" : "ArrowLeft";
+    let next: number | null = null;
+    if (event.key === "ArrowDown" || event.key === forward) next = (index + 1) % presets.length;
+    else if (event.key === "ArrowUp" || event.key === back) next = (index - 1 + presets.length) % presets.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = presets.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    choosePreset(presets[next]!);
+    setPresetFocus(next);
+  };
+
   const presetButton = (preset: PresetKey) => {
     const checked = current === preset;
     const dates = preset === "custom" ? null : presetRange(preset, today);
-    const radioWebProps = webProps({ tabIndex: checked ? 0 : -1 });
+    const index = preset === "custom" ? presets.length - 1 : presets.indexOf(preset);
+    const radioWebProps = webProps({ tabIndex: checked ? 0 : -1, onKeyDown: onPresetKey(index) });
     return (
       <Pressable
         key={preset}
+        ref={(node) => {
+          if (preset !== "custom") presetRefs.current[index] = node as unknown as Focusable | null;
+        }}
         testID={`preset-${preset}`}
         role="radio"
         accessibilityState={{ checked }}
         aria-checked={checked}
-        disabled={preset === "custom"}
+        accessibilityHint={preset === "custom" ? t("date.custom_hint") : undefined}
         onPress={() => preset !== "custom" && choosePreset(preset)}
         {...radioWebProps}
         style={(state) => {
@@ -153,6 +192,7 @@ export function DateRangeField({
             { minHeight: component.target.phone, borderColor: checked ? colors.accent.default : colors.border.subtle },
             checked ? { backgroundColor: colors.bg.selected, borderStartColor: colors.accent.default } : null,
             !checked && (s.hovered || s.pressed) && preset !== "custom" ? { backgroundColor: colors.bg.surface } : null,
+            preset === "custom" && !checked ? { opacity: 0.7 } : null,
             keyboard && s.focused ? focusRing(colors.focus.ring) : null,
           ];
         }}

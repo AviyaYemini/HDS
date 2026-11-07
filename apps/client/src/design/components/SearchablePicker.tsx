@@ -4,19 +4,19 @@
  * items first, each with a second line. Typing part of a Hebrew or English name matches, since an
  * item carries every name it goes by. Two to five options should use a `SegmentedControl` instead.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, View, type StyleProp, type TextInputKeyPressEvent, type ViewStyle } from "react-native";
 
 import { useKeyboardMode } from "../focus";
 import { Icon } from "../icons/Icon";
 import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
-import { webProps, type WebKeyEvent } from "../web";
+import { webProps } from "../web";
 import { focusRing, type PressState } from "./Button";
 import { Sheet } from "./Sheet";
 import { Txt } from "./Text";
-import { TextField } from "./TextField";
+import { TextField, type TextFieldHandle } from "./TextField";
 
 export interface PickerItem {
   id: string;
@@ -26,6 +26,8 @@ export interface PickerItem {
   /** Other names it answers to (the Hebrew or English spelling, a code). */
   keywords?: readonly string[];
 }
+
+const NO_RECENT: readonly string[] = [];
 
 export interface SearchablePickerProps {
   label: string;
@@ -76,7 +78,7 @@ export function SearchablePicker({
   items,
   value,
   onChange,
-  recentIds = [],
+  recentIds = NO_RECENT,
   placeholder,
   disabled = false,
   error,
@@ -89,6 +91,13 @@ export function SearchablePicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const searchRef = useRef<TextFieldHandle>(null);
+  // The sheet's dialog takes focus when it opens; the search box takes it from there.
+  useEffect(() => {
+    if (!open) return undefined;
+    const handle = setTimeout(() => (searchRef.current as unknown as { focus?: () => void } | null)?.focus?.(), 60);
+    return () => clearTimeout(handle);
+  }, [open]);
   const chosen = items.find((item) => item.id === value) ?? null;
   const shown = useMemo(() => order(items, recentIds, query), [items, recentIds, query]);
   const height = density === "compact" && isDesktop ? 36 : component.target.phone;
@@ -100,20 +109,21 @@ export function SearchablePicker({
     setQuery("");
   };
 
-  const onKeyDown = (event: WebKeyEvent): void => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
+  // React Native's own key event, which React Native Web raises from keydown with the key's name.
+  const onSearchKey = (event: TextInputKeyPressEvent): void => {
+    const { key } = event.nativeEvent;
+    const dom = event.nativeEvent as unknown as { preventDefault?: () => void };
+    if (key === "ArrowDown") {
+      dom.preventDefault?.();
       setHighlight((h) => Math.min(shown.length - 1, h + 1));
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
+    } else if (key === "ArrowUp") {
+      dom.preventDefault?.();
       setHighlight((h) => Math.max(0, h - 1));
-    } else if (event.key === "Enter" && shown[highlight]) {
-      event.preventDefault();
+    } else if (key === "Enter" && shown[highlight]) {
+      dom.preventDefault?.();
       choose(shown[highlight]);
     }
   };
-
-  const searchWebProps = webProps({ onKeyDown });
 
   return (
     <View style={[styles.root, style]}>
@@ -158,6 +168,7 @@ export function SearchablePicker({
       ) : null}
       <Sheet open={open} onClose={() => setOpen(false)} title={label} testID={testID ? `${testID}-sheet` : undefined}>
         <TextField
+          ref={searchRef}
           label={t("picker.search")}
           hideLabel
           placeholder={t("picker.search")}
@@ -166,11 +177,13 @@ export function SearchablePicker({
             setQuery(text);
             setHighlight(0);
           }}
+          onKeyPress={onSearchKey}
+          onSubmitEditing={() => shown[highlight] && choose(shown[highlight])}
+          blurOnSubmit={false}
           autoFocus
           autoCorrect={false}
           testID={testID ? `${testID}-search` : undefined}
           trailing={<Icon name="search" size={18} color={colors.text.secondary} style={styles.searchIcon} />}
-          {...searchWebProps}
         />
         <View role="list" accessibilityLabel={label} style={styles.list}>
           {shown.length === 0 ? (

@@ -142,6 +142,18 @@ for (const language of LANGUAGES) {
       await expect(range.getByTestId("preset-last-month")).toHaveAttribute("aria-checked", "false");
     });
 
+    test("drives the searchable picker by keyboard", async ({ page }) => {
+      await openGallery(page, language);
+      await page.getByTestId("gallery-picker").click();
+      const search = page.getByTestId("gallery-picker-search");
+      await expect(search).toBeFocused();
+      await search.fill("dana");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("gallery-picker")).toContainText("דנה לוי");
+      await expect(page.getByTestId("gallery-picker-sheet")).toHaveCount(0);
+    });
+
     test("shows the loading bar for a slow load and not for a fast one", async ({ page }) => {
       await openGallery(page, language);
       // setFixedTime only fixes the date; the page's timers (the bar's 300 ms delay) run for real.

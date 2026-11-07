@@ -7,7 +7,7 @@
  * on the native driver: transforms and opacity only, so nothing blocks input.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Animated, Easing, type EasingFunction } from "react-native";
+import { Animated, Easing, Platform, type EasingFunction } from "react-native";
 
 import { motion as tokens, component } from "../theme/theme.generated";
 import { useReducedMotion } from "./reducedMotion";
@@ -54,6 +54,53 @@ export function useMotion() {
   );
 }
 
+// On the web the frames come from requestAnimationFrame and performance.now, not from Date.now:
+// React Native's own timing reads Date.now, which a test's fixed clock freezes, and the browser has
+// no native driver anyway. Each value runs one animation at a time; a new one replaces the last.
+const running = new WeakMap<Animated.Value, number>();
+
+function currentValue(value: Animated.Value): number {
+  let current = 0;
+  value.stopAnimation((v) => {
+    current = v;
+  });
+  return current;
+}
+
+function driveOnWeb(value: Animated.Value, to: number, duration: number, easing: EasingFunction, loop: boolean): () => void {
+  const token = (running.get(value) ?? 0) + 1;
+  running.set(value, token);
+  const from = loop ? 0 : currentValue(value);
+  let start: number | null = null;
+  let frame = 0;
+  let onDone: (() => void) | null = null;
+  const step = (now: number): void => {
+    if (running.get(value) !== token) return;
+    if (start === null) start = now;
+    const elapsed = now - start;
+    const t = Math.min(1, elapsed / duration);
+    value.setValue(from + (to - from) * easing(t));
+    if (t < 1) {
+      frame = requestAnimationFrame(step);
+    } else if (loop) {
+      start = now;
+      value.setValue(from);
+      frame = requestAnimationFrame(step);
+    } else {
+      onDone?.();
+    }
+  };
+  frame = requestAnimationFrame(step);
+  const stop = (): void => {
+    if (running.get(value) === token) running.delete(value);
+    cancelAnimationFrame(frame);
+  };
+  (stop as { then?: (cb: () => void) => void }).then = (cb) => {
+    onDone = cb;
+  };
+  return stop;
+}
+
 /** Run `value` to `to` with `spec`; resolves when done. Zero duration jumps. */
 export function animateTo(value: Animated.Value, to: number, spec: Transition): Promise<void> {
   return new Promise((resolve) => {
@@ -62,10 +109,26 @@ export function animateTo(value: Animated.Value, to: number, spec: Transition): 
       resolve();
       return;
     }
+    if (Platform.OS === "web") {
+      const stop = driveOnWeb(value, to, spec.duration, spec.easing, false);
+      (stop as unknown as { then: (cb: () => void) => void }).then(resolve);
+      return;
+    }
     Animated.timing(value, { toValue: to, duration: spec.duration, easing: spec.easing, useNativeDriver: true }).start(
       () => resolve(),
     );
   });
+}
+
+/**
+ * Sweep `value` from 0 to 1 over `duration` again and again (the loading bar, the shimmer) until
+ * the returned function is called. Linear.
+ */
+export function startLoop(value: Animated.Value, duration: number): () => void {
+  if (Platform.OS === "web") return driveOnWeb(value, 1, duration, Easing.linear, true);
+  const loop = Animated.loop(Animated.timing(value, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }));
+  loop.start();
+  return () => loop.stop();
 }
 
 /**

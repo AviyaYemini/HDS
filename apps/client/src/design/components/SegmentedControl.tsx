@@ -6,8 +6,10 @@
  * choice on the web, one segment is in the tab order at a time.
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
+import { isRtlLanguage } from "../../i18n";
 import { useKeyboardMode } from "../focus";
 import { Icon, type IconName } from "../icons/Icon";
 import { useTheme } from "../theme/ThemeProvider";
@@ -49,6 +51,8 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   const { colors, density, isDesktop } = useTheme();
   const keyboard = useKeyboardMode();
+  const { i18n } = useTranslation();
+  const rtl = isRtlLanguage(i18n.language);
   const refs = useRef<(Focusable | null)[]>([]);
   const height = density === "compact" && isDesktop ? 36 : component.target.phone;
 
@@ -64,11 +68,14 @@ export function SegmentedControl<T extends string>({
     setFocusIndex(next);
   };
 
+  // The forward arrow is the one that points forward in the language: Left in Hebrew.
+  const forward = rtl ? "ArrowLeft" : "ArrowRight";
+  const back = rtl ? "ArrowRight" : "ArrowLeft";
   const onKeyDown = (index: number) => (event: WebKeyEvent) => {
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+    if (event.key === forward || event.key === "ArrowDown") {
       event.preventDefault();
       move(index, 1);
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+    } else if (event.key === back || event.key === "ArrowUp") {
       event.preventDefault();
       move(index, -1);
     } else if (event.key === "Home") {

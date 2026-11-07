@@ -218,5 +218,7 @@
   "gallery.picker.placeholder": "בחירת איש צוות",
   "gallery.load": "טעינה של משהו איטי",
   "gallery.load_done": "נטען",
-  "gallery.skeleton": "שלדי טעינה"
+  "gallery.skeleton": "שלדי טעינה",
+  "date.out_of_range": "התאריך מחוץ לטווח המותר.",
+  "date.custom_hint": "נקבע בבחירת ימים בלוח השנה."
 }

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Animated, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from "react-native";
 
 import { isRtlLanguage } from "../../i18n";
-import { useReducedMotion } from "../motion";
+import { startLoop, useReducedMotion } from "../motion";
 import { useTheme } from "../theme/ThemeProvider";
 
 export interface SkeletonProps {
@@ -32,9 +32,7 @@ export function Skeleton({ width = "100%", height = 16, style, testID }: Skeleto
       sweep.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: SWEEP_MS, useNativeDriver: true }));
-    loop.start();
-    return () => loop.stop();
+    return startLoop(sweep, SWEEP_MS);
   }, [reduced, sweep]);
   const translateX = sweep.interpolate({ inputRange: [0, 1], outputRange: rtl ? [300, -300] : [-300, 300] });
   return (

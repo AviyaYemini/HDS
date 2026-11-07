@@ -70,7 +70,7 @@ export function useCalendarKeys({ onMove, onChoose, onEscape, minDate, maxDate }
       case "Enter":
       case " ":
         event.preventDefault();
-        onChoose(date);
+        if (clamp(date, minDate, maxDate) === date) onChoose(date);
         return;
       case "Escape":
         if (onEscape) {

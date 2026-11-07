@@ -13,6 +13,7 @@ import { Modal, Pressable, StyleSheet, useWindowDimensions, View, type StyleProp
 import {
   DEFAULT_TIME_ZONE,
   addMonths,
+  compareDates,
   endOfMonth,
   formatMonthYear,
   formatNumericDate,
@@ -74,7 +75,6 @@ export function DateField({
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const inputRef = useRef<TextFieldHandle>(null);
   const statusWebProps = webProps({ "aria-live": "polite" });
-  const openerWebProps = webProps({ "aria-haspopup": "dialog", "aria-expanded": open });
   const backdropWebProps = webProps({ tabIndex: -1 });
   const dialogWebProps = webProps({ "aria-label": t("date.calendar") });
   const fieldRef = useRef<ComponentRef<typeof View>>(null);
@@ -90,6 +90,9 @@ export function DateField({
   const month = startOfMonth(focusedDate);
   const holidays = useMemo(() => holidaysBetween(month, endOfMonth(month), i18n.language), [month, i18n.language]);
 
+  const allowed = (date: string): boolean =>
+    !(minDate && compareDates(date, minDate) < 0) && !(maxDate && compareDates(date, maxDate) > 0);
+
   const commitTyped = (): void => {
     const trimmed = text.trim();
     if (trimmed === "") {
@@ -100,6 +103,10 @@ export function DateField({
     const parsed = parseTypedDate(trimmed);
     if (!parsed) {
       setTypingError(t("date.invalid"));
+      return;
+    }
+    if (!allowed(parsed)) {
+      setTypingError(t("date.out_of_range"));
       return;
     }
     setTypingError(null);
@@ -114,6 +121,7 @@ export function DateField({
   };
 
   const choose = (date: string): void => {
+    if (!allowed(date)) return;
     onChange(date);
     setText(formatNumericDate(date));
     setTypingError(null);
@@ -175,7 +183,7 @@ export function DateField({
             onPress={openCalendar}
             disabled={disabled}
             testID={`${testID}-open`}
-            {...openerWebProps}
+            web={{ "aria-haspopup": "dialog", "aria-expanded": open }}
           />
         }
       />
@@ -234,7 +242,7 @@ export function DateField({
                 testID={`${testID}-calendar`}
               />
               <View style={styles.dialogFooter}>
-                <Button variant="link" label={t("date.today")} onPress={() => choose(today)} />
+                <Button variant="link" label={t("date.today")} onPress={() => choose(today)} disabled={!allowed(today)} />
                 <Button variant="quiet" label={t("common.close")} onPress={close} />
               </View>
             </View>

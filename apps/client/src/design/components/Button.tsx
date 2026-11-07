@@ -25,7 +25,7 @@ import { Icon, type IconName } from "../icons/Icon";
 import { animateTo, useMotion } from "../motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
-import { webProps } from "../web";
+import { webProps, type WebOnlyProps } from "../web";
 import { ClippedBox } from "./ClippedBox";
 import { Txt } from "./Text";
 
@@ -51,6 +51,8 @@ export interface ButtonProps {
   testID?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /** Web-only attributes for the pressable (`aria-haspopup`, `aria-expanded`). */
+  web?: WebOnlyProps;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -73,6 +75,7 @@ export function Button({
   testID,
   accessibilityLabel,
   accessibilityHint,
+  web,
   style,
 }: ButtonProps) {
   const { colors, density, isDesktop } = useTheme();
@@ -161,7 +164,7 @@ export function Button({
         onPressOut={() => press(1)}
         onHoverIn={() => setHover(true)}
         onHoverOut={() => setHover(false)}
-        {...webProps({ title: disabledReason })}
+        {...webProps({ title: disabledReason, ...web })}
         style={(state) => [styles.pressable, variant === "primary" ? null : frame(state as PressState)]}
       >
         {(state) => (

@@ -218,5 +218,7 @@
   "gallery.picker.placeholder": "Choose an employee",
   "gallery.load": "Load something slow",
   "gallery.load_done": "Loaded",
-  "gallery.skeleton": "Loading placeholders"
+  "gallery.skeleton": "Loading placeholders",
+  "date.out_of_range": "The date is outside the allowed range.",
+  "date.custom_hint": "Chosen by picking days on the calendar."
 }

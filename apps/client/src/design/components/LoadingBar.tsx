@@ -14,7 +14,7 @@ import Svg, { Polygon } from "react-native-svg";
 
 import { isRtlLanguage } from "../../i18n";
 import { useLoadingState } from "../loading/loadingStore";
-import { easings, useReducedMotion } from "../motion";
+import { startLoop, useReducedMotion } from "../motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
 import { webProps } from "../web";
@@ -54,11 +54,7 @@ export function LoadingBar({ testID = "loading-bar" }: { testID?: string }) {
       sweep.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(
-      Animated.timing(sweep, { toValue: 1, duration: SWEEP_MS, easing: easings.standard, useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
+    return startLoop(sweep, SWEEP_MS);
   }, [indeterminate, reduced, width, sweep]);
 
   const percent = state.value === null ? null : Math.round(state.value * 100);
