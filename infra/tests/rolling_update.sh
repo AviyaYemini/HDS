@@ -241,12 +241,12 @@ job=$(curl -fsS -H 'Host: hds.localhost' -H "Authorization: Bearer $token" -H 'C
     http://127.0.0.1:$PORT/api/v1/schedule-jobs | jq -r .id)
 [ -n "$job" ] && [ "$job" != null ] || fail "the schedule job could not be queued"
 echo "queued schedule job $job"
-echo "$(date +%H:%M:%S) the upgrade, base to head, starts"
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) the upgrade, base to head, starts"
 helm upgrade hds-postgres /work/head-charts/hds-postgres --namespace "$NS" --wait --timeout 5m > /dev/null
 # shellcheck disable=SC2046
 helm upgrade hds /work/head-charts/hds --namespace "$NS" -f /work/head-charts/hds/values-local.yaml \
     -f /work/values.yaml $(images head) --wait --timeout 10m > /dev/null
-head_roll=$(date +%H:%M:%S)
+head_roll=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "$head_roll the upgrade is done; the head rolls once more"
 # Then a second rollout, head to head, under the same load: in the upgrade above the pods that
 # stop are the base's, so this is what tests the head's own shutdown (its preStop; review R202).
@@ -254,7 +254,7 @@ kubectl -n "$NS" rollout restart deployment/hds-api deployment/hds-web deploymen
 for deployment in hds-api hds-web hds-worker; do
     kubectl -n "$NS" rollout status "deployment/$deployment" --timeout=5m > /dev/null
 done
-echo "$(date +%H:%M:%S) the head's rollout is done"
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) the head's rollout is done"
 sleep 20
 kill -TERM "$load_pid"
 load_status=0
@@ -273,7 +273,8 @@ grep '^  FAIL  ' "$work/load.log" | sed 's/^  FAIL  //' > "$work/failures" || tr
 if grep -q 'preStop:' "$work/base/infra/helm/hds/templates/web.yaml"; then
     cp "$work/failures" "$work/counted"
 else
-    # A failure reads "HH:MM:SS GET /path: why"; the path's colon is load.py's.
+    # A failure reads "2026-11-07T16:44:23Z GET /path: why" (UTC, fixed width, so it compares as
+    # a string across midnight); the path's colon is load.py's.
     awk -v roll="$head_roll" '{ path = $3; sub(/:$/, "", path) }
         !($1 < roll && $2 == "GET" && (path == "/" || path ~ /^\/_expo\//))' "$work/failures" > "$work/counted"
     allowed=$(($(wc -l < "$work/failures") - $(wc -l < "$work/counted")))

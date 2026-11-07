@@ -49,7 +49,7 @@ class Tally:
 
     def fail(self, what: str) -> None:
         """Record one failure, with the time it happened."""
-        self.failures.append(f"{time.strftime('%H:%M:%S')} {what}")
+        self.failures.append(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {what}")
 
 
 @dataclass
