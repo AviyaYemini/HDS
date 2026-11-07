@@ -101,10 +101,12 @@ backup_job() {
 }
 
 # Running backups, a restore test or another restore would read or write the database while it is
-# replaced.
+# replaced. The listing is kept before it is trimmed: piped straight into sed (sh has no pipefail),
+# a failed kubectl would read as "none running" (review R207).
 running() {
-    k get jobs -l 'app.kubernetes.io/component in (backup,restore-test,restore)' \
-        -o jsonpath='{range .items[?(@.status.active)]}{.metadata.name}{" "}{end}' | sed 's/ *$//'
+    listing=$(k get jobs -l 'app.kubernetes.io/component in (backup,restore-test,restore)' \
+        -o jsonpath='{range .items[?(@.status.active)]}{.metadata.name}{" "}{end}') || return 1
+    printf '%s' "$listing" | sed 's/ *$//'
 }
 active=$(running) || fail "the Jobs in $ns could not be listed"
 [ -z "$active" ] || fail "a Job is still running: $active; wait for it. Nothing was changed"

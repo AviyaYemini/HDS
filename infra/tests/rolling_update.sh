@@ -256,7 +256,7 @@ for deployment in hds-api hds-web hds-worker; do
 done
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) the head's rollout is done"
 sleep 20
-kill -TERM "$load_pid"
+kill -TERM "$load_pid" 2> /dev/null || true
 load_status=0
 wait "$load_pid" || load_status=$?
 load_pid=""

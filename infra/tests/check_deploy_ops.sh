@@ -36,9 +36,14 @@ case "$tool $*" in
     # Failed, FAKE_<JOB>_EXIT is its container's exit status. FAKE_CRON: hds-backup's suspend.
     # FAKE_TERMINATING: how many polls still find a pod. FAKE_ACTIVE: running backup Jobs.
     # The first listing answers FAKE_ACTIVE, later ones FAKE_ACTIVE_LATER (a backup that started).
+    # FAKE_JOBS_FAIL=first or later: that listing fails, as an unreachable API server does (R207).
     "kubectl "*"get jobs -l "*)
-        if [ -f "$FAKE_DIR/listed" ]; then printf '%s' "${FAKE_ACTIVE_LATER:-}";
-        else touch "$FAKE_DIR/listed"; printf '%s' "${FAKE_ACTIVE:-}"; fi ;;
+        if [ -f "$FAKE_DIR/listed" ]; then
+            [ "${FAKE_JOBS_FAIL:-}" != later ] || exit 1; printf '%s' "${FAKE_ACTIVE_LATER:-}"
+        else
+            touch "$FAKE_DIR/listed"; [ "${FAKE_JOBS_FAIL:-}" != first ] || exit 1
+            printf '%s' "${FAKE_ACTIVE:-}"
+        fi ;;
     # FAKE_SAVED: what an earlier run left in hds-restore-saved ("api worker cron flux").
     "kubectl "*"get configmap hds-restore-saved"*) printf '%s' "${FAKE_SAVED:-}" ;;
     "kubectl "*"create configmap hds-restore-saved"* | "kubectl "*"delete configmap hds-restore-saved"*) ;;
@@ -242,6 +247,14 @@ check "after an earlier run stopped midway, a started backup leaves its state al
     "stay suspended from the earlier run" \
     "$B" FAKE_SAVED="3 2 false false false" FAKE_ACTIVE_LATER="hds-backup-29001 " -- restore.sh
 never "the earlier run's state is kept" called "delete configmap"
+check "a Job listing that fails refuses before anything changes" 1 "the Jobs in hds could not be listed" \
+    "$B" FAKE_JOBS_FAIL=first -- restore.sh
+never "nothing was suspended" called "suspend helmrelease"
+never "and no Job was made" called "create -f"
+check "a second listing that fails stops before the scale-down" 1 \
+    "could not be listed; Flux and hds-backup stay suspended" "$B" FAKE_JOBS_FAIL=later -- restore.sh
+never "nothing was scaled then" called "scale deployment"
+never "and no restore Job was made" called '"value": ["restore.sh", "hds-'
 
 check "CONFIRM is replace or nothing" 1 "CONFIRM is replace or unset" "$B" CONFIRM=yes -- restore.sh
 never "a bad CONFIRM made no Job" called "create -f"
