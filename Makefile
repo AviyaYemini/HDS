@@ -36,19 +36,27 @@ COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 COMPOSE_READ := JWT_SECRET_KEY="$${JWT_SECRET_KEY:-unused-by-down}" $(COMPOSE)
 POSTGRES_IMAGE := postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
 
-.PHONY: env up build down wipe ps logs hooks ci-local ci-local-db
+.PHONY: env up build down wipe ps logs hooks ci-local ci-local-full ci-local-db
 .PHONY: ops-backup ops-restore-test ops-backups ops-restore ops-rollback ops-resume ops-unseal
 .PHONY: ops-vault-configure ops-status
 
-# CI's checks that need no database, here and in CI's order (scripts/ops/ci_local.sh): ruff, format,
-# interrogate, mypy, the import graph, pip-audit, the unit and property tests, the API image,
-# ShellCheck, the Helm charts, the Markdown links, gitleaks and commitlint over origin/main..HEAD,
-# and the client.
+# CI's checks that need no database, for what the branch changed since its merge base with
+# origin/main (scripts/ops/ci_local.sh): the API's, the client's and each infra check's only when
+# their paths changed; the Markdown links, gitleaks and commitlint always. It lists what ran and
+# what was skipped, and why. The check while building and at each group's end.
 ci-local:
 	scripts/ops/ci_local.sh
 
-# Opt in, slow (about 25 minutes): the migration check on a throwaway database, then the
-# integration, contract and concurrency suites on hds_p3_test (scripts/ops/ci_local_db.sh).
+# Every one of those checks, in CI's order: ruff, format, interrogate, mypy, the import graph,
+# pip-audit, the unit and property tests, the API image, the ops targets, the release scripts,
+# ShellCheck, actionlint, the Helm charts, Vault's policies, the alert rules, the Markdown links,
+# gitleaks and commitlint over origin/main..HEAD, and the client. Once, when the PR is ready to push.
+ci-local-full:
+	scripts/ops/ci_local.sh --full
+
+# Opt in, slow (about 25 minutes), once, when the PR is ready to push and only if apps/api/ or the
+# 001 contract changed: the migration check on a throwaway database, then the integration, contract
+# and concurrency suites on hds_p3_test (scripts/ops/ci_local_db.sh).
 ci-local-db:
 	scripts/ops/ci_local_db.sh
 

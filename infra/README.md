@@ -36,6 +36,7 @@ environment, and the pinned versions (specs/006-deploy-operations). The cluster'
 | `flux/clusters/local/` | What Flux runs in the cluster: an OCIRepository and a HelmRelease for each chart, and its alerts to Alertmanager |
 | `tests/check_backup_jobs.sh`, `tests/check_deploy_ops.sh` | The `make ops-*` scripts against fake kubectl, flux and helm (CI `lint` job) |
 | `tests/check_release.sh` | The release's scripts and workflow, without GitHub or a registry (CI `lint` job) |
+| `tests/check_ci_local.sh` | The scoped `make ci-local`'s choice of steps for each kind of change, with `--plan` in throwaway repositories (CI `lint` job) |
 | `tests/release_gates.sh` | The release's scan gates and its push, proven locally with throwaway images and registry; run by hand |
 
 ## The Helm charts
@@ -62,6 +63,8 @@ routes it.
 `helm/tests/assert.sh` runs `helm lint`, kubeconform (Kubernetes v1.37.1 schemas) and assertions
 on the rendered manifests: `hds` for `values-local.yaml` and `values-ci.yaml`, and `hds-postgres`
 with its defaults. Every tool runs from an image pinned in `VERSIONS.md`; only Docker is needed.
+Every yq question goes to one yq container, started once per run, through `docker exec`: a
+container per question took most of the script's six minutes, and the checks now take under one.
 
 ## Releases
 

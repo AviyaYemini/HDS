@@ -30,6 +30,8 @@ jobs:
       - run: infra/tests/check_release.sh
       # make ops-status against a fake kubectl and helm (T057).
       - run: infra/tests/check_status.sh
+      # The scoped make ci-local's choice of steps, in throwaway repositories (the harness).
+      - run: infra/tests/check_ci_local.sh
       # The operations scripts, POSIX sh (specs/006). Version as infra/VERSIONS.md.
       - name: ShellCheck
         run: |

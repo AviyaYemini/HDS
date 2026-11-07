@@ -1,6 +1,7 @@
 #!/bin/sh
-# `make ci-local-db`, opt in: CI's database jobs on this machine. Slow (about 25 minutes), so it is
-# never part of `make ci-local` or of any per-turn check.
+# `make ci-local-db`, opt in: CI's database jobs on this machine. Slow (about 25 minutes), so it runs
+# once per pull request, when it is ready to push and only if apps/api/ or the 001 contract changed;
+# never in `make ci-local`, in a group's close or in any per-turn check.
 #
 #   1. The migration check: `alembic upgrade head` then `alembic check` on a fresh, throwaway
 #      PostgreSQL container, as CI's migration-check job does on its own fresh database. A

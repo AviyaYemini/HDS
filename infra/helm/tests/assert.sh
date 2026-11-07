@@ -36,7 +36,13 @@ SCHEMAS="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/${SCHEMA
 DIGEST="sha256:0000000000000000000000000000000000000000000000000000000000000001"
 
 out=$(mktemp -d)
-trap 'rm -rf "$out"' EXIT
+# One yq container for every question the checks ask, started once and reached with `docker exec`:
+# a container start costs about two seconds, and the checks ask yq over a hundred times, which was
+# most of this script's five minutes. It reads the rendered manifests in $out as they are written.
+yq_box=""
+trap '[ -z "$yq_box" ] || docker rm -f "$yq_box" > /dev/null 2>&1; rm -rf "$out"' EXIT
+yq_box=$(docker run -d --rm --user "$(id -u):$(id -g)" -v "$out:/m:ro" --entrypoint sh "$YQ_IMAGE" \
+    -c 'trap "exit 0" TERM; while :; do sleep 3600 & wait $!; done')
 failures=0
 
 # helm_with MOUNT... -- ARGS...: helm from its pinned image, with those folders mounted; every helm
@@ -70,15 +76,13 @@ chart() {
 # set -e does not see a failure inside an argument, and an empty result would pass a check
 # that wants nothing.
 yq() {
-    docker run --rm -i --user "$(id -u):$(id -g)" -v "$out:/m:ro" "$YQ_IMAGE" ea -N "$2" "/m/$1" \
-        | sed '/^$/d' || echo "YQ-FAILED"
+    docker exec -i "$yq_box" yq ea -N "$2" "/m/$1" | sed '/^$/d' || echo "YQ-FAILED"
 }
 
 # yq_each FILE EXPRESSION: as yq, but each document on its own (eval, not eval-all), for an
 # expression that joins several of one document's fields: eval-all would mix the documents' values.
 yq_each() {
-    docker run --rm -i --user "$(id -u):$(id -g)" -v "$out:/m:ro" "$YQ_IMAGE" e -N "$2" "/m/$1" \
-        | sed '/^$/d' || echo "YQ-FAILED"
+    docker exec -i "$yq_box" yq e -N "$2" "/m/$1" | sed '/^$/d' || echo "YQ-FAILED"
 }
 
 # expect LABEL WANTED ACTUAL
@@ -478,8 +482,8 @@ done
 expect "the ingress routes neither the ops port nor /metrics" "" \
     "$(yq "$f" 'select(.kind == "Ingress") | .spec.rules[].http.paths[] | select(.backend.service.port.number == 9100 or .backend.service.port.name == "ops" or (.path | test("metrics")))' )"
 expect "the PrometheusRule is the rules file promtool tests, as it is" \
-    "$(docker run --rm -i "$YQ_IMAGE" -o=json '.groups' < "$ROOT/infra/helm/hds/files/alert-rules.yaml" | jq -c .)" \
-    "$(yq_each "$f" 'select(.kind == "PrometheusRule") | .spec.groups' | docker run --rm -i "$YQ_IMAGE" -o=json . | jq -c .)"
+    "$(docker exec -i "$yq_box" yq -o=json '.groups' < "$ROOT/infra/helm/hds/files/alert-rules.yaml" | jq -c .)" \
+    "$(yq_each "$f" 'select(.kind == "PrometheusRule") | .spec.groups' | docker exec -i "$yq_box" yq -o=json . | jq -c .)"
 
 # hds-secrets (T051, research R3 amended in Group J): the operator's sign-in, one VaultStaticSecret per
 # path, each kept on uninstall, and each restarting only the Deployments that read it.
