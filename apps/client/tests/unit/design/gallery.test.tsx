@@ -9,6 +9,7 @@ import { ToastHost } from "../../../src/design/components";
 import { getLoadingState, resetLoading } from "../../../src/design/loading/loadingStore";
 import { ThemeProvider } from "../../../src/design/theme/ThemeProvider";
 import { resetThemeStore } from "../../../src/design/theme/themeStore";
+import { DEFAULT_TIME_ZONE, formatNumericRange, presetRange, stripIsolates, todayIn } from "../../../src/locale";
 import { GalleryScreen } from "../../../src/screens/gallery/GalleryScreen";
 
 beforeEach(() => {
@@ -54,7 +55,11 @@ describe("GalleryScreen (FR-067)", () => {
   it("drives the pickers and opens the sheet", async () => {
     await open();
     await fireEvent.press(screen.getByTestId("preset-last-week"));
-    expect(screen.getByTestId("date-range-summary")).toHaveTextContent(/25\/10\/2026 – 31\/10\/2026/);
+    // The gallery reads the real clock, so the expected week is computed the same way (R18).
+    const lastWeek = presetRange("last-week", todayIn(DEFAULT_TIME_ZONE));
+    expect(stripIsolates(screen.getByTestId("date-range-summary").props.children)).toBe(
+      stripIsolates(formatNumericRange(lastWeek.start, lastWeek.end)),
+    );
     const field = screen.getByTestId("date-field");
     await fireEvent.changeText(field, "7/11/2026");
     await fireEvent(field, "blur");
