@@ -3,7 +3,7 @@ description: Review the current changes against the HDS constitution and the ori
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Read, Edit(specs/**/review-ledger.md), Write(specs/**/review-ledger.md)
 ---
 
-Run once per pull request, when the branch is ready to push; each group's own review is `/code-review high`.
+Run once per pull request, when the branch is ready to push; a group's close has no review (the owner's working rules of 2026-11-08).
 
 Review the uncommitted changes and the commits on this branch (`git diff HEAD`, `git status`, `git log main..HEAD` if a main branch exists) against `.specify/memory/constitution.md` and `docs/hds-spec.md`.
 

@@ -11,7 +11,7 @@ A full-stack app is several layers stacked on top of each other. Each layer has 
 ```
  PEOPLE         employees, managers, admins, clients
    |
- CLIENT         web + phone app (Expo / TypeScript)         apps/client        (not built yet)
+ CLIENT         web + phone app (Expo / TypeScript)         apps/client
    |  HTTPS + JSON, described by the OpenAPI contract
  API            FastAPI app: receives requests, replies     apps/api/src/hds
    |
@@ -95,9 +95,9 @@ The rule worth remembering: **calls go down, results come back up, and no layer 
 
 | Folder | Job |
 | --- | --- |
-| `apps/client/` | The future phone and web app. Today it holds only translation files and Playwright test scaffolds that are skipped until the UI exists. |
-| `packages/api-client/` | Will hold the TypeScript client *generated* from the API contract. It's a stub. |
-| `infra/` | `docker-compose.yml` (PostgreSQL + API) and `Dockerfile.api`. `infra/volumes/` holds the database's files on your disk and is git-ignored. |
+| `apps/client/` | The phone and web app (Expo, expo-router, i18next), in Hebrew and English: screens under `src/screens/`, the design system under `src/design/`, Jest tests under `tests/unit/` and Playwright specs under `tests/e2e/` (feature 007, ADRs 010 and 014). |
+| `packages/api-client/` | The TypeScript client *generated* from the API's OpenAPI document; never edited by hand. CI regenerates it and fails on any difference (Constitution V). |
+| `infra/` | Docker Compose (PostgreSQL, the API, the schedule worker, the web client), the images, the Helm charts and pinned versions (`infra/README.md`). `infra/volumes/` holds the database's files on your disk and is git-ignored. |
 | `.github/workflows/ci.yml` | The automated checks that run on every pull request. |
 | `docs/` | Your spec and API reference, plus `adr/` (architecture decision records: why we chose what we chose). |
 | `specs/` | Spec Kit's output per feature: `spec.md` (what), `plan.md` (how), `tasks.md` (steps). |
