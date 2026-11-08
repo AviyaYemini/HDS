@@ -1,5 +1,5 @@
 /** Schedule runs' model (specs/007-ux-redesign FR-042, FR-074): the bar, the label, the count. */
-import { coveredText, digest, elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, typesOf, weeksOf } from "../../../src/screens/runs/model";
+import { coveredText, digest, elapsedNow, filled, honesty, projectsOf, runProgress, typesOf, weeksOf } from "../../../src/screens/runs/model";
 
 const START = "2026-11-08T10:00:00Z";
 const running = { status: "running" as const, solver: "cpsat", time_limit_seconds: 20 };
@@ -48,20 +48,9 @@ test("a run's weeks start on Sundays and cover its whole range", () => {
   expect(weeks[0]).toHaveLength(7);
 });
 
-test("a slot's people say what the run does to each against the drafts", () => {
-  const changes = { added: [{ key: "k1", user_id: "new" }], removed: [{ key: "k1", user_id: "gone" }, { key: "k2", user_id: "x" }] };
-  expect(peopleOf({ key: "k1", assigned: ["kept", "new"] }, changes)).toEqual([
-    { userId: "kept", change: "kept" },
-    { userId: "new", change: "added" },
-    { userId: "gone", change: "removed" },
-  ]);
-});
-
-test("slots sort by start within their day, and an older run's projects come from its slots", () => {
-  const slot = (key: string, date: string, starts_at: string, project_id = "p") => ({ key, date, starts_at, project_id }) as never;
-  const byDay = slotsByDay({ slots: [slot("b", "2026-11-08", "2026-11-08T12:00:00Z"), slot("a", "2026-11-08", "2026-11-08T05:00:00Z")] });
-  expect(byDay.get("2026-11-08")!.map((s: { key: string }) => s.key)).toEqual(["a", "b"]);
-  expect(projectsOf({ project_ids: [], proposal: { slots: [slot("a", "d", "t", "p1"), slot("b", "d", "t", "p1")] } as never })).toEqual(["p1"]);
+test("an older run's projects come from its slots", () => {
+  const slot = (key: string, project_id: string) => ({ key, project_id }) as never;
+  expect(projectsOf({ project_ids: [], proposal: { slots: [slot("a", "p1"), slot("b", "p1")] } as never })).toEqual(["p1"]);
   expect(projectsOf({ project_ids: ["p2"], proposal: null })).toEqual(["p2"]);
 });
 

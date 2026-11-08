@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy.orm.attributes import flag_modified
 
 from hds.models.schedule_job import ScheduleJob
 from hds.repositories.base import OrgScopedRepository
@@ -133,6 +134,16 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
     async def decide(self, job: ScheduleJob, state: str, by: uuid.UUID, at: datetime) -> None:
         """Record on a locked job that its proposal was accepted or discarded, by whom and when."""
         job.proposal_state, job.decided_by, job.decided_at = state, by, at
+        if job.current is not None:
+            flag_modified(job, "current")
+        await self.session.flush()
+
+    async def save_copy(self, job: ScheduleJob) -> None:
+        """Write a locked job's working copy and version as the caller set them (008, ADR 020).
+
+        ``current`` is reassigned whole by the caller, so the JSON column sees the change.
+        """
+        flag_modified(job, "current")
         await self.session.flush()
 
     async def release(self, id: uuid.UUID, attempt: int) -> bool:

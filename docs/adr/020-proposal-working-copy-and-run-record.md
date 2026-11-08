@@ -27,8 +27,8 @@ Admin edit a proposal before accepting it, accept it in parts, lock assignments 
 - **The record only grows.** `schedule_job_events` holds one row per step (created, finished,
   stopped, edited, undone, locked, overridden, accepted, discarded and so on), with actor, time and
   the working copy's version. Its repository can only insert and read, and a database trigger
-  refuses UPDATE and DELETE. Undo replays the record without its last edit, so there is no second
-  history.
+  refuses UPDATE and DELETE. Each edit's step holds the people of the slots it touched before it,
+  so undo restores them from the record and adds an `undone` step: there is no second history.
 
 ## Consequences
 

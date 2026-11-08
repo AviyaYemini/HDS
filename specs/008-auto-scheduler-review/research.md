@@ -80,8 +80,9 @@ Decisions for 008's plan. Each gives the decision, why, and what else was weighe
 - **Decision**: `schedule_jobs.result` stays the solver's result, untouched. `current` holds the
   working copy: the same shape, plus per assignment `by` (solver or person), `locked`, `override`
   (warning code and reason) and `accepted`. `version` counts every change; edits and accepts send
-  `If-Match` with it and are refused with 412 when stale. Undo replays the edits from the record minus
-  the last one.
+  `If-Match` with it and are refused with 412 when stale. Each `edited` step of the record holds the
+  touched slots' people before it; undo restores them for the last edit not yet undone, and records
+  an `undone` step naming it. A slot with a part accepted is edited on the roster instead.
 - **Rationale**: one JSON per job keeps reading a proposal one query; the version stops lost
   updates; the record already holds every edit, so undo needs no second store.
 - **Alternatives**: rows per proposal assignment (rejected: proposals are short-lived, and expire

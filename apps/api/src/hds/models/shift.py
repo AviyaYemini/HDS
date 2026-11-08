@@ -103,9 +103,15 @@ class Assignment(TimestampedBase):
     )
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A lock keeps the assignment in every later run until someone unlocks it (008 FR-018).
+    locked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("shift_id", "user_id", name="uq_assignments_shift_user"),
+        CheckConstraint(
+            "(locked_by IS NULL) = (locked_at IS NULL)", name="ck_assignments_lock_paired"
+        ),
         CheckConstraint("source IN ('manual', 'generated')", name="ck_assignments_source"),
         CheckConstraint(
             "(starts_at IS NULL) = (ends_at IS NULL)", name="ck_assignments_times_paired"

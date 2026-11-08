@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     SmallInteger,
     String,
 )
@@ -35,8 +36,9 @@ class ScheduleJob(TimestampedBase):
     run's projects, empty for every active one. A worker claims a queued job, or a running one past
     its ``lease_until``, at most three times (``attempts``). Once succeeded, ``result`` holds the
     proposal (data-model.md), ``fingerprint`` the SHA-256 of the problem it solved, ``optimal``
-    whether it is proven, and ``proposal_state`` whether it is open, accepted or discarded; an open
-    proposal finished more than 7 days ago reads as expired.
+    whether it is proven, and ``proposal_state`` whether it is open, accepted, discarded or
+    partly accepted; an open proposal finished more than 7 days ago reads as expired. From 008,
+    ``current`` is the proposal's working copy and ``version`` guards it (ADR 020).
     """
 
     __tablename__ = "schedule_jobs"
@@ -71,6 +73,22 @@ class ScheduleJob(TimestampedBase):
     # The W3C traceparent of the request that queued the job, so the worker continues its trace;
     # written once when queued, null when there was no trace (migration 024, specs/006 R8).
     trace_context: Mapped[str | None] = mapped_column(String(55))
+    # 008 (migration 034, ADR 020): the run's steering, its progress, and the proposal's working
+    # copy. ``result`` stays the solver's; ``current`` takes people's edits under ``version``.
+    controls: Mapped[dict[str, Any]] = mapped_column(
+        _JSON, nullable=False, default=dict, server_default="{}"
+    )
+    chips: Mapped[list[dict[str, Any]]] = mapped_column(
+        _JSON, nullable=False, default=list, server_default="[]"
+    )
+    based_on_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("schedule_jobs.id"))
+    current: Mapped[dict[str, Any] | None] = mapped_column(_JSON)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    needed: Mapped[int | None] = mapped_column(Integer)
+    best_filled: Mapped[int | None] = mapped_column(Integer)
+    progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended: Mapped[str | None] = mapped_column(String(16))
 
     __table_args__ = (
         CheckConstraint("last_day >= first_day", name="ck_schedule_jobs_order"),
@@ -80,12 +98,17 @@ class ScheduleJob(TimestampedBase):
         ),
         CheckConstraint("solver IN ('greedy', 'cpsat')", name="ck_schedule_jobs_solver"),
         CheckConstraint(
-            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_schedule_jobs_status",
         ),
         CheckConstraint(
-            "proposal_state IS NULL OR proposal_state IN ('open', 'accepted', 'discarded')",
+            "proposal_state IS NULL OR proposal_state IN "
+            "('open', 'accepted', 'discarded', 'partly_accepted')",
             name="ck_schedule_jobs_proposal_state",
+        ),
+        CheckConstraint(
+            "ended IS NULL OR ended IN ('finished', 'stopped', 'timed_out', 'cancelled', 'failed')",
+            name="ck_schedule_jobs_ended",
         ),
         Index("idx_schedule_jobs_status_created", "status", "created_at"),
         Index("idx_schedule_jobs_org_created", "organization_id", "created_at"),

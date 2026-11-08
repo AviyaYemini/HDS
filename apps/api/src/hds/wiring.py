@@ -36,6 +36,7 @@ from hds.repositories.roster_extras import (
 )
 from hds.repositories.saved_view import SavedViewRepository
 from hds.repositories.schedule_job import ScheduleJobRepository
+from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.scheduling_inputs import SchedulingInputRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
@@ -53,6 +54,7 @@ from hds.services.pay import PayService
 from hds.services.pay_settings import PaySettingsService
 from hds.services.project import ProjectService
 from hds.services.project_manager import ProjectManagerService
+from hds.services.proposal import ProposalService
 from hds.services.reports import ReportsService
 from hds.services.roster import RosterService
 from hds.services.roster_tools import RosterToolsService
@@ -148,6 +150,21 @@ def job_service(db: AsyncSession) -> ScheduleJobService:
         user_repo=UserRepository(db),
         shift_type_repo=ShiftTypeRepository(db),
         project_manager_repo=ProjectManagerRepository(db),
+        override_repo=RuleOverrideRepository(db),
+        event_repo=ScheduleJobEventRepository(db),
+    )
+
+
+def proposals(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> ProposalService:
+    """FastAPI dependency: proposals under review (008), in the request's unit of work."""
+    return ProposalService(
+        jobs=job_service(db),
+        inputs=input_service(db),
+        users=UserRepository(db),
+        organisations=OrganisationRepository(db),
+        events=ScheduleJobEventRepository(db),
     )
 
 

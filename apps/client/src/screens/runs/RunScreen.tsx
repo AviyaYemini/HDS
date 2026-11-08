@@ -13,19 +13,18 @@ import { StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
+import { InlineBanner, LinkPressable, PageTitle, SkeletonRows, StatusChip, Txt } from "../../design/components";
 import { Icon } from "../../design/icons/Icon";
 import { webProps } from "../../design/web";
 import { Screen } from "../../design/components/Screen";
 import { endProgress, setProgress, startLoading } from "../../design/loading/loadingStore";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import { previewsEnabled } from "../../config/previews";
 import { DEFAULT_TIME_ZONE, formatNumericDate, formatNumericRange, formatTimeRange, startOfWeek } from "../../locale";
 import { useLoad } from "../useLoad";
 import { rosterHref } from "../roster/ProjectChooser";
 import { HonestyLabel } from "./HonestyLabel";
-import { ProposalWeek, type Names } from "./ProposalWeek";
-import { STATUS_TONE, coveredText, elapsedNow, filled, isActive, projectsOf, runProgress, type Job } from "./model";
+import { ReviewWeek } from "./ReviewWeek";
+import { STATUS_TONE, coveredText, elapsedNow, filled, isActive, projectsOf, runProgress, type Job, type Names } from "./model";
 
 const POLL_MS = 1000;
 const RETRY_MS = 3000;
@@ -125,7 +124,7 @@ function useJob(id: string | undefined) {
  * Project, shift type and people's names, to read the proposal by (FR-080). Everyone, deactivated
  * people included, so an older run still names who it proposed.
  */
-function useNames(): Names {
+function useNames(): Names & { staff: { id: string; full_name: string }[] } {
   const session = useSession();
   const loaded = useLoad(async () => {
     const [projects, types, people] = await Promise.all([
@@ -137,9 +136,11 @@ function useNames(): Names {
       projects: new Map(projects.items.map((p) => [p.id, p.name])),
       types: new Map(types.items.map((type) => [type.id, type.name])),
       people: new Map(people.items.map((person) => [person.id, person.full_name])),
+      // Who a proposal may place: active staff, never a client account (008 FR-008).
+      staff: people.items.filter((person) => person.role !== "client" && person.is_active).map((person) => ({ id: person.id, full_name: person.full_name })),
     };
   });
-  return loaded.data ?? { projects: new Map(), types: new Map(), people: new Map() };
+  return loaded.data ?? { projects: new Map(), types: new Map(), people: new Map(), staff: [] };
 }
 
 function Proposal({ job, names }: { job: Job; names: Names }) {
@@ -221,56 +222,16 @@ function Proposal({ job, names }: { job: Job; names: Names }) {
 export function RunScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const session = useSession();
   const errorText = useErrorText();
   const { colors } = useTheme();
-  const { reading, error, pollError, setJob, reload } = useJob(id);
+  const { reading, error, pollError, reload } = useJob(id);
   const job = reading?.job ?? null;
   const names = useNames();
-  const [busy, setBusy] = useState<"accept" | "discard" | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   useRunBar(reading);
 
-  const accept = async () => {
-    if (!id || job === null) return;
-    setBusy("accept");
-    setActionError(null);
-    try {
-      const answer = await call(session.api.POST("/api/v1/schedule-jobs/{id}/accept", { params: { path: { id } } }));
-      showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), { tone: "success" });
-      // Closed at once, so Accept and Discard cannot be pressed again before the fresh read lands.
-      setJob({ ...job, proposal_state: "accepted" });
-      reload();
-    } catch (failure) {
-      setActionError(codeOf(failure));
-    } finally {
-      setBusy(null);
-    }
-  };
-  const discard = async () => {
-    if (!id) return;
-    setBusy("discard");
-    setActionError(null);
-    try {
-      setJob(await call(session.api.POST("/api/v1/schedule-jobs/{id}/discard", { params: { path: { id } } })));
-    } catch (failure) {
-      setActionError(codeOf(failure));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const open = job?.status === "succeeded" && job.proposal_state === "open";
   return (
     <Screen testID="screen-run">
-      <PageTitle eyebrow={[t("app.name"), t("nav.runs")]} title={job ? formatNumericRange(job.from, job.to) : t("nav.runs")}>
-        {open ? (
-          <>
-            <Button variant="primary" icon="check" label={t("runs.accept")} busy={busy === "accept"} disabled={busy !== null} onPress={() => void accept()} testID="action-accept" />
-            <Button label={t("runs.discard")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discard()} testID="action-discard" />
-          </>
-        ) : null}
-      </PageTitle>
+      <PageTitle eyebrow={[t("app.name"), t("nav.runs")]} title={job ? formatNumericRange(job.from, job.to) : t("nav.runs")} />
       {error ? (
         <InlineBanner tone="warning" title={errorText(error)} action={{ label: t("common.retry"), onPress: reload }} />
       ) : job === null ? (
@@ -294,10 +255,9 @@ export function RunScreen() {
             </Txt>
           ) : null}
           {job.status === "failed" ? <InlineBanner tone="danger" title={t("runs.failed")} /> : null}
-          {actionError ? <InlineBanner tone="warning" title={errorText(actionError)} /> : null}
           {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
           {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
-          {job.status === "succeeded" && job.proposal_state === "accepted" ? (
+          {job.status === "succeeded" && (job.proposal_state === "accepted" || job.proposal_state === "partly_accepted") ? (
             <View style={styles.summary}>
               {projectsOf(job).map((project) => (
                 <LinkPressable
@@ -313,17 +273,7 @@ export function RunScreen() {
               ))}
             </View>
           ) : null}
-          {job.status === "succeeded" ? <ProposalWeek job={job} names={names} /> : null}
-          {previewsEnabled && job.status === "succeeded" ? (
-            <EmptyState
-              testID="preview-proposal-diff"
-              icon="layers"
-              badge={t("preview.badge")}
-              title={t("preview.proposal_diff_title")}
-              body={t("preview.proposal_diff_body")}
-              feature={t("preview.comes_with", { feature: "008" })}
-            />
-          ) : null}
+          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} /> : null}
         </View>
       )}
     </Screen>

@@ -37,13 +37,21 @@ chips per run.
 ### Working copy (`current`)
 
 The stored proposal of 004 (`slots`, `unfilled`, `employees`, `no_availability`, `short_published`,
-`changes`), with each slot's `assigned` turned into objects:
+`changes`; each slot now with its site's `zone`), with each slot's `assigned` replaced by:
+
+- `run_before`: the slot's candidates on the roster when the run was made (for the change marks);
+- `stored`: the slot's candidates on the roster as far as the proposal knows, moving with each part
+  accepted;
+- `people`: who the proposal puts there now, each
 
 ```json
 { "user_id": "uuid", "by": "solver|person", "locked": false,
-  "override": { "code": "warnings.minimum_rest", "reason": "text" } | null,
-  "accepted": false }
+  "override": { "codes": ["warnings.rest_too_short"], "reason": "text" } | null }
 ```
+
+A pair (slot, person) is open while `people` and `stored` disagree on it, and accepted once it
+differed from `run_before` and they agree (`hds.services.proposal_copy`). A null `current` reads as
+the result, untouched.
 
 plus `chips_met` (`[{ "id", "met": bool, "cause": "code|null" }]`) and `ended` copied from the job.
 `unfilled[].reasons[]` gain `people`: `[{ "user_id", "code", "have": minutes, "need": minutes,

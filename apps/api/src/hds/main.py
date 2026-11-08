@@ -127,6 +127,7 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     from hds.routers.pay_settings import router as pay_settings_router
     from hds.routers.project_managers import router as project_managers_router
     from hds.routers.projects import router as projects_router
+    from hds.routers.proposals import router as proposals_router
     from hds.routers.qualifications import router as qualifications_router
     from hds.routers.reports import router as reports_router
     from hds.routers.requirements import router as requirements_router
@@ -161,6 +162,7 @@ def create_app(metrics_port: int | None = None) -> FastAPI:
     application.include_router(organisation_router)
     application.include_router(saved_views_router)
     application.include_router(schedule_jobs_router)
+    application.include_router(proposals_router)
     application.include_router(pay_settings_router)
     application.include_router(special_days_router)
     application.include_router(project_managers_router)

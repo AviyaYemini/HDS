@@ -1571,7 +1571,7 @@ components:
           $ref: "#/components/schemas/UUIDv4"
         status:
           type: string
-          enum: [queued, running, succeeded, failed]
+          enum: [queued, running, succeeded, failed, cancelled]
         from:
           $ref: "#/components/schemas/ISODate"
         to:
@@ -1602,7 +1602,7 @@ components:
           type: [boolean, "null"]
         proposal_state:
           type: [string, "null"]
-          enum: [open, accepted, discarded, expired, null]
+          enum: [open, accepted, discarded, expired, partly_accepted, null]
         time_limit_seconds:
           type: integer
           description: How long the solver may search, the progress bar's whole (007 FR-074).
@@ -1619,6 +1619,121 @@ components:
               anyOf:
                 - $ref: "#/components/schemas/Proposal"
                 - type: "null"
+
+    AcceptPart:
+      type: object
+      additionalProperties: false
+      description: The part of a proposal to accept; nothing named accepts everything still open.
+      properties:
+        days: {type: array, maxItems: 31, items: {$ref: "#/components/schemas/ISODate"}}
+        project_ids: {type: array, maxItems: 500, items: {$ref: "#/components/schemas/UUIDv4"}}
+        assignments:
+          type: array
+          maxItems: 2000
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, user_id]
+            properties:
+              key: {type: string, minLength: 1, maxLength: 200}
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+
+    ProposalEdit:
+      type: object
+      additionalProperties: false
+      required: [op, key, user_id]
+      properties:
+        op: {type: string, enum: [assign, unassign, move, swap]}
+        key: {type: string, minLength: 1, maxLength: 200}
+        user_id: {$ref: "#/components/schemas/UUIDv4"}
+        to_key: {type: [string, "null"], minLength: 1, maxLength: 200}
+        other_user_id: {type: [string, "null"], format: uuid}
+        override_reason: {type: [string, "null"], minLength: 1, maxLength: 500}
+
+    ProposalWarning:
+      type: object
+      required: [key, user_id, code, values, excused]
+      properties:
+        key: {type: string}
+        user_id: {type: [string, "null"], format: uuid}
+        code: {type: string}
+        values: {type: object, additionalProperties: {type: string}}
+        excused: {type: boolean}
+
+    ProposalReview:
+      type: object
+      description: A proposal's working copy as the review reads it (008 FR-001, FR-002).
+      required: [job_id, version, state, optimal, settled, counts, coverage, slots, unfilled, employees, no_availability]
+      properties:
+        job_id: {$ref: "#/components/schemas/UUIDv4"}
+        version: {type: integer}
+        state: {type: string, enum: [open, accepted, discarded, expired, partly_accepted]}
+        optimal: {type: [boolean, "null"]}
+        settled: {type: boolean}
+        counts:
+          type: object
+          required: [added, changed, removed, unchanged]
+          properties:
+            added: {type: integer}
+            changed: {type: integer}
+            removed: {type: integer}
+            unchanged: {type: integer}
+        coverage:
+          type: array
+          items:
+            type: object
+            required: [date, project_id, filled, needed]
+            properties:
+              date: {$ref: "#/components/schemas/ISODate"}
+              project_id: {$ref: "#/components/schemas/UUIDv4"}
+              filled: {type: integer}
+              needed: {type: integer}
+        slots:
+          type: array
+          items:
+            type: object
+            required: [key, shift_id, project_id, shift_type_id, date, starts_at, ends_at, headcount, kept, people, places, marks]
+            properties:
+              key: {type: string}
+              shift_id: {type: [string, "null"], format: uuid}
+              project_id: {$ref: "#/components/schemas/UUIDv4"}
+              shift_type_id: {$ref: "#/components/schemas/UUIDv4"}
+              date: {$ref: "#/components/schemas/ISODate"}
+              starts_at: {type: string, format: date-time}
+              ends_at: {type: string, format: date-time}
+              headcount: {type: integer}
+              kept: {type: array, items: {$ref: "#/components/schemas/UUIDv4"}}
+              places: {type: integer}
+              people:
+                type: array
+                items:
+                  type: object
+                  required: [user_id, by, locked, override]
+                  properties:
+                    user_id: {$ref: "#/components/schemas/UUIDv4"}
+                    by: {type: string, enum: [solver, person]}
+                    locked: {type: boolean}
+                    override:
+                      anyOf:
+                        - type: object
+                          required: [codes, reason]
+                          properties:
+                            codes: {type: array, items: {type: string}}
+                            reason: {type: string}
+                        - type: "null"
+              marks:
+                type: array
+                items:
+                  type: object
+                  required: [mark, user_id, replaces, accepted]
+                  properties:
+                    mark: {type: string, enum: [added, changed, removed, unchanged]}
+                    user_id: {$ref: "#/components/schemas/UUIDv4"}
+                    replaces: {type: [string, "null"], format: uuid}
+                    accepted: {type: boolean}
+        unfilled: {type: array, items: {type: object}}
+        employees: {type: array, items: {type: object}}
+        no_availability: {type: array, items: {$ref: "#/components/schemas/UUIDv4"}}
 
     JobPage:
       type: object
@@ -2401,6 +2516,15 @@ components:
         type: string
         maxLength: 64
       description: The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`, 007 FR-041).
+
+    ProposalIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 16
+      description: The proposal's `version` as read; a stale one is refused with 412 (`schedule.version_stale`, 008).
 
   responses:
     Unauthorized:
@@ -4395,7 +4519,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [queued, running, succeeded, failed]
+            enum: [queued, running, succeeded, failed, cancelled]
         - name: cursor
           in: query
           required: false
@@ -4462,26 +4586,41 @@ paths:
 
     post:
       operationId: schedule_jobs_accept
-      summary: Accept a proposal as drafts (Manager+)
+      summary: Accept a proposal, or part of it, as drafts (Manager+)
       description: >
-        Stores the proposal as draft shifts and assignments, all or nothing; nothing is
-        published. 409 schedule.not_ready, schedule.proposal_closed, schedule.proposal_out_of_date.
+        Stores the proposal, or the part named (days, projects or assignments; nothing named
+        accepts all still open), as draft shifts and assignments, all or nothing; nothing is
+        published and the rest stays open (008 FR-003, FR-004). 409 schedule.not_ready,
+        schedule.proposal_closed, schedule.nothing_to_accept, schedule.proposal_out_of_date,
+        schedule.part_out_of_date (each cause in errors). 412 schedule.version_stale.
         403 roster.project_not_managed, the whole of it, for a Manager who does not manage every
         project of the run at the time (007 T108).
       tags: [ScheduleJobs]
+      parameters:
+        - $ref: "#/components/parameters/ProposalIfMatch"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptPart"
       responses:
         "200":
-          description: What was written.
+          description: What was written, and the proposal's version and state after it.
           content:
             application/json:
               schema:
                 type: object
-                required: [shifts_created, shifts_updated, assignments_added, assignments_removed]
+                required: [shifts_created, shifts_updated, assignments_added, assignments_removed, version, state]
                 properties:
                   shifts_created: {type: integer}
                   shifts_updated: {type: integer}
                   assignments_added: {type: integer}
                   assignments_removed: {type: integer}
+                  version: {type: integer}
+                  state: {type: string, enum: [open, accepted]}
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -4490,6 +4629,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -4503,12 +4644,16 @@ paths:
 
     post:
       operationId: schedule_jobs_discard
-      summary: Discard a proposal (Manager+)
+      summary: Discard a proposal, or what is still open of it (Manager+)
       description: >
-        Closes the proposal without storing it. 409 schedule.not_ready, schedule.proposal_closed;
+        Closes the proposal without storing what is still open; with parts accepted it closes as
+        partly_accepted and those stay drafts (008 FR-005). 412 schedule.version_stale. 409
+        schedule.not_ready, schedule.proposal_closed;
         403 roster.project_not_managed for a Manager who does not manage every project of the run
         (007 T108).
       tags: [ScheduleJobs]
+      parameters:
+        - $ref: "#/components/parameters/ProposalIfMatch"
       responses:
         "200":
           description: The job, its proposal now discarded.
@@ -4524,6 +4669,140 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Proposal review (008) ─────────────────────────────────────────────────
+  /schedule-jobs/{id}/proposal:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: proposals_read
+      summary: Review a proposal as a change to the roster (Manager+)
+      description: >
+        The working copy over the roster as it was when the run was made, each assignment marked
+        added, changed, removed or unchanged, with counts and places filled over needed per day
+        and project (008 FR-001, FR-002). The ETag is the version edits and accepts send in
+        If-Match. 409 schedule.not_ready; 403 roster.project_not_managed (007 T108).
+      tags: [Proposals]
+      responses:
+        "200":
+          description: The proposal under review.
+          headers:
+            ETag:
+              description: The working copy's version.
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalReview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/edits:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: proposals_edit
+      summary: Edit a proposal (Manager+)
+      description: >
+        Assign, unassign, move or swap a person in an open proposal; the roster does not change
+        until it is accepted (008 FR-008 to FR-012). 422 schedule.override_reason_required (the
+        breaks in errors), warnings.employee_inactive, schedule.edit_invalid; 409
+        schedule.part_accepted; 412 schedule.version_stale.
+      tags: [Proposals]
+      parameters:
+        - $ref: "#/components/parameters/ProposalIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposalEdit"
+      responses:
+        "200":
+          description: The proposal after the edit, and the warnings of the people it placed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposal, warnings]
+                properties:
+                  proposal:
+                    $ref: "#/components/schemas/ProposalReview"
+                  warnings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProposalWarning"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/edits/undo:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: proposals_undo
+      summary: Undo the last edit of a proposal (Manager+)
+      description: >
+        Undoes the last edit not yet undone (008 FR-011). 409 schedule.nothing_to_undo; 412
+        schedule.version_stale.
+      tags: [Proposals]
+      parameters:
+        - $ref: "#/components/parameters/ProposalIfMatch"
+      responses:
+        "200":
+          description: The proposal after the undo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalReview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

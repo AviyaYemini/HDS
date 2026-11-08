@@ -996,8 +996,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept a proposal
-         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then. A Manager who does not manage every project of the run, now, is refused the whole of it with 403 (`roster.project_not_managed`, 007 T108).
+         * Accept a proposal, or part of it
+         * @description Manager or Admin. Store the proposal, or the part the body names (`days`, `project_ids` or `assignments`; nothing named accepts everything still open), as draft shifts and assignments, all or nothing; nothing is published, and what is not named stays open (008 FR-003, FR-004). An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal is closed (`schedule.proposal_closed`), nothing named is still open (`schedule.nothing_to_accept`), an untouched proposal was made from something that has changed (`schedule.proposal_out_of_date`), or the part's own drafts changed or it would break a rule the proposal does not override (`schedule.part_out_of_date`, each in `errors`); nothing changes then. 412 (`schedule.version_stale`) for a stale `If-Match`. A Manager who does not manage every project of the run, now, is refused the whole of it with 403 (`roster.project_not_managed`, 007 T108).
          */
         post: operations["accept_job_api_v1_schedule_jobs__id__accept_post"];
         delete?: never;
@@ -1017,9 +1017,69 @@ export interface paths {
         put?: never;
         /**
          * Discard a proposal
-         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`); with 403 (`roster.project_not_managed`) for a Manager who does not manage every project of the run (007 T108).
+         * @description Manager or Admin. Close the proposal without storing what is still open of it; a proposal with parts accepted closes as `partly_accepted`, and those parts stay drafts (008 FR-005). 412 (`schedule.version_stale`) for a stale `If-Match`. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`); with 403 (`roster.project_not_managed`) for a Manager who does not manage every project of the run (007 T108).
          */
         post: operations["discard_job_api_v1_schedule_jobs__id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit a proposal
+         * @description Manager or Admin, of every project in the run. Assign, unassign, move or swap a person in an open proposal; the roster does not change until it is accepted. The answer gives the rules the placed people break on the shifts the edit touched. A break the roster lets a person override needs `override_reason` (422 `schedule.override_reason_required`, with the breaks in `errors`); an inactive employee is refused (422 `warnings.employee_inactive`); an edit that does not fit the proposal is 422 (`schedule.edit_invalid`); a shift with a part accepted is 409 (`schedule.part_accepted`); a stale `If-Match` is 412 (`schedule.version_stale`).
+         */
+        post: operations["edit_proposal_api_v1_schedule_jobs__id__edits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/edits/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo the last edit of a proposal
+         * @description Manager or Admin, of every project in the run. Undo the proposal's last edit not yet undone. 409 (`schedule.nothing_to_undo`) when there is none, or its shifts have a part accepted since; 412 (`schedule.version_stale`) for a stale `If-Match`.
+         */
+        post: operations["undo_edit_api_v1_schedule_jobs__id__edits_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review a proposal
+         * @description Manager or Admin. The proposal's working copy over the roster as it was when the run was made: every assignment marked added, changed, removed or unchanged, with counts; places filled over needed per day and project; who placed each person, and any override. The `ETag` is the `version` that edits and accepts send in `If-Match`. 409 (`schedule.not_ready`) before the job has a proposal; 403 (`roster.project_not_managed`) for a Manager who does not manage every project of the run (007 T108).
+         */
+        get: operations["read_proposal_api_v1_schedule_jobs__id__proposal_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1612,7 +1672,7 @@ export interface components {
     schemas: {
         /**
          * AcceptAnswer
-         * @description What accepting wrote to the roster, as drafts.
+         * @description What accepting wrote to the roster, as drafts, and the proposal after it (008).
          */
         AcceptAnswer: {
             /** Assignments Added */
@@ -1623,6 +1683,13 @@ export interface components {
             shifts_created: number;
             /** Shifts Updated */
             shifts_updated: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted";
+            /** Version */
+            version: number;
         };
         /**
          * AcceptInviteRequest
@@ -1633,6 +1700,18 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /**
+         * AcceptRequest
+         * @description The part to accept: days, projects or assignments; nothing named accepts all still open.
+         */
+        AcceptRequest: {
+            /** Assignments */
+            assignments?: components["schemas"]["PartPair"][];
+            /** Days */
+            days?: string[];
+            /** Project Ids */
+            project_ids?: string[];
         };
         /**
          * AssignRequest
@@ -1954,6 +2033,40 @@ export interface components {
             to_week: string;
         };
         /**
+         * Counts
+         * @description How many marks of each kind the proposal holds.
+         */
+        Counts: {
+            /** Added */
+            added: number;
+            /** Changed */
+            changed: number;
+            /** Removed */
+            removed: number;
+            /** Unchanged */
+            unchanged: number;
+        };
+        /**
+         * Coverage
+         * @description Places filled over places needed, for one day of one project (FR-002).
+         */
+        Coverage: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Filled */
+            filled: number;
+            /** Needed */
+            needed: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /**
          * DayInEffectRead
          * @description A day as a project's shifts are paid by it: the project's own, or the organisation's.
          */
@@ -1990,6 +2103,39 @@ export interface components {
         DaysInEffect: {
             /** Items */
             items: components["schemas"]["DayInEffectRead"][];
+        };
+        /**
+         * EditAnswer
+         * @description The proposal after an edit, and the warnings of the people it placed.
+         */
+        EditAnswer: {
+            proposal: components["schemas"]["Review"];
+            /** Warnings */
+            warnings: components["schemas"]["Warning"][];
+        };
+        /**
+         * EditRequest
+         * @description One edit: assign, unassign, move or swap a person, with a reason to keep a rule break.
+         */
+        EditRequest: {
+            /** Key */
+            key: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "assign" | "unassign" | "move" | "swap";
+            /** Other User Id */
+            other_user_id?: string | null;
+            /** Override Reason */
+            override_reason?: string | null;
+            /** To Key */
+            to_key?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * EmployeeShare
@@ -2341,7 +2487,7 @@ export interface components {
             project_ids: string[];
             proposal: components["schemas"]["Proposal"] | null;
             /** Proposal State */
-            proposal_state: ("open" | "accepted" | "discarded" | "expired") | null;
+            proposal_state: ("open" | "accepted" | "discarded" | "expired" | "partly_accepted") | null;
             /**
              * Requested By
              * Format: uuid
@@ -2356,7 +2502,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed";
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
             /**
              * Time Limit Seconds
              * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
@@ -2402,7 +2548,7 @@ export interface components {
             /** Project Ids */
             project_ids: string[];
             /** Proposal State */
-            proposal_state: ("open" | "accepted" | "discarded" | "expired") | null;
+            proposal_state: ("open" | "accepted" | "discarded" | "expired" | "partly_accepted") | null;
             /**
              * Requested By
              * Format: uuid
@@ -2417,7 +2563,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed";
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
             /**
              * Time Limit Seconds
              * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
@@ -2489,6 +2635,26 @@ export interface components {
         ManagersResponse: {
             /** Items */
             items: components["schemas"]["ManagerRead"][];
+        };
+        /**
+         * Mark
+         * @description One change mark against the roster when the run was made (FR-001).
+         */
+        Mark: {
+            /** Accepted */
+            accepted: boolean;
+            /**
+             * Mark
+             * @enum {string}
+             */
+            mark: "added" | "changed" | "removed" | "unchanged";
+            /** Replaces */
+            replaces: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * MeRead
@@ -2691,6 +2857,16 @@ export interface components {
             phone?: string | null;
         };
         /**
+         * Override
+         * @description Why a person keeps a rule break in the proposal, and which rules it covers.
+         */
+        Override: {
+            /** Codes */
+            codes: string[];
+            /** Reason */
+            reason: string;
+        };
+        /**
          * OverrideCreated
          * @description A recorded override.
          */
@@ -2749,6 +2925,19 @@ export interface components {
             reason: string;
             /** Warning Code */
             warning_code: string;
+        };
+        /**
+         * PartPair
+         * @description One person on one slot of the proposal.
+         */
+        PartPair: {
+            /** Key */
+            key: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * PartRead
@@ -2878,6 +3067,25 @@ export interface components {
             pay?: string | null;
             /** Shifts Missing Rate */
             shifts_missing_rate: number;
+        };
+        /**
+         * Placed
+         * @description A person the proposal places on a slot.
+         */
+        Placed: {
+            /**
+             * By
+             * @enum {string}
+             */
+            by: "solver" | "person";
+            /** Locked */
+            locked: boolean;
+            override: components["schemas"]["Override"] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * PlanAnswer
@@ -3402,6 +3610,88 @@ export interface components {
             start_time: string;
             /** Start Weekday */
             start_weekday: number;
+        };
+        /**
+         * Review
+         * @description A proposal as the review reads it.
+         */
+        Review: {
+            counts: components["schemas"]["Counts"];
+            /** Coverage */
+            coverage: components["schemas"]["Coverage"][];
+            /** Employees */
+            employees: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** No Availability */
+            no_availability: string[];
+            /** Optimal */
+            optimal: boolean | null;
+            /** Settled */
+            settled: boolean;
+            /** Slots */
+            slots: components["schemas"]["ReviewSlot"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted" | "discarded" | "expired" | "partly_accepted";
+            /** Unfilled */
+            unfilled: {
+                [key: string]: unknown;
+            }[];
+            /** Version */
+            version: number;
+        };
+        /**
+         * ReviewSlot
+         * @description A slot of the proposal under review.
+         */
+        ReviewSlot: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Headcount */
+            headcount: number;
+            /** Kept */
+            kept: string[];
+            /** Key */
+            key: string;
+            /** Marks */
+            marks: components["schemas"]["Mark"][];
+            /** People */
+            people: components["schemas"]["Placed"][];
+            /** Places */
+            places: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Shift Id */
+            shift_id: string | null;
+            /**
+             * Shift Type Id
+             * Format: uuid
+             */
+            shift_type_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
         };
         /**
          * SavedViewCreate
@@ -4151,6 +4441,24 @@ export interface components {
              * @enum {string}
              */
             role?: "employee" | "manager" | "admin";
+        };
+        /**
+         * Warning
+         * @description A rule the edit's person breaks on a slot it touched, and whether an override excuses it.
+         */
+        Warning: {
+            /** Code */
+            code: string;
+            /** Excused */
+            excused: boolean;
+            /** Key */
+            key: string;
+            /** User Id */
+            user_id: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
         };
         /**
          * WarningLine
@@ -8973,7 +9281,7 @@ export interface operations {
     list_jobs_api_v1_schedule_jobs_get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "succeeded" | "failed") | null;
+                status?: ("queued" | "running" | "succeeded" | "failed" | "cancelled") | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -9144,13 +9452,20 @@ export interface operations {
     accept_job_api_v1_schedule_jobs__id__accept_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The proposal's `version` as read; a stale one is refused with 412 (`schedule.version_stale`). */
+                "If-Match"?: string | null;
+            };
             path: {
                 id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AcceptRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -9159,6 +9474,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AcceptAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
@@ -9197,6 +9521,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
             /** @description The request is invalid. */
             422: {
                 headers: {
@@ -9209,6 +9542,256 @@ export interface operations {
         };
     };
     discard_job_api_v1_schedule_jobs__id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The proposal's `version` as read; a stale one is refused with 412 (`schedule.version_stale`). */
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    edit_proposal_api_v1_schedule_jobs__id__edits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The proposal's `version` as read; a stale one is refused with 412 (`schedule.version_stale`). */
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    undo_edit_api_v1_schedule_jobs__id__edits_undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The proposal's `version` as read; a stale one is refused with 412 (`schedule.version_stale`). */
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_proposal_api_v1_schedule_jobs__id__proposal_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -9225,7 +9808,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobRead"];
+                    "application/json": components["schemas"]["Review"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */

@@ -52,6 +52,8 @@ async def test_accepting_stores_the_proposal_as_drafts_and_publishes_nothing(
         "shifts_updated": 0,
         "assignments_added": 5,
         "assignments_removed": 0,
+        "version": 1,
+        "state": "accepted",
     }
     shifts = await roster(async_client, headers)
     assert len(shifts) == 5 and all(s["status"] == "draft" for s in shifts)
