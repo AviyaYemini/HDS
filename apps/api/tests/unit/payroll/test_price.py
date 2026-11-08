@@ -9,7 +9,7 @@ Covers: 005 FR-004, FR-009 to FR-015, SC-003; US3 acceptance scenarios 1 to 5 an
 """
 
 from dataclasses import replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
@@ -257,3 +257,20 @@ def test_a_tie_goes_to_the_first_part_and_nothing_left_changes_nothing() -> None
         Decimal("3.00"),
         Decimal("4.50"),
     ]
+
+
+def test_a_line_on_exactly_half_an_agora_rounds_up_however_its_parts_divide() -> None:
+    """A line of exactly x.xx5 rounds half up, whatever its parts' own divisions (PR 3, R69).
+
+    20 minutes at 100% and 20 at 200% on 1.0250 an hour: each part is a third of the rate, which
+    never terminates, but the line is exactly 1.025 and rounds half up to 1.03.
+    """
+    settings = replace(DEFAULT_SETTINGS, day_normal_minutes=20, overtime1_pct=Decimal("200.00"))
+    start = datetime(2026, 10, 5, 7, 0, tzinfo=UTC)
+    line = price(start, start + timedelta(minutes=40), "UTC", Decimal("1.0250"), settings, [])
+    assert {p.rate_pct: p.microseconds for p in line.parts} == {
+        Decimal("100"): 20 * 60_000_000,
+        Decimal("200.00"): 20 * 60_000_000,
+    }
+    assert line.pay == Decimal("1.03")
+    assert sum(p.pay for p in line.parts if p.pay is not None) == line.pay
