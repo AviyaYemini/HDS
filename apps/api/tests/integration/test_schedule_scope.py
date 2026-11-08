@@ -30,8 +30,8 @@ async def test_a_manager_cannot_ask_for_a_project_they_do_not_manage(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    theirs = await staffed_project(async_client, admin, "Theirs")
-    other = await staffed_project(async_client, admin, "Not theirs")
+    theirs = await staffed_project(async_client, admin, "Theirs", managed=False)
+    other = await staffed_project(async_client, admin, "Not theirs", managed=False)
     await managed_by(async_client, admin, theirs, [seed_users["manager"]])
     manager = await headers_for(async_client, "manager")
 
@@ -47,8 +47,8 @@ async def test_an_empty_list_means_the_managers_own_projects_and_an_admins_every
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    theirs = await staffed_project(async_client, admin, "Theirs")
-    other = await staffed_project(async_client, admin, "Not theirs")
+    theirs = await staffed_project(async_client, admin, "Theirs", managed=False)
+    other = await staffed_project(async_client, admin, "Not theirs", managed=False)
     await managed_by(async_client, admin, theirs, [seed_users["manager"]])
     manager = await headers_for(async_client, "manager")
 
@@ -62,10 +62,10 @@ async def test_an_empty_list_means_the_managers_own_projects_and_an_admins_every
 
 
 async def test_a_manager_of_no_project_is_told_there_is_nothing_to_schedule(
-    async_client: AsyncClient,
+    async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    await staffed_project(async_client, admin, "Not theirs")
+    await staffed_project(async_client, admin, "Not theirs", managed=False)
     manager = await headers_for(async_client, "manager")
 
     refused = await ask(async_client, manager)
@@ -78,8 +78,8 @@ async def test_a_run_for_one_project_proposes_only_its_slots(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    theirs = await staffed_project(async_client, admin, "Theirs")
-    await staffed_project(async_client, admin, "Not theirs")
+    theirs = await staffed_project(async_client, admin, "Theirs", managed=False)
+    await staffed_project(async_client, admin, "Not theirs", managed=False)
     await managed_by(async_client, admin, theirs, [seed_users["manager"]])
     manager = await headers_for(async_client, "manager")
     job = (await ask(async_client, manager, project_ids=[theirs["id"]])).json()
@@ -95,7 +95,7 @@ async def test_accepting_after_the_manager_lost_a_project_is_refused_whole(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    theirs = await staffed_project(async_client, admin, "Theirs")
+    theirs = await staffed_project(async_client, admin, "Theirs", managed=False)
     await managed_by(async_client, admin, theirs, [seed_users["manager"]])
     manager = await headers_for(async_client, "manager")
     job = (await ask(async_client, manager, project_ids=[theirs["id"]])).json()
@@ -118,7 +118,7 @@ async def test_discarding_takes_the_same_scope_as_accepting(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
-    project = await staffed_project(async_client, admin, "Not theirs")
+    project = await staffed_project(async_client, admin, "Not theirs", managed=False)
     job = (await ask(async_client, admin, project_ids=[project["id"]])).json()
     assert str(await work()) == job["id"]
     manager = await headers_for(async_client, "manager")

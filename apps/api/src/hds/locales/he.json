@@ -95,6 +95,7 @@
   "requirements.shift_type_retired": "לסוג משמרת שהוצא משימוש אי אפשר להגדיר צורכי איוש.",
   "schedule.range_invalid": "הטווח לא יכול להסתיים לפני שהוא מתחיל, והוא מכסה 31 ימים לכל היותר.",
   "schedule.project_not_active": "כל פרויקט חייב להיות פרויקט פעיל של הארגון.",
+  "schedule.no_projects": "אין פרויקט פעיל שלך לשיבוץ.",
   "schedule.cursor_invalid": "הסמן אינו אחד שה-API החזיר.",
   "schedule.unavailable": "חסום או נעדר באותו יום.",
   "schedule.overlap": "כבר משובץ למשמרת באותה שעה.",

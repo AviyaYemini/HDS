@@ -105,6 +105,7 @@ async def test_thirty_one_days_are_allowed(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)  # a run needs a project of theirs (T108)
     answer = await ask(async_client, manager, SUNDAY, SUNDAY + timedelta(days=30))
     assert answer.status_code == 202, answer.text
 
@@ -129,6 +130,7 @@ async def test_a_repeat_with_the_same_key_answers_the_first_job(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)  # a run needs a project of theirs (T108)
     keyed = {**manager, "Idempotency-Key": "week-23"}
 
     first = await ask(async_client, keyed)
@@ -146,7 +148,9 @@ async def test_a_repeat_with_the_same_key_answers_the_first_job(
 async def test_employees_and_clients_cannot_ask_for_or_read_jobs(
     async_client: AsyncClient, seed_users: dict[str, User], role: str
 ) -> None:
-    job = (await ask(async_client, await headers_for(async_client, "manager"))).json()
+    manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)  # a run needs a project of theirs (T108)
+    job = (await ask(async_client, manager)).json()
     headers = await headers_for(async_client, role)
 
     assert (await ask(async_client, headers)).status_code == 403

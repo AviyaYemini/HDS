@@ -138,6 +138,7 @@ def job_service(db: AsyncSession) -> ScheduleJobService:
         assignment_repo=AssignmentRepository(db),
         user_repo=UserRepository(db),
         shift_type_repo=ShiftTypeRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
     )
 
 

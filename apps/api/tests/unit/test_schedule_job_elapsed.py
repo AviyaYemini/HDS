@@ -13,7 +13,7 @@ START = datetime(2026, 11, 8, 10, 0, tzinfo=UTC)
 def _service(now: datetime) -> ScheduleJobService:
     unused = cast(Any, None)
     return ScheduleJobService(
-        unused, unused, unused, unused, unused, unused, unused, unused, now=lambda: now
+        unused, unused, unused, unused, unused, unused, unused, unused, unused, now=lambda: now
     )
 
 

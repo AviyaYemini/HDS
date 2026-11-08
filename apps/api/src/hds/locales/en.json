@@ -95,6 +95,7 @@
   "requirements.shift_type_retired": "A retired shift type cannot have staffing needs.",
   "schedule.range_invalid": "The range must not end before it starts, and covers at most 31 days.",
   "schedule.project_not_active": "Every project must be an active project of the organisation.",
+  "schedule.no_projects": "There is no active project of yours to schedule.",
   "schedule.cursor_invalid": "The cursor is not one this API returned.",
   "schedule.unavailable": "Blocked or absent that day.",
   "schedule.overlap": "Already on a shift at that time.",

@@ -4274,9 +4274,13 @@ paths:
       operationId: schedule_jobs_create
       summary: Ask for a roster (Manager+)
       description: >
-        Queues a run that proposes a roster for from to to (at most 31 days) over every active
-        project, or the project_ids given. A worker solves it; nothing in the roster changes
-        until the proposal is accepted. 422 schedule.range_invalid, schedule.project_not_active;
+        Queues a run that proposes a roster for from to to (at most 31 days) over the
+        project_ids given, or, when none are, the caller's: a Manager's managed active projects,
+        an Admin's every active one; the job keeps the list it covers. A worker solves it;
+        nothing in the roster changes until the proposal is accepted. 403
+        roster.project_not_managed for a Manager naming a project they do not manage, and no
+        job is made (007 T108). 422 schedule.range_invalid, schedule.project_not_active,
+        schedule.no_projects;
         with an Idempotency-Key, a repeat answers the first job and the same key with another
         request is 422 idempotency.key_reused.
       tags: [ScheduleJobs]
@@ -4385,6 +4389,8 @@ paths:
       description: >
         Stores the proposal as draft shifts and assignments, all or nothing; nothing is
         published. 409 schedule.not_ready, schedule.proposal_closed, schedule.proposal_out_of_date.
+        403 roster.project_not_managed, the whole of it, for a Manager who does not manage every
+        project of the run at the time (007 T108).
       tags: [ScheduleJobs]
       responses:
         "200":
@@ -4421,7 +4427,10 @@ paths:
     post:
       operationId: schedule_jobs_discard
       summary: Discard a proposal (Manager+)
-      description: Closes the proposal without storing it. 409 schedule.not_ready, schedule.proposal_closed.
+      description: >
+        Closes the proposal without storing it. 409 schedule.not_ready, schedule.proposal_closed;
+        403 roster.project_not_managed for a Manager who does not manage every project of the run
+        (007 T108).
       tags: [ScheduleJobs]
       responses:
         "200":

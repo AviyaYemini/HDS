@@ -78,17 +78,32 @@ class OneOrganisation:
         return SimpleNamespace(min_rest_hours=11, max_weekly_hours=48)
 
 
+PROJECT = uuid.uuid4()
+
+
+class OneProject:
+    """One active project, which the manager below manages (a run's scope, 007 T108)."""
+
+    async def active_projects(self, org_id: uuid.UUID, ids: object) -> list[object]:
+        return [SimpleNamespace(id=PROJECT)]
+
+    async def manages(self, user_id: uuid.UUID, ids: object) -> set[uuid.UUID]:
+        return {PROJECT}
+
+
 def queuing_service(jobs: CapturingJobs) -> ScheduleJobService:
     unused = cast(Any, None)
+    project = cast(Any, OneProject())
     return ScheduleJobService(
         cast(Any, jobs),
         cast(Any, OneOrganisation()),
+        project,
         unused,
         unused,
         unused,
         unused,
         unused,
-        unused,
+        project,
     )
 
 
