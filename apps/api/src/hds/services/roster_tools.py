@@ -296,7 +296,7 @@ class RosterToolsService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
         """
-        ensure_role(actor, *MANAGER_ROLES)
+        await self._roster.require_project(actor, project_id)
         _, drafts = await self._drafts(actor, project_id, first, last)
         views = await self._roster.views(drafts)
         people = {a.user_id for v in views for a in v.assignments}
@@ -475,8 +475,8 @@ class RosterToolsService:
         return await self.apply_plan(actor, project_id, plan, to_week, on_conflict, dry_run)
 
     async def templates(self, actor: User, project_id: uuid.UUID) -> list[WeekTemplate]:
-        """The project's saved weeks (Manager or Admin)."""
-        ensure_role(actor, *MANAGER_ROLES)
+        """The project's saved weeks (Manager or Admin); 404 for another organisation's project."""
+        await self._roster.require_project(actor, project_id)
         return await self._templates.for_project(actor.organization_id, project_id)
 
     async def save_template(

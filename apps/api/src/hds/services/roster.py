@@ -331,11 +331,16 @@ class RosterService:
         (``roster.edit:project``, ADR 015). This changes the original split, where only Admins
         edited by hand, and is Proposed (decision O9).
 
+        The project is looked up in the caller's organisation first: another organisation's project
+        is answered as a missing one, before any capability is asked (an Admin holds
+        ``roster.edit:project`` on every project id, so the capability alone would let one through).
+
         Raises:
             ForbiddenError: ``users.manager_required`` for an Employee or Client;
                 ``roster.project_not_managed`` for a Manager of other projects (HTTP 403).
+            NotFoundError: The project is not in the caller's organisation (HTTP 404).
         """
-        ensure_role(actor, *MANAGER_ROLES)
+        await self.require_project(actor, project_id)
         managed = await self._managers.manages(actor.id, [project_id])
         if not has_on_project(actor.role, Capability.ROSTER_EDIT_PROJECT, project_id, managed):
             raise ForbiddenError(
@@ -588,6 +593,19 @@ class RosterService:
         return await self._judge(actor, [assignment.shift_id])
 
     # ---------------------------------------------------------------- warnings
+
+    async def require_project(self, actor: User, project_id: uuid.UUID) -> None:
+        """Refuse unless ``actor`` is a Manager or Admin and the project is in their organisation.
+
+        For the roster's reads: another organisation's project is answered as a missing one.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` for an Employee or Client (HTTP 403).
+            NotFoundError: The project is not in the caller's organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+            raise NotFoundError(resource="Project", id=project_id)
 
     async def require_edit(self, actor: User, project_id: uuid.UUID) -> None:
         """Refuse unless ``actor`` may edit the project's roster; see :meth:`_require_edit`."""
