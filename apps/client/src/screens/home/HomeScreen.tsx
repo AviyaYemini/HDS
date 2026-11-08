@@ -129,7 +129,7 @@ function PendingCard({ titleKey, testID }: { titleKey: string; testID: string })
   const { t } = useTranslation();
   const { colors } = useTheme();
   return (
-    <View testID={testID} style={[styles.card, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+    <View testID={testID} style={[styles.card, styles.inRow, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
       <Txt role="eyebrow" tone="secondary">
         {t(titleKey)}
       </Txt>
@@ -211,7 +211,7 @@ function FigureCard({ titleKey, value, href, testID }: { titleKey: string; value
   const { t } = useTranslation();
   const { colors } = useTheme();
   return (
-      <LinkPressable href={href} testID={testID} role="link" style={() => [styles.card, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+      <LinkPressable href={href} testID={testID} role="link" style={() => [styles.card, styles.inRow, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
         <Txt role="eyebrow" tone="secondary">
           {t(titleKey)}
         </Txt>
@@ -270,5 +270,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "center" },
   cards: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  card: { flexGrow: 1, flexBasis: 220, gap: 10, padding: 16, borderWidth: 1 },
+  // A box that grows with what it holds; in a row of cards, `inRow` gives it its share of the width.
+  card: { gap: 10, padding: 16, borderWidth: 1 },
+  inRow: { flexGrow: 1, flexBasis: 220 },
 });

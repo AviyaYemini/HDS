@@ -319,7 +319,8 @@ const styles = StyleSheet.create({
   presetChip: { paddingHorizontal: 14, borderWidth: 1, justifyContent: "center" },
   calendar: { gap: 8, flexShrink: 1 },
   fields: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
-  field: { flex: 1, minWidth: 160 },
+  // The width is the basis, so the row wraps on a narrow screen (flex: 1 would set it to 0, FR-079).
+  field: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
   monthHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   months: { flexDirection: "row", gap: 24, flexWrap: "wrap" },
 });

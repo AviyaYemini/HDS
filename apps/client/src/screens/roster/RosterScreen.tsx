@@ -249,6 +249,10 @@ export function RosterScreen() {
   );
 }
 
+
+/** Extra hours draw past the block's edge by design (US3); the overflow check (FR-079) allows it. */
+const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
+
 function Block({
   shift,
   editable,
@@ -307,7 +311,10 @@ function Block({
               {nameOf(a.user_id)}
             </Txt>
             <View style={styles.track}>
-              <View testID="person-bar" style={[styles.bar, { backgroundColor: colors.accent.default, marginStart: `${bar.offset}%`, width: `${bar.width}%` }]} />
+              <View
+                testID="person-bar"
+                {...OVERHANG}
+                style={[styles.bar, { backgroundColor: colors.accent.default, marginStart: `${bar.offset}%`, width: `${bar.width}%` }]} />
             </View>
           </Pressable>
         );

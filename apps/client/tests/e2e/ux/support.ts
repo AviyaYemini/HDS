@@ -97,8 +97,9 @@ export const PHONE_WIDTH = 390;
 /**
  * What spills out of its box (specs/007-ux-redesign FR-079, T102): for every element with a visible
  * border or a panel background, each visible element inside it whose box crosses the element's box
- * by more than 1 px. Content inside a scrolling area is left out (it is meant to move past the
- * area's edge), and so is anything fixed to the window or kept only for screen readers.
+ * by more than 1 px. A box that scrolls or clips ends the search (what passes its edge is hidden,
+ * like a skeleton's sweep, or meant to move past it); anything fixed to the window, kept only for
+ * screen readers, or marked `data-overflow="intended"` (a designed overhang) is left out.
  */
 export async function overflowing(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -119,7 +120,8 @@ export async function overflowing(page: Page): Promise<string[]> {
       );
       return bordered || !transparent(style.backgroundColor);
     };
-    const scrolls = (style: CSSStyleDeclaration) => /(auto|scroll)/.test(style.overflowX + style.overflowY);
+    // A box that scrolls or clips hides what passes its edge: nothing past it can be seen spilling.
+    const clips = (style: CSSStyleDeclaration) => /(auto|scroll|hidden|clip)/.test(style.overflowX + style.overflowY);
     const visible = (el: Element, style: CSSStyleDeclaration, box: DOMRect) =>
       box.width > 1 && box.height > 1 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
 
@@ -128,10 +130,12 @@ export async function overflowing(page: Page): Promise<string[]> {
       const style = getComputedStyle(el);
       const box = el.getBoundingClientRect();
       if (!visible(el, style, box) || style.position === "fixed") continue;
-      // Walk up: each panel above must hold this box, until a scrolling area (it may move past it).
+      // A designed overhang (a person's extra hours past the roster block) says so.
+      if (el.closest('[data-overflow="intended"]')) continue;
+      // Walk up: each panel above must hold this box, until one that scrolls or clips.
       for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
         const upStyle = getComputedStyle(up);
-        if (upStyle.position === "fixed") break;
+        if (upStyle.position === "fixed" || clips(upStyle)) break;
         if (isPanel(up, upStyle)) {
           const outer = up.getBoundingClientRect();
           const out =
@@ -140,11 +144,11 @@ export async function overflowing(page: Page): Promise<string[]> {
             box.top < outer.top - TOLERANCE ||
             box.bottom > outer.bottom + TOLERANCE;
           if (out && visible(up, upStyle, outer)) {
-            found.push(`${name(el)} crosses ${name(up)}`);
+            const at = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}`;
+            found.push(`${name(el)} (${at(box)}) crosses ${name(up)} (${at(outer)})`);
             break;
           }
         }
-        if (scrolls(upStyle)) break;
       }
       if (found.length >= 10) break;
     }

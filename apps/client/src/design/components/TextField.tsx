@@ -157,7 +157,8 @@ const styles = StyleSheet.create({
   root: { gap: 6, alignSelf: "stretch" },
   frame: { flexDirection: "row", alignItems: "center", borderWidth: 1, backgroundColor: "transparent" },
   readOnly: { borderColor: "transparent", borderWidth: 1 },
-  input: { flex: 1, paddingHorizontal: 12, paddingVertical: 0 },
+  // minWidth 0: a web input otherwise keeps its default width and pushes the trailing button out (FR-079).
+  input: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 0 },
   trailing: { paddingEnd: 4, alignSelf: "stretch", justifyContent: "center" },
   hidden: { position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 },
 });
