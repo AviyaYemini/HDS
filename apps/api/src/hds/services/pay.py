@@ -46,10 +46,11 @@ def shown(value: Decimal) -> Decimal:
 
 @dataclass(frozen=True)
 class PartView:
-    """Hours paid at one rate, as shown."""
+    """Hours paid at one rate, as shown, and their share of the line's pay (to the agora)."""
 
     rate_pct: Decimal
     hours: Decimal
+    pay: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -212,7 +213,7 @@ def shown_parts(parts: Iterable[PayPart], hours: Decimal) -> list[PartView]:
     order = sorted(range(len(items)), key=lambda i: floors[i] - items[i].hours)
     for i in order[: max(left, 0)]:
         floors[i] += CENT
-    return [PartView(p.rate_pct, f) for p, f in zip(items, floors, strict=True)]
+    return [PartView(p.rate_pct, f, p.pay) for p, f in zip(items, floors, strict=True)]
 
 
 def widen(first: date, last: date) -> tuple[date, date]:

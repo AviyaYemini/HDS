@@ -2697,6 +2697,11 @@ export interface components {
              */
             hours: string;
             /**
+             * Pay
+             * @description This rate's share of the line's pay, to the agora; the parts of a line add up to its `pay` exactly. Left out when the line has no pay.
+             */
+            pay?: string | null;
+            /**
              * Rate Pct
              * @example 125.00
              */

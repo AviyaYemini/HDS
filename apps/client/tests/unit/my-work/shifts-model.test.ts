@@ -1,5 +1,5 @@
 /** My shifts' logic (specs/007-ux-redesign FR-021 to FR-023). */
-import { byPeriod, byWeek, countdown, endsNextDay, icsFor, mapLinks, nextShift, past, pastRange, upcoming, upcomingRange, type Shift } from "../../../src/screens/my-work/shifts/model";
+import { byPeriod, byWeek, countdown, endsNextDay, foldLine, icsFor, icsText, mapLinks, nextShift, past, pastRange, upcoming, upcomingRange, type Shift } from "../../../src/screens/my-work/shifts/model";
 
 const shift = (id: string, starts_at: string, ends_at: string): Shift => ({
   id,
@@ -65,4 +65,24 @@ it("writes a calendar file for the shift (FR-023)", () => {
   expect(ics).toContain("SUMMARY:Night shift\\, Gate 3");
   expect(ics).toContain("LOCATION:Rothschild 1\\, Tel Aviv");
   expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+});
+
+it("folds long lines at 75 octets on character boundaries and normalises line breaks (RFC 5545)", () => {
+  const address = "רחוב רוטשילד 1, תל אביב-יפו, קומה 12, כניסה ב', ליד הכיכר הגדולה והעץ הישן, מול בית הקפה";
+  const ics = icsFor({ ...shifts[2]!, site_address: address, contacts: [] }, "משמרת לילה, שער 3\r\nשורה שנייה", new Date("2026-11-07T08:00:00Z"));
+  const lines = ics.split("\r\n");
+  for (const line of lines) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+  // Unfolding (a CRLF followed by a space removed) gives back the whole escaped address and summary.
+  const unfolded = ics.replace(/\r\n /g, "");
+  expect(unfolded).toContain(`LOCATION:${icsText(address)}`);
+  expect(unfolded).toContain("SUMMARY:משמרת לילה\\, שער 3\\nשורה שנייה");
+  expect(icsText("a\r\nb\rc\nd")).toBe("a\\nb\\nc\\nd");
+  const folded = foldLine("א".repeat(60));
+  expect(folded.split("\r\n ").every((part) => new TextEncoder().encode(part).length <= 75)).toBe(true);
+  expect(folded.replace(/\r\n /g, "")).toBe("א".repeat(60));
+});
+
+it("reaches further back three periods at a time (Show earlier)", () => {
+  expect(pastRange("2026-11-07", 6)).toEqual({ from: "2026-05-01", to: "2026-11-07" });
+  expect(pastRange("2026-02-10", 3)).toEqual({ from: "2025-11-01", to: "2026-02-10" });
 });

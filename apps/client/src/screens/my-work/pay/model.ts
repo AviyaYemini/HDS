@@ -28,24 +28,21 @@ export function amount(value: bigint): string {
   return `${negative ? "-" : ""}${whole}.${fraction}`;
 }
 
-/** The number of decimals a decimal string carries. */
-function decimals(text: string): number {
-  const dot = text.indexOf(".");
-  return dot === -1 ? 0 : text.length - dot - 1;
-}
+const CENTS = 100n;
 
-/** `text` as an integer scaled by 10^places (places at least its own decimals). */
-function scaled(text: string, places: number): bigint {
+/** A decimal string as whole agorot (cents); the API prices to cents, so nothing is lost. */
+export function cents(text: string): bigint {
   const negative = text.startsWith("-");
   const [whole = "0", fraction = ""] = (negative ? text.slice(1) : text).split(".");
-  const value = BigInt(whole || "0") * 10n ** BigInt(places) + BigInt((fraction + "0".repeat(places)).slice(0, places));
+  const value = BigInt(whole || "0") * CENTS + BigInt((fraction + "00").slice(0, 2));
   return negative ? -value : value;
 }
 
-/** Round `value / divisor` to the nearest integer, halves away from zero. */
-function divideRounded(value: bigint, divisor: bigint): bigint {
-  const twice = value * 2n + (value >= 0n ? divisor : -divisor);
-  return twice / (divisor * 2n);
+/** Agorot back to a decimal string with two decimals. */
+export function fromCents(value: bigint): string {
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  return `${negative ? "-" : ""}${abs / CENTS}.${(abs % CENTS).toString().padStart(2, "0")}`;
 }
 
 export interface RateRow {
@@ -53,45 +50,29 @@ export interface RateRow {
   ratePct: string;
   /** Hours at this rate, a decimal string. */
   hours: string;
-  /** Pay at this rate, four decimals, so that all rows sum to the total exactly. */
+  /** Pay at this rate in agorot, two decimals; the rows add up to the total by construction. */
   amount: string;
 }
 
 /**
- * The pay by rate (FR-024). Each row's raw amount is base rate × hours × rate ÷ 100, computed
- * exactly; the rows are then rounded to four decimals and the largest row takes whatever rounding
- * left over, so the rows add up to the API's total to the last digit.
+ * The pay by rate (FR-024): the API prices each part of a line and makes the parts sum to the
+ * line's pay, so the rows here only add those amounts up by rate, in whole agorot. No arithmetic on
+ * rates or hours, and nothing to redistribute.
  */
-export function breakdownByRate(pay: Pick<PayToDate, "lines" | "pay">): RateRow[] {
+export function breakdownByRate(pay: Pick<PayToDate, "lines">): RateRow[] {
   const hours = new Map<string, bigint>();
-  const raw = new Map<string, bigint>();
-  let places = SCALE;
+  const money = new Map<string, bigint>();
   for (const line of pay.lines) {
-    if (!line.pay_enabled || line.base_rate === null) continue;
+    if (!line.pay_enabled) continue;
     for (const part of line.parts) {
-      const p = decimals(line.base_rate) + decimals(part.hours) + decimals(part.rate_pct) + 2;
-      places = Math.max(places, p);
+      if (part.pay === null || part.pay === undefined) continue;
+      hours.set(part.rate_pct, (hours.get(part.rate_pct) ?? 0n) + units(part.hours));
+      money.set(part.rate_pct, (money.get(part.rate_pct) ?? 0n) + cents(part.pay));
     }
   }
-  for (const line of pay.lines) {
-    if (!line.pay_enabled || line.base_rate === null) continue;
-    for (const part of line.parts) {
-      hours.set(part.rate_pct, (hours.get(part.rate_pct) ?? 0n) + scaled(part.hours, SCALE));
-      // base × hours × pct / 100, all scaled to `places` decimals in total.
-      const own = decimals(line.base_rate) + decimals(part.hours) + decimals(part.rate_pct) + 2;
-      const product = scaled(line.base_rate, decimals(line.base_rate)) * scaled(part.hours, decimals(part.hours)) * scaled(part.rate_pct, decimals(part.rate_pct));
-      raw.set(part.rate_pct, (raw.get(part.rate_pct) ?? 0n) + product * 10n ** BigInt(places - own));
-    }
-  }
-  const rates = [...raw.keys()].sort((a, b) => Number(a) - Number(b));
-  const rounded = new Map(rates.map((rate) => [rate, divideRounded(raw.get(rate)!, 10n ** BigInt(places - SCALE))]));
-  const total = pay.pay === null || pay.pay === undefined ? [...rounded.values()].reduce((sum, value) => sum + value, 0n) : units(pay.pay);
-  const sum = [...rounded.values()].reduce((a, b) => a + b, 0n);
-  if (rates.length > 0 && sum !== total) {
-    const largest = rates.reduce((best, rate) => (rounded.get(rate)! > rounded.get(best)! ? rate : best), rates[0]!);
-    rounded.set(largest, rounded.get(largest)! + (total - sum));
-  }
-  return rates.map((rate) => ({ ratePct: rate, hours: amount(hours.get(rate)!).replace(/\.?0+$/, "").replace(/^$/, "0"), amount: amount(rounded.get(rate)!) }));
+  return [...money.keys()]
+    .sort((a, b) => Number(a) - Number(b))
+    .map((rate) => ({ ratePct: rate, hours: shortHours(amount(hours.get(rate)!)), amount: fromCents(money.get(rate)!) }));
 }
 
 /** The change from `previous` to `current`, as a signed four-decimal string, or null without both. */

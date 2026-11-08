@@ -1,7 +1,7 @@
 /** My pay's arithmetic (specs/007-ux-redesign FR-024): exact, never through floating point. */
-import { amount, breakdownByRate, changeSince, nextPeriod, previousPeriod, shortHours, units, type PayLine } from "../../../src/screens/my-work/pay/model";
+import { amount, breakdownByRate, cents, changeSince, fromCents, nextPeriod, previousPeriod, shortHours, units, type PayLine } from "../../../src/screens/my-work/pay/model";
 
-const line = (base_rate: string | null, parts: { hours: string; rate_pct: string }[], pay: string | null, pay_enabled = true): PayLine => ({
+const line = (base_rate: string | null, parts: { hours: string; rate_pct: string; pay?: string | null }[], pay: string | null, pay_enabled = true): PayLine => ({
   base_rate,
   date: "2026-11-03",
   starts_at: "2026-11-03T06:00:00Z",
@@ -24,25 +24,29 @@ it("reads and writes ten-thousandths exactly", () => {
   expect(amount(-5n)).toBe("-0.0005");
 });
 
-it("breaks the pay down by rate so the rows add up to the total exactly", () => {
+it("adds the parts' pay up by rate in agorot, so the rows meet the total by construction", () => {
+  // The API prices each part to cents and makes a line's parts sum to its pay (price.py).
   const lines = [
-    line("50.0000", [{ hours: "8", rate_pct: "100" }], "400.0000"),
-    line("50.0000", [{ hours: "6", rate_pct: "100" }, { hours: "2", rate_pct: "125" }, { hours: "1.5", rate_pct: "150" }], "537.5000"),
-    line("33.3333", [{ hours: "7", rate_pct: "100" }, { hours: "1", rate_pct: "150" }], "283.3331"),
+    line("50.00", [{ hours: "8", rate_pct: "100", pay: "400.00" }], "400.00"),
+    line("50.00", [{ hours: "6", rate_pct: "100", pay: "300.00" }, { hours: "2", rate_pct: "125", pay: "125.00" }, { hours: "1.5", rate_pct: "150", pay: "112.50" }], "537.50"),
+    line("33.33", [{ hours: "7", rate_pct: "100", pay: "233.31" }, { hours: "1", rate_pct: "150", pay: "50.00" }], "283.31"),
   ];
-  const total = "1220.8331";
-  const rows = breakdownByRate({ lines, pay: total });
-  expect(rows.map((row) => row.ratePct)).toEqual(["100", "125", "150"]);
-  expect(rows.map((row) => row.hours)).toEqual(["21", "2", "2.5"]);
-  const sum = rows.reduce((acc, row) => acc + units(row.amount), 0n);
-  expect(sum).toBe(units(total));
-  expect(rows[1]!.amount).toBe("125.0000");
+  const rows = breakdownByRate({ lines });
+  expect(rows).toEqual([
+    { ratePct: "100", hours: "21", amount: "933.31" },
+    { ratePct: "125", hours: "2", amount: "125.00" },
+    { ratePct: "150", hours: "2.5", amount: "162.50" },
+  ]);
+  const total = lines.reduce((sum, l) => sum + cents(l.pay!), 0n);
+  expect(rows.reduce((sum, row) => sum + cents(row.amount), 0n)).toBe(total);
+  expect(fromCents(total)).toBe("1220.81");
 });
 
-it("leaves out lines without pay and copes with no total", () => {
-  const rows = breakdownByRate({ lines: [line(null, [{ hours: "8", rate_pct: "100" }], null), line("40", [{ hours: "2", rate_pct: "100" }], "80.0000", false), line("40", [{ hours: "3", rate_pct: "100" }], "120.0000")], pay: "120.0000" });
-  expect(rows).toEqual([{ ratePct: "100", hours: "3", amount: "120.0000" }]);
-  expect(breakdownByRate({ lines: [], pay: null })).toEqual([]);
+it("reads and writes agorot exactly", () => {
+  expect(cents("1220.81")).toBe(122081n);
+  expect(cents("0.1") + cents("0.2")).toBe(cents("0.3"));
+  expect(fromCents(5n)).toBe("0.05");
+  expect(fromCents(-122081n)).toBe("-1220.81");
 });
 
 it("tells the change since the last period and walks the periods", () => {

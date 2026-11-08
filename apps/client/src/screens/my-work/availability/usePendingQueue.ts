@@ -18,6 +18,12 @@ export interface PendingQueue {
   pending: readonly PendingChange[];
   /** Keep a change for later; a newer change to the same cell replaces the older one. */
   enqueue: (change: PendingChange) => void;
+  /**
+   * Send everything now, oldest first and ignoring any backoff, as Submit must before it snapshots
+   * the week (PR 3 review). Answers how many changes are still waiting afterwards: zero when the
+   * server took them all.
+   */
+  drain: () => Promise<number>;
 }
 
 /**
@@ -68,31 +74,53 @@ export function usePendingQueue(
 
   const enqueue = useCallback((change: PendingChange) => commit(withChange(queue.current, change)), [commit]);
 
+  /** Send `queue` from its head until it is empty or the server is out of reach; true when all went. */
+  const sendAll = useCallback(async (): Promise<boolean> => {
+    while (queue.current.length > 0) {
+      const [first] = queue.current;
+      if (!first) break;
+      try {
+        await latest.current.send(first);
+        attempt.current = 0;
+        commit(queue.current.filter((item) => item !== first));
+        latest.current.onSent?.();
+      } catch (failure) {
+        if ((failure as { retry?: boolean }).retry) return false;
+        commit(queue.current.filter((item) => item !== first));
+        latest.current.onRefused(first, failure);
+      }
+    }
+    return true;
+  }, [commit]);
+
+  const drain = useCallback(async (): Promise<number> => {
+    if (running.current) {
+      // A sender is already at it: wait for it to stop, then take whatever is left.
+      while (running.current) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    running.current = true;
+    try {
+      if (timer.current) clearTimeout(timer.current);
+      await sendAll();
+    } finally {
+      running.current = false;
+    }
+    return queue.current.length;
+  }, [sendAll]);
+
   useEffect(() => {
     if (!online || !windowId || running.current || queue.current.length === 0) return;
     running.current = true;
     let cancelled = false;
     void (async () => {
       try {
-        while (!cancelled && queue.current.length > 0) {
-          const [first] = queue.current;
-          if (!first) break;
-          try {
-            await latest.current.send(first);
-            attempt.current = 0;
-            commit(queue.current.filter((item) => item !== first));
-            latest.current.onSent?.();
-          } catch (failure) {
-            if ((failure as { retry?: boolean }).retry) {
-              // Still out of reach: try again later, waiting longer each time.
-              const wait = backoffMs(attempt.current);
-              attempt.current += 1;
-              timer.current = setTimeout(() => setTick((n) => n + 1), wait);
-              return;
-            }
-            commit(queue.current.filter((item) => item !== first));
-            latest.current.onRefused(first, failure);
-          }
+        if (cancelled) return;
+        const done = await sendAll();
+        if (!done) {
+          // Still out of reach: try again later, waiting longer each time.
+          const wait = backoffMs(attempt.current);
+          attempt.current += 1;
+          timer.current = setTimeout(() => setTick((n) => n + 1), wait);
         }
       } finally {
         running.current = false;
@@ -101,7 +129,7 @@ export function usePendingQueue(
     return () => {
       cancelled = true;
     };
-  }, [online, windowId, pending.length, tick, commit]);
+  }, [online, windowId, pending.length, tick, sendAll]);
 
   useEffect(
     () => () => {
@@ -110,5 +138,5 @@ export function usePendingQueue(
     [],
   );
 
-  return { pending, enqueue };
+  return { pending, enqueue, drain };
 }

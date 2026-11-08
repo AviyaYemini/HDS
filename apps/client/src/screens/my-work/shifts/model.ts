@@ -84,10 +84,13 @@ export function upcomingRange(today: string): { from: string } {
   return { from: addDays(today, -1) };
 }
 
-/** The dates Past loads: the last three pay periods up to today, so a shift that ended earlier today is in. */
-export function pastRange(today: string): { from: string; to: string } {
+/**
+ * The dates Past loads: this pay period and `periodsBack` before it (three by default), up to
+ * today, so a shift that ended earlier today is in; "Show earlier" asks for three more each time.
+ */
+export function pastRange(today: string, periodsBack = 3): { from: string; to: string } {
   const [year, month] = today.split("-").map(Number) as [number, number, number];
-  const start = new Date(Date.UTC(year, month - 1 - 3, 1));
+  const start = new Date(Date.UTC(year, month - 1 - periodsBack, 1));
   return { from: start.toISOString().slice(0, 10), to: today };
 }
 
@@ -105,8 +108,31 @@ function icsStamp(instant: string): string {
   return new Date(instant).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
-function icsText(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (match) => `\\${match}`);
+/** Text as iCalendar escapes it: line breaks of any kind as `\n`, and backslash, comma and semicolon escaped. */
+export function icsText(text: string): string {
+  return text
+    .replace(/\r\n|\r/g, "\n")
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/[,;]/g, (match) => `\\${match}`);
+}
+
+/** A content line folded at 75 octets of UTF-8, never inside a character (RFC 5545 section 3.1). */
+export function foldLine(line: string): string {
+  const bytes = new TextEncoder().encode(line);
+  if (bytes.length <= 75) return line;
+  const parts: string[] = [];
+  let start = 0;
+  let limit = 75;
+  while (start < bytes.length) {
+    let end = Math.min(start + limit, bytes.length);
+    // Step back off a continuation byte (10xxxxxx) so the cut lands on a character boundary.
+    while (end < bytes.length && end > start && (bytes[end]! & 0xc0) === 0x80) end -= 1;
+    parts.push(new TextDecoder().decode(bytes.subarray(start, end)));
+    start = end;
+    limit = 74;
+  }
+  return parts.join("\r\n ");
 }
 
 /** An iCalendar file with the one shift, for the web's "Add to calendar" (FR-023). */
@@ -126,5 +152,5 @@ export function icsFor(shift: ShiftDetail, title: string, now: Date = new Date()
     "END:VEVENT",
     "END:VCALENDAR",
   ];
-  return `${lines.join("\r\n")}\r\n`;
+  return `${lines.map(foldLine).join("\r\n")}\r\n`;
 }

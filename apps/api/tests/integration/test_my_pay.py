@@ -100,7 +100,7 @@ async def test_an_employee_sees_each_ended_shift_and_the_total(
     assert line["shift_id"] == first["id"]
     assert line["project_name"] == project["name"]
     assert line["base_rate"] == "50.0000"
-    assert line["parts"] == [{"rate_pct": "100.00", "hours": "8.00"}]
+    assert line["parts"] == [{"rate_pct": "100.00", "hours": "8.00", "pay": "400.00"}]
     assert (body["hours"], body["pay"], body["shifts_missing_rate"]) == ("16.00", "880.00", 0)
 
 
@@ -121,9 +121,10 @@ async def test_premiums_are_applied(async_client: AsyncClient, seed_users: dict[
     ).json()
 
     assert body["lines"][0]["parts"] == [
-        {"rate_pct": "150.00", "hours": "7.00"},
-        {"rate_pct": "175.00", "hours": "1.00"},
+        {"rate_pct": "150.00", "hours": "7.00", "pay": "525.00"},
+        {"rate_pct": "175.00", "hours": "1.00", "pay": "87.50"},
     ]
+    # The rates' shares add up to the line (PR 3).
     assert body["pay"] == "612.50"
 
 

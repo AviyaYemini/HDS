@@ -433,7 +433,7 @@
   "shifts.none_upcoming_title": "אין משמרות קרובות",
   "shifts.none_upcoming_body": "משמרות שפורסמו ושובצו לך יופיעו כאן.",
   "shifts.none_past_title": "אין משמרות קודמות",
-  "shifts.none_past_body": "משמרות משלושת החודשים האחרונים יופיעו כאן.",
+  "shifts.none_past_body": "משמרות מ-{{months}} החודשים האחרונים יופיעו כאן.",
   "shifts.detail_time": "שעות",
   "shifts.detail_project": "פרויקט",
   "shifts.detail_site": "אתר",
@@ -469,5 +469,9 @@
   "preview.cant_make_it_title": "לא אוכל להגיע",
   "preview.cant_make_it_body": "בקשה לירידה ממשמרת או להחלפה, מכאן.",
   "preview.approved_hours_title": "שעות מאושרות",
-  "preview.approved_hours_body": "שעות שההנהלה אישרה, לצד המשובצות והמבוצעות."
+  "preview.approved_hours_body": "שעות שההנהלה אישרה, לצד המשובצות והמבוצעות.",
+  "availability.waiting_count_one": "שינוי אחד עדיין מחכה לשליחה. אפשר לנסות שוב כשהחיבור יחזור.",
+  "availability.waiting_count_other": "{{count}} שינויים עדיין מחכים לשליחה. אפשר לנסות שוב כשהחיבור יחזור.",
+  "shifts.show_earlier": "הצגת מוקדמות יותר",
+  "availability.waiting_count": "{{count}} שינויים עדיין מחכים לשליחה. אפשר לנסות שוב כשהחיבור יחזור."
 }

@@ -433,7 +433,7 @@
   "shifts.none_upcoming_title": "No upcoming shifts",
   "shifts.none_upcoming_body": "Published shifts you are assigned to appear here.",
   "shifts.none_past_title": "No past shifts",
-  "shifts.none_past_body": "Shifts you worked in the last three months appear here.",
+  "shifts.none_past_body": "Shifts you worked in the last {{months}} months appear here.",
   "shifts.detail_time": "Time",
   "shifts.detail_project": "Project",
   "shifts.detail_site": "Site",
@@ -469,5 +469,9 @@
   "preview.cant_make_it_title": "Can't make it",
   "preview.cant_make_it_body": "Ask to be taken off a shift, or swap it, from here.",
   "preview.approved_hours_title": "Approved hours",
-  "preview.approved_hours_body": "Hours your manager approved, next to the scheduled and worked ones."
+  "preview.approved_hours_body": "Hours your manager approved, next to the scheduled and worked ones.",
+  "availability.waiting_count_one": "{{count}} change is still waiting to be sent. Try again once you are back online.",
+  "availability.waiting_count_other": "{{count}} changes are still waiting to be sent. Try again once you are back online.",
+  "shifts.show_earlier": "Show earlier",
+  "availability.waiting_count": "{{count}} changes are still waiting to be sent. Try again once you are back online."
 }

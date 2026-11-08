@@ -7,7 +7,7 @@
  
 /* eslint-disable import/namespace -- the import plugin cannot read expo-calendar's declarations; the names used are its documented API and tsc checks them. */
 import * as Calendar from "expo-calendar";
-import { useLocalSearchParams } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Linking, Platform, StyleSheet, View } from "react-native";
@@ -20,6 +20,7 @@ import { Screen } from "../../../design/components/Screen";
 import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { formatLongDate, formatTimeRange, isolateLtr } from "../../../locale";
+import { ContactCard } from "../../client/ClientScreens";
 import { useLoad } from "../../useLoad";
 import { icsFor, mapLinks, shiftDate, type ShiftDetail } from "./model";
 
@@ -109,9 +110,16 @@ export function ShiftDetailScreen() {
               {t("shifts.contacts")}
             </Txt>
             {shift.data.contacts.length === 0 ? (
-              <Txt role="body" tone="secondary">
-                {t("shifts.no_contacts")}
-              </Txt>
+              // No manager on the project: the company's own contact details, and the contact page (FR-007).
+              <View style={styles.section} testID="shift-org-contact">
+                <Txt role="body" tone="secondary">
+                  {t("shifts.no_contacts")}
+                </Txt>
+                <ContactCard testID="shift-org-contact-card" />
+                <Link href="/contact" asChild>
+                  <Button variant="link" label={t("nav.contact")} testID="link-contact-page" />
+                </Link>
+              </View>
             ) : (
               shift.data.contacts.map((contact) => (
                 <View key={contact.email} testID="shift-contact" style={[styles.contact, { borderColor: colors.border.subtle }]}>
