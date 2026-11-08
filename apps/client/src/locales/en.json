@@ -375,5 +375,9 @@
   "offline.banner": "No connection. Showing what was loaded last.",
   "account.others_ended": "Signed out of the other devices",
   "nav.shifts_short": "Shifts",
-  "nav.pay_short": "Pay"
+  "nav.pay_short": "Pay",
+  "unreachable.title": "Can't reach HDS",
+  "unreachable.body": "Your device is signed in, but HDS did not answer. Check the connection and try again; signing in again also works.",
+  "unreachable.sign_in": "Sign in again",
+  "account.session_renewed": "That device's session was just renewed. Press Sign out again."
 }

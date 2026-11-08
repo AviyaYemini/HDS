@@ -375,5 +375,9 @@
   "offline.banner": "אין חיבור. מוצג מה שנטען לאחרונה.",
   "account.others_ended": "בוצעה יציאה מהמכשירים האחרים",
   "nav.shifts_short": "משמרות",
-  "nav.pay_short": "שכר"
+  "nav.pay_short": "שכר",
+  "unreachable.title": "אין חיבור ל-HDS",
+  "unreachable.body": "המכשיר מחובר, אבל HDS לא ענה. כדאי לבדוק את החיבור ולנסות שוב; אפשר גם להתחבר מחדש.",
+  "unreachable.sign_in": "התחברות מחדש",
+  "account.session_renewed": "החיבור של המכשיר הזה התחדש הרגע. אפשר ללחוץ שוב על 'יציאה'."
 }

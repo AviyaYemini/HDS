@@ -25,6 +25,11 @@ type Send = (request: Request) => Promise<Response>;
 export class Session {
   /** The API client for signed-in requests. */
   readonly api: ApiClient;
+  /**
+   * Whether the last {@link restore} found kept tokens but could not reach the server. The tokens
+   * stay kept; the start screen shows Retry instead of the sign-in form (PR 2 review).
+   */
+  unreachable = false;
   /** The account, once signed in. */
   user: Me | null = null;
   /** True after the server refused to renew the session, until the next sign-in (FR-010's notice). */
@@ -61,13 +66,16 @@ export class Session {
 
   /** Take up kept tokens, if any still work; an unreachable server keeps them for the next try. */
   async restore(): Promise<boolean> {
+    this.unreachable = false;
     this.tokens = await this.store.load();
     if (this.tokens === null) return false;
     try {
       await this.loadMe();
     } catch (error) {
       if (error instanceof ApiError && error.status === 0) {
+        // Kept, in the store and for the next try; the start screen offers Retry, not sign-in.
         this.tokens = null;
+        this.unreachable = true;
         return false;
       }
       await this.forget(false);
@@ -79,10 +87,16 @@ export class Session {
 
   /** Sign in; answers `null`, or the code of the refusal. */
   async signIn(email: string, password: string): Promise<string | null> {
+    // Tokens kept from an earlier session (say, a start with no network, or the previous guard
+    // on a shared phone) are replaced below, so that session is revoked first, with its own
+    // credentials, rather than left live on the server.
+    const earlier = this.tokens ?? (await this.store.load());
     try {
       const answer = await call(this.plain.POST("/auth/login", { body: { email, password, client_kind: CLIENT_KIND } }));
+      if (earlier !== null && earlier.refresh !== answer.refresh_token) await this.revokeKept(earlier);
       await this.keep({ access: answer.access_token, refresh: answer.refresh_token });
       await this.loadMe();
+      this.unreachable = false;
     } catch (error) {
       await this.forget(false);
       return codeOf(error);
@@ -110,10 +124,30 @@ export class Session {
     await this.forget(true);
   }
 
+  /**
+   * Revoke a kept session with its own credentials, as signing out does: the logout is refused for
+   * another person's token on purpose (FR-238), so the new sign-in's token cannot do it. An expired
+   * access token is refreshed once first. Best effort: a failure leaves the session to expire and
+   * never fails the sign-in.
+   */
+  private async revokeKept(kept: Tokens): Promise<void> {
+    try {
+      if ((await this.logoutWith(kept)) !== 401) return;
+      const renewed = await this.plain.POST("/auth/refresh", { body: { refresh_token: kept.refresh } });
+      if (!renewed.response.ok || renewed.data === undefined) return;
+      await this.logoutWith({ access: renewed.data.access_token, refresh: renewed.data.refresh_token });
+    } catch {
+      // Unreachable: it expires on the server.
+    }
+  }
+
   /** Send a logout with the current tokens; answers its status, or null when signed out. */
   private async logout(): Promise<number | null> {
-    const tokens = this.tokens;
-    if (tokens === null) return null;
+    return this.tokens === null ? null : this.logoutWith(this.tokens);
+  }
+
+  /** Send a logout for `tokens`; answers its status. */
+  private async logoutWith(tokens: Tokens): Promise<number> {
     const { response } = await this.plain.POST("/auth/logout", {
       body: { refresh_token: tokens.refresh },
       headers: { Authorization: `Bearer ${tokens.access}` },

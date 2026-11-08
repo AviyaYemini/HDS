@@ -28,7 +28,7 @@ jest.mock("expo-router", () => {
   const React = jest.requireActual<typeof import("react")>("react");
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
   const router = { replace: jest.fn(), push: jest.fn(), back: jest.fn() };
-  const location = { pathname: "/", params: {} as Record<string, string> };
+  const location = { pathname: "/", params: {} as Record<string, string>, segments: [] as string[] };
   return {
     __router: router,
     /** Where the tests say the app is; `usePathname` reads it. */
@@ -39,10 +39,16 @@ jest.mock("expo-router", () => {
     __setSearchParams: (params: Record<string, string>) => {
       location.params = params;
     },
+    /** The route's segments, as expo-router spells them (`(staff)`, `my`, `shifts`, `[id]`). */
+    __setSegments: (segments: string[]) => {
+      location.segments = segments;
+    },
     useRouter: () => router,
     usePathname: () => location.pathname,
     useLocalSearchParams: () => location.params,
-    useGlobalSearchParams: () => ({}),
+    // Like expo-router's, the global params carry the dynamic segments' values too.
+    useGlobalSearchParams: () => location.params,
+    useSegments: () => location.segments,
     // A redirect renders where it points, so a test can read it.
     Redirect: ({ href }: { href: string }) => React.createElement(Text, { testID: "redirect" }, href),
     Link: ({ children }: { children: unknown }) => children,

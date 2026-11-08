@@ -134,15 +134,24 @@ function Sessions() {
   const sessions = useLoad(() => call(session.api.GET("/me/sessions")));
   const [busy, setBusy] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [renewed, setRenewed] = useState(false);
   const items = [...(sessions.data ?? [])].sort((a, b) => b.last_refreshed_at.localeCompare(a.last_refreshed_at));
   const revoke = async (id: string): Promise<void> => {
     setBusy(id);
+    setRenewed(false);
     try {
       await call(session.api.DELETE("/me/sessions/{id}", { params: { path: { id } } }));
       showToast(t("account.sessions_ended", { count: 1 }));
       await sessions.reload();
     } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
+      if (codeOf(failure) === "resource.not_found") {
+        // A session's id is its refresh token, which rotates: the row went stale, not away. Reload
+        // the list so the next press hits the live id (PR 2 review; a stable id is a follow-up).
+        setRenewed(true);
+        await sessions.reload();
+      } else {
+        showToast(errorText(codeOf(failure)), { tone: "warning" });
+      }
     } finally {
       setBusy(null);
     }
@@ -189,6 +198,7 @@ function Sessions() {
           ) : null}
         </View>
       ))}
+      {renewed ? <InlineBanner tone="info" title={t("account.session_renewed")} testID="session-renewed" /> : null}
       {bulkError ? <InlineBanner tone="warning" title={bulkError} testID="sign-out-others-error" /> : null}
       <Button
         variant="secondary"

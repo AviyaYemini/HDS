@@ -9,7 +9,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { Session, type Me } from "../../src/api/session";
 import { memoryStore } from "../../src/api/tokens";
-import { SignInRedirect } from "../../src/auth/SignInRedirect";
+import { SignInRedirect, queryOnly } from "../../src/auth/SignInRedirect";
 import { clearSessionEnded, isSessionEnded, markSessionEnded, noteRestore } from "../../src/auth/sessionEnded";
 import { SetPasswordScreen } from "../../src/screens/misc/SetPasswordScreen";
 import { SignInScreen } from "../../src/screens/SignInScreen";
@@ -238,5 +238,44 @@ describe("SignInScreen submits once (R29)", () => {
     answer!();
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home"));
     expect(api.calls("POST", "/auth/login")).toHaveLength(1);
+  });
+});
+
+describe("ending a renewed session (PR 2 review)", () => {
+  it("on a 404 reloads the list and says the session was just renewed", async () => {
+    const list = (id: string) => json(200, [{ id, device: "Phone", created_at: "2026-11-01T00:00:00Z", last_refreshed_at: "2026-11-08T10:00:00Z", current: false }]);
+    const api = new FakeApi()
+      .on("GET", "/me", json(200, EMPLOYEE_ME))
+      .on("GET", "/me/sessions", list("old"), list("new"))
+      .on("DELETE", "/me/sessions/old", problem(404, "resource.not_found"));
+    await renderWith(await signedIn(api), <AccountScreen />);
+    await fireEvent.press(await screen.findByTestId("action-end-session-old"));
+    expect(await screen.findByTestId("session-renewed")).toHaveTextContent(/just renewed/);
+    expect(api.calls("GET", "/me/sessions")).toHaveLength(2);
+    expect(await screen.findByTestId("action-end-session-new")).toBeTruthy();
+    expect(screen.queryByTestId("action-end-session-old")).toBeNull();
+  });
+});
+
+describe("SignInRedirect keeps only the query (PR 2 review)", () => {
+  const setPathname = (Router as unknown as { __setPathname: (pathname: string) => void }).__setPathname;
+  const setSearchParams = (Router as unknown as { __setSearchParams: (params: Record<string, string>) => void }).__setSearchParams;
+  const setSegments = (Router as unknown as { __setSegments: (segments: string[]) => void }).__setSegments;
+  afterEach(() => {
+    setPathname("/");
+    setSearchParams({});
+    setSegments([]);
+  });
+
+  it("leaves the route's dynamic segment and lang out of next", async () => {
+    setPathname("/my/shifts/abc");
+    setSegments(["(staff)", "my", "shifts", "[id]"]);
+    setSearchParams({ id: "abc", lang: "he", view: "past" });
+    await renderWith(new Session(BASE, memoryStore(), new FakeApi().fetch), <SignInRedirect />);
+    expect(screen.getByTestId("redirect")).toHaveTextContent(`/sign-in?next=${encodeURIComponent("/my/shifts/abc?view=past")}&lang=he`);
+  });
+
+  it("drops a catch-all segment too", () => {
+    expect(queryOnly({ rest: ["a", "b"], q: "1" }, ["(staff)", "docs", "[...rest]"])).toEqual({ q: "1" });
   });
 });

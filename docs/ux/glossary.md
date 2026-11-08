@@ -35,6 +35,14 @@ Navigation groups: **My work** / **העבודה שלי**, **Manage** / **ניה�
 Client shell: **Projects** / **פרויקטים**, **Billing** / **חיוב**, **Requests** / **פניות**,
 **Contact** / **יצירת קשר**.
 
+## Session and connection
+
+| Key | Term | עברית | Avoid |
+| --- | --- | --- | --- |
+| `unreachable.title` | Can't reach HDS | אין חיבור ל-HDS | Offline, Network error, שגיאת רשת |
+| `unreachable.sign_in` | Sign in again | התחברות מחדש | Log in, Login, לוגין |
+| `common.retry` | Try again | ניסיון נוסף | Retry, Reload, רענון |
+
 ## Availability
 
 | Key | Term | עברית | Avoid |

@@ -193,3 +193,82 @@ test("signing out before the kept tokens were taken up still revokes them on the
   expect(sent?.auth).toBe("Bearer a-kept");
   expect(await store.load()).toBeNull();
 });
+
+test("starting with no network keeps the kept tokens and says the server was unreachable", async () => {
+  // PR 2 review: a phone opened offline must not fall to the sign-in form (it shows Retry instead).
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-kept", refresh: "r-kept" });
+  const offline = new Session(BASE, store, async () => {
+    throw new TypeError("network down");
+  });
+  expect(await offline.restore()).toBe(false);
+  expect(offline.unreachable).toBe(true);
+  expect(await store.load()).toEqual({ access: "a-kept", refresh: "r-kept" });
+
+  // Back online, the same session restores and the flag clears.
+  api.on("GET", "/me", json(200, ME));
+  const online = new Session(BASE, store, api.fetch);
+  expect(await online.restore()).toBe(true);
+  expect(online.unreachable).toBe(false);
+});
+
+test("a refused restore is not reported as unreachable", async () => {
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-old", refresh: "r-old" });
+  api.on("GET", "/me", problem(401, "auth.token_expired"));
+  api.on("POST", "/auth/refresh", problem(401, "auth.token_revoked"));
+  const session = new Session(BASE, store, api.fetch);
+  expect(await session.restore()).toBe(false);
+  expect(session.unreachable).toBe(false);
+});
+
+test("signing in over kept tokens revokes the earlier session with its own credentials", async () => {
+  // PR 2 review: otherwise the earlier 30-day refresh token stays live as a phantom device.
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-old", refresh: "r-old" });
+  api.on("POST", "/auth/logout", new Response(null, { status: 204 }));
+  const session = await signedIn(api, store);
+  const [sent] = api.calls("POST", "/auth/logout");
+  expect(sent?.body).toEqual({ refresh_token: "r-old" });
+  // Its own access token: the logout ignores another person's token on purpose (FR-238).
+  expect(sent?.auth).toBe("Bearer a-old");
+  expect(session.signedIn).toBe(true);
+  expect(await store.load()).toEqual({ access: TOKENS.access_token, refresh: TOKENS.refresh_token });
+});
+
+test("on a shared phone the previous person's expired session is refreshed once, then revoked", async () => {
+  // A different guard signs in: the old access token has expired (401), so the old refresh token
+  // is exchanged once and the rotated pair is logged out, before the new tokens are kept.
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-guard1", refresh: "r-guard1" });
+  api.on(
+    "POST",
+    "/auth/logout",
+    problem(401, "auth.token_expired"),
+    new Response(null, { status: 204 }),
+  );
+  api.on("POST", "/auth/refresh", json(200, { ...TOKENS, access_token: "a-guard1b", refresh_token: "r-guard1b" }));
+  api.on("GET", "/me", json(200, { ...ME, id: "99999999-9999-4999-8999-999999999999", email: "extra@hds.test" }));
+  const session = await signedIn(api, store);
+  expect(api.calls("POST", "/auth/refresh").map((c) => c.body)).toEqual([{ refresh_token: "r-guard1" }]);
+  const logouts = api.calls("POST", "/auth/logout");
+  expect(logouts.map((c) => [c.auth, c.body])).toEqual([
+    ["Bearer a-guard1", { refresh_token: "r-guard1" }],
+    ["Bearer a-guard1b", { refresh_token: "r-guard1b" }],
+  ]);
+  expect(session.user?.email).toBe("extra@hds.test");
+  expect(await store.load()).toEqual({ access: TOKENS.access_token, refresh: TOKENS.refresh_token });
+});
+
+test("a failed revoke of the earlier session never fails the sign-in", async () => {
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-old", refresh: "r-old" });
+  api.on("POST", "/auth/logout", problem(500, "errors.unknown"));
+  const session = await signedIn(api, store);
+  expect(session.signedIn).toBe(true);
+});
