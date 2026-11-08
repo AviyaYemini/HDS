@@ -14,10 +14,9 @@ import {
   type Language,
   addDays,
   apiAs,
-  at,
   checkA11y,
   ok,
-  signIn,
+  openAs,
   siteDay,
   sundayOf,
 } from "./support";
@@ -85,8 +84,7 @@ for (const language of LANGUAGES) {
         data: { kind: "open", starts_on: addDays(monday, -7), ends_on: addDays(monday, -7) },
       }), 201);
 
-      await signIn(page, "employee", language);
-      await page.goto(at("/my/availability", language, { window: window.id }));
+      await openAs(page, "employee", language, "/my/availability", { window: window.id });
       await expect(page.getByTestId("screen-availability")).toBeVisible();
       await expect(page.getByTestId("availability-rules")).toBeVisible();
       await expect(await banner(page)).toHaveAttribute("data-status", "not_submitted");
@@ -131,7 +129,8 @@ for (const language of LANGUAGES) {
       await ok(manager.patch(`/api/v1/availability-windows/${window.id}`, {
         data: { deadline: new Date(Date.now() - 60_000).toISOString() },
       }));
-      await page.reload();
+      // A page load signs out on the web (ADR 010), so open the address afresh, as a person would.
+      await openAs(page, "employee", language, "/my/availability", { window: window.id });
       const locked = await banner(page);
       await expect(locked).toHaveAttribute("data-status", "locked");
       await expect(locked).toHaveAttribute("data-counted-unavailable", "false");
@@ -142,8 +141,7 @@ for (const language of LANGUAGES) {
       const { first, last } = weekFor(language, 1);
       await clearAvailability(admin, me, first, last);
       const window = await openWindow(manager, first, last, -1);
-      await signIn(page, "employee", language);
-      await page.goto(at("/my/availability", language, { window: window.id }));
+      await openAs(page, "employee", language, "/my/availability", { window: window.id });
       const locked = await banner(page);
       await expect(locked).toHaveAttribute("data-status", "locked");
       await expect(locked).toHaveAttribute("data-counted-unavailable", "true");
@@ -170,8 +168,7 @@ for (const language of LANGUAGES) {
       const overnight = await published(siteDay(language === "he" ? 4 : 5), "night");
       const before = await published(siteDay(language === "he" ? -3 : -4), "morning");
 
-      await signIn(page, "employee", language);
-      await page.goto(at("/my/shifts", language));
+      await openAs(page, "employee", language, "/my/shifts");
       await expect(page.getByTestId("screen-my-shifts")).toBeVisible();
       await expect(page.getByTestId("view-upcoming")).toHaveAttribute("aria-checked", "true");
       const card = page.getByTestId("next-shift-card");
@@ -201,8 +198,7 @@ for (const language of LANGUAGES) {
 
     test("My pay: the breakdown by rate adds up exactly to the total, labelled an estimate", async ({ page }) => {
       await ok(admin.patch(`/api/v1/employees/${me.id}`, { data: { default_hourly_rate: "50.0000" } }));
-      await signIn(page, "employee", language);
-      await page.goto(at("/my/pay", language));
+      await openAs(page, "employee", language, "/my/pay");
       await expect(page.getByTestId("screen-my-pay")).toBeVisible();
       await page.getByTestId("view-pay").click();
       await expect(page.getByTestId("pay-estimate-label")).toBeVisible();
