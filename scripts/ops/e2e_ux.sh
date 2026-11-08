@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Run feature 007's Playwright specs (apps/client/tests/e2e/ux/) on this machine, in CI's image.
+#
+#   scripts/ops/e2e_ux.sh                 every ux spec, both viewports
+#   scripts/ops/e2e_ux.sh a-design-system  one group's spec (any Playwright filter works)
+#   PREVIEWS=0 scripts/ops/e2e_ux.sh b-roles   against a build with the previews switched off
+#
+# The API runs here (uv) on port 8100 against hds_p3_test, migrated and seeded first; the web build
+# and Playwright run in the pinned Playwright image on a copy of the tracked files, never on this
+# checkout: the browser and the build match CI's exactly, and node_modules here is never replaced
+# with Linux builds. The browser in the container reaches the API through host.docker.internal.
+# One run at a time, across every session and worktree: the script takes a lock in the shared git
+# folder, refuses while ports 8100 or 3000 are taken, and refuses while another session is
+# connected to hds_p3_test (the test-database rule).
+# Each refusal names the holder.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Pinned like CI's (apps/client/package.json pins @playwright/test 1.64.1).
+PLAYWRIGHT_IMAGE="mcr.microsoft.com/playwright:v1.64.1-noble"
+DB_NAME="hds_p3_test"
+DATABASE_URL="postgresql+asyncpg://hds:hds_dev@localhost:5432/$DB_NAME"
+PORT=8100
+PREVIEWS="${PREVIEWS:-1}"
+
+# The lock lives in the common git folder, so worktrees of this clone share it. mkdir is atomic.
+LOCK="$(git rev-parse --git-common-dir)/hds-e2e-ux.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    # A run killed before its EXIT trap (SIGKILL, a closed terminal) leaves the lock behind. Reclaim
+    # it when its holder's process is gone, or when it names no holder and is over a minute old (a
+    # run killed between taking the lock and writing its name).
+    holder_line="$(cat "$LOCK/holder" 2>/dev/null || true)"
+    holder_pid="$(printf '%s\n' "$holder_line" | sed -n 's/.* pid \([0-9][0-9]*\) in .*/\1/p')"
+    stale=""
+    if [ -n "$holder_pid" ]; then
+        kill -0 "$holder_pid" 2>/dev/null || stale="its process $holder_pid has ended"
+    elif [ -z "$holder_line" ] && [ -n "$(find "$LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+        stale="it names no holder and is over a minute old"
+    fi
+    if [ -z "$stale" ]; then
+        echo "e2e_ux: another run holds $LOCK: ${holder_line:-unknown}" >&2
+        exit 1
+    fi
+    rm -rf "$LOCK"
+    # Still atomic: if another session reclaimed it first, this mkdir fails and this run refuses.
+    if ! mkdir "$LOCK" 2>/dev/null; then
+        echo "e2e_ux: another run took $LOCK first" >&2
+        exit 1
+    fi
+    echo "e2e_ux: reclaimed a stale lock ($stale; it was held by: ${holder_line:-nobody})" >&2
+fi
+# Set at once, so every exit from here on (a refusal, or a failure under set -e) frees the lock.
+scratch=""
+api_pid=""
+# Called by the EXIT trap below, which ShellCheck does not follow.
+# shellcheck disable=SC2329
+cleanup() {
+    if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
+    if [ -n "$scratch" ]; then rm -rf "$scratch"; fi
+    rm -rf "$LOCK"
+}
+trap cleanup EXIT
+printf '%s pid %s in %s since %s\n' "${HDS_SESSION_NAME:-$(whoami)}" "$$" "$ROOT" "$(date -u +%H:%M:%SZ)" \
+    > "$LOCK/holder"
+for port in "$PORT" 3000; do
+    if holder=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1 " pid " $2}') \
+        && [ -n "$holder" ]; then
+        echo "e2e_ux: port $port is taken by $holder" >&2
+        exit 1
+    fi
+done
+
+busy=$(docker exec infra-postgres-1 psql -U hds -d postgres -tAc \
+    "SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid()")
+if [ "$busy" != "0" ]; then
+    echo "e2e_ux: $DB_NAME has $busy other connection(s); another run may be using it" >&2
+    exit 1
+fi
+
+scratch="$(mktemp -d)"
+
+api_env=(ENVIRONMENT=test "DATABASE_URL=$DATABASE_URL"
+    JWT_SECRET_KEY=e2e-only-not-a-secret-0123456789-abcdefgh LOGIN_RATE_LIMIT_PER_NETWORK=0
+    'CORS_ORIGINS=["http://localhost:3000"]')
+
+(cd apps/api && env "${api_env[@]}" uv run alembic upgrade head >/dev/null \
+    && env "${api_env[@]}" uv run python -m hds.scripts.seed_dev >/dev/null)
+# Loopback only: this API has a published test secret and seeded passwords, so nothing on the
+# network may reach it. Docker Desktop's host.docker.internal still reaches the host's loopback.
+(cd apps/api && exec env "${api_env[@]}" uv run uvicorn hds.main:app --host 127.0.0.1 --port "$PORT" \
+    --log-level warning) &
+api_pid=$!
+curl --retry 30 --retry-connrefused --retry-delay 1 -sf "http://localhost:$PORT/health" -o /dev/null
+
+mkdir "$scratch/repo"
+git ls-files -co --exclude-standard -z | rsync -a --from0 --files-from=- ./ "$scratch/repo/"
+
+status=0
+docker run --rm --ipc=host --add-host=host.docker.internal:host-gateway \
+    -v "$scratch/repo:/repo" -v hds-pnpm-store:/pnpm-store -v hds-npm-cache:/root/.npm -w /repo \
+    -e CI=1 -e E2E_EXTERNAL_API=1 -e PREVIEWS="$PREVIEWS" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+    "$PLAYWRIGHT_IMAGE" bash -c '
+        set -e
+        trap "chown -R \"\$HOST_UID:\$HOST_GID\" /repo || true" EXIT
+        # The Playwright image has Node but no corepack: install the pnpm the root package.json pins.
+        npm install -g --silent "pnpm@$(node -p "require(\"./package.json\").packageManager.split(\"@\")[1].split(\"+\")[0]")"
+        pnpm config set store-dir /pnpm-store >/dev/null
+        pnpm install --frozen-lockfile --reporter=silent
+        cd apps/client
+        previews=""; [ "$PREVIEWS" = 1 ] && previews=1
+        EXPO_PUBLIC_API_URL=http://host.docker.internal:8100 EXPO_PUBLIC_PREVIEWS=$previews \
+            pnpm exec expo export --platform web --output-dir dist >/dev/null
+        pnpm exec playwright test --project=ux-desktop --project=ux-phone "$@"
+    ' _ "$@" || status=$?
+
+rm -rf apps/client/playwright-report
+if [ -d "$scratch/repo/apps/client/playwright-report" ]; then
+    cp -R "$scratch/repo/apps/client/playwright-report" apps/client/playwright-report
+fi
+exit "$status"

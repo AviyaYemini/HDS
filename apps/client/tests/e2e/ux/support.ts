@@ -1,0 +1,80 @@
+/**
+ * Shared helpers for feature 007's specs (specs/007-ux-redesign, tasks T002).
+ *
+ * Every ux spec runs in the `ux-desktop` (1280 × 800) and `ux-phone` (390 × 844) projects and, through
+ * {@link LANGUAGES}, in Hebrew and English. {@link checkA11y} runs axe-core on the current screen and
+ * fails on serious and critical issues (FR-064, FR-065).
+ */
+import { AxeBuilder } from "@axe-core/playwright";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+
+/** The two languages every screen is checked in. */
+export const LANGUAGES = ["he", "en"] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+/** The seeded accounts (`hds.scripts.seed_dev`), all with the dev password. */
+export const USERS = {
+  admin: "admin@hds.test",
+  manager: "manager@hds.test",
+  employee: "employee@hds.test",
+  client: "client@hds.test",
+} as const;
+export type Role = keyof typeof USERS;
+export const PASSWORD = "Dev1234!";
+
+/** A fixed "now" for date-dependent checks: Saturday 7 November 2026, 10:00 in Asia/Jerusalem. */
+export const NOW = new Date("2026-11-07T08:00:00Z");
+
+/** Whether this run is the phone project. */
+export function isPhone(testInfo: TestInfo): boolean {
+  return testInfo.project.name === "ux-phone";
+}
+
+/** Add `lang` (and any other query values) to an app path. */
+export function at(path: string, language: Language, query: Record<string, string> = {}): string {
+  const params = new URLSearchParams({ lang: language, ...query });
+  return `${path}${path.includes("?") ? "&" : "?"}${params.toString()}`;
+}
+
+/** Sign in through the sign-in screen as a seeded role, in the given language. */
+export async function signIn(page: Page, role: Role, language: Language): Promise<void> {
+  await page.goto(at("/sign-in", language));
+  await page.getByTestId("email").fill(USERS[role]);
+  await page.getByTestId("password").fill(PASSWORD);
+  await page.getByTestId("sign-in-btn").click();
+  await expect(page).not.toHaveURL(/\/sign-in/);
+}
+
+/** Run axe-core on the page (WCAG 2.2 A and AA rules) and fail on serious or critical issues. */
+export async function checkA11y(page: Page, context: string): Promise<void> {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  expect(
+    blocking.map((v) => `${v.id}: ${v.help} (${v.nodes.length} node(s))`),
+    `axe on ${context}`,
+  ).toEqual([]);
+}
+
+/** A colour as the browser reports it, from `#RRGGBB`. */
+export function rgb(hex: string): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
+
+/** Elements under `root` that still animate or transition (FR-072: none under reduce-motion). */
+export async function movingElements(page: Page, rootTestId: string): Promise<string[]> {
+  return page.getByTestId(rootTestId).evaluate((root) => {
+    const moving: string[] = [];
+    const nonZero = (value: string) => value.split(",").some((part) => Number.parseFloat(part) > 0);
+    for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+      const style = getComputedStyle(element);
+      const animating = style.animationName !== "none" && nonZero(style.animationDuration);
+      if (nonZero(style.transitionDuration) || animating) {
+        moving.push(element.getAttribute("data-testid") ?? element.tagName.toLowerCase());
+      }
+    }
+    return moving;
+  });
+}

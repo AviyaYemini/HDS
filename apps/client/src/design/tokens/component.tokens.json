@@ -1,0 +1,128 @@
+{
+  "$description": "HDS component tokens (DTCG 2025.10): sizes, shapes, density and motion the primitives use. Colours come from the semantic theme by role.",
+  "radius": {
+    "none": {
+      "$value": "{size.0}"
+    }
+  },
+  "clip": {
+    "panel": {
+      "$value": "{size.20}"
+    },
+    "cta": {
+      "$value": "{size.14}"
+    }
+  },
+  "chip": {
+    "border": {
+      "$value": "{size.1}"
+    },
+    "dot": {
+      "$value": "{size.6}"
+    }
+  },
+  "header": {
+    "height": {
+      "$value": "{size.64}"
+    },
+    "activeRule": {
+      "$value": "{size.2}"
+    }
+  },
+  "tabBar": {
+    "height": {
+      "$value": "{size.60}"
+    }
+  },
+  "loadingBar": {
+    "height": {
+      "$value": "{size.3}"
+    },
+    "showAfter": {
+      "$type": "duration",
+      "$value": {
+        "value": 300,
+        "unit": "ms"
+      }
+    },
+    "minVisible": {
+      "$type": "duration",
+      "$value": {
+        "value": 400,
+        "unit": "ms"
+      }
+    }
+  },
+  "target": {
+    "phone": {
+      "$value": "{size.44}"
+    },
+    "dense": {
+      "$value": "{size.24}"
+    }
+  },
+  "density": {
+    "comfortable": {
+      "rowHeight": {
+        "$value": "{size.48}"
+      },
+      "gutter": {
+        "$value": "{size.20}"
+      }
+    },
+    "compact": {
+      "rowHeight": {
+        "$value": "{size.32}"
+      },
+      "gutter": {
+        "$value": "{size.14}"
+      }
+    }
+  },
+  "motion": {
+    "enter": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{motion.duration.base}",
+        "delay": {
+          "value": 0,
+          "unit": "ms"
+        },
+        "timingFunction": "{motion.easing.standard}"
+      }
+    },
+    "exit": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{motion.duration.fast}",
+        "delay": {
+          "value": 0,
+          "unit": "ms"
+        },
+        "timingFunction": "{motion.easing.standard}"
+      }
+    },
+    "surface": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{motion.duration.slow}",
+        "delay": {
+          "value": 0,
+          "unit": "ms"
+        },
+        "timingFunction": "{motion.easing.emphasized}"
+      }
+    },
+    "feedback": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{motion.duration.fast}",
+        "delay": {
+          "value": 0,
+          "unit": "ms"
+        },
+        "timingFunction": "{motion.easing.emphasized}"
+      }
+    }
+  }
+}

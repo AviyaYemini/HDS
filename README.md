@@ -153,11 +153,27 @@ signs in again ([ADR 010](docs/adr/010-client-stack.md)).
 | `pnpm client:e2e` | Builds the web app and runs Playwright against a real API (below) |
 | `pnpm api-client:generate` | Regenerates `packages/api-client` from the API's OpenAPI document |
 | `pnpm api-client:check` | Fails when the committed client differs from the API; CI runs it |
+| `pnpm --filter hds-client theme:build` | Regenerates `src/design/theme/theme.generated.ts` from the design tokens |
+| `pnpm --filter hds-client theme:check` | Fails when the generated theme differs from the tokens (a unit test checks it too) |
+| `pnpm --filter hds-client web:previews` | The web dev server with the previews switch on |
+
+The previews switch, `EXPO_PUBLIC_PREVIEWS=1` at build time, shows Proposed features as labelled
+previews and adds the component gallery at `/dev/gallery` (every primitive in each state, theme and
+language). It is off in a normal build ([feature 007](specs/007-ux-redesign/spec.md), FR-067).
 
 `pnpm client:e2e` starts its own API on port 8100 and serves the web build on port 3000. It uses
 `E2E_DATABASE_URL`, which must name a database ending in `_test`, migrates it and runs `seed_dev`;
 the specs set up the rest through the API. Install the browser once with
-`pnpm --filter hds-client exec playwright install chromium`.
+`pnpm --filter hds-client exec playwright install chromium`. It builds with the previews switch on
+and runs the original specs (project `chromium`) and feature 007's `tests/e2e/ux/` specs at desktop
+and phone sizes (projects `ux-desktop` and `ux-phone`), each with an accessibility check.
+
+To run the `ux/` specs locally, use `scripts/ops/e2e_ux.sh [filter]` (for example
+`scripts/ops/e2e_ux.sh a-design-system`, or `PREVIEWS=0 scripts/ops/e2e_ux.sh` for a build with
+previews off). It runs the API here against `hds_p3_test`, and the build and Playwright in CI's
+pinned Playwright image on a copy of the tracked files. Only one run at a time, from any session or
+worktree: it takes a lock in the shared git folder and refuses while ports 8100 or 3000, or the
+database, are in use, naming whoever holds them.
 
 ## Running the tests
 
