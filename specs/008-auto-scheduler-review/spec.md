@@ -42,6 +42,25 @@ The owner's decisions of 2026-11-08 on this feature:
 are unmarked; everything else is marked *Proposed*, with the owner decision or research row it comes
 from in brackets.
 
+## Clarifications
+
+### Session 2026-11-08
+
+Answered without the owner, on the owner's instruction to run the flow on its own (2026-11-08); each
+took the recommended option and may be revised.
+
+- Q: When a proposal is partly accepted and the rest is discarded, are the accepted parts undone? → A:
+  No. Accepted parts are drafts like any other and stay; removing them is done on the roster.
+- Q: How strongly does the scheduler follow a manager's preference chip? → A: As a wish ranked second,
+  after filling every slot and above employees' open and close wishes and balance; never above a hard
+  rule.
+- Q: Does a chip live only in one run? → A: Yes, but a rerun of the same range starts with the earlier
+  run's chips, which the manager may edit or remove.
+- Q: What does "cost" mean when ranking who else could cover? → A: The effect on fairness (hours,
+  nights, weekends against the average) and on the person's wishes; never pay.
+- Q: How long does a lock last? → A: Until someone unlocks it, or the assignment is removed; a lock is
+  shown to every Manager and Admin who can see that roster.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Review a proposal as a change to the roster and accept it in parts (Priority: P1)
@@ -372,7 +391,9 @@ accept and publish, counting that each step is one tap from the last.
   untouched; raw weights MUST never be shown. *Proposed* [AS6]
 - **FR-018**: A Manager or Admin MUST be able to lock and unlock an assignment on the roster or in a
   proposal, within the projects they may edit. Every later run MUST keep locked assignments, count them
-  toward hours, nights, the weekly maximum and fairness, and state how many it kept. [SCH-5; AS7]
+  toward hours, nights, the weekly maximum and fairness, and state how many it kept. A lock MUST last
+  until someone unlocks it or its assignment is removed, and MUST be shown to every Manager and Admin
+  who can see that roster. [SCH-5; AS7]
 - **FR-019**: A rerun MUST start from the current roster and proposal for its range and change as few
   unlocked assignments as the rules, controls and chips allow; the proposal lists its changes against
   that starting point. [AS7]
@@ -380,8 +401,11 @@ accept and publish, counting that each step is one tap from the last.
   each shown as a chip in words they can edit or remove before running: a person at most N shifts,
   nights or hours in the range; a person kept on a site or project; a person kept off a day or shift
   type; a person preferred on a day or shift type. No language model is used. *Proposed* [O17]
-- **FR-021**: Chips MUST never override a hard rule. The proposal MUST show each chip as met or not met,
-  naming what prevented it.
+- **FR-021**: Chips MUST never override a hard rule. They MUST weigh second, after filling every slot
+  and above employees' open and close wishes and the balance of hours and nights. The proposal MUST
+  show each chip as met or not met, naming what prevented it.
+- **FR-021a**: Chips MUST belong to one run; a rerun of the same range MUST start with the earlier
+  run's chips, editable before running.
 - **FR-022**: A chip naming a person who is no longer active, or a project no longer in the run, MUST
   be shown as no longer applying, and MUST NOT fail the run.
 

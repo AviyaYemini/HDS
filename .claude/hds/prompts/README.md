@@ -12,7 +12,7 @@ Stages with no stored prompt (`/speckit-clarify`, `/speckit-tasks`, `/speckit-an
 | 4 | 04-pay-reports | Pay forecast and basic reports | specify, plan |
 | 5 | 05-deploy | Deployment and operations | specify, plan |
 | 6 | 06-ux-redesign | UX foundation and redesign (feature 007) | specify, plan |
-| 7 | 07-auto-scheduler-review | Auto-scheduler review (008) | specify (stub) |
+| 7 | 07-auto-scheduler-review | Auto-scheduler review (008) | specify, plan |
 | 8 | 08-client-portal | Client portal (009) | specify (stub) |
 | 9 | 09-notifications | Notifications and native builds (010) | specify (stub) |
 | 10 | 10-hours-worked | Hours worked (011) | specify (stub) |

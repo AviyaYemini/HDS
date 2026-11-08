@@ -34,7 +34,7 @@
 - Validated on 2026-11-08, one pass. No clarification markers: the owner's answers of 2026-11-08
   (overlaps left to features 010, 014, 015 and 016; only a person overrides a rule; "Who else could
   cover" across both kinds of project) are in the input.
-- Informed guesses worth confirming in `/speckit-clarify`, recorded under Assumptions or in the
+- Settled in `/speckit-clarify` (2026-11-08, answered on the owner's instruction to run on its own), recorded under Assumptions or in the
   requirements:
   - "Discard the rest" leaves parts already accepted as drafts (FR-005), rather than undoing them.
   - Preference chips are wishes the solver weighs, never hard rules (FR-021).
