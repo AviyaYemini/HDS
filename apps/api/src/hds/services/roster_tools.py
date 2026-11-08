@@ -394,7 +394,16 @@ class RosterToolsService:
     # ------------------------------------------------ copy week and templates
 
     async def week_plan(self, actor: User, project_id: uuid.UUID, week: date) -> list[PlannedShift]:
-        """The project's shifts in the week starting on Sunday ``week``, as a plan."""
+        """The project's shifts in the week starting on Sunday ``week``, as a plan.
+
+        The project is looked up in the caller's organisation first, so an unknown project or
+        another organisation's answers 404 before its site's time zone is read (R111).
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The project is not in the caller's organisation (HTTP 404).
+        """
+        await self._roster.require_project(actor, project_id)
         zone = await self._roster.site_zone(project_id)
         begins, ends = utc_range(week, week + timedelta(days=6), zone)
         shifts = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)

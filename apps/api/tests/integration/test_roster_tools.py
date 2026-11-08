@@ -6,6 +6,7 @@ templates repeat a week, with a dry run that changes nothing; bulk edit touches 
 submission tracker lists everyone's status.
 """
 
+import uuid
 from datetime import date, timedelta
 from typing import Any
 
@@ -233,3 +234,52 @@ async def test_dates_at_the_edge_of_the_calendar_are_a_bad_range_not_a_crash(
     )
     assert preview.status_code == 422, preview.text
     assert preview.json()["code"] == "shifts.date_range_invalid"
+
+
+async def test_an_unknown_project_is_not_found_not_a_crash(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R111: copying a week of a project that does not exist answers 404, never 500.
+
+    The plan of a week read the project's site time zone before the project was looked up, so an
+    id that names no project failed on the missing row (pull request 18's contract run).
+    """
+    admin = await headers_for(async_client, "admin")
+    missing = uuid.uuid4()
+    week = FIRST.isoformat()
+    copied = await async_client.post(
+        f"/api/v1/projects/{missing}/copy-week",
+        json={"from_week": week, "to_week": week, "dry_run": True},
+        headers=admin,
+    )
+    assert copied.status_code == 404, copied.text
+    saved = await async_client.post(
+        f"/api/v1/projects/{missing}/week-templates",
+        json={"name": "Missing", "week": week},
+        headers=admin,
+    )
+    assert saved.status_code == 404, saved.text
+
+
+async def test_flags_and_counts_take_their_own_type_only(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R111: a 0 or "1" is not taken for a flag or a count; nothing is published or changed."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+    await add_shift(async_client, admin, project, FIRST)
+    day = FIRST.isoformat()
+    base = f"/api/v1/projects/{project['id']}"
+    for path, body in [
+        ("/publish", {"from": day, "to": day, "notify": 0}),
+        ("/roster/bulk", {"from": day, "to": day, "headcount": 2, "dry_run": 0}),
+        ("/roster/bulk", {"from": day, "to": day, "remove": 1}),
+        ("/roster/bulk", {"from": day, "to": day, "headcount": "2"}),
+        ("/copy-week", {"from_week": day, "to_week": NEXT.isoformat(), "dry_run": "true"}),
+    ]:
+        answer = await async_client.post(base + path, json=body, headers=admin)
+        assert answer.status_code == 422, (path, body, answer.text)
+    shifts = (
+        await async_client.get(SHIFTS, params={"project_id": project["id"]}, headers=admin)
+    ).json()["items"]
+    assert [(s["status"], s["headcount"]) for s in shifts] == [("draft", 1)]

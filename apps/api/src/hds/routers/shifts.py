@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
@@ -281,7 +281,7 @@ class PublishRequest(BaseModel):
 
     first: StrictDate = Field(alias="from")
     last: StrictDate = Field(alias="to")
-    notify: bool = True
+    notify: StrictBool = True
 
     model_config = {"populate_by_name": True}
 

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from hds.core.deps import require_manager
 from hds.core.types import IsoDate, StrictDate
@@ -88,7 +88,7 @@ class CopyWeekRequest(BaseModel):
     from_week: StrictDate
     to_week: StrictDate
     on_conflict: OnConflict = "allow"
-    dry_run: bool = False
+    dry_run: StrictBool = False
 
 
 class TemplateCreate(BaseModel):
@@ -118,7 +118,7 @@ class TemplateApply(BaseModel):
 
     week: StrictDate
     on_conflict: OnConflict = "allow"
-    dry_run: bool = False
+    dry_run: StrictBool = False
 
 
 class BulkRequest(BaseModel):
@@ -126,9 +126,9 @@ class BulkRequest(BaseModel):
 
     first: StrictDate = Field(alias="from")
     last: StrictDate = Field(alias="to")
-    headcount: Annotated[int, Field(ge=1, le=1000)] | None = None
-    remove: bool = False
-    dry_run: bool = False
+    headcount: Annotated[StrictInt, Field(ge=1, le=1000)] | None = None
+    remove: StrictBool = False
+    dry_run: StrictBool = False
 
     model_config = {"populate_by_name": True}
 
