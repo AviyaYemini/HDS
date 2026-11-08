@@ -45,6 +45,8 @@ Rows marked "clarify" go to 007's clarify stage with the default shown.
 | O12 | Qualification expiry | Its own feature, 015: expiry checked on the shift's date, blocking armed shifts. |
 | O13 | Wording and formats | "Roster" / "סידור עבודה" for the weekly view and "Work log" / "יומן עבודה" for the long-range report (S1). Numeric dates dd/MM/yyyy, with Hebrew month and weekday names in headers. The clock icon is not mirrored. Gender-neutral Hebrew only, with no "address me as" setting for now (D13). |
 | O14 | Channels and AI | Push, e-mail and an in-app inbox. No SMS or WhatsApp. No language-model features (AS15 waits). |
+| O15 | Project teams | Who works on which project is its own feature after 007, built together with the training/security separation; 007 builds no employee–project link (owner, 2026-11-08). |
+| O16 | Gig board (IDEA-1) | Feature 016. A gig is either an open seat on a project's shift (a hole in the roster), which may carry a higher pay through the shift's own pay (FIN-1), or a stand-alone job outside any project. An employee reaches the manager in charge through the contact details shown on the gig, and the manager assigns by hand on the roster; there's no in-app request for a gig. A manager sets who sees a gig: all employees, or named employees; by trust level or qualifications later, with 015. Channels stay as O14: no SMS or WhatsApp sending (owner, 2026-11-08). |
 
 ## 3. Design language: Option B
 
