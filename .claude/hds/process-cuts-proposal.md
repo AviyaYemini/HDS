@@ -1,7 +1,10 @@
 # Proposal: faster pull requests (process cuts)
 
 **Status**: Decided by the owner on 2026-11-07, after 006 PR 4. The proposal below is kept as it
-was written; where a decision differs from it, the decision wins.
+was written; where a decision differs from it, the decision wins. **Superseded in part on
+2026-11-08** by the owner's working rules in [CLAUDE.hds.md](CLAUDE.hds.md): one `/code-review` per
+pull request at PR-ready and no reviewer session, mutants only for sign-in, pay and who can see
+what, and only the changed tests locally, with the full suites in CI.
 
 ## The owner's decisions
 

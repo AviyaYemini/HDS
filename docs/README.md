@@ -51,11 +51,19 @@ Every architectural decision gets an ADR (Constitution XI). Number new ones in s
 ## Features
 
 Each feature has a folder under [`specs`](../specs/001-foundation-auth-org/spec.md) holding the
-spec, plan, tasks, data model, quickstart and OpenAPI contract.
+spec, plan, tasks, data model and quickstart. The one OpenAPI contract, which every feature
+extends, is 001's.
 
 | Feature | Start here |
 | --- | --- |
 | 001 Foundation: authentication and organisation | [`spec.md`](../specs/001-foundation-auth-org/spec.md), [`tasks.md`](../specs/001-foundation-auth-org/tasks.md), [`openapi.yaml`](../specs/001-foundation-auth-org/contracts/openapi.yaml) |
+| 002 Security hardening of sign-in, tokens and account rules | [`spec.md`](../specs/002-security-hardening/spec.md), [`tasks.md`](../specs/002-security-hardening/tasks.md) |
+| 003 Availability and manual shifts | [`spec.md`](../specs/003-availability/spec.md), [`tasks.md`](../specs/003-availability/tasks.md) |
+| 004 Schedule generation | [`spec.md`](../specs/004-schedule-generation/spec.md), [`tasks.md`](../specs/004-schedule-generation/tasks.md) |
+| 005 Pay rates, pay to date and reports | [`spec.md`](../specs/005-pay-reports/spec.md), [`tasks.md`](../specs/005-pay-reports/tasks.md) |
+| 006 Deployment and operations | [`spec.md`](../specs/006-deploy-operations/spec.md), [`tasks.md`](../specs/006-deploy-operations/tasks.md) |
+| 007 UX foundation and redesign | [`spec.md`](../specs/007-ux-redesign/spec.md), [`tasks.md`](../specs/007-ux-redesign/tasks.md) |
+| 008 Auto-scheduler review (in progress) | [`spec.md`](../specs/008-auto-scheduler-review/spec.md), [`tasks.md`](../specs/008-auto-scheduler-review/tasks.md) |
 
 ## Rules and process
 
