@@ -259,7 +259,7 @@ loading and empty states, filters in the address, the setup checklist.
 - [x] T083 [US7] [UI] Admin table screens in `apps/client/src/screens/admin/` for staff, clients, sites, projects, shift templates, staffing needs, special days and pay settings, on the Table, SidePanel, bulk bar and SearchablePicker (FR-043, FR-044, FR-049). As built: no bulk bar (no admin list acts on several records in 007's API; noted for a later feature); the admin lists sort and search in the client, so the list endpoints keep their shape (T082)
 - [x] T084 [US7] [UI] Form pattern (validate on leave, error summary with focus, one Save never disabled, no autosave of money, unsaved-changes guard in the app and on tab close), money confirmations naming change, scope and date, undo toasts for archive and remove (FR-045, FR-046)
 - [x] T085 [US7] [UI] Loading, feedback and empty states, and the admin setup checklist (FR-047, FR-048)
-- [ ] T086 [CORE] Close group F as the template says. Mutants (≤ 3): a manager's view showing the delete action (capability check removed), and the pay-rate confirmation saving before the confirm. Commit `feat(client): add the admin tables and forms (…)`
+- [x] T086 [CORE] Close group F as the template says. Mutants (≤ 3): a manager's view showing the delete action (capability check removed), and the pay-rate confirmation saving before the confirm. Commit `feat(client): add the admin tables and forms (…)`
 
 ---
 
