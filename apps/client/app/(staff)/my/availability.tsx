@@ -1,12 +1,6 @@
-/** My availability; today's screen until group C rebuilds it (003 FR-1xx; 007 contracts/ui-routes.md). */
-import { RequireCapability } from "../../../src/capabilities";
-import { AvailabilityScreen } from "../../../src/screens/AvailabilityScreen";
-import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
+/** My availability (specs/007-ux-redesign FR-013 to FR-020): the week grid of the open window. */
+import { AvailabilityScreen } from "../../../src/screens/my-work/availability/AvailabilityScreen";
 
 export default function Route() {
-  return (
-    <RequireCapability need="my_work.availability" denied={<NoAccessScreen />}>
-      <AvailabilityScreen />
-    </RequireCapability>
-  );
+  return <AvailabilityScreen />;
 }
