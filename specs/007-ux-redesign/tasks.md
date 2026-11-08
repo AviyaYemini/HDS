@@ -163,16 +163,16 @@ My shifts split Upcoming and Past; My pay.
 
 ### [UI] then
 
-- [ ] T055 [US2] [UI] Availability week `apps/client/src/screens/my-work/availability/`: Sunday–Saturday grid, a cell per shift template plus all-day, ≥ 44 pt cells, tap to cycle and a sheet with the choices, week arrows across the window, absences as full-day bands, holidays marked, the rules stated (FR-013, FR-016, FR-020, FR-054)
-- [ ] T056 [US2] [UI] Status banner, Review and Submit, the "not submitting means you won't be scheduled" notice, Locked and "counted as unavailable" states (FR-014, FR-015)
-- [ ] T057 [US2] [UI] Undo for each cell change (FR-018), a light haptic on each cell change and a success haptic on Submit with `expo-haptics` (FR-073), Copy last week, the device draft in async storage with sync on reconnect (`@react-native-async-storage/async-storage`) (FR-017–FR-019)
-- [ ] T058 [US4] [UI] My shifts `apps/client/src/screens/my-work/shifts/`: Upcoming by week and Past by pay period with totals; the next-shift card (FeaturePanel, FR-022) with "+1" and a countdown; the detail page with map links; Add to calendar via `expo-calendar` on phones and an `.ics` download on web; offline list with "updated hh:mm" (FR-021–FR-023, FR-019)
-- [ ] T059 [US4] [UI] My pay `apps/client/src/screens/my-work/pay/`: pay-period picker, Hours and Pay views, breakdown by rate, change since last period, the estimate label; money only through `formatMoney` (FR-024)
-- [ ] T060 [P] [US2] [UI] Unit tests for the grid's cycle, banner states and undo in `apps/client/tests/unit/my-work/*.test.tsx`
+- [x] T055 [US2] [UI] Availability week `apps/client/src/screens/my-work/availability/`: Sunday–Saturday grid, a cell per shift template plus all-day, ≥ 44 pt cells, tap to cycle and a sheet with the choices, week arrows across the window, absences as full-day bands, holidays marked, the rules stated (FR-013, FR-016, FR-020, FR-054)
+- [x] T056 [US2] [UI] Status banner, Review and Submit, the "not submitting means you won't be scheduled" notice, Locked and "counted as unavailable" states (FR-014, FR-015)
+- [x] T057 [US2] [UI] Undo for each cell change (FR-018), a light haptic on each cell change and a success haptic on Submit with `expo-haptics` (FR-073), Copy last week, the device draft in async storage with sync on reconnect (`@react-native-async-storage/async-storage`) (FR-017–FR-019)
+- [x] T058 [US4] [UI] My shifts `apps/client/src/screens/my-work/shifts/`: Upcoming by week and Past by pay period with totals; the next-shift card (FeaturePanel, FR-022) with "+1" and a countdown; the detail page with map links; Add to calendar via `expo-calendar` on phones and an `.ics` download on web; offline list with "updated hh:mm" (FR-021–FR-023, FR-019)
+- [x] T059 [US4] [UI] My pay `apps/client/src/screens/my-work/pay/`: pay-period picker, Hours and Pay views, breakdown by rate, change since last period, the estimate label; money only through `formatMoney` (FR-024)
+- [x] T060 [P] [US2] [UI] Unit tests for the grid's cycle, banner states and undo in `apps/client/tests/unit/my-work/*.test.tsx`
 
 ### Close
 
-- [ ] T061 [CORE] Close group C as the template says. Mutants (≤ 3): the lock comparison `now >= deadline` turned into `>` (lock at the exact deadline must hold), the synthetic `not_submitted` block skipped for the window's last date, and Submitted derived without comparing the snapshot hash. Commit `feat(client): add the availability week and my shifts split (…)`. **PR 3 ready**: once-per-PR steps, including `make ci-local-db`
+- [x] T061 [CORE] Close group C as the template says. Mutants (≤ 3): the lock comparison `now >= deadline` turned into `>` (lock at the exact deadline must hold), the synthetic `not_submitted` block skipped for the window's last date, and Submitted derived without comparing the snapshot hash. Commit `feat(client): add the availability week and my shifts split (…)`. **PR 3 ready**: once-per-PR steps, including `make ci-local-db`
 
 ---
 
