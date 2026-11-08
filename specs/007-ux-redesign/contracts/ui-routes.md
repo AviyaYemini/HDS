@@ -74,6 +74,31 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
   FR-007). The address to return to is only ever a path of this app, never another site. An
   unknown address shows `screen-not-found`, signed in or not.
 
+## My work test ids (c-my-work.spec.ts)
+
+- **Availability** (`/my/availability`, `?window=<id>` opens one window): `screen-availability`;
+  the week's cells are `availability-cell` buttons with `data-date` (`YYYY-MM-DD`),
+  `data-shift-type` (a shift type's id, or `all-day`) and `data-state` (`unmarked`, `open`,
+  `close`, `blocked`); a tap moves to the next state in that order. `availability-prev-week`,
+  `availability-next-week`; `availability-rules` (FR-016); absences as `absence-band` with
+  `data-date`.
+- **Banner**: `availability-banner` with `data-status` (`not_submitted`, `draft`, `submitted`,
+  `locked`) and, when locked, `data-counted-unavailable` (`true` or `false`). Before the deadline,
+  without a submission, it holds `availability-not-submitted-warning` (not submitting means not
+  being scheduled).
+- **Actions**: `action-review` opens `availability-review` (a dialog with one `review-row` per day
+  that has a mark) whose `action-submit` submits; `action-undo` (in the notice after a change);
+  `action-copy-last-week`.
+- **My shifts** (`/my/shifts?view=upcoming|past`): `screen-my-shifts`; `view-upcoming` and
+  `view-past` (`role="radio"`); `next-shift-card` first in Upcoming; `week-group` (Upcoming, with
+  `data-week-start`) and `period-group` (Past, with `data-period`) holding `shift-row` items with
+  `data-shift-id`; each row's `shift-time` shows "+1" when it ends the next day. A row opens
+  `/my/shifts/<id>`: `screen-shift-detail` with the site's address, `shift-contact` items and
+  `action-add-to-calendar`. Previews here: `preview-report-hours`, `preview-cant-make-it`.
+- **My pay** (`/my/pay?period=YYYY-MM`): `screen-my-pay`; `pay-period-picker`; `view-hours` and
+  `view-pay` (`role="radio"`); `pay-total` and `pay-breakdown-row` items, each with `data-amount`
+  (the exact decimal string from the API); `pay-estimate-label`. In Hours: `preview-approved-hours`.
+
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
 Each renders an Option B empty state with `data-testid="preview-<key>"`, the feature that brings it,

@@ -23,6 +23,7 @@ from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
 from hds.services.availability import AvailabilityService
+from hds.wiring import submission_service
 
 router = APIRouter(prefix="/api/v1", tags=["availability"])
 
@@ -37,6 +38,7 @@ def _svc(db: AsyncSession) -> AvailabilityService:
         entry_repo=AvailabilityRepository(db),
         user_repo=UserRepository(db),
         shift_type_repo=ShiftTypeRepository(db),
+        submissions=submission_service(db),
     )
 
 

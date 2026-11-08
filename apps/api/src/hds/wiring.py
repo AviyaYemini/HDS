@@ -17,6 +17,7 @@ from hds.core.config import get_settings
 from hds.core.database import get_health_session_factory, get_unit_of_work
 from hds.core.health import Migrations, load_migrations
 from hds.repositories.availability import AvailabilityRepository
+from hds.repositories.availability_submission import AvailabilitySubmissionRepository
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.health import HealthRepository
@@ -35,8 +36,10 @@ from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.site import SiteRepository
 from hds.repositories.special_day import SpecialDayRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
+from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
+from hds.services.availability_submission import AvailabilitySubmissionService
 from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
 from hds.services.organisation_contact import OrganisationContactService
@@ -52,6 +55,23 @@ from hds.services.special_day import SpecialDayService
 from hds.services.staffing_need import StaffingNeedService
 
 
+def submission_service(db: AsyncSession) -> AvailabilitySubmissionService:
+    """Availability submissions and the entries scheduling reads, on ``db`` (007 FR-014)."""
+    return AvailabilitySubmissionService(
+        window_repo=SubmissionWindowRepository(db),
+        entry_repo=AvailabilityRepository(db),
+        submission_repo=AvailabilitySubmissionRepository(db),
+        user_repo=UserRepository(db),
+    )
+
+
+def availability_submissions(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AvailabilitySubmissionService:
+    """FastAPI dependency: availability submissions, in the request's unit of work."""
+    return submission_service(db)
+
+
 def input_service(db: AsyncSession) -> ScheduleInputService:
     """The roster problem builder on ``db``."""
     return ScheduleInputService(
@@ -60,6 +80,7 @@ def input_service(db: AsyncSession) -> ScheduleInputService:
         shift_types=ShiftTypeRepository(db),
         needs=StaffingNeedRepository(db),
         entries=AvailabilityRepository(db),
+        availability=submission_service(db),
     )
 
 

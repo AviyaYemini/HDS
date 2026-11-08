@@ -1479,6 +1479,59 @@ components:
         site:
           $ref: "#/components/schemas/NamedRef"
 
+    MyShiftDetail:
+      description: >
+        One of the caller's published shifts with the site's address and the project's managers
+        to contact, who stand in for a shift leader (007 FR-023).
+      allOf:
+        - $ref: "#/components/schemas/MyShift"
+        - type: object
+          required: [site_address, contacts]
+          properties:
+            site_address:
+              type: [string, "null"]
+            contacts:
+              type: array
+              items:
+                type: object
+                required: [full_name, phone, email]
+                properties:
+                  full_name:
+                    type: string
+                  phone:
+                    type: [string, "null"]
+                  email:
+                    type: string
+                    format: email
+
+    SubmissionRead:
+      type: object
+      required: [window_id, status, submitted_at, submitted_by, deadline, counted_unavailable]
+      description: >
+        Where the caller's availability for one window stands (007 FR-014). `status` is derived:
+        `locked` after the deadline; else `submitted` while the entries equal what was submitted,
+        `draft` after a change or with entries, `not_submitted` with neither.
+        `counted_unavailable` is true after the deadline when nothing was submitted.
+      properties:
+        window_id:
+          $ref: "#/components/schemas/UUIDv4"
+        status:
+          type: string
+          enum: [not_submitted, draft, submitted, locked]
+        submitted_at:
+          oneOf:
+            - $ref: "#/components/schemas/ISODateTime"
+            - type: "null"
+        submitted_by:
+          description: The employee, or the Admin who submitted on their behalf.
+          oneOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        deadline:
+          $ref: "#/components/schemas/ISODateTime"
+        counted_unavailable:
+          type: boolean
+
     MyShiftList:
       type: object
       required: [items]
@@ -4174,6 +4227,132 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /me/shifts/{id}:
+    get:
+      operationId: me_shift_detail
+      summary: Read one of my own published shifts (007 FR-023)
+      tags: [Me]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: The shift with its site's address and whom to contact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyShiftDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /me/availability-submissions:
+    get:
+      operationId: me_availability_submission_read
+      summary: Read my availability status for a window (007 FR-014)
+      tags: [Me]
+      parameters:
+        - name: window_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: Where the caller's availability for the window stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    post:
+      operationId: me_availability_submit
+      summary: Submit my availability for a window (007 FR-014, FR-015)
+      tags: [Me]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [window_id]
+              properties:
+                window_id:
+                  $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: The status after submitting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /employees/{id}/availability-submissions:
+    post:
+      operationId: availability_submit_on_behalf
+      summary: Submit an employee's availability on their behalf (Admin, 007 FR-014)
+      tags: [Availability]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [window_id]
+              properties:
+                window_id:
+                  $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "200":
+          description: The employee's status after the submit; `submitted_by` is the Admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionRead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

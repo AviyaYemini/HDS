@@ -82,3 +82,54 @@ async def my_shifts(
             for r in rows
         ]
     )
+
+
+class ShiftContact(BaseModel):
+    """Who to contact about a shift: one of its project's managers."""
+
+    full_name: str
+    phone: str | None
+    email: str
+
+
+class MyShiftDetail(MyShift):
+    """One of the caller's published shifts, with the site's address and who to contact."""
+
+    site_address: str | None
+    contacts: list[ShiftContact]
+
+
+@router.get(
+    "/shifts/{id}",
+    response_model=MyShiftDetail,
+    summary="Read one of my shifts",
+    description=(
+        "Employee, Manager or Admin. One of the caller's own published shifts with the site's "
+        "address and the project's managers to contact, who stand in for a shift leader. "
+        "Answers 404 for any shift the caller is not on, a draft included, and says nothing "
+        "about who else is on it."
+    ),
+)
+async def my_shift(
+    id: uuid.UUID,
+    current_user: User = Depends(require_staff),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> MyShiftDetail:
+    """Read one of my shifts.
+
+    Employee, Manager or Admin, for a published shift they are on.
+    """
+    found, managers = await roster_service(db).my_shift(current_user, id)
+    return MyShiftDetail(
+        id=found.id,
+        starts_at=found.starts_at,
+        ends_at=found.ends_at,
+        timezone=found.timezone,
+        shift_type=found.shift_type,
+        project=NamedRef(id=found.project_id, name=found.project_name),
+        site=NamedRef(id=found.site_id, name=found.site_name),
+        site_address=found.site_address,
+        contacts=[
+            ShiftContact(full_name=m.full_name, phone=m.phone, email=m.email) for m in managers
+        ],
+    )

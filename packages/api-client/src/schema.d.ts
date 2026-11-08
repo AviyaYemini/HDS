@@ -242,6 +242,26 @@ export interface paths {
         patch: operations["edit_employee_api_v1_employees__id__patch"];
         trace?: never;
     };
+    "/api/v1/employees/{id}/availability-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit an employee's availability on their behalf
+         * @description Admin. Submit the employee's current blocked, open and close entries for `window_id`, at any time, the deadline included. The submission records the Admin as `submitted_by`. This is the explicit way to count an employee who did not submit; an Admin's edit of their entries alone never creates a submission.
+         */
+        post: operations["submit_on_behalf_api_v1_employees__id__availability_submissions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{id}/constraints": {
         parameters: {
             query?: never;
@@ -1250,6 +1270,30 @@ export interface paths {
         patch: operations["patch_me_me_patch"];
         trace?: never;
     };
+    "/me/availability-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read my availability status for a window
+         * @description Employee, Manager or Admin. Where the caller's own availability for `window_id` stands: not submitted, draft, submitted (with the time) or locked after the deadline, and whether a missed deadline counts them as unavailable for the whole window.
+         */
+        get: operations["read_submission_me_availability_submissions_get"];
+        put?: never;
+        /**
+         * Submit my availability for a window
+         * @description Employee, Manager or Admin. Submit the caller's blocked, open and close entries for an open window; submitting again replaces the earlier submission. Answers 409 (`availability.window_closed`) once the deadline has passed. After the deadline, scheduling uses what was submitted; with nothing submitted the caller counts as unavailable for the whole window.
+         */
+        post: operations["submit_me_availability_submissions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/pay": {
         parameters: {
             query?: never;
@@ -1322,6 +1366,26 @@ export interface paths {
          * @description Employee, Manager or Admin. The caller's own published shifts that start on `from` to `to` (optional dates in the organisation's time zone), with the project, the site and its time zone. Never a draft, never anyone else's, and nothing about who else is on them.
          */
         get: operations["my_shifts_me_shifts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/shifts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one of my shifts
+         * @description Employee, Manager or Admin. One of the caller's own published shifts with the site's address and the project's managers to contact, who stand in for a shift leader. Answers 404 for any shift the caller is not on, a draft included, and says nothing about who else is on it.
+         */
+        get: operations["my_shift_me_shifts__id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2169,6 +2233,37 @@ export interface components {
             timezone: string;
         };
         /**
+         * MyShiftDetail
+         * @description One of the caller's published shifts, with the site's address and who to contact.
+         */
+        MyShiftDetail: {
+            /** Contacts */
+            contacts: components["schemas"]["ShiftContact"][];
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            project: components["schemas"]["NamedRef"];
+            /** Shift Type */
+            shift_type: string;
+            site: components["schemas"]["NamedRef"];
+            /** Site Address */
+            site_address: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /**
          * MyShiftList
          * @description The caller's published shifts, by start time.
          */
@@ -2901,6 +2996,18 @@ export interface components {
             warnings: components["schemas"]["WarningRead"][];
         };
         /**
+         * ShiftContact
+         * @description Who to contact about a shift: one of its project's managers.
+         */
+        ShiftContact: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Phone */
+            phone: string | null;
+        };
+        /**
          * ShiftCreateRequest
          * @description A new shift of one of the project's shift types on ``date``.
          *
@@ -3247,6 +3354,50 @@ export interface components {
              * @example 125.00
              */
             rate_pct: string;
+        };
+        /**
+         * SubmissionRead
+         * @description Where the caller's availability for one window stands.
+         *
+         *     ``status`` is derived: ``locked`` once the deadline has passed; otherwise ``submitted`` while
+         *     the entries equal what was submitted, ``draft`` after any change or entry, ``not_submitted``
+         *     with neither. ``counted_unavailable`` is true after the deadline when nothing was submitted:
+         *     the employee is then not scheduled anywhere in the window. ``submitted_by`` is who made the
+         *     latest submit: the employee, or an Admin who submitted on their behalf.
+         */
+        SubmissionRead: {
+            /** Counted Unavailable */
+            counted_unavailable: boolean;
+            /**
+             * Deadline
+             * Format: date-time
+             */
+            deadline: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_submitted" | "draft" | "submitted" | "locked";
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Submitted By */
+            submitted_by: string | null;
+            /**
+             * Window Id
+             * Format: uuid
+             */
+            window_id: string;
+        };
+        /**
+         * SubmitRequest
+         * @description The window to submit for.
+         */
+        SubmitRequest: {
+            /**
+             * Window Id
+             * Format: uuid
+             */
+            window_id: string;
         };
         /**
          * TokenResponse
@@ -4906,6 +5057,77 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    submit_on_behalf_api_v1_employees__id__availability_submissions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9283,6 +9505,142 @@ export interface operations {
             };
         };
     };
+    read_submission_me_availability_submissions_get: {
+        parameters: {
+            query: {
+                window_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    submit_me_availability_submissions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     my_pay_me_pay_get: {
         parameters: {
             query?: {
@@ -9440,6 +9798,64 @@ export interface operations {
             };
             /** @description Authenticated but the role or data scope does not allow this. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    my_shift_me_shifts__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyShiftDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

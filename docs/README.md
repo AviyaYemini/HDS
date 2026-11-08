@@ -40,6 +40,7 @@
 | [012](adr/012-pay-calculation.md) | Pay worked out in one pure package, from settings that projects follow or override |
 | [015](adr/015-capability-map.md) | One capability map serves the API's role checks and the client's navigation |
 | [016](adr/016-phone-sessions.md) | Phone sessions last 30 days and renew on use; the client declares its kind |
+| [017](adr/017-availability-submissions.md) | Availability is submitted as a snapshot, and a missed deadline counts as unavailable |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 
