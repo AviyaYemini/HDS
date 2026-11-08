@@ -21,22 +21,21 @@ async def test_an_employee_reads_their_published_shift_with_its_contacts(
         json={"user_ids": [str(seed_users["manager"].id)]},
         headers=admin,
     )
-    shift = await add_shift(async_client, admin, project, FIRST)
-    assert (
-        await assign(async_client, admin, shift["id"], seed_users["employee"].id)
-    ).status_code == 201
+    shift_id = (await add_shift(async_client, admin, project, FIRST))["shift"]["id"]
+    assigned = await assign(async_client, admin, shift_id, seed_users["employee"].id)
+    assert assigned.status_code == 201
     employee = await headers_for(async_client, "employee")
 
-    draft = await async_client.get(f"/me/shifts/{shift['id']}", headers=employee)
+    draft = await async_client.get(f"/me/shifts/{shift_id}", headers=employee)
     assert draft.status_code == 404
 
     published = await async_client.post(
         f"/api/v1/projects/{project['id']}/publish",
-        json={"first": FIRST.isoformat(), "last": FIRST.isoformat()},
+        json={"from": FIRST.isoformat(), "to": FIRST.isoformat()},
         headers=admin,
     )
     assert published.status_code == 200, published.text
-    found = await async_client.get(f"/me/shifts/{shift['id']}", headers=employee)
+    found = await async_client.get(f"/me/shifts/{shift_id}", headers=employee)
     assert found.status_code == 200, found.text
     detail = found.json()
     assert [c["email"] for c in detail["contacts"]] == ["manager@hds.test"]
@@ -49,9 +48,15 @@ async def test_someone_elses_shift_is_not_found(
 ) -> None:
     admin = await headers_for(async_client, "admin")
     project = await add_project(async_client, admin)
-    shift = await add_shift(async_client, admin, project, FIRST)
-    await assign(async_client, admin, shift["id"], seed_users["extra"].id)
+    shift_id = (await add_shift(async_client, admin, project, FIRST))["shift"]["id"]
+    # On someone else's shift: the manager's, published.
+    await assign(async_client, admin, shift_id, seed_users["manager"].id)
+    await async_client.post(
+        f"/api/v1/projects/{project['id']}/publish",
+        json={"from": FIRST.isoformat(), "to": FIRST.isoformat()},
+        headers=admin,
+    )
     response = await async_client.get(
-        f"/me/shifts/{shift['id']}", headers=await headers_for(async_client, "employee")
+        f"/me/shifts/{shift_id}", headers=await headers_for(async_client, "employee")
     )
     assert response.status_code == 404
