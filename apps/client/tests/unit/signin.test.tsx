@@ -17,11 +17,11 @@ async function fill(): Promise<void> {
 
 beforeEach(() => jest.clearAllMocks());
 
-test("a good sign-in opens My availability", async () => {
+test("a good sign-in opens the role's home", async () => {
   const api = new FakeApi().on("POST", "/auth/login", json(200, TOKENS)).on("GET", "/me", json(200, ME));
   await renderWith(new Session(BASE, memoryStore(), api.fetch), <SignInScreen />);
   await fill();
-  await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/availability"));
+  await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home"));
   expect(api.calls("POST", "/auth/login")[0]!.body).toEqual({
     email: "employee@hds.test",
     password: "Dev1234!",

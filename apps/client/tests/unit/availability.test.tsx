@@ -187,7 +187,7 @@ test("a failed load is shown translated and can be tried again", async () => {
     .on("GET", "/api/v1/shift-types", json(200, TYPES));
   const session = await signedIn(api);
   await renderWith(session, <AvailabilityScreen />);
-  expect(await screen.findByTestId("error-message")).toHaveTextContent("You are not allowed to do this.");
+  expect(await screen.findByTestId("error-message")).toHaveTextContent("This action isn't available to you");
   await fireEvent.press(screen.getByTestId("retry"));
   expect(await screen.findByTestId("window-w1")).toBeTruthy();
 });

@@ -4,6 +4,7 @@
  */
 import { Platform } from "react-native";
 
+import { reportReachable, reportUnreachable } from "../connectivity";
 import { track } from "../design/loading/loadingStore";
 import { Session } from "./session";
 import { storeFor } from "./tokens";
@@ -11,5 +12,17 @@ import { storeFor } from "./tokens";
 /** Where the API is. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** Send a request under the loading bar and tell the connectivity store how it went. */
+async function send(request: Request): Promise<Response> {
+  try {
+    const response = await track(fetch(request));
+    reportReachable();
+    return response;
+  } catch (failure) {
+    reportUnreachable();
+    throw failure;
+  }
+}
+
 /** The session every screen uses. */
-export const session = new Session(API_URL, storeFor(Platform.OS), (request) => track(fetch(request)));
+export const session = new Session(API_URL, storeFor(Platform.OS), send);

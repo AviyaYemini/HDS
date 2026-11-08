@@ -27,6 +27,8 @@ export class Session {
   readonly api: ApiClient;
   /** The account, once signed in. */
   user: Me | null = null;
+  /** True after the server refused to renew the session, until the next sign-in (FR-010's notice). */
+  endedUnexpectedly = false;
 
   private readonly plain: ApiClient;
   private tokens: Tokens | null = null;
@@ -85,6 +87,7 @@ export class Session {
       await this.forget(false);
       return codeOf(error);
     }
+    this.endedUnexpectedly = false;
     this.notify();
     return null;
   }
@@ -195,6 +198,7 @@ export class Session {
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 0) return false;
+      this.endedUnexpectedly = true;
       await this.forget(true);
       return false;
     }

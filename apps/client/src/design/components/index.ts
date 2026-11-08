@@ -7,6 +7,7 @@ export { BackgroundContext, ClippedBox, clippedPoints, useBackgroundColor, type 
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { FeaturePanel, type FeaturePanelProps } from "./FeaturePanel";
 export { InlineBanner, type BannerTone, type InlineBannerProps } from "./InlineBanner";
+export { LinkPressable, type LinkPressableProps } from "./LinkPressable";
 export { LoadingBar } from "./LoadingBar";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SearchablePicker, matches, normalise, order, type PickerItem, type SearchablePickerProps } from "./SearchablePicker";

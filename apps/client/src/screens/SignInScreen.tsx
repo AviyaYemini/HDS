@@ -1,17 +1,31 @@
-/** Sign-in: email and password; a refusal is shown with the API's code translated. */
-import { useRouter } from "expo-router";
+/**
+ * Sign-in (001 US1; specs/007-ux-redesign FR-010, FR-064, FR-077): the branded sign-in in Option B.
+ * Paste and password managers work (autocomplete hints, no puzzle), a refusal shows the API's code
+ * translated, a session that ended says so, and a good sign-in opens the role's home.
+ */
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { StyleSheet, View } from "react-native";
 
 import { useErrorText } from "../api/errors";
 import { useSession } from "../api/SessionContext";
-import { Button, ErrorText, Field, Screen, Title } from "../components/ui";
+import { safeReturnPath } from "../auth/returnPath";
+import { clearSessionEnded, useSessionEnded } from "../auth/sessionEnded";
+import { capabilitiesOf } from "../capabilities";
+import { Button, InlineBanner, TextField, Txt } from "../design/components";
+import { Screen } from "../design/components/Screen";
+import { useTheme } from "../design/theme/ThemeProvider";
+import { homeFor } from "../navigation/destinations";
 
 export function SignInScreen() {
   const { t } = useTranslation();
   const errorText = useErrorText();
   const session = useSession();
   const router = useRouter();
+  const { colors } = useTheme();
+  const ended = useSessionEnded();
+  const { next } = useLocalSearchParams<{ next?: string | string[] }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +36,13 @@ export function SignInScreen() {
     setError(null);
     const refused = await session.signIn(email.trim(), password);
     setBusy(false);
-    if (refused === null) router.replace("/availability");
-    else setError(refused);
+    if (refused === null) {
+      clearSessionEnded();
+      // Back to the address the person was sent from, when it is one of this app's (ui-routes.md).
+      router.replace((safeReturnPath(next) ?? homeFor(capabilitiesOf(session.user))) as never);
+    } else {
+      setError(refused);
+    }
   }
 
   const lines =
@@ -34,12 +53,60 @@ export function SignInScreen() {
         : [];
 
   return (
-    <Screen>
-      <Title>{t("auth.sign_in")}</Title>
-      <Field testID="email" label={t("auth.email")} value={email} onChange={setEmail} email />
-      <Field testID="password" label={t("auth.password")} value={password} onChange={setPassword} secure />
-      {lines.length > 0 ? <ErrorText lines={lines} /> : null}
-      <Button testID="sign-in-btn" label={t("auth.sign_in")} onPress={() => void submit()} disabled={busy} />
+    <Screen testID="screen-sign-in">
+      <View style={styles.card}>
+        <View style={styles.brand}>
+          <View style={[styles.brandMark, { backgroundColor: colors.cta.bg }]} />
+          <Txt role="eyebrow" tone="secondary">
+            {t("app.name")}
+          </Txt>
+        </View>
+        <Txt role="display" heading={1}>
+          {t("auth.sign_in")}
+        </Txt>
+        <Txt role="body" tone="secondary">
+          {t("auth.sign_in_intro")}
+        </Txt>
+        {ended ? <InlineBanner tone="info" testID="banner-session-ended">{t("auth.token_expired")}</InlineBanner> : null}
+        <TextField
+          testID="email"
+          label={t("auth.email")}
+          value={email}
+          onChangeText={setEmail}
+          direction="ltr"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+        />
+        <TextField
+          testID="password"
+          label={t("auth.password")}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
+        />
+        {lines.length > 0 ? (
+          <InlineBanner tone="danger" testID="error-message" title={lines[0]}>
+            {lines.slice(1).join(" ")}
+          </InlineBanner>
+        ) : null}
+        <Button testID="sign-in-btn" variant="primary" label={t("auth.sign_in")} onPress={() => void submit()} busy={busy} block />
+      </View>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  card: { gap: 16, maxWidth: 420, width: "100%", alignSelf: "center", paddingTop: 24 },
+  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandMark: { width: 14, height: 14 },
+});
