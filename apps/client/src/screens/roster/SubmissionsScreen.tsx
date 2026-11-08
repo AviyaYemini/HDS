@@ -13,7 +13,8 @@ import { EmptyState, InlineBanner, PageTitle, SkeletonRows, StatusChip, Txt } fr
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { formatNumericDate, DEFAULT_TIME_ZONE, dateOf } from "../../locale";
+import { addDays, formatNumericDate, DEFAULT_TIME_ZONE, dateOf, todayIn } from "../../locale";
+import { nearestOpenWindow } from "../availability";
 import { useLoad } from "../useLoad";
 
 const TONE = { not_submitted: "warning", draft: "neutral", submitted: "success", locked: "neutral" } as const;
@@ -24,22 +25,29 @@ export function SubmissionsScreen() {
   const session = useSession();
   const errorText = useErrorText();
   const { colors } = useTheme();
-  const rows = useLoad(
-    async () => (window ? (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id: window } } }))).items : []),
-    [window],
-  );
+  // Without ?window=, the window whose deadline comes next, as the home's card follows (R117).
+  const rows = useLoad(async () => {
+    let id: string | null = window ?? null;
+    if (id === null) {
+      const today = todayIn(DEFAULT_TIME_ZONE);
+      const windows = (await call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: today, to: addDays(today, 60) } } }))).items;
+      id = nearestOpenWindow(windows, Date.now())?.id ?? null;
+    }
+    if (id === null) return { items: null };
+    return { items: (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id } } }))).items };
+  }, [window]);
   return (
     <Screen testID="screen-submissions">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.submissions")} />
-      {!window ? (
-        <EmptyState icon="calendar" title={t("submissions.choose_window")} body={t("submissions.choose_window_body")} />
-      ) : rows.error ? (
+      {rows.error ? (
         <InlineBanner tone="warning" title={errorText(rows.error)} action={{ label: t("common.retry"), onPress: () => void rows.reload() }} />
       ) : rows.data === null ? (
         <SkeletonRows rows={5} />
+      ) : rows.data.items === null ? (
+        <EmptyState icon="calendar" title={t("submissions.no_window")} body={t("submissions.no_window_body")} />
       ) : (
         <View style={styles.list}>
-          {rows.data.map((row) => (
+          {rows.data.items.map((row) => (
             <View key={row.user_id} testID="submission-row" {...webProps({ dataSet: { userId: row.user_id, status: row.status } })} style={[styles.row, { borderColor: colors.border.subtle }]}>
               <Txt role="label" style={styles.name}>
                 {row.full_name}

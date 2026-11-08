@@ -8,7 +8,7 @@
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { LANGUAGES, PREVIEWS_ON, addDays, apiAs, at, checkA11y, isPhone, ok, signIn, siteDay, sundayOf } from "./support";
+import { LANGUAGES, PREVIEWS_ON, addDays, apiAs, at, checkA11y, isPhone, ok, openAs, signIn, siteDay, sundayOf } from "./support";
 
 type Project = { id: string; types: Record<string, string> };
 type Shift = { id: string; starts_at: string; ends_at: string; etag: string };
@@ -259,4 +259,25 @@ for (const language of LANGUAGES) {
       await expect(block(page, s.id)).toHaveAttribute("data-status", "published");
     });
   });
+}
+
+// The roster opened from the navigation, with no project in the address (CodeRabbit, PR 18; R113):
+// a list of projects to open, or the one project the manager runs, never a dead end.
+for (const language of LANGUAGES) {
+  for (const role of ["manager", "admin"] as const) {
+    test(`${language}: ${role} opens the roster from the navigation and reaches a project's week`, async ({ page }, testInfo) => {
+      await openAs(page, role, language, "/home");
+      const nav = page.getByTestId("nav-side").or(page.getByTestId("nav-tabs")).first();
+      await nav.locator('a[href^="/roster"]').first().click();
+      const list = page.getByTestId("roster-project").first();
+      const week = page.getByTestId(isPhone(testInfo) ? "roster-agenda" : "roster-day").first();
+      await expect(list.or(week).first()).toBeVisible();
+      if (await list.isVisible()) {
+        await checkA11y(page, `roster projects (${role}, ${language})`);
+        await page.locator('[data-testid="roster-project"][data-editable="true"]').first().click();
+      }
+      await expect(page).toHaveURL(/[?&]project=/);
+      await expect(week).toBeVisible();
+    });
+  }
 }

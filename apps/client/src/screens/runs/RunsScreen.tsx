@@ -123,6 +123,8 @@ function useRuns() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // A failed next page keeps the list on screen and says so beside the button (R118).
+  const [moreError, setMoreError] = useState<string | null>(null);
 
   // State is set in the answer's callbacks, never in an effect's own body.
   const first = useCallback(
@@ -158,6 +160,7 @@ function useRuns() {
   const more = async () => {
     if (cursor === null) return;
     setLoadingMore(true);
+    setMoreError(null);
     try {
       const page = await call(session.api.GET("/api/v1/schedule-jobs", { params: { query: { limit: 50, cursor } } }));
       setItems((held) => {
@@ -166,13 +169,13 @@ function useRuns() {
       });
       setCursor(page.next_cursor);
     } catch (failure) {
-      setError(codeOf(failure));
+      setMoreError(codeOf(failure));
     } finally {
       setLoadingMore(false);
     }
   };
 
-  return { data: items, error, reload: () => first(false), more: cursor === null ? null : more, loadingMore };
+  return { data: items, error, reload: () => first(false), more: cursor === null ? null : more, loadingMore, moreError };
 }
 
 export function RunsScreen() {
@@ -205,6 +208,7 @@ export function RunsScreen() {
             <RunRow key={job.id} job={job} />
           ))}
           {jobs.more ? <Button label={t("runs.more")} onPress={() => void jobs.more?.()} busy={jobs.loadingMore} testID="action-more-runs" /> : null}
+          {jobs.moreError ? <InlineBanner tone="warning" testID="banner-more-runs" title={errorText(jobs.moreError)} /> : null}
         </View>
       )}
     </Screen>

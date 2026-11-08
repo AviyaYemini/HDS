@@ -7,7 +7,7 @@ caller's organisation.
 
 import uuid
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +19,7 @@ from hds.models.project import Project
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType
 from hds.models.site import Site
+from hds.models.user import User
 from hds.repositories.base import OrgScopedRepository
 
 _ONE_PER_SHIFT = "uq_assignments_shift_user"
@@ -33,6 +34,8 @@ class ShiftView:
     assignments: list[Assignment]
     rate_shown: bool = True
     """Whether the reader may see the shift's own ``pay_rate`` (005 FR-022a); services decide."""
+    people: dict[uuid.UUID, tuple[str, bool]] = field(default_factory=dict)
+    """Each assigned person's name and whether they are active, deactivated ones included."""
 
 
 @dataclass(frozen=True)
@@ -165,7 +168,24 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             )
         ).scalars():
             assigned[assignment.shift_id].append(assignment)
-        return [ShiftView(s, zones[s.id], assigned[s.id]) for s in shifts]
+        user_ids = {a.user_id for group in assigned.values() for a in group}
+        people: dict[uuid.UUID, tuple[str, bool]] = {}
+        if user_ids:
+            rows = await self.session.execute(
+                select(User.id, User.full_name, User.is_active).where(User.id.in_(user_ids))
+            )
+            people = {row.id: (row.full_name, row.is_active) for row in rows}
+        return [
+            ShiftView(
+                s,
+                zones[s.id],
+                assigned[s.id],
+                people={
+                    a.user_id: people[a.user_id] for a in assigned[s.id] if a.user_id in people
+                },
+            )
+            for s in shifts
+        ]
 
     async def page(
         self,

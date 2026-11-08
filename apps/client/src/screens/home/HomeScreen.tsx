@@ -36,6 +36,7 @@ import {
   formatTimeRange,
   todayIn,
 } from "../../locale";
+import { nearestOpenWindow } from "../availability";
 import { useLoad } from "../useLoad";
 
 /** The next published shift, as a feature panel (FR-022's first form; group C finishes it). */
@@ -174,7 +175,7 @@ function ManagerCards() {
   const shifts = useLoad(async () => (await call(session.api.GET("/api/v1/shifts", { params: { query: { from: today, to: today, limit: 200 } } }))).items, [today]);
   const missing = useLoad(async () => {
     const windows = (await call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: today, to: addDays(today, 60) } } }))).items;
-    const open = windows.filter((w) => new Date(w.deadline).getTime() > Date.now()).sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+    const open = nearestOpenWindow(windows, Date.now());
     if (!open) return { window: null, count: 0 };
     const rows = (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id: open.id } } }))).items;
     return { window: open.id, count: rows.filter((r) => r.status === "not_submitted").length };

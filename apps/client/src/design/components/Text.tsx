@@ -10,7 +10,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, type Role, type StyleProp, type TextProps, type TextStyle } from "react-native";
 
-import { isRtl } from "../../i18n";
+import { isRtlLanguage } from "../../i18n";
 import { useTheme } from "../theme/ThemeProvider";
 import { webProps } from "../web";
 import type { FontWeight } from "../theme/fonts";
@@ -91,7 +91,8 @@ export function Txt({ role = "body", tone = "primary", weight, numeric, heading,
   const color = toneColor(theme.colors, tone, surface);
   return (
     <Text
-      {...webProps({ dir: textDirection(dir, isRtl()) })}
+      // From i18n's current language, so a switch never leaves text in the old direction (R122).
+      {...webProps({ dir: textDirection(dir, isRtlLanguage(i18n.language)) })}
       {...rest}
       role={heading ? "heading" : a11yRole}
       aria-level={heading}

@@ -500,7 +500,6 @@
   "display.dark_mode": "Dark mode",
   "display.light_mode": "Light mode",
   "roster.choose_project": "Choose a project",
-  "roster.choose_project_body": "Open a project's roster from Projects.",
   "roster.undo": "Undo",
   "roster.publish": "Publish",
   "roster.no_shifts": "No shifts this day.",
@@ -529,8 +528,6 @@
   "preview.cost_strip_body": "The week's pay cost beside the roster.",
   "preview.qualification_expiry_title": "Qualifications",
   "preview.qualification_expiry_body": "Who is qualified, and whose qualification runs out.",
-  "submissions.choose_window": "Choose a window",
-  "submissions.choose_window_body": "Open a submission window to see who has submitted.",
   "submissions.counted_unavailable": "Counts as unavailable",
   "submissions.changed_by_admin": "Changed by an admin on {{date}}",
   "roster.warning.rest": "A rest of {{rest_hours}} h between these shifts; the minimum is {{minimum_hours}} h.",
@@ -598,5 +595,10 @@
   "runs.reasons.no_active_employee": "No active staff to place",
   "runs.reasons.other": "Another rule",
   "runs.poll_failed": "The run's status could not be read; trying again.",
-  "runs.more": "Show earlier runs"
+  "runs.more": "Show earlier runs",
+  "roster.read_only": "Read-only",
+  "roster.no_projects": "No projects yet",
+  "roster.no_projects_body": "A project's roster appears here once it is created.",
+  "submissions.no_window": "No availability window is open",
+  "submissions.no_window_body": "Open a window for the coming weeks, and who has submitted shows here."
 }

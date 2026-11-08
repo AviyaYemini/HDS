@@ -1625,10 +1625,20 @@ export interface components {
          */
         AssignmentRead: {
             /**
+             * Active
+             * @description Whether the person is still active; false for a deactivated one.
+             */
+            active?: boolean | null;
+            /**
              * Ends At
              * Format: date-time
              */
             ends_at: string;
+            /**
+             * Full Name
+             * @description The person's name, deactivated people included, so an existing assignment always names who it is (CodeRabbit, PR 18).
+             */
+            full_name?: string | null;
             /**
              * Id
              * Format: uuid

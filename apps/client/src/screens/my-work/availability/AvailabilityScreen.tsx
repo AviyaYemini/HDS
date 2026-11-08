@@ -212,10 +212,12 @@ export function AvailabilityScreen() {
         setUndo([...ledger.history]);
       }
       // Done with this write: forget its marks, and show the server's state unless a newer tap
-      // is still on its way.
-      const settle = (): void => {
+      // is still on its way. A batch that landed keeps showing its cells until its one reload
+      // (so they never flicker back); on a failure they go at once.
+      const settle = (keepShown = false): void => {
         ledger.settle(keyOf(target), marks[0]);
         ledger.settle(keyOf(key), marks[1]);
+        if (keepShown) return;
         if (ledger.current(keyOf(target)) === undefined) dropOverride(target);
         if (ledger.current(keyOf(key)) === undefined) dropOverride(key);
       };
@@ -229,10 +231,12 @@ export function AvailabilityScreen() {
         await runPlan(planCellChange(current, key, to, window));
         if (!batch) await reload();
         // A batch reloads once at its end; its marks are settled here all the same, so the
-        // ledger never keeps a copied state the server answered differently (R91).
-        settle();
+        // ledger never keeps a copied state the server answered differently (R91), while the
+        // cells stay shown until that reload (R115).
+        settle(batch);
       };
       try {
+        // A batch already runs inside `writes` (Copy last week holds it for the whole copy).
         if (batch) {
           await write();
         } else {
@@ -267,17 +271,27 @@ export function AvailabilityScreen() {
     await setCell(last.key, last.before, false);
   };
 
-  // Copy last week writes every cell, then reloads once (R57).
+  // Copy last week writes every cell, then reloads once (R57). The whole copy is one turn of
+  // `writes`, so no tap or Undo runs in the middle of it, and a second press while it runs is
+  // ignored (R116).
+  const [copying, setCopying] = useState(false);
   const copyLastWeek = async (): Promise<void> => {
-    if (!shownWeek) return;
+    if (!shownWeek || copying) return;
     const plan = copyPlan(serverEntries, shownWeek, shiftTypes.map((type) => type.id));
     if (plan.length === 0) {
       showToast(t("availability.copy_nothing"));
       return;
     }
-    for (const step of plan) await applyCell(step.key, step.state, true, true);
-    await reload();
-    setOverrides(new Map());
+    setCopying(true);
+    try {
+      await writes.run(async () => {
+        for (const step of plan) await applyCell(step.key, step.state, true, true);
+        await reload();
+      });
+      setOverrides(new Map());
+    } finally {
+      setCopying(false);
+    }
   };
 
   const [waiting, setWaiting] = useState(0);
@@ -382,7 +396,7 @@ export function AvailabilityScreen() {
           {canEdit ? (
             <View style={styles.actions}>
               <Button variant="primary" label={t("availability.review")} icon="check" onPress={() => setReviewOpen(true)} testID="action-review" />
-              <Button variant="secondary" label={t("availability.copy_last_week")} icon="undo" onPress={() => void copyLastWeek()} testID="action-copy-last-week" />
+              <Button variant="secondary" label={t("availability.copy_last_week")} icon="undo" onPress={() => void copyLastWeek()} busy={copying} testID="action-copy-last-week" />
             </View>
           ) : null}
         </View>
