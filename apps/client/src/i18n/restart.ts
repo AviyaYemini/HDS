@@ -13,21 +13,41 @@ import { reloadAppAsync } from "expo";
 import { useSyncExternalStore } from "react";
 import { Platform } from "react-native";
 
+import { storeFor } from "../api/tokens";
+import { safeReturnPath } from "../auth/returnPath";
 import { rememberLanguage, setupI18n } from "./index";
 
 const RESUME_KEY = "hds.resume";
 /** A resume older than this is not this restart's: ignored. */
 export const RESUME_FRESH_MS = 60_000;
 
-/** Where to come back to after a restart, and when it was saved (ms since the epoch). */
+/**
+ * Where to come back to after a restart, when it was saved (ms since the epoch), and the session
+ * that switched (its `sid`, else its user), so only that session skips a second unlock.
+ */
 export interface Resume {
   path: string;
   at: number;
+  owner: string | null;
 }
 
-/** A path inside this app: one leading slash, never a protocol-relative `//host`. */
+/** A path inside this app, by the one rule the sign-in's return path uses. */
 export function isAppPath(path: string): boolean {
-  return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
+  return safeReturnPath(path) === path;
+}
+
+/** The session an access token belongs to: its `sid`, else its `sub`; null when unreadable. */
+export function sessionOf(access: string | null | undefined): string | null {
+  const part = access?.split(".")[1];
+  if (!part || typeof atob === "undefined") return null;
+  try {
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "="));
+    const claims = JSON.parse(json) as { sid?: unknown; sub?: unknown };
+    const owner = claims.sid ?? claims.sub;
+    return typeof owner === "string" ? owner : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The screen's address with its query, leaving out `lang` (the restart sets the language). */
@@ -67,10 +87,15 @@ async function read(): Promise<string | null> {
   }
 }
 
-/** Keep `path` to come back to after the restart. */
-export async function saveResume(path: string, now: number = Date.now()): Promise<void> {
+/** Keep `path` to come back to after the restart, for the session `owner`. */
+export async function saveResume(path: string, owner: string | null, now: number = Date.now()): Promise<void> {
   if (!isAppPath(path)) return;
-  await store(JSON.stringify({ path, at: now } satisfies Resume));
+  await store(JSON.stringify({ path, at: now, owner } satisfies Resume));
+}
+
+/** Forget any kept resume (signing out: it must never outlive the switch). */
+export async function clearResume(): Promise<void> {
+  await store(null);
 }
 
 /** The kept resume, taken once: removed whatever it holds, and null unless fresh and in the app. */
@@ -82,7 +107,7 @@ export async function takeResume(now: number = Date.now()): Promise<Resume | nul
     const kept = JSON.parse(text) as Partial<Resume>;
     if (typeof kept.path !== "string" || typeof kept.at !== "number") return null;
     if (!isAppPath(kept.path) || now - kept.at > RESUME_FRESH_MS || kept.at > now + 5_000) return null;
-    return { path: kept.path, at: kept.at };
+    return { path: kept.path, at: kept.at, owner: typeof kept.owner === "string" ? kept.owner : null };
   } catch {
     return null;
   }
@@ -155,7 +180,10 @@ export async function restartInLanguage(language: string, path: string, deps: Re
   setSwitching(language);
   await painted();
   await rememberLanguage(language);
-  await saveResume(path);
+  // Only a phone asks for biometrics at the start, so only a phone records whose switch it was
+  // (the web's tab store is read-and-remove, and is not touched here).
+  const kept = platform === "web" ? null : await storeFor(platform).load().catch(() => null);
+  await saveResume(path, sessionOf(kept?.access));
   if (platform === "web") {
     if (typeof window !== "undefined") {
       // `?lang=` would win over the stored choice after the reload.
@@ -185,4 +213,10 @@ export async function restartInLanguage(language: string, path: string, deps: Re
 /** For tests: nothing switching. */
 export function resetSwitching(): void {
   setSwitching(null);
+}
+
+/** Whether `resume` lets this start skip a second unlock: only the very session that switched. */
+export function skipsUnlock(resume: Resume | null, keptAccess: string | null | undefined): boolean {
+  const owner = sessionOf(keptAccess);
+  return resume !== null && resume.owner !== null && owner !== null && resume.owner === owner;
 }

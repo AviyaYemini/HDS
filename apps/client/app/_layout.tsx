@@ -28,7 +28,7 @@ import { startLoading } from "../src/design/loading/loadingStore";
 import { useAppFonts } from "../src/design/theme/fonts";
 import { ThemeProvider, useTheme } from "../src/design/theme/ThemeProvider";
 import { i18n, loadRememberedLanguage, setupI18n } from "../src/i18n";
-import { takeResume } from "../src/i18n/restart";
+import { clearResume, skipsUnlock, takeResume } from "../src/i18n/restart";
 import { LanguageSwitching } from "../src/navigation/LanguageSwitching";
 import { OfflineBanner } from "../src/navigation/OfflineBanner";
 import { LockScreen } from "../src/screens/misc/LockScreen";
@@ -149,12 +149,15 @@ function Starter() {
     started.current = true;
     void (async () => {
       try {
-        const hadTokens = (await storeFor(Platform.OS).load()) !== null;
+        const kept = await storeFor(Platform.OS).load();
+        const hadTokens = kept !== null;
+        // Taken by every start, used or not, so it never outlives the switch.
         const resume = await takeResume();
         if (resume) setResumeTo(resume.path);
-        // A restart for the language, seconds ago, by someone already unlocked: not a new start,
-        // so no second biometric prompt (the owner: it must never look like a cold start).
-        if (hadTokens && Platform.OS !== "web" && resume === null) {
+        // A restart for the language, seconds ago, by the very session that was unlocked: not a
+        // new start, so no second biometric prompt (the owner: it must never look like a cold
+        // start; ADR 016, biometrics are a convenience gate).
+        if (hadTokens && Platform.OS !== "web" && !skipsUnlock(resume, kept?.access)) {
           await tryUnlock();
         } else {
           setStart(await restore());
@@ -176,6 +179,8 @@ function Starter() {
     // A refresh the server refused while the app was open: say so on the sign-in screen.
     return session.subscribe(() => {
       if (!session.signedIn && session.endedUnexpectedly) markSessionEnded();
+      // Signing out forgets a pending resume: it belongs to the session that switched.
+      if (!session.signedIn) void clearResume();
     });
   }, []);
 

@@ -8,13 +8,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { i18n, setupI18n } from "../../src/i18n";
 import {
   RESUME_FRESH_MS,
+  clearResume,
   isAppPath,
   resetSwitching,
   restartInLanguage,
   resumePath,
   saveResume,
+  sessionOf,
+  skipsUnlock,
   takeResume,
 } from "../../src/i18n/restart";
+
+/** An access token whose payload names `claims` (the signature is never read here). */
+function token(claims: Record<string, string>): string {
+  const part = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  return `header.${part}.signature`;
+}
 
 const NOW = 1_800_000_000_000;
 
@@ -30,6 +39,25 @@ test("the screen's address keeps its query but not the language", () => {
   expect(resumePath("/account", {})).toBe("/account");
 });
 
+test("signing out forgets a pending resume", async () => {
+  await saveResume("/account", "s1", NOW);
+  await clearResume();
+  expect(await takeResume(NOW)).toBeNull();
+});
+
+test("only the session that switched skips the second unlock", () => {
+  const resume = { path: "/account", at: NOW, owner: "s1" };
+  expect(sessionOf(token({ sub: "u1", sid: "s1" }))).toBe("s1");
+  expect(sessionOf(token({ sub: "u1" }))).toBe("u1");
+  expect(sessionOf("not-a-token")).toBeNull();
+  expect(skipsUnlock(resume, token({ sub: "u1", sid: "s1" }))).toBe(true);
+  // Another session kept on the device (signed out and in again, or someone else): asked again.
+  expect(skipsUnlock(resume, token({ sub: "u1", sid: "s2" }))).toBe(false);
+  expect(skipsUnlock({ ...resume, owner: null }, token({ sid: "s1" }))).toBe(false);
+  expect(skipsUnlock(null, token({ sid: "s1" }))).toBe(false);
+  expect(skipsUnlock(resume, null)).toBe(false);
+});
+
 test("only an address inside the app is kept", () => {
   expect(isAppPath("/my/shifts?view=past")).toBe(true);
   expect(isAppPath("//evil.example/x")).toBe(false);
@@ -38,14 +66,14 @@ test("only an address inside the app is kept", () => {
 });
 
 test("a saved screen is taken back once, while fresh", async () => {
-  await saveResume("/my/shifts?view=past", NOW);
-  expect(await takeResume(NOW + 2000)).toEqual({ path: "/my/shifts?view=past", at: NOW });
+  await saveResume("/my/shifts?view=past", "s1", NOW);
+  expect(await takeResume(NOW + 2000)).toEqual({ path: "/my/shifts?view=past", at: NOW, owner: "s1" });
   // Taken: a second start finds nothing.
   expect(await takeResume(NOW + 3000)).toBeNull();
 });
 
 test("a stale or foreign resume is ignored and removed", async () => {
-  await saveResume("/account", NOW);
+  await saveResume("/account", "s1", NOW);
   expect(await takeResume(NOW + RESUME_FRESH_MS + 1)).toBeNull();
   await AsyncStorage.setItem("hds.resume", JSON.stringify({ path: "//evil.example", at: NOW }));
   expect(await takeResume(NOW)).toBeNull();
