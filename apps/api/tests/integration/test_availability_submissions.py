@@ -80,7 +80,7 @@ async def test_missing_the_deadline_counts_unavailable_and_a_manual_assignment_w
 
     project = await add_project(async_client, admin)
     shift = await add_shift(async_client, admin, project, FIRST)
-    answer = await assign(async_client, admin, shift["id"], seed_users["employee"].id)
+    answer = await assign(async_client, admin, shift["shift"]["id"], seed_users["employee"].id)
     assert answer.status_code == 201, answer.text
     assert "warnings.not_submitted" in codes(answer.json())
 

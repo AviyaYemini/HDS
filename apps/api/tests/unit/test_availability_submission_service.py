@@ -12,10 +12,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from hds.core.exceptions import ConflictError, ForbiddenError
 from hds.models.user import User, UserRole
-from hds.services.availability_effective import snapshot, snapshot_hash
+from hds.scheduling.types import Entry
+from hds.services.availability_effective import patched, snapshot, snapshot_hash
 from hds.services.availability_submission import AvailabilitySubmissionService, as_entry
 
 NOW = datetime(2026, 11, 5, 10, tzinfo=UTC)
@@ -145,64 +148,124 @@ async def test_a_client_cannot_submit() -> None:
         await service.submit(_user(UserRole.client), window.id)
 
 
-def _entry(kind: str, day: int) -> dict[str, Any]:
-    """An Admin's change as the availability service reports it."""
-    d = date(2026, 11, day)
+def _entry(kind: str, day: int, last: int | None = None) -> dict[str, Any]:
+    """An entry's fields as the availability service reports an Admin's change."""
     return {
         "kind": kind,
         "absence_kind": None,
-        "starts_on": d,
-        "ends_on": d,
+        "starts_on": date(2026, 11, day),
+        "ends_on": date(2026, 11, last or day),
         "shift_type_id": None,
         "weekday": None,
     }
 
 
-def _items_of(submissions: AsyncMock) -> list[dict[str, Any]]:
-    return list(submissions.put.await_args.kwargs["snapshot"])
+def _live(user_id: uuid.UUID, kind: str, day: int, last: int | None = None) -> MagicMock:
+    e = _stored(user_id, kind, day)
+    e.ends_on = date(2026, 11, last or day)
+    return e
+
+
+def _days(submissions: AsyncMock) -> set[tuple[str, str, str]]:
+    items = submissions.change.await_args.kwargs["snapshot"]
+    return {(i["starts_on"], i["ends_on"], i["kind"]) for i in items}
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("deadline", [NOW - timedelta(hours=1), NOW + timedelta(days=1)])
-async def test_an_admin_edit_patches_exactly_its_own_change_into_the_snapshot(
+async def test_an_admin_deleting_an_entry_the_employee_changed_since_submitting_removes_the_day(
     deadline: datetime,
 ) -> None:
-    """An Admin's change reaches the snapshot, whatever the deadline (007 review).
+    """An Admin's delete of a day the employee changed since submitting removes that day.
 
-    The employee's own edits since they submitted are not swept in (clarification Q4).
+    The snapshot says Monday open; the employee blocked Monday and never submitted again; the Admin
+    deletes the live Monday entry: Monday is gone from the snapshot.
     """
     admin, employee = _user(UserRole.admin), _user()
     window = _window(deadline)
-    submitted = [_stored(employee.id, "open", 9), _stored(employee.id, "open", 11)]
-    row = _submitted(window, employee, submitted)
-    # Since submitting, the employee blocked the 10th and never submitted again.
-    live = [*submitted, _stored(employee.id, "blocked", 10)]
-    service, submissions = _service(window, live, row)
-    # The Admin turns the 11th from open to close.
-    await service.apply_admin_edit(admin, employee.id, _entry("open", 11), _entry("close", 11))
-    items = _items_of(submissions)
-    assert {(i["starts_on"], i["kind"]) for i in items} == {
-        ("2026-11-09", "open"),
-        ("2026-11-11", "close"),
-    }
-    assert submissions.put.await_args.kwargs["snapshot_hash"] == snapshot_hash(items)
-    assert submissions.put.await_args.kwargs["submitted_by"] == admin.id
+    row = _submitted(
+        window, employee, [_live(employee.id, "open", 9), _live(employee.id, "open", 11)]
+    )
+    service, submissions = _service(window, [_live(employee.id, "open", 11)], row)
+    await service.apply_admin_edit(admin, employee.id, _entry("blocked", 9), None)
+    assert _days(submissions) == {("2026-11-11", "2026-11-11", "open")}
 
 
 @pytest.mark.asyncio
-async def test_an_admin_adding_or_removing_an_entry_patches_the_snapshot() -> None:
+async def test_an_admin_changing_that_entry_leaves_exactly_one_item_for_the_day() -> None:
     admin, employee = _user(UserRole.admin), _user()
     window = _window(NOW - timedelta(hours=1))
-    row = _submitted(window, employee, [_stored(employee.id, "open", 9)])
-    service, submissions = _service(window, [], row)
-    await service.apply_admin_edit(admin, employee.id, None, _entry("blocked", 12))
-    assert {(i["starts_on"], i["kind"]) for i in _items_of(submissions)} == {
-        ("2026-11-09", "open"),
-        ("2026-11-12", "blocked"),
+    row = _submitted(window, employee, [_live(employee.id, "open", 9)])
+    live = [_live(employee.id, "close", 9)]
+    service, submissions = _service(window, live, row)
+    await service.apply_admin_edit(admin, employee.id, _entry("blocked", 9), _entry("close", 9))
+    assert _days(submissions) == {("2026-11-09", "2026-11-09", "close")}
+
+
+@pytest.mark.asyncio
+async def test_the_employees_unsubmitted_edit_on_another_day_stays_out() -> None:
+    """Clarification Q4: only the days the Admin's edit touched come from the live entries."""
+    admin, employee = _user(UserRole.admin), _user()
+    window = _window(NOW - timedelta(hours=1))
+    row = _submitted(
+        window, employee, [_live(employee.id, "open", 9), _live(employee.id, "open", 11)]
+    )
+    # Since submitting, the employee blocked Wednesday the 11th and never submitted again.
+    live = [
+        _live(employee.id, "open", 9),
+        _live(employee.id, "blocked", 11),
+        _live(employee.id, "close", 12),
+    ]
+    service, submissions = _service(window, live, row)
+    await service.apply_admin_edit(admin, employee.id, None, _entry("close", 12))
+    assert _days(submissions) == {
+        ("2026-11-09", "2026-11-09", "open"),
+        ("2026-11-11", "2026-11-11", "open"),
+        ("2026-11-12", "2026-11-12", "close"),
     }
-    service, submissions = _service(window, [], row)
-    await service.apply_admin_edit(admin, employee.id, _entry("open", 9), None)
-    assert _items_of(submissions) == []
+
+
+@pytest.mark.asyncio
+async def test_an_item_crossing_the_edited_days_is_split() -> None:
+    admin, employee = _user(UserRole.admin), _user()
+    window = _window(NOW - timedelta(hours=1))
+    row = _submitted(window, employee, [_live(employee.id, "open", 8, 14)])
+    live = [
+        _live(employee.id, "open", 8, 9),
+        _live(employee.id, "blocked", 10),
+        _live(employee.id, "open", 11, 14),
+    ]
+    service, submissions = _service(window, live, row)
+    await service.apply_admin_edit(admin, employee.id, _entry("open", 8, 14), _entry("blocked", 10))
+    # The edit's days run from the earliest start to the latest end, 8th to 14th here, so the
+    # whole week comes from the live entries, which split the range around the 10th.
+    assert _days(submissions) == {
+        ("2026-11-08", "2026-11-09", "open"),
+        ("2026-11-10", "2026-11-10", "blocked"),
+        ("2026-11-11", "2026-11-14", "open"),
+    }
+    row = _submitted(window, employee, [_live(employee.id, "open", 8, 14)])
+    service, submissions = _service(window, [_live(employee.id, "blocked", 10)], row)
+    await service.apply_admin_edit(admin, employee.id, None, _entry("blocked", 10))
+    assert _days(submissions) == {
+        ("2026-11-08", "2026-11-09", "open"),
+        ("2026-11-10", "2026-11-10", "blocked"),
+        ("2026-11-11", "2026-11-14", "open"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_on_time_submission_keeps_its_time_and_author_and_records_the_change() -> None:
+    admin, employee = _user(UserRole.admin), _user()
+    window = _window(NOW - timedelta(hours=1))
+    row = _submitted(window, employee, [_live(employee.id, "open", 9)])
+    service, submissions = _service(window, [_live(employee.id, "blocked", 9)], row)
+    await service.apply_admin_edit(admin, employee.id, _entry("open", 9), _entry("blocked", 9))
+    submissions.put.assert_not_awaited()
+    changed = submissions.change.await_args.kwargs
+    assert (changed["changed_by"], changed["changed_at"]) == (admin.id, NOW)
+    assert "submitted_at" not in changed and "submitted_by" not in changed
+    assert changed["snapshot_hash"] == snapshot_hash(changed["snapshot"])
 
 
 @pytest.mark.asyncio
@@ -213,6 +276,7 @@ async def test_an_admin_edit_never_creates_a_submission_for_someone_who_did_not_
     service, submissions = _service(closed, [_stored(employee)])
     await service.apply_admin_edit(admin, employee, None, _entry("open", 9))
     submissions.put.assert_not_awaited()
+    submissions.change.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -222,11 +286,61 @@ async def test_an_absence_or_a_window_without_submission_leaves_snapshots_alone(
     row = _submitted(window, employee, [_stored(employee.id)])
     service, submissions = _service(window, [], row)
     await service.apply_admin_edit(admin, employee.id, None, _entry("absence", 9))
-    submissions.put.assert_not_awaited()
+    submissions.change.assert_not_awaited()
     old = _window(NOW - timedelta(hours=1), requires=False)
     service, submissions = _service(old, [], _submitted(old, employee, [_stored(employee.id)]))
     await service.apply_admin_edit(admin, employee.id, None, _entry("blocked", 9))
-    submissions.put.assert_not_awaited()
+    submissions.change.assert_not_awaited()
+
+
+def _runs(draw: Any, first: int, last: int) -> list[tuple[int, int, str]]:
+    """Consecutive day runs over ``first`` to ``last``, some left out: entries that never clash."""
+    runs, day = [], first
+    while day <= last:
+        length = draw(st.integers(1, last - day + 1))
+        if draw(st.booleans()):
+            runs.append(
+                (day, day + length - 1, draw(st.sampled_from(["blocked", "open", "close"])))
+            )
+        day += length
+    return runs
+
+
+@settings(max_examples=200, deadline=None)
+@given(data=st.data())
+def test_a_patched_snapshot_never_holds_two_items_for_one_day(data: Any) -> None:
+    user = uuid.uuid4()
+    stored = [
+        {
+            "kind": k,
+            "starts_on": date(2026, 11, a).isoformat(),
+            "ends_on": date(2026, 11, b).isoformat(),
+            "shift_type_id": None,
+            "weekday": None,
+        }
+        for a, b, k in _runs(data.draw, 8, 14)
+    ]
+    first = data.draw(st.integers(8, 14))
+    last = data.draw(st.integers(first, 14))
+    live = [
+        Entry(user, k, date(2026, 11, a), date(2026, 11, b), None, None)
+        for a, b, k in _runs(data.draw, 1, 30)
+    ]
+    items = patched(stored, user, live, date(2026, 11, first), date(2026, 11, last))
+    seen: set[date] = set()
+    for item in items:
+        day = date.fromisoformat(item["starts_on"])
+        while day <= date.fromisoformat(item["ends_on"]):
+            assert day not in seen, items
+            seen.add(day)
+            day += timedelta(days=1)
+    # Every day in the edited span reads as the live entries do.
+    inside = {
+        i["starts_on"] for i in items if first <= date.fromisoformat(i["starts_on"]).day <= last
+    }
+    assert all(
+        date(2026, 11, first).isoformat() <= d <= date(2026, 11, last).isoformat() for d in inside
+    )
 
 
 def _with_employee(service: AvailabilitySubmissionService, employee: User) -> None:

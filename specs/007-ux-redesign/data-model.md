@@ -36,14 +36,23 @@ rotation keeps the token's lifetime class.
   and its hash equals the hash of the live entries; else Draft if any live entry falls in the window
   or a row exists; else Not submitted.
 - **After the deadline**: employees' blocked, open and close entries in the window are refused with
-  409 `availability.window_closed`, as in 003; absences stay editable. An Admin's change there
-  refreshes the employee's existing snapshot (submitted by the Admin), so it reaches scheduling,
-  but never creates one; to count someone who did not submit, an Admin submits on their behalf
-  (`POST /api/v1/employees/{id}/availability-submissions`), recorded in `submitted_by`.
+  409 `availability.window_closed`, as in 003; absences stay editable. An Admin's hand edit (before
+  the deadline or after) changes the employee's existing snapshot on the days it touches, to the
+  live entries there, so it reaches scheduling at once; the rest stays as submitted (clarification
+  Q4). It never creates a snapshot: to count someone who did not submit, an Admin submits on their
+  behalf (`POST /api/v1/employees/{id}/availability-submissions`), recorded in `submitted_by`.
 - **`submission_windows.requires_submission`** (bool, default true): false for windows already
   closed when 026 ran, so the not-submitted rule never reaches back into weeks without a Submit.
 - **Scheduling input**: inside a window whose deadline has passed, the snapshot replaces the live
   entries; with no row, one synthetic blocked entry per date with reason `not_submitted`.
+
+## 030 — who changed a submission by hand (group C)
+
+**availability_submissions** gains `changed_by` (uuid fk → users, null) and `changed_at`
+(timestamptz, null): the Admin whose hand edit last changed the snapshot, and when. `submitted_at`
+and `submitted_by` stay the employee's (or the on-behalf Admin's), so an on-time submission still
+reads as on time; a fresh submit clears both. Numbered 030 because 027 to 029 (groups D and F)
+revise 026 and are not merged yet; a merge revision joins the heads when they are.
 
 ## 027 — assignment times and shift concurrency (group D)
 

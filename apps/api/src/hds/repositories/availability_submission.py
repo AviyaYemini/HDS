@@ -9,7 +9,7 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from hds.models.availability_submission import AvailabilitySubmission
@@ -81,9 +81,47 @@ class AvailabilitySubmissionRepository(BaseRepository[AvailabilitySubmission]):
         replaced = ("submitted_at", "submitted_by", "snapshot", "snapshot_hash")
         upsert = insert.on_conflict_do_update(
             constraint="uq_availability_submissions_window_user",
-            set_={**{key: insert.excluded[key] for key in replaced}, "updated_at": func.now()},
+            # A fresh submit is the employee's own again: an earlier hand change no longer applies.
+            set_={
+                **{key: insert.excluded[key] for key in replaced},
+                "changed_by": None,
+                "changed_at": None,
+                "updated_at": func.now(),
+            },
         ).returning(AvailabilitySubmission)
         result = await self.session.execute(upsert, execution_options={"populate_existing": True})
         stored: AvailabilitySubmission = result.scalar_one()
         await self.session.flush()
         return stored
+
+    async def change(
+        self,
+        org_id: uuid.UUID,
+        window_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        snapshot: list[dict[str, Any]],
+        snapshot_hash: str,
+        changed_by: uuid.UUID,
+        changed_at: datetime,
+    ) -> None:
+        """Replace an existing submission's snapshot after an Admin's hand edit.
+
+        ``submitted_at`` and ``submitted_by`` stay as they were; the change is recorded beside them.
+        """
+        await self.session.execute(
+            update(AvailabilitySubmission)
+            .where(
+                AvailabilitySubmission.organization_id == org_id,
+                AvailabilitySubmission.window_id == window_id,
+                AvailabilitySubmission.user_id == user_id,
+            )
+            .values(
+                snapshot=snapshot,
+                snapshot_hash=snapshot_hash,
+                changed_by=changed_by,
+                changed_at=changed_at,
+                updated_at=func.now(),
+            )
+        )
+        await self.session.flush()

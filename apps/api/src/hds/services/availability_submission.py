@@ -56,18 +56,6 @@ class SubmissionStatus:
     submitted_by: uuid.UUID | None = None
 
 
-def _as_entry(user_id: uuid.UUID, fields: Mapping[str, Any]) -> Entry:
-    """The scheduling entry for an entry's fields as the availability service reports them."""
-    return Entry(
-        user_id,
-        fields["kind"],
-        fields["starts_on"],
-        fields["ends_on"],
-        fields["shift_type_id"],
-        fields["weekday"],
-    )
-
-
 def as_entry(stored: AvailabilityEntry) -> Entry:
     """The scheduling form of a stored entry."""
     return Entry(
@@ -179,15 +167,18 @@ class AvailabilitySubmissionService:
         """Apply an Admin's hand edit of one entry to the employee's existing submissions.
 
         An Admin edits anyone's availability by hand (003 FR-107), before the deadline or after,
-        and that edit must count: the submitted snapshot of every window the entry touches gets
-        exactly that change (``removed`` out, ``added`` in), whatever its deadline. Nothing else
-        moves into the snapshot, so an employee's own edits since they submitted still count only
-        once they submit again (clarification Q4). A window the employee never submitted for is
-        left alone: they stay counted as unavailable until an Admin submits on their behalf
-        (:meth:`submit_on_behalf`). Absences are never in a snapshot.
+        and that edit counts at once: in every window the entry touches, the submitted snapshot
+        takes the employee's live entries on the days the edit touched (from the earliest start to
+        the latest end of ``removed`` and ``added``), and keeps the rest as submitted
+        (:func:`~hds.services.availability_effective.patched`). The employee's own edits on other
+        days still count only once they submit again (clarification Q4). ``submitted_at`` and
+        ``submitted_by`` stay as they were; the change is recorded as ``changed_by`` and
+        ``changed_at``. A window the employee never submitted for is left alone: they stay counted
+        as unavailable until an Admin submits on their behalf (:meth:`submit_on_behalf`). Absences
+        are never in a snapshot.
 
         Args:
-            admin: The Admin who made the change; recorded as ``submitted_by``.
+            admin: The Admin who made the change; recorded as ``changed_by``.
             user_id: The employee whose entry changed.
             removed: The entry as it was, for a change or a delete, else ``None``.
             added: The entry as it is now, for a create or a change, else ``None``.
@@ -195,25 +186,34 @@ class AvailabilitySubmissionService:
         changes = [e for e in (removed, added) if e is not None and e["kind"] != "absence"]
         if not changes:
             return
-        before = _as_entry(user_id, removed) if removed and removed["kind"] != "absence" else None
-        after = _as_entry(user_id, added) if added and added["kind"] != "absence" else None
         first = min(e["starts_on"] for e in changes)
         last = max(e["ends_on"] for e in changes)
-        for window in await self._windows.covering(admin.organization_id, first, last):
+        org = admin.organization_id
+        for window in await self._windows.covering(org, first, last):
             if not window.requires_submission:
                 continue
-            stored = await self._submissions.get(admin.organization_id, window.id, user_id)
+            stored = await self._submissions.get(org, window.id, user_id)
             if stored is None:
                 continue
-            items = patched(stored.snapshot, before, after, window.starts_on, window.ends_on)
-            await self._submissions.put(
-                admin.organization_id,
+            span_first, span_last = max(first, window.starts_on), min(last, window.ends_on)
+            if span_first > span_last:
+                continue
+            live = await self._entries.for_users(org, [user_id], span_first, span_last)
+            items = patched(
+                stored.snapshot,
+                user_id,
+                (as_entry(e) for e in sorted(live, key=lambda e: str(e.id))),
+                span_first,
+                span_last,
+            )
+            await self._submissions.change(
+                org,
                 window.id,
                 user_id,
-                submitted_at=self._now(),
-                submitted_by=admin.id,
                 snapshot=items,
                 snapshot_hash=snapshot_hash(items),
+                changed_by=admin.id,
+                changed_at=self._now(),
             )
 
     async def submit_on_behalf(

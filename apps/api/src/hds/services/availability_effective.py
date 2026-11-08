@@ -116,27 +116,30 @@ def canonical(items: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 def patched(
     items: Sequence[Mapping[str, Any]],
-    removed: Entry | None,
-    added: Entry | None,
+    user_id: uuid.UUID,
+    live: Iterable[Entry],
     first: date,
     last: date,
 ) -> list[dict[str, Any]]:
-    """A snapshot with exactly one change applied: ``removed`` taken out, ``added`` put in.
+    """A snapshot with the days ``first`` to ``last`` taken from the live entries.
 
-    Both are clipped to the window's dates ``first`` to ``last``, as the snapshot's items are. An
-    item that is not in the snapshot (the employee changed it after submitting) is not removed;
-    nothing else in the snapshot is touched (007 clarification Q4).
+    After an Admin's hand edit (003 FR-107), the snapshot holds the employee's availability as it
+    now stands on the days the edit touched, and stays as submitted everywhere else (007 review).
+    The stored items outside those days are kept, split where they cross them; the days themselves
+    come from ``live``. The two parts cover different days, and live entries never clash, so the
+    result never holds two items for one day. The employee's own edits on other days still wait
+    for them to submit (clarification Q4).
+
+    Args:
+        items: The submitted snapshot.
+        user_id: The employee, for reading the items back as entries.
+        live: The employee's live entries that touch ``first`` to ``last``.
+        first: The first day the edit touched, within the window.
+        last: The last day the edit touched, within the window.
     """
-    result = [dict(i) for i in items]
-    if removed is not None:
-        gone = clip(removed, first, last)
-        if gone is not None and to_json(gone) in result:
-            result.remove(to_json(gone))
-    if added is not None:
-        new = clip(added, first, last)
-        if new is not None:
-            result.append(to_json(new))
-    return canonical(result)
+    span = [ClosedWindow(uuid.UUID(int=0), first, last)]
+    kept = [to_json(part) for item in items for part in outside(from_json(user_id, item), span)]
+    return canonical([*kept, *snapshot(live, first, last)])
 
 
 def snapshot_hash(items: Sequence[Mapping[str, Any]]) -> str:

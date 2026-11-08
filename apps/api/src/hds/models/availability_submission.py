@@ -27,8 +27,10 @@ class AvailabilitySubmission(TimestampedBase):
     the status is derived and never stored (research R6). Submitting again replaces both. Once the
     window's deadline passes, scheduling reads the snapshot, not the live entries.
 
-    ``submitted_by`` is the employee, or the Admin whose hand edit after the deadline refreshed the
-    snapshot (003 FR-107). Removed with its window.
+    ``submitted_by`` is the employee, or the Admin who submitted on their behalf. An Admin's hand
+    edit of the employee's entries changes the snapshot on the days it touches (003 FR-107) and is
+    recorded in ``changed_by`` and ``changed_at``, leaving when and by whom it was submitted as they
+    were; a fresh submit clears both. Removed with its window.
     """
 
     __tablename__ = "availability_submissions"
@@ -44,6 +46,8 @@ class AvailabilitySubmission(TimestampedBase):
     submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     snapshot: Mapped[list[dict[str, Any]]] = mapped_column(_JSON, nullable=False)
     snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("window_id", "user_id", name="uq_availability_submissions_window_user"),
