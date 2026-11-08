@@ -15,11 +15,16 @@ import { Platform } from "react-native";
 
 import { storeFor } from "../api/tokens";
 import { safeReturnPath } from "../auth/returnPath";
-import { rememberLanguage, setupI18n } from "./index";
+import { applyDirection, isRtlLanguage, rememberLanguage, setupI18n } from "./index";
 
 const RESUME_KEY = "hds.resume";
 /** A resume older than this is not this restart's: ignored. */
 export const RESUME_FRESH_MS = 60_000;
+/**
+ * Only a resume this fresh skips the second unlock: a restart takes seconds, so an app killed
+ * mid-switch and opened again later asks as usual (group O review).
+ */
+export const UNLOCK_SKIP_MS = 15_000;
 
 /**
  * Where to come back to after a restart, when it was saved (ms since the epoch), and the session
@@ -50,7 +55,10 @@ export function sessionOf(access: string | null | undefined): string | null {
   }
 }
 
-/** The screen's address with its query, leaving out `lang` (the restart sets the language). */
+/**
+ * The screen's address with its query: `params` already without the route's own segments and
+ * `lang` (the sign-in redirect's `queryOnly`), so `/runs/abc` never becomes `/runs/abc?id=abc`.
+ */
 export function resumePath(pathname: string, params: Record<string, string | string[] | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -154,12 +162,12 @@ export interface RestartDeps {
   /** Told when a phone could not reload: the old notice ("restart to finish"). */
   onRestartNeeded?: () => void;
   platform?: string;
-  /** How long to wait for a phone's reload to begin (3 s by default). */
+  /** How long to wait for a phone's reload to begin (8 s by default). */
   reloadGraceMs?: number;
 }
 
 /** How long a phone's reload may take to begin before it counts as not having happened. */
-const RELOAD_GRACE_MS = 3000;
+const RELOAD_GRACE_MS = 8000;
 
 /**
  * Reload a phone's bundle. Expo's reload quietly does nothing when its native side is missing, so
@@ -180,6 +188,9 @@ export async function restartInLanguage(language: string, path: string, deps: Re
   setSwitching(language);
   await painted();
   await rememberLanguage(language);
+  // A phone takes its layout direction from the native setting at launch: set it before the
+  // reload, so the restarted app starts laid out in the new language (group O review).
+  if (platform !== "web") applyDirection(isRtlLanguage(language), language);
   // Only a phone asks for biometrics at the start, so only a phone records whose switch it was
   // (the web's tab store is read-and-remove, and is not touched here).
   const kept = platform === "web" ? null : await storeFor(platform).load().catch(() => null);
@@ -198,16 +209,21 @@ export async function restartInLanguage(language: string, path: string, deps: Re
   }
   try {
     await (deps.reloadApp ?? reloadBundle)();
-    // A reload that worked never comes back here: still running means it did not happen.
-    await new Promise((resolve) => setTimeout(resolve, deps.reloadGraceMs ?? RELOAD_GRACE_MS));
-    throw new Error("the app did not reload");
   } catch {
-    // No reload here: turn the language now and say the layout follows at the next start.
+    // No reload at all: turn the language now and say the layout follows at the next start.
     await takeResume();
     await setupI18n(language);
     setSwitching(null);
     deps.onRestartNeeded?.();
+    return;
   }
+  // A reload that worked never comes back here. Still running after the grace: turn the language
+  // now so no one is left on the switching state, but keep the saved screen, since a slow reload
+  // may still come and should land on it (group O review).
+  await new Promise((resolve) => setTimeout(resolve, deps.reloadGraceMs ?? RELOAD_GRACE_MS));
+  await setupI18n(language);
+  setSwitching(null);
+  deps.onRestartNeeded?.();
 }
 
 /** For tests: nothing switching. */
@@ -216,7 +232,8 @@ export function resetSwitching(): void {
 }
 
 /** Whether `resume` lets this start skip a second unlock: only the very session that switched. */
-export function skipsUnlock(resume: Resume | null, keptAccess: string | null | undefined): boolean {
+export function skipsUnlock(resume: Resume | null, keptAccess: string | null | undefined, now: number = Date.now()): boolean {
   const owner = sessionOf(keptAccess);
-  return resume !== null && resume.owner !== null && owner !== null && resume.owner === owner;
+  if (resume === null || resume.owner === null || owner === null || resume.owner !== owner) return false;
+  return now - resume.at <= UNLOCK_SKIP_MS;
 }

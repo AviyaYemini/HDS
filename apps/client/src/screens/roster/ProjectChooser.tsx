@@ -21,7 +21,8 @@ export function rosterHref(project: string, week?: string): string {
   return week ? `/roster?project=${project}&week=${week}` : `/roster?project=${project}`;
 }
 
-export function ProjectChooser({ week }: { week?: string }) {
+/** `stay`: list every project even when the reader edits only one (`/roster?all=1`). */
+export function ProjectChooser({ week, stay = false }: { week?: string; stay?: boolean }) {
   const { t } = useTranslation();
   const session = useSession();
   const router = useRouter();
@@ -32,7 +33,7 @@ export function ProjectChooser({ week }: { week?: string }) {
   // Split at render: the capabilities are read afresh each time, so they are no load's dependency.
   const mine = (projects.data ?? []).filter((p) => capabilities.hasOnProject("roster.edit:project", p.id));
   const others = (projects.data ?? []).filter((p) => !capabilities.hasOnProject("roster.edit:project", p.id));
-  const only = mine.length === 1 ? mine[0]!.id : null;
+  const only = !stay && mine.length === 1 ? mine[0]!.id : null;
   useEffect(() => {
     if (only) router.replace(rosterHref(only, week) as never);
   }, [only, week, router]);

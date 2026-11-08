@@ -616,5 +616,10 @@
   "runs.projects_all_other": "כל הפרויקטים שלך ({{count}})",
   "runs.projects_none": "יש לבחור לפחות פרויקט אחד",
   "runs.every_project": "כל הפרויקטים הפעילים",
-  "runs.covers": "מכסה: {{projects}}"
+  "runs.covers": "מכסה: {{projects}}",
+  "runs.no_projects_title": "אין פרויקט שלך לשיבוץ",
+  "runs.no_projects_body": "הרצה מכסה את הפרויקטים הפעילים שבניהולך. אפשר לבקש ממנהל מערכת להוסיף אותך לפרויקט.",
+  "runs.projects_of_type.security": "כל פרויקטי האבטחה",
+  "runs.projects_of_type.training": "כל פרויקטי ההדרכה",
+  "roster.all_projects": "כל הפרויקטים"
 }

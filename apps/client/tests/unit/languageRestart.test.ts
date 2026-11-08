@@ -5,9 +5,10 @@
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { i18n, setupI18n } from "../../src/i18n";
+import { i18n, isRtl, setupI18n } from "../../src/i18n";
 import {
   RESUME_FRESH_MS,
+  UNLOCK_SKIP_MS,
   clearResume,
   isAppPath,
   resetSwitching,
@@ -50,7 +51,9 @@ test("only the session that switched skips the second unlock", () => {
   expect(sessionOf(token({ sub: "u1", sid: "s1" }))).toBe("s1");
   expect(sessionOf(token({ sub: "u1" }))).toBe("u1");
   expect(sessionOf("not-a-token")).toBeNull();
-  expect(skipsUnlock(resume, token({ sub: "u1", sid: "s1" }))).toBe(true);
+  expect(skipsUnlock(resume, token({ sub: "u1", sid: "s1" }), NOW + 2000)).toBe(true);
+  // A restart takes seconds: an app killed mid-switch and opened later asks again.
+  expect(skipsUnlock(resume, token({ sub: "u1", sid: "s1" }), NOW + UNLOCK_SKIP_MS + 1)).toBe(false);
   // Another session kept on the device (signed out and in again, or someone else): asked again.
   expect(skipsUnlock(resume, token({ sub: "u1", sid: "s2" }))).toBe(false);
   expect(skipsUnlock({ ...resume, owner: null }, token({ sid: "s1" }))).toBe(false);
@@ -99,6 +102,20 @@ test("a phone reload that quietly does nothing falls back as well, never stuck o
   await restartInLanguage("he", "/account", { platform: "ios", reloadGraceMs: 0, reloadApp: async () => undefined, onRestartNeeded: told });
   expect(told).toHaveBeenCalledTimes(1);
   expect(i18n.language).toBe("he");
+  // A slow reload may still come: the screen stays kept for it.
+  expect(JSON.parse((await AsyncStorage.getItem("hds.resume"))!).path).toBe("/account");
+});
+
+test("a phone sets the new layout direction before it reloads", async () => {
+  let rtlAtReload: boolean | null = null;
+  await restartInLanguage("he", "/account", {
+    platform: "ios",
+    reloadGraceMs: 0,
+    reloadApp: async () => {
+      rtlAtReload = isRtl();
+    },
+  });
+  expect(rtlAtReload).toBe(true);
 });
 
 test("without the native reload, the default path falls back too", async () => {

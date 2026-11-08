@@ -22,7 +22,7 @@ from hds.core.capabilities import Capability, has_on_project
 from hds.core.exceptions import ConflictError, DomainValidationError, ForbiddenError, NotFoundError
 from hds.core.trace_context import current_traceparent
 from hds.models.schedule_job import ScheduleJob
-from hds.models.user import User
+from hds.models.user import User, UserRole
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
@@ -280,6 +280,8 @@ class ScheduleJobService:
 
     async def _in_scope(self, actor: User, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Those of ``ids`` the actor may schedule: every one for an Admin, a Manager's own."""
+        if actor.role == UserRole.admin:
+            return list(ids)
         managed = await self._managers.manages(actor.id, ids)
         return [
             i for i in ids if has_on_project(actor.role, Capability.ROSTER_EDIT_PROJECT, i, managed)
@@ -304,10 +306,12 @@ class ScheduleJobService:
         job = await self._jobs.get_locked(id, actor.organization_id)
         if job is None:
             raise NotFoundError(resource="ScheduleJob", id=id)
-        covered = [uuid.UUID(p) for p in job.project_ids] or [
-            p.id for p in await self._inputs.active_projects(actor.organization_id, None)
-        ]
-        await self._require_scope(actor, covered)
+        if actor.role != UserRole.admin:
+            # An Admin may decide on every run; a Manager's is checked against what it covers.
+            covered = [uuid.UUID(p) for p in job.project_ids] or [
+                p.id for p in await self._inputs.active_projects(actor.organization_id, None)
+            ]
+            await self._require_scope(actor, covered)
         if job.status != "succeeded":
             raise ConflictError(
                 code="schedule.not_ready", detail="The job has no proposal to decide on."

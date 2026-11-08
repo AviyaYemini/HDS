@@ -81,9 +81,10 @@ function Shell({
   // Back to the screen the language switch left (FR-078), before the splash comes down.
   useEffect(() => {
     if (resumeTo === null) return;
-    // The web reload kept the address; a phone starts at its first route and is taken back.
+    // The web reload kept the address; a phone starts at its first route and is taken back, and
+    // only while signed in: a resume is the session's, never shown to whoever signs in next.
     const [path] = resumeTo.split("?");
-    if (Platform.OS !== "web" || path !== pathname) router.replace(resumeTo as never);
+    if (session.signedIn && (Platform.OS !== "web" || path !== pathname)) router.replace(resumeTo as never);
     onResumed();
   }, [resumeTo, pathname, router, onResumed]);
   return (
@@ -179,15 +180,28 @@ function Starter() {
     // A refresh the server refused while the app was open: say so on the sign-in screen.
     return session.subscribe(() => {
       if (!session.signedIn && session.endedUnexpectedly) markSessionEnded();
-      // Signing out forgets a pending resume: it belongs to the session that switched.
-      if (!session.signedIn) void clearResume();
+      // Signing out forgets a pending resume, kept and in hand: it belongs to the session that
+      // switched (group O review).
+      if (!session.signedIn) {
+        void clearResume();
+        setResumeTo(null);
+      }
     });
   }, []);
 
   if (start === "starting") return null;
   if (start === "unreachable") {
     // Kept tokens, no server: offer a retry rather than the sign-in form (PR 2 review).
-    return <UnreachableScreen onRetry={() => void retry()} onSignIn={() => setStart("ready")} busy={retrying} />;
+    return (
+      <UnreachableScreen
+        onRetry={() => void retry()}
+        onSignIn={() => {
+          setResumeTo(null);
+          setStart("ready");
+        }}
+        busy={retrying}
+      />
+    );
   }
   return (
     <Shell
@@ -197,6 +211,7 @@ function Starter() {
       onResumed={resumed}
       onUnlock={() => void tryUnlock()}
       onForget={() => {
+        setResumeTo(null);
         void session.signOut().then(() => setStart("ready"));
       }}
     />

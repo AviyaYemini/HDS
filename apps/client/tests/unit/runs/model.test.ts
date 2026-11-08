@@ -1,5 +1,5 @@
 /** Schedule runs' model (specs/007-ux-redesign FR-042, FR-074): the bar, the label, the count. */
-import { coveredText, elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, weeksOf } from "../../../src/screens/runs/model";
+import { coveredText, digest, elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, typesOf, weeksOf } from "../../../src/screens/runs/model";
 
 const START = "2026-11-08T10:00:00Z";
 const running = { status: "running" as const, solver: "cpsat", time_limit_seconds: 20 };
@@ -69,4 +69,14 @@ test("a run names the projects it covers; an older one without a list covered ev
   const names = new Map([["p1", "Night Watch"], ["p2", "Day Patrol"]]);
   expect(coveredText(["p1", "p2"], names, "every")).toBe("Night Watch, Day Patrol");
   expect(coveredText([], names, "every")).toBe("every");
+});
+
+test("the generate form's key follows the request: the same request, the same key", () => {
+  expect(digest("2026-11-08|2026-11-14|p1")).toBe(digest("2026-11-08|2026-11-14|p1"));
+  expect(digest("2026-11-08|2026-11-14|p1")).not.toBe(digest("2026-11-08|2026-11-14|p1,p2"));
+});
+
+test("the types offered, so the default never mixes training and security", () => {
+  expect(typesOf([{ type: "security" }, { type: "security" }])).toEqual(["security"]);
+  expect(typesOf([{ type: "training" }, { type: "security" }])).toEqual(["security", "training"]);
 });

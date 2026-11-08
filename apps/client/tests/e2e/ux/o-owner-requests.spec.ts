@@ -178,14 +178,20 @@ test.describe("runs for chosen projects", () => {
   test.setTimeout(120_000);
 
   test("a manager is offered only the projects they manage, each with its type", async ({ page }) => {
+    // Other specs give the seeded Manager more projects: what they manage is what /me says.
+    const manager = await apiAs("manager");
+    const me = await ok<{ managed_project_ids: string[] }>(manager.get("/me"));
+    const projects = await ok<{ items: { id: string; status: string }[] }>(manager.get("/api/v1/projects"));
+    const offered = projects.items.filter((p) => p.status === "active" && me.managed_project_ids.includes(p.id));
+    await manager.dispose();
+
     await openAs(page, "manager", "en", "/runs");
     await page.getByTestId("action-new-run").click();
     await page.getByTestId("run-projects").click();
-    const options = page.getByTestId("run-projects-sheet").getByRole("checkbox");
-    // The seeded Manager manages Night Watch only.
-    await expect(options).toHaveCount(1);
-    await expect(options.first()).toContainText("Night Watch");
-    await expect(options.first()).toContainText(/Security|Training/);
+    const sheet = page.getByTestId("run-projects-sheet");
+    await expect(sheet.getByRole("checkbox")).toHaveCount(offered.length);
+    for (const project of offered) await expect(sheet.getByTestId(`run-projects-option-${project.id}`)).toBeVisible();
+    await expect(sheet.getByRole("checkbox").first()).toContainText(/Security|Training/);
   });
 
   test("an admin generates for one project, and the proposal holds only its slots", async ({ page }) => {
@@ -197,10 +203,12 @@ test.describe("runs for chosen projects", () => {
     await page.getByTestId("action-new-run").click();
     await page.getByTestId("run-projects").click();
     const sheet = page.getByTestId("run-projects-sheet");
-    // Everything is chosen at first; leave only Night Watch.
-    for (const project of projects.items.filter((p) => p.id !== night)) {
+    // Leave only Night Watch chosen, whatever the default (one type: all; both: none).
+    for (const project of projects.items) {
       const option = sheet.getByTestId(`run-projects-option-${project.id}`);
-      if ((await option.count()) > 0) await option.click();
+      if ((await option.count()) === 0) continue;
+      const checked = (await option.getAttribute("aria-checked")) === "true";
+      if (checked !== (project.id === night)) await option.click();
     }
     await sheet.getByTestId("run-projects-done").click();
     await page.getByTestId("date-range").getByTestId("preset-next-week").click();

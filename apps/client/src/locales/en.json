@@ -616,5 +616,10 @@
   "runs.projects_all_other": "All your projects ({{count}})",
   "runs.projects_none": "Choose at least one project",
   "runs.every_project": "Every active project",
-  "runs.covers": "Covers: {{projects}}"
+  "runs.covers": "Covers: {{projects}}",
+  "runs.no_projects_title": "No project of yours to schedule",
+  "runs.no_projects_body": "A run covers the active projects you manage. Ask an admin to add you to a project.",
+  "runs.projects_of_type.security": "All security projects",
+  "runs.projects_of_type.training": "All training projects",
+  "roster.all_projects": "All projects"
 }

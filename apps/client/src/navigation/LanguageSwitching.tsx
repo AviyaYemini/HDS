@@ -3,7 +3,7 @@
  * the other language is picked, the whole screen says so in that language ("Switching to English…"
  * / "עוברים לעברית…") under the loading bar, laid out in its direction, until the app restarts.
  */
-import { useGlobalSearchParams, usePathname } from "expo-router";
+import { useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
@@ -13,16 +13,18 @@ import { startLoading } from "../design/loading/loadingStore";
 import { useTheme } from "../design/theme/ThemeProvider";
 import { webProps } from "../design/web";
 import { i18n, isRtlLanguage } from "../i18n";
+import { queryOnly } from "../auth/SignInRedirect";
 import { restartInLanguage, resumePath, useSwitching } from "../i18n/restart";
 
 /** Switch to `language` from the screen the person is on, by restarting in it. */
 export function useLanguageSwitch(): (language: string) => void {
   const { t } = useTranslation();
   const pathname = usePathname();
-  const params = useGlobalSearchParams();
+  const params = useGlobalSearchParams<Record<string, string | string[]>>();
+  const segments = useSegments() as string[];
   return (language: string) => {
     if (i18n.language.startsWith(language)) return;
-    void restartInLanguage(language, resumePath(pathname, params), {
+    void restartInLanguage(language, resumePath(pathname, queryOnly(params, segments)), {
       onRestartNeeded: () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }),
     });
   };

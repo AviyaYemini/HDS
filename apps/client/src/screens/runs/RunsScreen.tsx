@@ -29,7 +29,7 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, compareDates, formatNumericRange, presetRange, todayIn, type DateRange } from "../../locale";
 import { useLoad } from "../useLoad";
 import { HonestyLabel } from "./HonestyLabel";
-import { STATUS_TONE, coveredText, isActive, type JobSummary } from "./model";
+import { STATUS_TONE, coveredText, digest, isActive, typesOf, type JobSummary } from "./model";
 
 /** A run covers at most this many days (the API's limit, 004 FR-005). */
 const MAX_DAYS = 31;
@@ -61,10 +61,6 @@ function RunRow({ job, names }: { job: JobSummary; names: Map<string, string> })
       ) : null}
     </LinkPressable>
   );
-}
-
-function newKey(): string {
-  return `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /** A project the generate form may offer: its name and type (training and security don't mix). */
@@ -101,20 +97,18 @@ function GenerateForm({ onCancel, offered }: { onCancel: () => void; offered: Of
   const [range, setRange] = useState<DateRange>(() => presetRange("next-week", today));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // One key per range: a repeat (a double press, a retry after a lost answer) answers the same run,
-  // and a new range is a new request.
-  const [key, setKey] = useState(newKey);
-  const choose = (next: DateRange) => {
-    setRange(next);
-    setKey(newKey());
-  };
-  // Every offered project at first; a new choice is a new request, as a new range is.
+  // Every offered project at first when they are all of one type (every Manager today); with
+  // both types offered, none, and a quick choice of each type: the default never mixes training
+  // and security, though choosing both on purpose stays allowed (reviewer's ruling, 2026-11-08,
+  // after the owner's note in spec.md's assumptions).
+  const types = typesOf(offered);
   const [picked, setPicked] = useState<string[] | null>(null);
-  const projects = picked ?? offered.map((p) => p.id);
-  const pick = (ids: string[]) => {
-    setPicked(ids);
-    setKey(newKey());
-  };
+  const projects = picked ?? (types.length > 1 ? [] : offered.map((p) => p.id));
+  // The key follows the request itself: a repeat of the same one (a double press, a retry after a
+  // lost answer) answers the same run, and any change of range or projects (the offered list
+  // arriving late included) is a new request, never a reused key (group O review).
+  const [form] = useState(() => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
+  const key = `run-${form}-${digest(`${range.start}|${range.end}|${projects.join(",")}`)}`;
   const summary =
     projects.length === offered.length
       ? t("runs.projects_all", { count: offered.length })
@@ -149,10 +143,22 @@ function GenerateForm({ onCancel, offered }: { onCancel: () => void; offered: Of
         items={offered.map((p) => ({ id: p.id, label: p.name, secondary: t(`project.type.${p.type}`) }))}
         value={null}
         onChange={() => undefined}
-        multiple={{ values: projects, onChange: pick, summary }}
+        multiple={{ values: projects, onChange: setPicked, summary }}
         testID="run-projects"
       />
-      <DateRangeField label={t("runs.range")} value={range} onChange={choose} forward minDate={today} />
+      {types.length > 1 ? (
+        <View style={styles.formActions}>
+          {types.map((type) => (
+            <Button
+              key={type}
+              label={t(`runs.projects_of_type.${type}`)}
+              onPress={() => setPicked(offered.filter((p) => p.type === type).map((p) => p.id))}
+              testID={`action-projects-${type}`}
+            />
+          ))}
+        </View>
+      ) : null}
+      <DateRangeField label={t("runs.range")} value={range} onChange={setRange} forward minDate={today} />
       <Txt role="meta" tone="secondary">
         {t("runs.range_hint")}
       </Txt>
@@ -241,7 +247,13 @@ export function RunsScreen() {
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>
         {creating ? null : <Button variant="primary" icon="plus" label={t("runs.new")} onPress={() => setCreating(true)} testID="action-new-run" />}
       </PageTitle>
-      {creating ? projects.offered === null ? <SkeletonRows rows={2} /> : <GenerateForm onCancel={() => setCreating(false)} offered={projects.offered} /> : null}
+      {!creating ? null : projects.offered === null ? (
+        <SkeletonRows rows={2} />
+      ) : projects.offered.length === 0 ? (
+        <EmptyState icon="briefcase" title={t("runs.no_projects_title")} body={t("runs.no_projects_body")} testID="run-no-projects" />
+      ) : (
+        <GenerateForm onCancel={() => setCreating(false)} offered={projects.offered} />
+      )}
       {jobs.error ? (
         <InlineBanner tone="warning" title={errorText(jobs.error)} action={{ label: t("common.retry"), onPress: () => void jobs.reload() }} />
       ) : jobs.data === null ? (

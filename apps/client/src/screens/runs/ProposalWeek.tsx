@@ -88,9 +88,10 @@ export function ProposalWeek({ job, names }: { job: Job; names: Names }) {
                   key={day}
                   testID="proposal-day"
                   {...webProps({ dataSet: { date: day } })}
-                  style={[isDesktop ? styles.column : styles.dayStack, { borderColor: colors.border.subtle, opacity: inRange ? 1 : 0.5 }]}
+                  style={[isDesktop ? styles.column : styles.dayStack, { borderColor: inRange ? colors.border.strong : colors.border.subtle }]}
                 >
-                  <Txt role="label" tone="secondary">
+                  {/* A day outside the run keeps its column, quieter but at full contrast. */}
+                  <Txt role="label" tone={inRange ? "primary" : "secondary"}>
                     {formatHeaderDate(day, i18n.language)}
                   </Txt>
                   {(byDay.get(day) ?? []).map((slot) => (

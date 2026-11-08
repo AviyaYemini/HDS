@@ -126,3 +126,18 @@ export function coveredText(projectIds: readonly string[], names: Map<string, st
   if (projectIds.length === 0) return everyProject;
   return projectIds.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
 }
+
+/** A short, stable digest of `text` (FNV-1a), for an idempotency key that follows the request. */
+export function digest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+/** The project types among `projects`, in a fixed order (security, then training). */
+export function typesOf(projects: readonly { type: string }[]): string[] {
+  return [...new Set(projects.map((p) => p.type))].sort();
+}
