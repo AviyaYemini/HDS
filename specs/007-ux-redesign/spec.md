@@ -556,9 +556,16 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   settings MUST share one table pattern (a readable first column, sorting, search, a few filters with
   "More filters", a marker when filters are on, saved views, pagination, details in a side panel, and a
   bulk-action bar that states the count and scope). [A1–A5]
-  *As built (007):* no bulk-action bar: no admin list acts on several records at once yet, so it
-  waits for a later feature; the lists sort and search over what they have read, and the open
-  record is a side panel on a desktop and its own page on a phone (tasks T082, T083).
+  *As built (007; the owner, 2026-11-08, PR 5):* the bulk-action bar selects rows by checkbox on a
+  desktop and in a Select mode on a phone, states the count and scope ("3 projects selected";
+  "Select all" takes the rows shown under the current search and says so), and offers what the
+  screen already does to one record: remove where removing exists, and activate or deactivate where
+  the record has an active state. Each action goes record by record through the existing
+  operations; a removal of several is one held action with one undo, and failures come back to the
+  list with a summary ("2 of 3 removed; 1 could not be: …"). The lists sort and search over what they
+  have read; below the phone breakpoint a list is a list, not a table, each row its first column as
+  a title and the rest as a second line, with a "Sort by" control above it; the open record is a
+  side panel on a desktop and its own page on a phone (tasks T082, T083, T111 to T113).
 - **FR-044**: Long lists of employees, projects, clients and sites MUST be chosen through one
   searchable picker that matches Hebrew and English names, shows a second line and puts recent items
   first; two to five options MUST use a segmented control. [A6]
@@ -582,9 +589,11 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-050**: The work log and the hours report MUST open with a row of key figures that match the
   table, bars that open into their rows, pay-period presets defaulting to the current period, and the
   date picker. [A13, D4]
-  *As built (007):* the hours report groups by employee or by project; grouping by client waits for a
-  later feature. The work log covers one project, site or group at a time and opens on the first
-  project; a log across the whole organisation is not offered (task T088).
+  *As built (007; the owner, 2026-11-08, PR 5):* the hours report groups by employee, by project or
+  by client, a client's rows being its employees, with pay shown under the same rules. The work log
+  covers the whole company (its first scope, and the default), or one project, site or group; across
+  the whole company it reads for whoever may read any one project's log, and the figures are the
+  server's (tasks T088, T114 to T117).
 
 **Dates, times, languages and money (group A)**
 
@@ -750,7 +759,8 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   choose, it prefers the shift types already used by projects of the same type. The likely shape
   later: shift types tagged by project type, rosters, staffing needs and templates offering only
   matching types, and the availability week showing each employee only the types of the projects
-  they work on (both, for the edge case).
+  they work on (both, for the edge case). Project teams (who works on which project), needed for
+  "the projects they work on", come with that later feature (owner, 2026-11-08).
 
 - **Absence approval (O3)**: absence becomes a request with approval in feature 016, approved by any
   manager of a project the employee works on, or an admin (confirmed in clarify). Until then 007

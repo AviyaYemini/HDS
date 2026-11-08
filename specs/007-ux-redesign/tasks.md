@@ -247,6 +247,21 @@ Each starts with its failing spec. The alignment and language items come first.
 
 ---
 
+## Phase 6c: The owner's additions of 2026-11-08 (PR 5, reopened) — US7
+
+**Goal**: the three parts recorded as not built (spec FR-043, FR-050) and the phone alignment ruling
+(R166), each with its failing spec first. (Owner, 2026-11-08, PR 5.)
+
+- [ ] T111 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing unit and e2e specs for the bulk-action bar: rows selected by checkbox on a desktop and in a Select mode on a phone; the bar states the count and scope; Select all takes the rows shown under the current search and says so; Remove where the screen removes, Activate and Deactivate where the record has an active state; a bulk removal is one held action with one undo (heldActions); a failure comes back with a summary (FR-043)
+- [ ] T112 [US7] [UI] (Owner, 2026-11-08, PR 5) The bulk-action bar on AdminTable, through the existing per-record operations (no bulk API) (FR-043)
+- [ ] T113 [US7] [UI] (Owner, 2026-11-08, PR 5; R166) Below the phone breakpoint an admin list is a list: the first column as each row's title, the rest a wrapping second line, a "Sort by" control above; the saved-views tabs wrap; the overflow check fails on text cut off by a clipping box without an ellipsis, on every route each role reaches, at phone width, in both languages (FR-043, FR-079)
+- [ ] T114 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the hours report by client: `group_by=client` in the 001 contract, each client's rows per employee, pay under the same visibility rules; integration tests; regenerate the client (FR-050)
+- [ ] T115 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the whole company's work log: no project, site or group id; the same read rule as a project's log, stated in the 001 contract; the server's key figures; integration tests; regenerate the client (FR-050)
+- [ ] T116 [US7] [CORE] (Owner, 2026-11-08, PR 5) Build both in `services/reports.py` and the reports router (FR-050)
+- [ ] T117 [US7] [UI] (Owner, 2026-11-08, PR 5) Client in the hours report's grouping, and "Whole company" as the work log's first scope and its default (FR-050)
+
+---
+
 ## Phase 7: Group F — admin screens (PR 5) — US7
 
 **Goal**: one table pattern and one form pattern across the admin screens, money confirmations,
