@@ -95,9 +95,14 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
   const dirty = fields.some((f) => (values[f.name] ?? "") !== (initial[f.name] ?? ""));
   useUnsavedChanges(dirty && !busy);
 
-  const set = (name: string, value: string) => setValues((v) => ({ ...v, [name]: value }));
+  // The latest values, for a field left right after a change, before the next render.
+  const latest = useRef<Values>(initial);
+  const set = (name: string, value: string) => {
+    latest.current = { ...latest.current, [name]: value };
+    setValues(latest.current);
+  };
   const leave = (field: FieldSpec) => {
-    const error = fieldError(field, values, t);
+    const error = fieldError(field, latest.current, t);
     setShownErrors((shown) => {
       const next = { ...shown };
       if (error) next[field.name] = error;
@@ -110,7 +115,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
     try {
       setBusy(true);
       setSaveError(null);
-      await onSave(values);
+      await onSave(latest.current);
     } catch (failure) {
       setSaveError(codeOf(failure));
     } finally {
@@ -121,7 +126,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
   const trySave = () => {
     const errors: Record<string, string> = {};
     for (const field of fields) {
-      const error = fieldError(field, values, t);
+      const error = fieldError(field, latest.current, t);
       if (error) errors[field.name] = error;
     }
     setShownErrors(errors);
@@ -132,7 +137,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
       return;
     }
     setSummary(null);
-    const changes = existing ? moneyChanges(fields, initial, values) : [];
+    const changes = existing ? moneyChanges(fields, initial, latest.current) : [];
     if (changes.length > 0) {
       setConfirming(changes);
       return;
