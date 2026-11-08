@@ -147,8 +147,8 @@ pnpm --filter hds-client start   # Expo dev server; press w for the web, or open
 ```
 
 The app talks to `EXPO_PUBLIC_API_URL`, `http://localhost:8000` by default, so start the API first.
-On a phone the session is kept in the secure store; on the web it is kept in memory only, so a reload
-signs in again ([ADR 010](docs/adr/010-client-stack.md)).
+On a phone the session is kept in the secure store; on the web it is kept per tab, so a reload or a
+link in the same tab stays signed in and closing the tab ends it ([ADR 019](docs/adr/019-web-sessions-per-tab.md)).
 
 | Command (repository root) | What it does |
 | --- | --- |

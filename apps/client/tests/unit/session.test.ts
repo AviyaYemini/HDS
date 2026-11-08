@@ -2,7 +2,7 @@
 import * as SecureStore from "expo-secure-store";
 
 import { Session } from "../../src/api/session";
-import { memoryStore, storeFor } from "../../src/api/tokens";
+import { memoryStore, resetWebStoreForTests, storeFor, tabStore } from "../../src/api/tokens";
 import { BASE, FakeApi, ME, TOKENS, json, problem, signedIn } from "./fakeApi";
 
 const secure = SecureStore as unknown as {
@@ -27,23 +27,91 @@ test("on a phone the tokens go to the secure store and come back on restore", as
   expect(again.user?.id).toBe(ME.id);
 });
 
-test("on the web the tokens stay in memory only, so a reload signs in again", async () => {
-  const api = new FakeApi();
-  const local = { setItem: jest.fn(), getItem: jest.fn(), removeItem: jest.fn() };
-  Object.defineProperty(globalThis, "localStorage", { value: local, configurable: true });
-  Object.defineProperty(globalThis, "sessionStorage", { value: local, configurable: true });
-  try {
-    await signedIn(api, storeFor("web"));
-  } finally {
-    delete (globalThis as { localStorage?: unknown }).localStorage;
-    delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
-  }
-  expect(secure.setItemAsync).not.toHaveBeenCalled();
-  expect(local.setItem).not.toHaveBeenCalled();
+/** A tab's sessionStorage and its page events, for the tab store (ADR 019). */
+function tab(copy: Record<string, string> = {}) {
+  const items = new Map(Object.entries(copy));
+  const listeners: Record<string, (() => void)[]> = {};
+  return {
+    items,
+    storage: {
+      getItem: (k: string) => items.get(k) ?? null,
+      setItem: (k: string, v: string) => void items.set(k, v),
+      removeItem: (k: string) => void items.delete(k),
+    },
+    page: {
+      addEventListener: (type: string, listener: () => void) => {
+        (listeners[type] ??= []).push(listener);
+      },
+    },
+    fire: (type: string) => (listeners[type] ?? []).forEach((l) => l()),
+  };
+}
 
-  const reloaded = new Session(BASE, storeFor("web"), api.fetch);
-  expect(await reloaded.restore()).toBe(false);
-  expect(reloaded.signedIn).toBe(false);
+test("on the web the tokens are kept per tab: a reload in the same tab stays signed in", async () => {
+  const api = new FakeApi();
+  const first = tab();
+  await signedIn(api, tabStore(first.storage, first.page));
+  expect(secure.setItemAsync).not.toHaveBeenCalled();
+  // While the page runs the tab holds nothing a duplicate could copy.
+  expect(first.items.size).toBe(0);
+  first.fire("pagehide");
+  expect(first.items.size).toBe(1);
+
+  // The reload: a new page in the same tab takes the copy and removes it at once.
+  const reloaded = new Session(BASE, tabStore(first.storage, first.page), api.fetch);
+  expect(await reloaded.restore()).toBe(true);
+  expect(first.items.size).toBe(0);
+});
+
+test("a tab duplicated while the page is open finds nothing and signs in again", async () => {
+  const api = new FakeApi();
+  const original = tab();
+  await signedIn(api, tabStore(original.storage, original.page));
+  // The browser copies the tab's storage into the duplicate: there is nothing in it.
+  const duplicate = tab(Object.fromEntries(original.items));
+  const second = new Session(BASE, tabStore(duplicate.storage, duplicate.page), api.fetch);
+  expect(await second.restore()).toBe(false);
+  expect(api.calls("POST", "/auth/refresh")).toHaveLength(0);
+});
+
+test("a page restored from the back-forward cache takes the tab's copy away again", async () => {
+  const api = new FakeApi();
+  const page = tab();
+  await signedIn(api, tabStore(page.storage, page.page));
+  page.fire("pagehide");
+  expect(page.items.size).toBe(1);
+  page.fire("pageshow");
+  expect(page.items.size).toBe(0);
+});
+
+test("signing out clears the tab, and blocked storage only means signing in again", async () => {
+  const api = new FakeApi();
+  api.on("POST", "/auth/logout", new Response(null, { status: 204 }));
+  const page = tab();
+  const session = await signedIn(api, tabStore(page.storage, page.page));
+  await session.signOut();
+  page.fire("pagehide");
+  expect(page.items.size).toBe(0);
+
+  const blocked = {
+    getItem: () => {
+      throw new Error("blocked");
+    },
+    setItem: () => {
+      throw new Error("blocked");
+    },
+    removeItem: () => {
+      throw new Error("blocked");
+    },
+  };
+  const store = tabStore(blocked, null);
+  await store.save({ access: "a", refresh: "r" });
+  expect(await store.load()).toEqual({ access: "a", refresh: "r" });
+});
+
+test("there is one web store per page, so a second look at it does not take the tokens", () => {
+  resetWebStoreForTests();
+  expect(storeFor("web")).toBe(storeFor("web"));
 });
 
 test("requests carry the access token", async () => {

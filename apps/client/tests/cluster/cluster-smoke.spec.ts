@@ -8,9 +8,10 @@
  * The navigation is 007's staff shell (specs/007-ux-redesign FR-003): an Admin lands on /home, and
  * the desktop's side navigation (`nav-<destination>`) leads to My work's screens under /my.
  *
- * Screens are reached by clicking, not by loading their address: the web build keeps its tokens in
- * memory (ADR 010), so a page load starts signed out, and /me and /auth are the API's paths on the
- * same host (the ingress's apiPrefixes).
+ * Screens are reached by clicking, as a person moves through the app; /me and /auth are the API's
+ * paths on the same host (the ingress's apiPrefixes). The web keeps its tokens per tab (ADR 019), so
+ * a reload in the same tab stays signed in, but signing out clears the tab, so the fresh load after
+ * it shows sign-in.
  */
 import { expect, test } from "@playwright/test";
 

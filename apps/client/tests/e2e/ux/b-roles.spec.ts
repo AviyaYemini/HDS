@@ -169,6 +169,9 @@ test.describe("with previews on", () => {
             await expect(page.getByTestId("screen-no-access")).toBeVisible();
           }
         }
+        // The tab keeps the session (ADR 019), so the next role signs in afresh.
+        await page.getByTestId("action-sign-out").first().click();
+        await expect(page).toHaveURL(/\/sign-in/);
       }
     });
   }
@@ -258,3 +261,32 @@ test.describe("with previews off @previews-off", () => {
   });
 });
 
+// The owner's decision of 2026-11-08 (T099, ADR 019): the web keeps the session per tab.
+test.describe("a session per tab", () => {
+  test("a reload and a deep link in the same tab stay signed in", async ({ page }) => {
+    await signIn(page, "employee", "en");
+    await page.reload();
+    await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+    await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+    await page.goto(at("/account", "en"));
+    await expect(page.getByTestId("screen-account")).toBeVisible();
+  });
+
+  test("a duplicated tab signs in again and the original stays signed in", async ({ page, context }) => {
+    await signIn(page, "employee", "en");
+    // A duplicate gets a copy of the tab's storage, which holds nothing while the page is open.
+    const copy = await page.evaluate(() => JSON.stringify(Object.entries(sessionStorage)));
+    const duplicate = await context.newPage();
+    await duplicate.addInitScript((entries) => {
+      for (const [key, value] of JSON.parse(entries) as [string, string][]) sessionStorage.setItem(key, value);
+    }, copy);
+    await duplicate.goto(at("/home", "en"));
+    await expect(duplicate.getByTestId("sign-in-btn")).toBeVisible();
+    await duplicate.close();
+    // No refresh token was presented twice, so nothing ended the original's session.
+    await page.reload();
+    await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+    await page.goto(at("/account", "en"));
+    await expect(page.getByTestId("screen-account")).toBeVisible();
+  });
+});
