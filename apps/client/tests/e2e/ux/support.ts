@@ -87,6 +87,74 @@ export async function checkA11y(page: Page, context: string): Promise<void> {
     return `${v.id}: ${v.help} (${v.nodes.length} node(s): ${targets.join(" | ")}${more})`;
   });
   expect(described, `axe on ${context}`).toEqual([]);
+  // At phone width, every screen axe checks is also checked for content spilling out of its box.
+  if ((page.viewportSize()?.width ?? 1280) <= PHONE_WIDTH) await expectNothingOverflows(page, context);
+}
+
+/** The phone viewport's width (playwright.config.ts, ux-phone). */
+export const PHONE_WIDTH = 390;
+
+/**
+ * What spills out of its box (specs/007-ux-redesign FR-079, T102): for every element with a visible
+ * border or a panel background, each visible element inside it whose box crosses the element's box
+ * by more than 1 px. Content inside a scrolling area is left out (it is meant to move past the
+ * area's edge), and so is anything fixed to the window or kept only for screen readers.
+ */
+export async function overflowing(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const TOLERANCE = 1;
+    const name = (el: Element) => {
+      const id = el.getAttribute("data-testid");
+      const text = (el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+      return `${id ? `[data-testid="${id}"]` : el.tagName.toLowerCase()}${text ? ` "${text}"` : ""}`;
+    };
+    const transparent = (colour: string) => colour === "transparent" || /rgba\(.*,\s*0\)$/.test(colour);
+    const isPanel = (el: Element, style: CSSStyleDeclaration) => {
+      if (el === document.documentElement || el === document.body) return false;
+      const bordered = ["Top", "Right", "Bottom", "Left"].some(
+        (side) =>
+          Number.parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+          style.getPropertyValue(`border-${side.toLowerCase()}-style`) !== "none" &&
+          !transparent(style.getPropertyValue(`border-${side.toLowerCase()}-color`)),
+      );
+      return bordered || !transparent(style.backgroundColor);
+    };
+    const scrolls = (style: CSSStyleDeclaration) => /(auto|scroll)/.test(style.overflowX + style.overflowY);
+    const visible = (el: Element, style: CSSStyleDeclaration, box: DOMRect) =>
+      box.width > 1 && box.height > 1 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
+
+    const found: string[] = [];
+    for (const el of Array.from(document.body.querySelectorAll("*"))) {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      if (!visible(el, style, box) || style.position === "fixed") continue;
+      // Walk up: each panel above must hold this box, until a scrolling area (it may move past it).
+      for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+        const upStyle = getComputedStyle(up);
+        if (upStyle.position === "fixed") break;
+        if (isPanel(up, upStyle)) {
+          const outer = up.getBoundingClientRect();
+          const out =
+            box.left < outer.left - TOLERANCE ||
+            box.right > outer.right + TOLERANCE ||
+            box.top < outer.top - TOLERANCE ||
+            box.bottom > outer.bottom + TOLERANCE;
+          if (out && visible(up, upStyle, outer)) {
+            found.push(`${name(el)} crosses ${name(up)}`);
+            break;
+          }
+        }
+        if (scrolls(upStyle)) break;
+      }
+      if (found.length >= 10) break;
+    }
+    return found;
+  });
+}
+
+/** Fails, naming what spills, when anything crosses the box it sits in (FR-079). */
+export async function expectNothingOverflows(page: Page, context: string): Promise<void> {
+  expect(await overflowing(page), `overflow on ${context}`).toEqual([]);
 }
 
 /** A colour as the browser reports it, from `#RRGGBB`. */

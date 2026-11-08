@@ -670,8 +670,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-078**: Switching the language anywhere (the top bar, Account, sign-in) MUST take effect at once,
   direction and layout included, without the user reloading by hand and without signing them out;
   until it has, no screen may show text running in one direction inside a container laid out in the
-  other. On the phone apps, until a restart can be done from inside the app, the restart notice
-  stays. [Owner: "After switching languge - reload the page to the RTL/LTR will take effect
+  other. The person sees at once that the language is switching, in the new language, and comes
+  back to the same screen, signed in, never to the home screen; on the phone apps, the restart never
+  looks like a crash or a fresh start. [Owner: "After switching languge - reload the page to the RTL/LTR will take effect
   immedeitly"]
 - **FR-079**: Everything on a screen MUST stay inside the card, panel or banner it sits in, at phone
   and desktop sizes and in both languages; a box whose content wraps grows to hold it. [Owner: "fix
