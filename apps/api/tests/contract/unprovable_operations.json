@@ -115,6 +115,27 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/projects/{id}/publish-preview",
+      "operation_id": "publish_preview_api_v1_projects__id__publish_preview_get",
+      "suites": ["pytest", "cli"],
+      "reason": "the publish's own range rule, to >= from, spans two fields (007 FR-036); answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shifts/{id}/assignments",
+      "operation_id": "assign_api_v1_shifts__id__assignments_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a person's own times come as a pair, end after they start and stay within 4 hours of the stored shift's times (007 FR-027), which spans fields and stored data; answered 422 assignment.times_invalid or assignment.times_out_of_range"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/assignments/{id}",
+      "operation_id": "change_assignment_times_api_v1_assignments__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same own-times rule as the assignment's create (007 FR-027); answered 422 assignment.times_invalid or assignment.times_out_of_range"
+    },
+    {
+      "method": "GET",
       "path": "/me/shifts",
       "operation_id": "my_shifts_me_shifts_get",
       "suites": ["pytest", "cli"],
