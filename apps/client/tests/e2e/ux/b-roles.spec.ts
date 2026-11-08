@@ -290,3 +290,27 @@ test.describe("a session per tab", () => {
     await expect(page.getByTestId("screen-account")).toBeVisible();
   });
 });
+
+// The owner, PR 4: "HDS / ניהול מערכת keep jumping around while changing tabs". A Latin start made
+// the eyebrow left to right, so it sat at the title column's left edge and moved with each title.
+test("in Hebrew the eyebrow keeps its right edge from page to page", async ({ page }, testInfo) => {
+  test.skip(isPhone(testInfo), "the desktop's title column");
+  await signIn(page, "admin", "he");
+  const edges: number[] = [];
+  for (const path of ["/admin/staff", "/admin/projects", "/admin/shift-templates", "/home"]) {
+    await page.goto(at(path, "he"));
+    const eyebrow = page.getByTestId("page-title-eyebrow");
+    await expect(eyebrow).toBeVisible();
+    await expect(eyebrow).toHaveAttribute("dir", "rtl");
+    const box = (await eyebrow.boundingBox())!;
+    // Where the text itself ends on the right, not just its box.
+    const right = await eyebrow.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().right;
+    });
+    expect(right).toBeLessThanOrEqual(box.x + box.width + 1);
+    edges.push(Math.round(right));
+  }
+  expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
+});

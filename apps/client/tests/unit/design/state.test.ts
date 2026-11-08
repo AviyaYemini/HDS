@@ -16,7 +16,7 @@ import {
   resetThemeStore,
   setThemePreference,
 } from "../../../src/design/theme/themeStore";
-import { matches, normalise, order } from "../../../src/design/components";
+import { matches, normalise, order, textDirection } from "../../../src/design/components";
 
 describe("loading store (FR-074)", () => {
   beforeEach(() => {
@@ -157,5 +157,14 @@ describe("searchable picker matching (FR-044)", () => {
   it("puts recent items first", () => {
     expect(order(items, ["2"], "").map((item) => item.id)).toEqual(["2", "1"]);
     expect(order(items, ["2"], "dana").map((item) => item.id)).toEqual(["1"]);
+  });
+});
+
+describe("text direction (owner, PR 4)", () => {
+  it("follows the UI language, not the first letter, so a Latin start stays at the right edge in Hebrew", () => {
+    expect(textDirection(undefined, true)).toBe("rtl");
+    expect(textDirection(undefined, false)).toBe("ltr");
+    expect(textDirection("ltr", true)).toBe("ltr");
+    expect(textDirection("auto", true)).toBeUndefined();
   });
 });

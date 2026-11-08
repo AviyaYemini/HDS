@@ -20,7 +20,7 @@ export interface PageTitleProps {
 }
 
 /** A page title. */
-export function PageTitle({ eyebrow, title, children, testID }: PageTitleProps) {
+export function PageTitle({ eyebrow, title, children, testID = "page-title" }: PageTitleProps) {
   const { isDesktop } = useTheme();
   return (
     <View testID={testID ? `${testID}-root` : undefined} style={[styles.root, isDesktop ? styles.rootDesktop : null]}>
