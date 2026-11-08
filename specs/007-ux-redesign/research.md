@@ -221,3 +221,44 @@ that first needs it.
   key, and the markers `TODO`, `TBD`, `FIXME`, `lorem`, `xxx`. A second test checks the glossary's
   terms are used for their keys (for example `nav.roster` is "Roster" / "סידור עבודה").
 - **Rationale**: FR-075, FR-076, D13.
+
+## H. Manual checks
+
+The checks a person has to do on the phones (task T092, FR-060, FR-064, FR-065). They do not block
+group H's close or the PR 5 marker. Record each result in the table below: the date, the device
+and its system version, the language, pass or what failed.
+
+**Before you start**: a Release build of 007 on an iPhone (VoiceOver) and a mid-range Android
+phone (TalkBack), signed in once as an employee and once as a manager. On each phone, do the
+whole list in Hebrew and again in English.
+
+1. **Screen reader, every tab**: with VoiceOver or TalkBack on, move through Home, Availability,
+   My shifts, Pay, More (employee) and Home, Roster, My work, Reports, More (manager). Every
+   control says what it is and what it does; no control is read twice or skipped; the order
+   follows the screen's reading direction (right to left in Hebrew).
+2. **Availability week**: change a cell, undo it, and submit. Each change is announced; the
+   submitted state is read out.
+3. **Roster**: open a block, assign someone, open a warning, override it with a reason, publish.
+   Every step can be done without dragging.
+4. **Schedule run**: generate a run and wait. The progress bar's value is read out at each
+   quarter; the result ("Optimal" or "Best found in N s") is read when it arrives.
+5. **Language switch (T105)**: from the top bar, switch to the other language on a deep screen
+   (My shifts, Past). You see "Switching to …" in the new language, then the splash, then the same
+   screen in the new direction, still signed in, with no second Face ID or fingerprint prompt.
+   Switch back. If the phone shows the "restart to finish" notice instead, note it: the reload
+   did not happen.
+6. **Intl on Android**: dates, times and money read correctly in both languages (07/11/2026,
+   07:00–15:00, ₪48.00), and the week starts on Sunday.
+7. **Status without colour**: with the phone's grayscale filter on, every status (availability
+   cells, roster coverage, run status, chips) is still told apart by its icon and its words.
+8. **Roster scrolling**: on the Android phone, scroll the roster week up and down and across for
+   ten seconds. It keeps up with the finger (60 frames a second, no visible stutter).
+
+**Done in the code already (no device needed)**: Hebrew copy uses plural or noun forms rather
+than a gendered singular (checked across `he.json` in group H, seven strings reworded); every
+screen passes axe in both languages, light and dark, at desktop and phone sizes (h-a11y-sweep);
+status chips carry a mark and a label beside their colour.
+
+| Date | Device and system | Language | Check | Result |
+| --- | --- | --- | --- | --- |
+| | | | | |
