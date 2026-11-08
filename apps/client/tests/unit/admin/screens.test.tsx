@@ -9,8 +9,10 @@ import * as Router from "expo-router";
 import type { Me } from "../../../src/api/session";
 import { ClientsScreen, PaySettingsScreen, ProjectsScreen, StaffScreen, StaffingNeedsScreen } from "../../../src/screens/admin/AdminScreens";
 import { ConfirmLeave, hasUnsaved, mayLeaveFor, resetUnsaved } from "../../../src/design/unsaved";
+import { ToastHost } from "../../../src/design/components";
+import { dropHeld } from "../../../src/design/heldActions";
 import { setupI18n } from "../../../src/i18n";
-import { FakeApi, ME, json, renderWith, signedIn } from "../fakeApi";
+import { FakeApi, ME, json, problem, renderWith, signedIn } from "../fakeApi";
 
 const router = (Router as unknown as { __router: { setParams: jest.Mock; push: jest.Mock }; __setSearchParams: (p: Record<string, string>) => void });
 
@@ -34,16 +36,20 @@ async function open(me: Me, params: Record<string, string> = {}) {
 
 beforeEach(async () => {
   resetUnsaved();
+  // A removal an earlier test held must not be sent in this one.
+  dropHeld();
   router.__router.setParams.mockClear();
   await setupI18n("en");
 });
 
-test("a table lists the records and a header sorts into the address", async () => {
+test("a list shows the records and Sort by sorts into the address", async () => {
   const { api, session } = await open(ADMIN);
   api.on("GET", "/api/v1/clients", json(200, { items: [CLIENT] }));
   await renderWith(session, <ClientsScreen />);
   expect(await screen.findByText("Acme", {}, { timeout: 5000 })).toBeTruthy();
-  await fireEvent.press(screen.getByLabelText("Name"));
+  // At phone width (the tests' default) a list sorts through "Sort by" (R166).
+  await fireEvent.press(screen.getByTestId("sort-by"));
+  await fireEvent.press(await screen.findByTestId("sort-by-option-name", {}, { timeout: 5000 }));
   expect(router.__router.setParams).toHaveBeenCalledWith(expect.objectContaining({ sort: "name:asc" }));
 });
 
@@ -111,7 +117,7 @@ test("delete shows for an admin, never for a manager", async () => {
     const view = await renderWith(session, <StaffScreen />);
     await screen.findByTestId("field-full_name", {}, { timeout: 5000 });
     expect(screen.queryByTestId("action-delete") !== null).toBe(shown);
-    view.unmount();
+    await view.unmount();
   }
 });
 
@@ -167,7 +173,7 @@ test("pay settings and staffing needs read and save", async () => {
   await fireEvent.changeText(screen.getByTestId("field-day_normal_minutes"), "500");
   await fireEvent.press(screen.getByTestId("action-save"));
   await waitFor(() => expect(api.calls("PATCH", "/api/v1/organisation/pay-settings")).toHaveLength(1));
-  view.unmount();
+  await view.unmount();
 
   api
     .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Night Watch", type: "security", status: "active" }] }))
@@ -184,5 +190,76 @@ test("pay settings and staffing needs read and save", async () => {
       { shift_type_id: "t1", weekday: 0, headcount: 2 },
       { shift_type_id: "t1", weekday: 1, headcount: 1 },
     ],
+  });
+});
+
+describe("the bulk-action bar (FR-043; the owner, PR 5)", () => {
+  const second = { ...CLIENT, id: "c2", name: "Borealis" };
+  const third = { ...CLIENT, id: "c3", name: "Cobalt" };
+
+  async function selectAll(api: FakeApi, session: Awaited<ReturnType<typeof signedIn>>) {
+    api.on("GET", "/api/v1/clients", json(200, { items: [CLIENT, second, third] }));
+    await renderWith(
+      session,
+      <>
+        <ClientsScreen />
+        <ToastHost />
+      </>,
+    );
+    await screen.findByText("Acme", {}, { timeout: 5000 });
+    await fireEvent.press(screen.getByTestId("action-select-mode"));
+    const rows = screen.getAllByTestId("table-row");
+    await fireEvent.press(rows[0]!);
+    expect(screen.getByTestId("bulk-count")).toHaveTextContent(/1 selected in Clients/);
+    await fireEvent.press(screen.getByTestId("bulk-select-all"));
+    expect(screen.getByTestId("bulk-count")).toHaveTextContent(/3 selected in Clients/);
+  }
+
+  test("a removal of several is one held action with one undo, then sent record by record", async () => {
+    jest.useFakeTimers();
+    try {
+      const { api, session } = await open(ADMIN);
+      for (const id of ["c1", "c2", "c3"]) api.on("DELETE", `/api/v1/clients/${id}`, new Response(null, { status: 204 }));
+      await selectAll(api, session);
+      await fireEvent.press(screen.getByTestId("bulk-remove"));
+      expect(screen.queryAllByTestId("table-row")).toHaveLength(0);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(5000);
+      });
+      expect(["c1", "c2", "c3"].flatMap((id) => api.calls("DELETE", `/api/v1/clients/${id}`))).toHaveLength(0);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(2000);
+      });
+      expect(["c1", "c2", "c3"].map((id) => api.calls("DELETE", `/api/v1/clients/${id}`).length)).toEqual([1, 1, 1]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a failure comes back with a summary, and the record stays", async () => {
+    jest.useFakeTimers();
+    try {
+      const { api, session } = await open(ADMIN);
+      api.on("DELETE", "/api/v1/clients/c1", new Response(null, { status: 204 }));
+      api.on("DELETE", "/api/v1/clients/c2", problem(409, "clients.has_projects"));
+      api.on("DELETE", "/api/v1/clients/c3", new Response(null, { status: 204 }));
+      await selectAll(api, session);
+      await fireEvent.press(screen.getByTestId("bulk-remove"));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(7000);
+      });
+      expect(await screen.findByText(/2 of 3 removed; 1 could not be/, {}, { timeout: 5000 })).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("deactivating several goes through each record's own change", async () => {
+    const { api, session } = await open(ADMIN);
+    for (const id of ["c1", "c2", "c3"]) api.on("PATCH", `/api/v1/clients/${id}`, json(200, {}));
+    await selectAll(api, session);
+    await fireEvent.press(screen.getByTestId("bulk-deactivate"));
+    await waitFor(() => expect(["c1", "c2", "c3"].map((id) => api.calls("PATCH", `/api/v1/clients/${id}`).length)).toEqual([1, 1, 1]));
+    expect(api.calls("PATCH", "/api/v1/clients/c1")[0]!.body).toEqual({ is_active: false });
   });
 });

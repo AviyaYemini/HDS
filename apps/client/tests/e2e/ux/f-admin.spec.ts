@@ -6,19 +6,29 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { LANGUAGES, apiAs, at, checkA11y, ok, signIn } from "./support";
+import { LANGUAGES, apiAs, at, checkA11y, isPhone, ok, signIn } from "./support";
 
 for (const language of LANGUAGES) {
   test.describe(`admin in ${language}`, () => {
-    test("a table sorts, searches, saves a view, and keeps it all in the address", async ({ page }) => {
+    test("a table sorts, searches, saves a view, and keeps it all in the address", async ({ page }, testInfo) => {
       await signIn(page, "admin", language);
       await page.goto(at("/admin/staff", language));
       await expect(page.getByTestId("screen-admin-staff")).toBeVisible();
+      const phone = isPhone(testInfo);
       const name = page.getByTestId("sort-name");
-      await name.click();
-      await expect(name).toHaveAttribute("aria-sort", "ascending");
-      await name.click();
-      await expect(name).toHaveAttribute("aria-sort", "descending");
+      if (phone) {
+        // A phone's list sorts through "Sort by" (R166).
+        await page.getByTestId("sort-by").click();
+        await page.getByTestId("sort-by-option-name").click();
+        await expect(page).toHaveURL(/[?&]sort=name(%3A|:)asc/);
+        await page.getByTestId("sort-direction").click();
+        await expect(page).toHaveURL(/[?&]sort=name(%3A|:)desc/);
+      } else {
+        await name.click();
+        await expect(name).toHaveAttribute("aria-sort", "ascending");
+        await name.click();
+        await expect(name).toHaveAttribute("aria-sort", "descending");
+      }
       await page.getByTestId("table-search").fill("Employee");
       await expect(page.getByTestId("filters-on")).toBeVisible();
       await expect(page).toHaveURL(/[?&]q=Employee/);
@@ -31,7 +41,8 @@ for (const language of LANGUAGES) {
 
       await page.reload();
       await expect(page.getByTestId("table-search")).toHaveValue("Employee");
-      await expect(page.getByTestId("sort-name")).toHaveAttribute("aria-sort", "descending");
+      if (phone) await expect(page).toHaveURL(/[?&]sort=name(%3A|:)desc/);
+      else await expect(page.getByTestId("sort-name")).toHaveAttribute("aria-sort", "descending");
       await page.getByTestId("table-row").first().click();
       await expect(page.getByTestId("side-panel")).toBeVisible();
       await expect(page).toHaveURL(/[?&]open=/);
@@ -129,5 +140,31 @@ test("a removal followed at once by a reload is still made", async ({ page }) =>
   await expect
     .poll(async () => (await ok<{ items: { id: string }[] }>(admin.get("/api/v1/special-days"))).items.some((d) => d.id === made.id), { timeout: 5000 })
     .toBe(false);
+  await admin.dispose();
+});
+
+// The bulk-action bar (FR-043; the owner, PR 5): chosen by checkbox on a desktop and in Select mode
+// on a phone, counted with its scope, removed together under one undo.
+test("several records are chosen, counted and removed together, and one undo keeps them", async ({ page }, testInfo) => {
+  const admin = await apiAs("admin");
+  const stamp = Date.now();
+  const made = await Promise.all(
+    [1, 2].map((n) => ok<{ id: string }>(admin.post("/api/v1/special-days", { data: { name: `Bulk ${stamp} ${n}`, day: `2032-0${n}-0${1 + (stamp % 8)}` } }), 201)),
+  );
+  await signIn(page, "admin", "en");
+  await page.goto(at("/admin/special-days", "en", { q: `Bulk ${stamp}` }));
+  if (isPhone(testInfo)) {
+    await page.getByTestId("action-select-mode").click();
+    for (const day of made) await page.locator(`[data-testid="table-row"][data-id="${day.id}"]`).click();
+  } else {
+    for (const day of made) await page.locator(`[data-testid="row-select"][data-id="${day.id}"]`).click();
+  }
+  await expect(page.getByTestId("bulk-count")).toContainText("2 selected in Special days");
+  await page.getByTestId("bulk-remove").click();
+  await expect(page.locator('[data-testid="table-row"]')).toHaveCount(0);
+  await page.getByTestId("toast-deleted").getByText("Undo").click();
+  await expect(page.locator('[data-testid="table-row"]')).toHaveCount(2);
+  const left = await ok<{ items: { id: string }[] }>(admin.get("/api/v1/special-days"));
+  expect(made.every((d) => left.items.some((x) => x.id === d.id))).toBe(true);
   await admin.dispose();
 });

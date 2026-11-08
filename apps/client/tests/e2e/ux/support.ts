@@ -103,7 +103,8 @@ export const PHONE_WIDTH = 390;
 /**
  * What spills out of its box (specs/007-ux-redesign FR-079, T102): for every element with a visible
  * border or a panel background, each visible element inside it whose box crosses the element's box
- * by more than 1 px. A box that scrolls or clips ends the search (what passes its edge is hidden,
+ * by more than 1 px, and any text cut off by a box that clips it (or by its own) without an ellipsis
+ * to say so (R166). A box that scrolls or clips ends the search (what passes its edge is hidden,
  * like a skeleton's sweep, or meant to move past it); anything fixed to the window, kept only for
  * screen readers, or marked `data-overflow="intended"` (a designed overhang) is left out.
  */
@@ -138,6 +139,34 @@ export async function overflowing(page: Page): Promise<string[]> {
       if (!visible(el, style, box) || style.position === "fixed") continue;
       // A designed overhang (a person's extra hours past the roster block) says so.
       if (el.closest('[data-overflow="intended"]')) continue;
+      // Text cut off where it is drawn, without an ellipsis to say so (R166): its own text runs
+      // past a box that clips (hidden, not a scroll area), or past its own clipped box.
+      const ownText = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "");
+      const marked = (node: Element) => {
+        const st = getComputedStyle(node);
+        return st.textOverflow === "ellipsis" || (st.getPropertyValue("-webkit-line-clamp") !== "" && st.getPropertyValue("-webkit-line-clamp") !== "none");
+      };
+      if (ownText && !marked(el)) {
+        const selfClips = /(hidden|clip)/.test(style.overflowX + style.overflowY);
+        if (selfClips && (el.scrollWidth > el.clientWidth + TOLERANCE || el.scrollHeight > el.clientHeight + TOLERANCE)) {
+          found.push(`${name(el)} is cut off in its own box`);
+          if (found.length >= 10) break;
+          continue;
+        }
+        for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+          const upStyle = getComputedStyle(up);
+          if (/(auto|scroll)/.test(upStyle.overflowX + upStyle.overflowY) || upStyle.position === "fixed") break;
+          if (marked(up)) break;
+          if (/(hidden|clip)/.test(upStyle.overflowX + upStyle.overflowY)) {
+            const outer = up.getBoundingClientRect();
+            if (box.right > outer.right + TOLERANCE || box.left < outer.left - TOLERANCE) {
+              found.push(`${name(el)} is cut off by ${name(up)}`);
+            }
+            break;
+          }
+        }
+        if (found.length >= 10) break;
+      }
       // Walk up: each panel above must hold this box, until one that scrolls or clips.
       for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
         const upStyle = getComputedStyle(up);

@@ -14,7 +14,7 @@ import { useCapabilities } from "../../capabilities";
 import { Button, InlineBanner, PageTitle, SkeletonRows, TextField, Txt, matches as matchesItem, showToast, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import { formatMoney, formatNumericDate, weekdayNames } from "../../locale";
+import { formatMoney, formatNumericDate, isolateLtr, weekdayNames } from "../../locale";
 import { useLoad } from "../useLoad";
 import { AdminTable, orDash } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec, type Values } from "./RecordForm";
@@ -46,7 +46,7 @@ export function StaffScreen() {
   ];
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.full_name"), sortable: true, render: (u) => u.full_name },
-    { key: "email", title: t("entity.email"), sortable: true, render: (u) => <Txt role="body" dir="ltr" numberOfLines={1}>{u.email}</Txt> },
+    { key: "email", title: t("entity.email"), sortable: true, render: (u) => isolateLtr(u.email) },
     { key: "role", title: t("entity.role"), sortable: true, render: (u) => t(`role.${u.role}`) },
     { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
     { key: "active", title: t("entity.status"), sortable: true, render: (u) => (u.is_active ? t("entity.active") : t("entity.inactive")) },
@@ -66,6 +66,10 @@ export function StaffScreen() {
       sortValue={(u, key) => (key === "rate" ? (u.default_hourly_rate ? Number(u.default_hourly_rate) : null) : key === "email" ? u.email : key === "role" ? u.role : key === "active" ? (u.is_active ? 1 : 0) : u.full_name)}
       emptyTitle={t("admin.empty.staff_title")}
       emptyBody={t("admin.empty.staff_body")}
+      active={{
+        of: (u) => u.is_active,
+        set: async (u, to) => void (await call(to ? api.POST("/api/v1/employees/{id}/reactivate", { params: { path: { id: u.id } } }) : api.POST("/api/v1/employees/{id}/deactivate", { params: { path: { id: u.id } } }))),
+      }}
       onDelete={capabilities.has("staff.delete") ? async (u, urgent) => void (await call(api.DELETE("/api/v1/employees/{id}", { params: { path: { id: u.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) => (
         <RecordForm
@@ -139,6 +143,10 @@ export function ClientsScreen() {
       sortValue={(c, key) => (key === "contact" ? (c.contact_name ?? null) : key === "start" ? c.contract_start : key === "end" ? (c.contract_end ?? null) : c.name)}
       emptyTitle={t("admin.empty.clients_title")}
       emptyBody={t("admin.empty.clients_body")}
+      active={{
+        of: (c) => c.is_active,
+        set: async (c, to) => void (await call(api.PATCH("/api/v1/clients/{id}", { params: { path: { id: c.id } }, body: { is_active: to } }))),
+      }}
       onDelete={capabilities.has("clients.delete") ? async (c, urgent) => void (await call(api.DELETE("/api/v1/clients/{id}", { params: { path: { id: c.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) => (
         <RecordForm
@@ -193,7 +201,7 @@ export function SitesScreen() {
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.name"), sortable: true, render: (s) => s.name },
     { key: "address", title: t("entity.address"), sortable: true, render: (s) => s.address },
-    { key: "timezone", title: t("entity.timezone"), sortable: true, render: (s) => <Txt role="body" dir="ltr" numberOfLines={1}>{s.timezone}</Txt> },
+    { key: "timezone", title: t("entity.timezone"), sortable: true, render: (s) => isolateLtr(s.timezone) },
   ];
   return (
     <AdminTable<Row>
@@ -429,8 +437,8 @@ export function ShiftTemplatesScreen() {
   ];
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.name"), sortable: true, render: (s) => s.name },
-    { key: "starts", title: t("entity.starts"), sortable: true, render: (s) => <Txt role="body" dir="ltr">{s.starts_at_local.slice(0, 5)}</Txt> },
-    { key: "ends", title: t("entity.ends"), sortable: true, render: (s) => <Txt role="body" dir="ltr">{`${s.ends_at_local.slice(0, 5)}${s.crosses_midnight ? " +1" : ""}`}</Txt> },
+    { key: "starts", title: t("entity.starts"), sortable: true, render: (s) => isolateLtr(s.starts_at_local.slice(0, 5)) },
+    { key: "ends", title: t("entity.ends"), sortable: true, render: (s) => isolateLtr(`${s.ends_at_local.slice(0, 5)}${s.crosses_midnight ? " +1" : ""}`) },
     { key: "active", title: t("entity.status"), sortable: true, render: (s) => (s.is_active ? t("entity.active") : t("entity.inactive")) },
   ];
   return (
@@ -446,6 +454,10 @@ export function ShiftTemplatesScreen() {
       nameOf={(s) => s.name}
       searchText={(s) => s.name}
       sortValue={(s, key) => (key === "starts" ? s.starts_at_local : key === "ends" ? s.ends_at_local : key === "active" ? (s.is_active ? 1 : 0) : s.name)}
+      active={{
+        of: (s) => s.is_active,
+        set: async (s, to) => void (await call(api.PATCH("/api/v1/shift-types/{id}", { params: { path: { id: s.id } }, body: { is_active: to } }))),
+      }}
       emptyTitle={t("admin.empty.shift_templates_title")}
       emptyBody={t("admin.empty.shift_templates_body")}
       panel={({ row, saved }) => (

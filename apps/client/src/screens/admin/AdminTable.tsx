@@ -16,8 +16,10 @@ import {
   EmptyState,
   InlineBanner,
   PageTitle,
+  SearchablePicker,
   Sheet,
   SidePanel,
+  SkeletonRows,
   Table,
   TextField,
   Txt,
@@ -26,8 +28,9 @@ import {
   type SortDirection,
 } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
-import type { IconName } from "../../design/icons/Icon";
+import { Icon, type IconName } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
+import { webProps } from "../../design/web";
 import { hold } from "../../design/heldActions";
 import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
@@ -61,11 +64,121 @@ export interface AdminTableProps<Row> {
   /** Shown only to whoever may delete (an Admin); the record is removed after a confirmation. */
   /** `urgent` when the page or app is going away: the request must outlive it (keepalive). */
   onDelete?: ((row: Row, urgent: boolean) => Promise<void>) | null;
+  /** A record's active state, where it has one: offered as Activate and Deactivate on several. */
+  active?: { of: (row: Row) => boolean; set: (row: Row, active: boolean) => Promise<void> } | null;
   emptyTitle: string;
   emptyBody: string;
 }
 
 type Saved = { id: string; name: string; query: string };
+
+/** A column's value as text (every admin column renders text, so a phone can show it in a line). */
+function cellText<Row>(column: Column<Row>, row: Row): string {
+  const value = column.render ? column.render(row) : (row as Record<string, unknown>)[column.key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+/**
+ * Below the phone breakpoint an admin list is a list (R166, the reviewer's ruling): each row's first
+ * column is its title and the others a second line that wraps; sorting is a "Sort by" control above
+ * it. Nothing runs off the side or is cut.
+ */
+function PhoneList<Row>({
+  columns,
+  rows,
+  loading,
+  keyOf,
+  sort,
+  onSort,
+  onOpen,
+  emptyText,
+  selecting = false,
+  selected,
+  onToggle,
+}: {
+  columns: readonly Column<Row>[];
+  rows: readonly Row[];
+  loading: boolean;
+  keyOf: (row: Row) => string;
+  sort: TableState["sort"];
+  onSort: (key: string, direction: SortDirection) => void;
+  onOpen: (row: Row) => void;
+  emptyText: string;
+  /** In Select mode a tap selects a row instead of opening it (the bulk-action bar). */
+  selecting?: boolean;
+  selected?: ReadonlySet<string>;
+  onToggle?: (row: Row) => void;
+}) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const sortable = columns.filter((c) => c.sortable);
+  const [first, ...rest] = columns;
+  const direction: SortDirection = sort?.direction ?? "asc";
+  return (
+    <View style={styles.phone}>
+      {sortable.length > 0 ? (
+        <View style={styles.sortRow}>
+          <SearchablePicker
+            label={t("admin.sort_by")}
+            items={sortable.map((c) => ({ id: c.key, label: c.title }))}
+            value={sort?.key ?? null}
+            onChange={(key) => onSort(key, direction)}
+            placeholder={t("admin.sort_none")}
+            testID="sort-by"
+            style={styles.sortPick}
+          />
+          <Button
+            variant="secondary"
+            icon={direction === "asc" ? "sort-asc" : "sort-desc"}
+            label={direction === "asc" ? t("admin.sort_asc") : t("admin.sort_desc")}
+            disabled={!sort}
+            onPress={() => sort && onSort(sort.key, direction === "asc" ? "desc" : "asc")}
+            testID="sort-direction"
+          />
+        </View>
+      ) : null}
+      {loading ? (
+        <SkeletonRows rows={6} />
+      ) : rows.length === 0 ? (
+        <Txt role="body" tone="secondary">
+          {emptyText}
+        </Txt>
+      ) : (
+        <View role="list" style={styles.list}>
+          {rows.map((row) => (
+            <Pressable
+              key={keyOf(row)}
+              role={selecting ? "checkbox" : "listitem"}
+              testID="table-row"
+              {...webProps({ dataSet: { id: keyOf(row) } })}
+              {...(selecting ? { "aria-checked": selected?.has(keyOf(row)) ?? false, accessibilityState: { checked: selected?.has(keyOf(row)) ?? false } } : {})}
+              onPress={() => (selecting ? onToggle?.(row) : onOpen(row))}
+              style={({ pressed }) => [
+                styles.item,
+                { borderBottomColor: colors.border.subtle },
+                pressed || (selecting && selected?.has(keyOf(row))) ? { backgroundColor: colors.bg.selected } : null,
+              ]}
+            >
+              <View style={styles.itemHead}>
+                {selecting ? (
+                  <View style={[styles.checkbox, { borderColor: colors.border.strong }, selected?.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}>
+                    {selected?.has(keyOf(row)) ? <Icon name="check" size={14} color={colors.bg.canvas} /> : null}
+                  </View>
+                ) : null}
+                <Txt role="label" style={styles.itemTitle}>
+                  {first ? cellText(first, row) : ""}
+                </Txt>
+              </View>
+              <Txt role="meta" tone="secondary">
+                {rest.map((c) => cellText(c, row)).filter((v) => v && v !== "—").join(" · ")}
+              </Txt>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
 
 /** The pause after typing before the search reaches the address. */
 const SEARCH_PAUSE_MS = 250;
@@ -89,6 +202,7 @@ export function AdminTable<Row>({
   panel,
   canCreate = true,
   onDelete = null,
+  active = null,
   emptyTitle,
   emptyBody,
 }: AdminTableProps<Row>) {
@@ -124,6 +238,10 @@ export function AdminTable<Row>({
   });
   // Records being removed: hidden at once, deleted when the undo toast's time is up (FR-046).
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
+  // The bulk-action bar (FR-043; the owner, PR 5): chosen rows, and a phone's Select mode.
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [selecting, setSelecting] = useState(false);
+  const bulkable = onDelete !== null || active !== null;
 
   const [naming, setNaming] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -150,6 +268,122 @@ export function AdminTable<Row>({
         },
       })
     : null;
+  const visibleChosen = shown.filter((r) => chosen.has(keyOf(r)));
+  const toggle = (row: Row) =>
+    setChosen((held) => {
+      const next = new Set(held);
+      if (next.has(keyOf(row))) next.delete(keyOf(row));
+      else next.add(keyOf(row));
+      return next;
+    });
+  const clearChosen = () => {
+    setChosen(new Set());
+    setSelecting(false);
+  };
+  // What went wrong, said once: "2 of 3 removed; 1 could not be: <reason>".
+  const summarise = (verb: "removed" | "changed", total: number, failed: { code: string }[]) => {
+    if (failed.length === 0) return;
+    showToast(t(`admin.bulk_partial_${verb}`, { done: total - failed.length, total, count: failed.length, reason: errorText(failed[0]!.code) }), { tone: "warning", testID: "toast-bulk-partial" });
+  };
+  const bulkRemove = () => {
+    if (!onDelete) return;
+    const picked = [...visibleChosen];
+    const keys = picked.map(keyOf);
+    clearChosen();
+    go({ open: null });
+    setRemoving((held) => new Set([...held, ...keys]));
+    const restore = (back: string[]) =>
+      setRemoving((held) => {
+        const next = new Set(held);
+        for (const key of back) next.delete(key);
+        return next;
+      });
+    // One held action for all of them, with one undo (heldActions, R163).
+    const undo = hold(
+      async (urgent) => {
+        const failed: { code: string }[] = [];
+        for (const row of picked) {
+          try {
+            await onDelete(row, urgent);
+          } catch (failure) {
+            failed.push({ code: codeOf(failure) });
+          }
+        }
+        await rows.reload();
+        restore(keys);
+        summarise("removed", picked.length, failed);
+      },
+      UNDO_MS,
+      () => restore(keys),
+    );
+    showToast(t("admin.bulk_removed", { count: picked.length }), {
+      duration: UNDO_MS,
+      action: { label: t("common.undo"), onPress: () => undo() && restore(keys) },
+      testID: "toast-deleted",
+    });
+  };
+  const bulkActive = async (to: boolean) => {
+    if (!active) return;
+    const picked = visibleChosen.filter((r) => active.of(r) !== to);
+    clearChosen();
+    const failed: { code: string }[] = [];
+    for (const row of picked) {
+      try {
+        await active.set(row, to);
+      } catch (failure) {
+        failed.push({ code: codeOf(failure) });
+      }
+    }
+    await rows.reload();
+    if (failed.length === 0) showToast(t(to ? "admin.bulk_activated" : "admin.bulk_deactivated", { count: picked.length }));
+    else summarise("changed", picked.length, failed);
+  };
+  const bulkBar =
+    bulkable && visibleChosen.length > 0 ? (
+      <View testID="bulk-bar" role="toolbar" accessibilityLabel={t("admin.bulk_actions")} style={[styles.bulkBar, { borderColor: colors.accent.default, backgroundColor: colors.bg.surface }]}>
+        <Txt role="label" testID="bulk-count" style={styles.bulkCount}>
+          {t("admin.bulk_selected", { count: visibleChosen.length, title })}
+        </Txt>
+        {visibleChosen.length < shown.length ? (
+          <Button
+            variant="quiet"
+            label={state.q ? t("admin.select_all_found", { count: shown.length }) : t("admin.select_all", { count: shown.length })}
+            onPress={() => setChosen(new Set(shown.map(keyOf)))}
+            testID="bulk-select-all"
+          />
+        ) : null}
+        {onDelete ? <Button label={t("admin.bulk_remove")} icon="close" onPress={bulkRemove} testID="bulk-remove" /> : null}
+        {active ? <Button label={t("admin.bulk_activate")} onPress={() => void bulkActive(true)} testID="bulk-activate" /> : null}
+        {active ? <Button label={t("admin.bulk_deactivate")} onPress={() => void bulkActive(false)} testID="bulk-deactivate" /> : null}
+        <Button variant="quiet" label={t("admin.bulk_clear")} onPress={clearChosen} testID="bulk-clear" />
+      </View>
+    ) : null;
+  // A desktop selects by a checkbox column ahead of the others.
+  const tableColumns: readonly Column<Row>[] =
+    bulkable && isDesktop
+      ? [
+          {
+            key: "__select",
+            title: t("admin.select"),
+            width: 56,
+            render: (row) => (
+              <Pressable
+                role="checkbox"
+                aria-checked={chosen.has(keyOf(row))}
+                accessibilityState={{ checked: chosen.has(keyOf(row)) }}
+                accessibilityLabel={t("admin.select_row", { name: nameOf(row) })}
+                testID="row-select"
+                {...webProps({ dataSet: { id: keyOf(row) } })}
+                onPress={() => toggle(row)}
+                style={[styles.checkbox, { borderColor: colors.border.strong }, chosen.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}
+              >
+                {chosen.has(keyOf(row)) ? <Icon name="check" size={14} color={colors.bg.canvas} /> : null}
+              </Pressable>
+            ),
+          },
+          ...columns,
+        ]
+      : columns;
   const deleteButton =
     openRow && onDelete ? <Button label={t("admin.delete", { noun })} icon="close" onPress={() => setDeleting(openRow)} testID="action-delete" /> : null;
 
@@ -193,10 +427,18 @@ export function AdminTable<Row>({
       <PageTitle eyebrow={[t("app.name"), t("nav.group.admin")]} title={title}>
         {canCreate ? <Button variant="primary" icon="plus" label={t("admin.new", { noun })} onPress={() => go({ open: "new" })} testID="action-new" /> : null}
       </PageTitle>
-      <ScrollView horizontal role="tablist" accessibilityLabel={t("admin.views")} contentContainerStyle={styles.tabs} style={styles.tabsFrame}>
-        {tab(null, t("admin.all"), "")}
-        {(views.data ?? []).map((v) => tab(v.id, v.name, v.query))}
-      </ScrollView>
+      {isDesktop ? (
+        <ScrollView horizontal role="tablist" accessibilityLabel={t("admin.views")} contentContainerStyle={styles.tabs} style={styles.tabsFrame}>
+          {tab(null, t("admin.all"), "")}
+          {(views.data ?? []).map((v) => tab(v.id, v.name, v.query))}
+        </ScrollView>
+      ) : (
+        // A phone wraps the views onto more lines rather than scrolling them sideways (R166).
+        <View role="tablist" accessibilityLabel={t("admin.views")} style={styles.tabsWrap}>
+          {tab(null, t("admin.all"), "")}
+          {(views.data ?? []).map((v) => tab(v.id, v.name, v.query))}
+        </View>
+      )}
       <View style={styles.tools}>
         <TextField
           label={t("admin.search")}
@@ -231,6 +473,15 @@ export function AdminTable<Row>({
           />
         ) : null}
       </View>
+      {bulkable && !isDesktop && !panelOpen ? (
+        <Button
+          variant="quiet"
+          label={selecting ? t("admin.select_done") : t("admin.select_mode")}
+          onPress={() => (selecting ? clearChosen() : setSelecting(true))}
+          testID="action-select-mode"
+        />
+      ) : null}
+      {panelOpen ? null : bulkBar}
       {!isDesktop && panelOpen ? (
         <View testID="side-panel" style={styles.page}>
           <View style={styles.pageHead}>
@@ -251,10 +502,27 @@ export function AdminTable<Row>({
           body={emptyBody}
           action={canCreate ? { label: t("admin.new", { noun }), onPress: () => go({ open: "new" }), variant: "primary", testID: "action-new-empty" } : undefined}
         />
+      ) : !isDesktop ? (
+        <PhoneList
+          columns={columns}
+          rows={shown}
+          loading={rows.data === null}
+          keyOf={keyOf}
+          sort={state.sort}
+          onSort={(key, direction) => go({ sort: { key, direction }, view: null })}
+          onOpen={(row) => {
+            const openIt = () => go({ open: keyOf(row) });
+            if (mayLeaveFor(openIt)) openIt();
+          }}
+          emptyText={t("admin.no_match")}
+          selecting={selecting}
+          selected={chosen}
+          onToggle={toggle}
+        />
       ) : (
         <Table
           caption={title}
-          columns={columns}
+          columns={tableColumns}
           rows={shown}
           keyOf={keyOf}
           loading={rows.data === null}
@@ -337,12 +605,23 @@ export function AdminTable<Row>({
 
 const styles = StyleSheet.create({
   tabsFrame: { flexGrow: 0 },
+  tabsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  phone: { gap: 12 },
+  sortRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8 },
+  sortPick: { flexGrow: 1, flexShrink: 1, flexBasis: 180 },
+  list: { gap: 0 },
+  item: { gap: 2, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1 },
   tabs: { gap: 4 },
   tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderBottomWidth: 2 },
   tools: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   search: { flexGrow: 1, flexShrink: 1, flexBasis: 220 },
   chip: { flexDirection: "row", alignItems: "center", gap: 4, paddingStart: 8, borderWidth: 1 },
   sheet: { gap: 16 },
+  bulkBar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, padding: 8, borderWidth: 1 },
+  bulkCount: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
+  checkbox: { width: 22, height: 22, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  itemTitle: { flexGrow: 1, flexShrink: 1 },
   page: { gap: 16 },
   pageHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   pageTitle: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
