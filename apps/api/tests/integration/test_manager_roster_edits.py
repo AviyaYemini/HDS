@@ -5,6 +5,7 @@ other projects is refused with ``roster.project_not_managed``; only an Admin set
 shift's pay rate; employees and clients are refused at the gate.
 """
 
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -123,3 +124,57 @@ async def test_a_manager_publishes_only_the_projects_they_manage(
         f"/api/v1/projects/{other['id']}/publish", json=window, headers=admin
     )
     assert by_admin.status_code == 200, by_admin.text
+
+
+async def test_a_manager_of_other_projects_is_refused_every_roster_tool(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """Overrides, copy week, templates and bulk edit change the roster, so each is refused (R108).
+
+    The publish review only reads, as the roster week does, so any Manager may open it.
+    """
+    admin = await headers_for(async_client, "admin")
+    other = await add_project(async_client, admin, "Not theirs")
+    shift = (await add_shift(async_client, admin, other, FIRST))["shift"]
+    placed = await assign(async_client, admin, shift["id"], seed_users["employee"].id)
+    assert placed.status_code == 201, placed.text
+    assignment = placed.json()["assignment"]["id"]
+    project = f"/api/v1/projects/{other['id']}"
+    week = FIRST.isoformat()
+    template = await async_client.post(
+        f"{project}/week-templates", json={"name": "Usual week", "week": week}, headers=admin
+    )
+    assert template.status_code == 201, template.text
+    templated = f"{project}/week-templates/{template.json()['id']}"
+    manager = await headers_for(async_client, "manager")
+    span = {"from": week, "to": week}
+    later = (FIRST + timedelta(days=7)).isoformat()
+
+    for refused in (
+        await async_client.post(
+            f"/api/v1/assignments/{assignment}/overrides",
+            json={"warning_code": "warnings.overlap", "reason": "Agreed"},
+            headers=manager,
+        ),
+        await async_client.post(
+            f"{project}/copy-week",
+            json={"from_week": week, "to_week": later, "dry_run": True},
+            headers=manager,
+        ),
+        await async_client.post(
+            f"{project}/week-templates", json={"name": "Mine", "week": week}, headers=manager
+        ),
+        await async_client.post(
+            f"{templated}/apply", json={"week": later, "dry_run": True}, headers=manager
+        ),
+        await async_client.delete(templated, headers=manager),
+        await async_client.post(
+            f"{project}/roster/bulk",
+            json={**span, "headcount": 3, "dry_run": True},
+            headers=manager,
+        ),
+    ):
+        assert refused.status_code == 403, (refused.request.url, refused.text)
+        assert refused.json()["code"] == "roster.project_not_managed", refused.request.url
+    review = await async_client.get(f"{project}/publish-preview", params=span, headers=manager)
+    assert review.status_code == 200, review.text
