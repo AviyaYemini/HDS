@@ -712,6 +712,15 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 
 ## Assumptions
 
+- **Owner note, 2026-11-08 (Proposed, for a later feature; no change in 007)**: "training and
+  security projects should not mix", and "an employee assigned to both training and security
+  projects can submit shifts to both - but thats an edge case". 007 relies on nothing that puts a
+  security shift type on a training project or the other way round; where a picker or default must
+  choose, it prefers the shift types already used by projects of the same type. The likely shape
+  later: shift types tagged by project type, rosters, staffing needs and templates offering only
+  matching types, and the availability week showing each employee only the types of the projects
+  they work on (both, for the edge case).
+
 - **Absence approval (O3)**: absence becomes a request with approval in feature 016, approved by any
   manager of a project the employee works on, or an admin (confirmed in clarify). Until then 007
   draws today's absence entries as full-day bands.
