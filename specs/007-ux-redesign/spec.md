@@ -556,6 +556,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   settings MUST share one table pattern (a readable first column, sorting, search, a few filters with
   "More filters", a marker when filters are on, saved views, pagination, details in a side panel, and a
   bulk-action bar that states the count and scope). [A1–A5]
+  *As built (007):* no bulk-action bar: no admin list acts on several records at once yet, so it
+  waits for a later feature; the lists sort and search over what they have read, and the open
+  record is a side panel on a desktop and its own page on a phone (tasks T082, T083).
 - **FR-044**: Long lists of employees, projects, clients and sites MUST be chosen through one
   searchable picker that matches Hebrew and English names, shows a second line and puts recent items
   first; two to five options MUST use a segmented control. [A6]
@@ -579,6 +582,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-050**: The work log and the hours report MUST open with a row of key figures that match the
   table, bars that open into their rows, pay-period presets defaulting to the current period, and the
   date picker. [A13, D4]
+  *As built (007):* the hours report groups by employee or by project; grouping by client waits for a
+  later feature. The work log covers one project, site or group at a time and opens on the first
+  project; a log across the whole organisation is not offered (task T088).
 
 **Dates, times, languages and money (group A)**
 
