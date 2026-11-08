@@ -97,6 +97,64 @@ export function operationFor(current: Entry | undefined, to: CellState): Operati
   return { op: "update", id: current.id, kind: to };
 }
 
+/**
+ * The cell a change really lands on: a shift cell that only inherits the day's all-day mark changes
+ * that all-day entry, which covers it (FR-018: Undo then puts the all-day mark back, R55).
+ */
+export function targetKey(entries: readonly Entry[], key: CellKey): CellKey {
+  const current = cellEntry(entries, key);
+  return current && current.shift_type_id === null && key.shiftType !== ALL_DAY ? { date: key.date, shiftType: ALL_DAY } : key;
+}
+
+/** One API call of a change plan. */
+export type PlannedCall =
+  | { call: "create"; kind: Mark; starts_on: string; ends_on: string; shift_type_id: string | null; weekday: number | null }
+  | { call: "update"; id: string; kind?: Mark; starts_on?: string; ends_on?: string }
+  | { call: "delete"; id: string };
+
+/** Whether any date from `first` to `last` falls on `weekday` (null: any date does). */
+function hasDay(first: string, last: string, day: number | null): boolean {
+  if (first > last) return false;
+  if (day === null) return true;
+  for (let date = first; date <= last; date = addDays(date, 1)) if (weekday(date) === day) return true;
+  return false;
+}
+
+/**
+ * The calls that put one cell into `to` and touch no other date or shift (R48). A one-day entry of
+ * the cell's own is updated or deleted. An entry that covers more dates (several days, or a weekday
+ * rule) is shortened to the dates before the cell's, the dates after it are added back as an entry
+ * of their own inside `window`, and the cell gets a one-day entry of its own.
+ */
+export function planCellChange(entries: readonly Entry[], key: CellKey, to: CellState, window: Pick<Window, "starts_on" | "ends_on">): PlannedCall[] {
+  const target = targetKey(entries, key);
+  const current = cellEntry(entries, target);
+  const shiftTypeId = target.shiftType === ALL_DAY ? null : target.shiftType;
+  const own = (kind: Mark): PlannedCall => ({ call: "create", kind, starts_on: target.date, ends_on: target.date, shift_type_id: shiftTypeId, weekday: null });
+  if (current === undefined) return to === "unmarked" ? [] : [own(to)];
+  const oneDay = current.starts_on === current.ends_on && current.weekday === null;
+  if (oneDay) {
+    if (to === "unmarked") return [{ call: "delete", id: current.id }];
+    return current.kind === to ? [] : [{ call: "update", id: current.id, kind: to }];
+  }
+  const calls: PlannedCall[] = [];
+  const before = { first: current.starts_on, last: addDays(target.date, -1) };
+  const after = { first: addDays(target.date, 1), last: current.ends_on };
+  const keepBefore = hasDay(before.first, before.last, current.weekday);
+  // The dates after the cell come back as their own entry, only inside the window (R48).
+  const afterFirst = after.first < window.starts_on ? window.starts_on : after.first;
+  const afterLast = after.last > window.ends_on ? window.ends_on : after.last;
+  const keepAfter = hasDay(afterFirst, afterLast, current.weekday);
+  if (keepBefore) calls.push({ call: "update", id: current.id, ends_on: before.last });
+  else if (keepAfter) calls.push({ call: "update", id: current.id, starts_on: afterFirst, ends_on: afterLast });
+  else calls.push({ call: "delete", id: current.id });
+  if (keepBefore && keepAfter) {
+    calls.push({ call: "create", kind: current.kind as Mark, starts_on: afterFirst, ends_on: afterLast, shift_type_id: current.shift_type_id, weekday: current.weekday });
+  }
+  if (to !== "unmarked") calls.push(own(to));
+  return calls;
+}
+
 /** One change a person made, kept so it can be undone (FR-018). */
 export interface Change {
   key: CellKey;

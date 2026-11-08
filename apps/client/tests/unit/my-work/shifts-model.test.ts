@@ -1,5 +1,5 @@
 /** My shifts' logic (specs/007-ux-redesign FR-021 to FR-023). */
-import { byPeriod, byWeek, countdown, endsNextDay, icsFor, mapLinks, nextShift, past, pastRange, upcoming, type Shift } from "../../../src/screens/my-work/shifts/model";
+import { byPeriod, byWeek, countdown, endsNextDay, icsFor, mapLinks, nextShift, past, pastRange, upcoming, upcomingRange, type Shift } from "../../../src/screens/my-work/shifts/model";
 
 const shift = (id: string, starts_at: string, ends_at: string): Shift => ({
   id,
@@ -43,8 +43,17 @@ it("marks an overnight shift and counts down to the next one (FR-022)", () => {
   expect(countdown(shifts[0]!, now)).toBe("started");
 });
 
-it("loads three periods of the past and links to maps", () => {
-  expect(pastRange("2026-11-07")).toEqual({ from: "2026-08-01", to: "2026-11-06" });
+it("a shift that ended earlier today is past, one running since yesterday is upcoming (R54)", () => {
+  const endedToday = shift("ended", "2026-11-07T00:00:00Z", "2026-11-07T06:00:00Z");
+  const running = shift("running", "2026-11-06T22:00:00Z", "2026-11-07T10:00:00Z");
+  expect(past([endedToday, running], now).map((s) => s.id)).toEqual(["ended"]);
+  expect(upcoming([endedToday, running], now).map((s) => s.id)).toEqual(["running"]);
+  expect(countdown(running, now)).toBe("started");
+  expect(upcomingRange("2026-11-07")).toEqual({ from: "2026-11-06" });
+});
+
+it("loads three periods of the past up to today and links to maps", () => {
+  expect(pastRange("2026-11-07")).toEqual({ from: "2026-08-01", to: "2026-11-07" });
   expect(mapLinks("Rothschild 1, Tel Aviv").google).toContain(encodeURIComponent("Rothschild 1, Tel Aviv"));
 });
 

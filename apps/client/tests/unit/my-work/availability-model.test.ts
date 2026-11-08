@@ -9,8 +9,10 @@ import {
   nextState,
   operationFor,
   pickWindow,
+  planCellChange,
   reviewRows,
   statusAfterChange,
+  targetKey,
   weeksOf,
   type Entry,
 } from "../../../src/screens/my-work/availability/model";
@@ -124,5 +126,57 @@ describe("editable and the banner", () => {
     expect(statusAfterChange("submitted")).toBe("draft");
     expect(statusAfterChange("not_submitted")).toBe("draft");
     expect(statusAfterChange("locked")).toBe("locked");
+  });
+});
+
+describe("a change touches one cell only (R48, R55)", () => {
+  const window = { starts_on: "2026-11-15", ends_on: "2026-11-21" };
+  const morning = (over: Partial<Entry>) => entry({ shift_type_id: "morning", ...over });
+
+  it("updates or deletes a one-day entry of the cell's own, and creates one where there is none", () => {
+    const one = morning({ id: "o", kind: "open", starts_on: "2026-11-17", ends_on: "2026-11-17" });
+    expect(planCellChange([one], { date: "2026-11-17", shiftType: "morning" }, "close", window)).toEqual([{ call: "update", id: "o", kind: "close" }]);
+    expect(planCellChange([one], { date: "2026-11-17", shiftType: "morning" }, "unmarked", window)).toEqual([{ call: "delete", id: "o" }]);
+    expect(planCellChange([one], { date: "2026-11-17", shiftType: "morning" }, "open", window)).toEqual([]);
+    expect(planCellChange([], { date: "2026-11-18", shiftType: "night" }, "blocked", window)).toEqual([
+      { call: "create", kind: "blocked", starts_on: "2026-11-18", ends_on: "2026-11-18", shift_type_id: "night", weekday: null },
+    ]);
+  });
+
+  it("splits a multi-day entry around the cell and adds the rest back inside the window", () => {
+    const span = morning({ id: "s", kind: "blocked", starts_on: "2026-11-16", ends_on: "2026-11-25" });
+    expect(planCellChange([span], { date: "2026-11-18", shiftType: "morning" }, "open", window)).toEqual([
+      { call: "update", id: "s", ends_on: "2026-11-17" },
+      { call: "create", kind: "blocked", starts_on: "2026-11-19", ends_on: "2026-11-21", shift_type_id: "morning", weekday: null },
+      { call: "create", kind: "open", starts_on: "2026-11-18", ends_on: "2026-11-18", shift_type_id: "morning", weekday: null },
+    ]);
+    // The first date: the entry just starts a day later.
+    expect(planCellChange([span], { date: "2026-11-16", shiftType: "morning" }, "unmarked", window)).toEqual([{ call: "update", id: "s", starts_on: "2026-11-17", ends_on: "2026-11-21" }]);
+    // The last date of a two-day entry: it keeps the first day only.
+    const two = morning({ id: "t", kind: "close", starts_on: "2026-11-19", ends_on: "2026-11-20" });
+    expect(planCellChange([two], { date: "2026-11-20", shiftType: "morning" }, "unmarked", window)).toEqual([{ call: "update", id: "t", ends_on: "2026-11-19" }]);
+  });
+
+  it("drops a weekday rule's remainder when no matching day is left", () => {
+    // Wednesdays in a two-week entry; the cell is the first Wednesday, so only the second remains.
+    const rule = morning({ id: "r", kind: "close", starts_on: "2026-11-15", ends_on: "2026-11-28", weekday: 3 });
+    expect(planCellChange([rule], { date: "2026-11-18", shiftType: "morning" }, "unmarked", window)).toEqual([
+      // The dates after the cell are clipped to the window, where no Wednesday is left, so the rule goes.
+      { call: "delete", id: "r" },
+    ]);
+    const wide = { starts_on: "2026-11-15", ends_on: "2026-11-28" };
+    expect(planCellChange([rule], { date: "2026-11-18", shiftType: "morning" }, "unmarked", wide)).toEqual([{ call: "update", id: "r", starts_on: "2026-11-19", ends_on: "2026-11-28" }]);
+  });
+
+  it("routes a shift cell that inherits the all-day mark to the all-day entry, for the change and its undo", () => {
+    const allDay = entry({ id: "a", kind: "open", shift_type_id: null, starts_on: "2026-11-17", ends_on: "2026-11-17" });
+    const key = { date: "2026-11-17", shiftType: "morning" };
+    expect(targetKey([allDay], key)).toEqual({ date: "2026-11-17", shiftType: ALL_DAY });
+    expect(planCellChange([allDay], key, "unmarked", window)).toEqual([{ call: "delete", id: "a" }]);
+    // Undo recreates the all-day mark, not a shift-only one (R55).
+    expect(planCellChange([], targetKey([allDay], key), "open", window)).toEqual([
+      { call: "create", kind: "open", starts_on: "2026-11-17", ends_on: "2026-11-17", shift_type_id: null, weekday: null },
+    ]);
+    expect(targetKey([], key)).toEqual(key);
   });
 });

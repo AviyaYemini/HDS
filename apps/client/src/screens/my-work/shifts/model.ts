@@ -76,11 +76,19 @@ export function countdown(shift: Pick<Shift, "starts_at">, now: Date): { days: n
   return { days: Math.floor(minutes / 1440), hours: Math.floor((minutes % 1440) / 60) };
 }
 
-/** The range of dates Past loads: the last three pay periods up to yesterday. */
+/**
+ * The dates Upcoming loads: from yesterday, so an overnight shift still running since yesterday is
+ * in; the split between the views is by `ends_at` against now, not by date (R54).
+ */
+export function upcomingRange(today: string): { from: string } {
+  return { from: addDays(today, -1) };
+}
+
+/** The dates Past loads: the last three pay periods up to today, so a shift that ended earlier today is in. */
 export function pastRange(today: string): { from: string; to: string } {
   const [year, month] = today.split("-").map(Number) as [number, number, number];
   const start = new Date(Date.UTC(year, month - 1 - 3, 1));
-  return { from: start.toISOString().slice(0, 10), to: addDays(today, -1) };
+  return { from: start.toISOString().slice(0, 10), to: today };
 }
 
 /** Links that open the address in a maps app or site (FR-023). */

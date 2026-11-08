@@ -21,7 +21,7 @@ import { useTheme } from "../../../design/theme/ThemeProvider";
 import { webProps } from "../../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, durationParts, formatLongDate, formatMoney, formatMonthYear, formatNumericDate, formatNumericRange, formatTime, formatTimeRange, todayIn, weekdayNames } from "../../../locale";
 import { useLoad } from "../../useLoad";
-import { byPeriod, byWeek, countdown, endsNextDay, nextShift, past, pastRange, shiftDate, upcoming, type Shift } from "./model";
+import { byPeriod, byWeek, countdown, endsNextDay, nextShift, past, pastRange, shiftDate, upcoming, upcomingRange, type Shift } from "./model";
 import { loadCached, saveCached, type CachedShifts } from "./shiftsCache";
 
 type Mode = "upcoming" | "past";
@@ -37,7 +37,7 @@ export function MyShiftsScreen() {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const now = new Date();
 
-  const range: { from: string; to?: string } = view === "upcoming" ? { from: today } : pastRange(today);
+  const range: { from: string; to?: string } = view === "upcoming" ? upcomingRange(today) : pastRange(today);
   const shifts = useLoad(async () => {
     try {
       const answer = await call(session.api.GET("/me/shifts", { params: { query: range } }));

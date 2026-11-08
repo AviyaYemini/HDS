@@ -16,7 +16,7 @@ import { Button, EmptyState, FeaturePanel, InlineBanner, PageTitle, SegmentedCon
 import { Screen } from "../../../design/components/Screen";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { webProps } from "../../../design/web";
-import { DEFAULT_TIME_ZONE, durationParts, formatMoney, formatMonthYear, minutesBetween, todayIn } from "../../../locale";
+import { DEFAULT_TIME_ZONE, durationParts, endOfMonth, formatMoney, formatMonthYear, minutesBetween, todayIn } from "../../../locale";
 import { useLoad } from "../../useLoad";
 import { breakdownByRate, changeSince, nextPeriod, previousPeriod, shortHours } from "./model";
 
@@ -36,10 +36,10 @@ export function MyPayScreen() {
   const pay = useLoad(() => call(session.api.GET("/me/pay", { params: { query: { month: period } } })), [period]);
   const previous = useLoad(() => call(session.api.GET("/me/pay", { params: { query: { month: previousPeriod(period) } } })), [period]);
   const scheduled = useLoad(async () => {
+    // The API takes dates at the organisation's zone, so the month's own last day bounds it (R56).
     const from = `${period}-01`;
-    const to = `${nextPeriod(period)}-01`;
-    const answer = await call(session.api.GET("/me/shifts", { params: { query: { from, to } } }));
-    return answer.items.filter((shift) => shift.starts_at < to).reduce((sum, shift) => sum + minutesBetween(shift.starts_at, shift.ends_at), 0);
+    const answer = await call(session.api.GET("/me/shifts", { params: { query: { from, to: endOfMonth(from) } } }));
+    return answer.items.reduce((sum, shift) => sum + minutesBetween(shift.starts_at, shift.ends_at), 0);
   }, [period]);
 
   const options = [

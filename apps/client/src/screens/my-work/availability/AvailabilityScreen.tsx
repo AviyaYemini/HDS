@@ -7,7 +7,7 @@
  */
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
@@ -21,9 +21,9 @@ import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { component } from "../../../design/theme/theme.generated";
 import { webProps } from "../../../design/web";
-import { DEFAULT_TIME_ZONE, addDays, endOfWeek, formatNumericDate, formatNumericRange, formatTime, holidaysBetween, startOfWeek, todayIn, weekdayNames } from "../../../locale";
+import { DEFAULT_TIME_ZONE, addDays, dateOf, endOfWeek, formatNumericDate, formatNumericRange, formatTime, holidaysBetween, startOfWeek, todayIn, weekdayNames } from "../../../locale";
 import { useLoad } from "../../useLoad";
-import { loadPending, savePending, withChange, type PendingChange } from "./draftQueue";
+import type { PendingChange } from "./draftQueue";
 import {
   ALL_DAY,
   CYCLE,
@@ -34,17 +34,21 @@ import {
   editable,
   initialWeek,
   nextState,
-  operationFor,
   pickWindow,
+  planCellChange,
   reviewRows,
   statusAfterChange,
+  targetKey,
   weeksOf,
   type CellKey,
   type CellState,
   type Change,
   type Entry,
+  type Mark,
+  type PlannedCall,
   type Submission,
 } from "./model";
+import { usePendingQueue } from "./usePendingQueue";
 
 const STATE_CHIP: Record<CellState, ChipStatus> = { unmarked: "neutral", open: "success", close: "warning", blocked: "danger" };
 const STATUS_CHIP: Record<Submission["status"], ChipStatus> = { not_submitted: "warning", draft: "info", submitted: "success", locked: "neutral" };
@@ -98,100 +102,122 @@ export function AvailabilityScreen() {
   const [chooser, setChooser] = useState<CellKey | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [pending, setPending] = useState<PendingChange[]>([]);
-
-  // The device draft (FR-019): what could not be sent, shown as made and sent on reconnect.
-  useEffect(() => {
-    if (!window) return;
-    let live = true;
-    void loadPending(userId, window.id).then((list) => {
-      if (!live) return;
-      setPending(list);
-      setOverrides((current) => {
-        const next = new Map(current);
-        for (const item of list) next.set(keyOf(item.key), item.state);
-        return next;
-      });
-    });
-    return () => {
-      live = false;
-    };
-  }, [userId, window]);
 
   const shownStatus: Submission["status"] | null = status ?? submission.data?.status ?? null;
   const canEdit = editable(submission.data ? { status: shownStatus ?? submission.data.status } : null, window);
   const serverEntries: Entry[] = useMemo(() => entries.data ?? [], [entries.data]);
 
-  const stateOf = useCallback(
-    (key: CellKey): CellState => overrides.get(keyOf(key)) ?? (cellEntry(serverEntries, key)?.kind as CellState | undefined) ?? "unmarked",
-    [overrides, serverEntries],
-  );
-
-  /** Put a cell into `to`, through the API; `record` keeps the change for Undo. */
-  const setCell = useCallback(
-    async (key: CellKey, to: CellState, record: boolean): Promise<void> => {
-      if (!window) return;
-      const before = stateOf(key);
-      if (before === to) return;
-      setOverrides((current) => new Map(current).set(keyOf(key), to));
-      if (record) setUndo((stack) => [...stack, { key, before, after: to }]);
-      if (shownStatus) setStatus(statusAfterChange(shownStatus));
-      lightTap();
-      const current = cellEntry(serverEntries, key);
-      // A shift cell that only inherits the day's mark changes that all-day entry, which covers it.
-      const target = current && current.shift_type_id === null && key.shiftType !== ALL_DAY ? { ...key, shiftType: ALL_DAY } : key;
-      const operation = operationFor(current, to);
-      try {
-        if (operation.op === "create") {
+  /** Run a plan's calls in order. */
+  const runPlan = useCallback(
+    async (calls: readonly PlannedCall[]): Promise<void> => {
+      for (const step of calls) {
+        if (step.call === "create") {
           await call(
             session.api.POST("/api/v1/employees/{id}/constraints", {
               params: { path: { id: userId } },
-              body: { kind: operation.kind, starts_on: key.date, ends_on: key.date, shift_type_id: target.shiftType === ALL_DAY ? null : target.shiftType },
+              body: { kind: step.kind, starts_on: step.starts_on, ends_on: step.ends_on, shift_type_id: step.shift_type_id, weekday: step.weekday },
             }),
           );
-        } else if (operation.op === "update") {
-          await call(session.api.PATCH("/api/v1/constraints/{id}", { params: { path: { id: operation.id } }, body: { kind: operation.kind } }));
-        } else if (operation.op === "delete") {
-          await call(session.api.DELETE("/api/v1/constraints/{id}", { params: { path: { id: operation.id } } }));
+        } else if (step.call === "update") {
+          const body: { kind?: Mark; starts_on?: string; ends_on?: string } = {};
+          if (step.kind) body.kind = step.kind;
+          if (step.starts_on) body.starts_on = step.starts_on;
+          if (step.ends_on) body.ends_on = step.ends_on;
+          await call(session.api.PATCH("/api/v1/constraints/{id}", { params: { path: { id: step.id } }, body }));
+        } else {
+          await call(session.api.DELETE("/api/v1/constraints/{id}", { params: { path: { id: step.id } } }));
         }
-        await Promise.all([entries.reload(), submission.reload()]);
-        setStatus(null);
-        setOverrides((map) => {
-          const next = new Map(map);
-          next.delete(keyOf(key));
-          return next;
-        });
+      }
+    },
+    [session.api, userId],
+  );
+
+  const reload = useCallback(async (): Promise<void> => {
+    await Promise.all([entries.reload(), submission.reload()]);
+    setStatus(null);
+  }, [entries, submission]);
+
+  // A saved change is sent against the server's entries of that day, read afresh, so it lands right
+  // however the week changed meanwhile (R49, R50).
+  const sendPending = useCallback(
+    async (change: PendingChange): Promise<void> => {
+      if (!window) return;
+      try {
+        const fresh = await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: { from: change.key.date, to: change.key.date } } }));
+        await runPlan(planCellChange(fresh.items, change.key, change.state, window));
+      } catch (failure) {
+        if (failure instanceof ApiError && failure.status === 0) throw Object.assign(new Error("unreachable"), { retry: true });
+        throw failure;
+      }
+    },
+    [window, session.api, userId, runPlan],
+  );
+  const dropOverride = useCallback((key: CellKey) => {
+    setOverrides((map) => {
+      const next = new Map(map);
+      next.delete(keyOf(key));
+      return next;
+    });
+  }, []);
+  const queue = usePendingQueue(
+    userId,
+    window?.id ?? null,
+    sendPending,
+    (change, failure) => {
+      dropOverride(change.key);
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+    },
+    () => void reload(),
+  );
+  const pending = queue.pending;
+
+  // The device draft shows as made while it waits (FR-019).
+  const pendingOverrides = useMemo(() => new Map(pending.map((item) => [keyOf(item.key), item.state])), [pending]);
+  const stateOf = useCallback(
+    (key: CellKey): CellState =>
+      overrides.get(keyOf(key)) ?? pendingOverrides.get(keyOf(key)) ?? (cellEntry(serverEntries, key)?.kind as CellState | undefined) ?? "unmarked",
+    [overrides, pendingOverrides, serverEntries],
+  );
+
+  /**
+   * Put a cell into `to`, through the API, and reload unless the caller batches (R57). The change is
+   * recorded for Undo on the cell it really lands on (R55). Out of reach, it joins the device draft.
+   */
+  const applyCell = useCallback(
+    async (key: CellKey, to: CellState, record: boolean, batch: boolean): Promise<void> => {
+      if (!window) return;
+      const target = targetKey(serverEntries, key);
+      const before = stateOf(target);
+      if (before === to) return;
+      setOverrides((current) => new Map(current).set(keyOf(target), to).set(keyOf(key), to));
+      if (record) setUndo((stack) => [...stack, { key: target, before, after: to }]);
+      if (shownStatus) setStatus(statusAfterChange(shownStatus));
+      lightTap();
+      try {
+        await runPlan(planCellChange(serverEntries, key, to, window));
+        if (!batch) {
+          await reload();
+          dropOverride(target);
+          dropOverride(key);
+        }
       } catch (failure) {
         if (failure instanceof ApiError && failure.status === 0) {
           // No server: keep the change on the device and send it when the connection is back.
-          const next = withChange(pending, { key, state: to });
-          setPending(next);
-          await savePending(userId, window.id, next);
+          queue.enqueue({ key: target, state: to });
+          dropOverride(target);
+          dropOverride(key);
           return;
         }
-        setOverrides((map) => {
-          const next = new Map(map);
-          next.delete(keyOf(key));
-          return next;
-        });
+        dropOverride(target);
+        dropOverride(key);
         if (record) setUndo((stack) => stack.slice(0, -1));
         setStatus(null);
         showToast(errorText(codeOf(failure)), { tone: "warning" });
       }
     },
-    [window, stateOf, shownStatus, serverEntries, session.api, userId, entries, submission, pending, errorText],
+    [window, serverEntries, stateOf, shownStatus, runPlan, reload, dropOverride, queue, errorText],
   );
-
-  // Back online: send the device draft, oldest first (FR-019).
-  useEffect(() => {
-    if (!online || pending.length === 0 || !window || entries.data === null) return;
-    const [first, ...rest] = pending;
-    if (!first) return;
-    void savePending(userId, window.id, rest).then(() => {
-      setPending(rest);
-      return setCell(first.key, first.state, false);
-    });
-  }, [online, pending, window, entries.data, userId, setCell]);
+  const setCell = useCallback((key: CellKey, to: CellState, record: boolean) => applyCell(key, to, record, false), [applyCell]);
 
   const undoLast = async (): Promise<void> => {
     const last = undo[undo.length - 1];
@@ -200,6 +226,7 @@ export function AvailabilityScreen() {
     await setCell(last.key, last.before, false);
   };
 
+  // Copy last week writes every cell, then reloads once (R57).
   const copyLastWeek = async (): Promise<void> => {
     if (!shownWeek) return;
     const plan = copyPlan(serverEntries, shownWeek, shiftTypes.map((type) => type.id));
@@ -207,7 +234,9 @@ export function AvailabilityScreen() {
       showToast(t("availability.copy_nothing"));
       return;
     }
-    for (const step of plan) await setCell(step.key, step.state, true);
+    for (const step of plan) await applyCell(step.key, step.state, true, true);
+    await reload();
+    setOverrides(new Map());
   };
 
   const submit = async (): Promise<void> => {
@@ -218,8 +247,7 @@ export function AvailabilityScreen() {
       successTap();
       setReviewOpen(false);
       setUndo([]);
-      await submission.reload();
-      setStatus(null);
+      await reload();
       showToast(t("availability.submitted_toast"));
     } catch (failure) {
       showToast(errorText(codeOf(failure)), { tone: "warning" });
@@ -258,7 +286,7 @@ export function AvailabilityScreen() {
   const columns = [{ id: ALL_DAY, label: t("availability.all_day"), times: null as string | null }, ...shiftTypes.map((type) => ({ id: type.id, label: type.name, times: `${type.starts_at_local.slice(0, 5)}–${type.ends_at_local.slice(0, 5)}` }))];
   const rows = reviewRows(serverEntries, window, shiftTypes.map((type) => type.id));
   const nameOf = (shiftType: string) => (shiftType === ALL_DAY ? t("availability.all_day") : (shiftTypes.find((type) => type.id === shiftType)?.name ?? shiftType));
-  const deadlineText = `${formatNumericDate(window.deadline.slice(0, 10))} ${formatTime(window.deadline, DEFAULT_TIME_ZONE)}`;
+  const deadlineText = `${formatNumericDate(dateOf(window.deadline, DEFAULT_TIME_ZONE))} ${formatTime(window.deadline, DEFAULT_TIME_ZONE)}`;
   const bannerData: Record<string, string> = { status: shownStatus ?? "" };
   if (shownStatus === "locked" && submission.data) bannerData.countedUnavailable = String(submission.data.counted_unavailable);
 
@@ -285,7 +313,7 @@ export function AvailabilityScreen() {
           </View>
           {shownStatus === "submitted" && submission.data.submitted_at ? (
             <Txt role="body" tone="secondary" numeric>
-              {t("availability.submitted_at", { time: `${formatNumericDate(submission.data.submitted_at.slice(0, 10))} ${formatTime(submission.data.submitted_at, DEFAULT_TIME_ZONE)}` })}
+              {t("availability.submitted_at", { time: `${formatNumericDate(dateOf(submission.data.submitted_at, DEFAULT_TIME_ZONE))} ${formatTime(submission.data.submitted_at, DEFAULT_TIME_ZONE)}` })}
             </Txt>
           ) : null}
           {shownStatus === "draft" ? (
