@@ -163,11 +163,15 @@ def price(
     if base_rate is not None:
         with localcontext() as ctx:
             ctx.prec = 60
+            # The line's pay is one division of the weighted sum, as in 005, so it is unchanged
+            # by construction; the parts' own amounts only decide how it is split.
+            weighted = sum((Decimal(p.microseconds) * p.rate_pct for p in parts), Decimal(0))
+            exact = weighted * base_rate / (MICROS_PER_HOUR * HUNDRED)
+            pay = exact.quantize(CENT, rounding=ROUND_HALF_UP)
             exacts = [
                 Decimal(p.microseconds) * p.rate_pct * base_rate / (MICROS_PER_HOUR * HUNDRED)
                 for p in parts
             ]
-            pay = sum(exacts, Decimal(0)).quantize(CENT, rounding=ROUND_HALF_UP)
             shares = split_pay(exacts, pay)
         parts = tuple(
             PayPart(p.rate_pct, p.microseconds, share)
