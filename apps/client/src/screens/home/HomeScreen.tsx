@@ -179,7 +179,8 @@ function ManagerCards() {
     const rows = (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id: open.id } } }))).items;
     return { window: open.id, count: rows.filter((r) => r.status === "not_submitted").length };
   }, [today]);
-  const filled = (shifts.data ?? []).reduce((n, s) => n + s.assignments.length, 0);
+  // Each shift counts at most its headcount, so an overfilled one never shows more than full.
+  const filled = (shifts.data ?? []).reduce((n, s) => n + Math.min(s.assignments.length, s.headcount), 0);
   const required = (shifts.data ?? []).reduce((n, s) => n + s.headcount, 0);
   const open = (shifts.data ?? []).reduce((n, s) => n + Math.max(0, s.headcount - s.assignments.length), 0);
   return (

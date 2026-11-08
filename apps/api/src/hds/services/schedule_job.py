@@ -329,6 +329,9 @@ class ScheduleJobService:
                 )
                 if leaving or joining:
                     counts["shifts_updated"] += 1
+                    # A changed staffing is a changed shift: its roster ETag moves, so a reader's
+                    # If-Match goes stale and "changed since publish" sees it (R84).
+                    await self._shifts.touch(shift_id, org_id)
             else:
                 slot = slots[item["key"]]
                 shift_id = uuid.uuid4()

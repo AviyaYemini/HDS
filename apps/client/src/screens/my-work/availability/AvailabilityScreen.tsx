@@ -227,10 +227,10 @@ export function AvailabilityScreen() {
       const write = async (): Promise<void> => {
         const current = batch ? serverEntries : await readEntries();
         await runPlan(planCellChange(current, key, to, window));
-        if (!batch) {
-          await reload();
-          settle();
-        }
+        if (!batch) await reload();
+        // A batch reloads once at its end; its marks are settled here all the same, so the
+        // ledger never keeps a copied state the server answered differently (R91).
+        settle();
       };
       try {
         if (batch) {

@@ -387,3 +387,18 @@ async def test_the_status_shows_an_admins_hand_change_beside_the_submission() ->
         NOW - timedelta(minutes=5),
     )
     assert found.submitted_at == row.submitted_at
+
+
+@pytest.mark.asyncio
+async def test_the_trackers_batch_read_derives_what_the_single_read_does() -> None:
+    """R92: three reads for everyone, the same statuses as one person at a time."""
+    manager, done, idle = _user(UserRole.manager), _user(), _user()
+    window = _window(NOW + timedelta(days=1))
+    live = [_stored(done.id)]
+    row = _submitted(window, done, live)
+    service, submissions = _service(window, live, row)
+    submissions.for_windows.return_value = [row]
+    found = await service.statuses_for(manager, window.id, [done.id, idle.id])
+    statuses = {u: s.status for u, s in found.items()}
+    assert statuses == {done.id: "submitted", idle.id: "not_submitted"}
+    submissions.get.assert_not_awaited()

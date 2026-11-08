@@ -192,3 +192,44 @@ async def test_the_tracker_lists_everyones_status(
         f"/api/v1/availability-windows/{window['id']}/submissions", headers=employee
     )
     assert refused.status_code == 403
+
+
+async def test_a_template_naming_someone_since_deactivated_still_applies(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R86: they are left off, with a warning, in the dry run and the apply alike."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+    leaver = seed_users["manager"]
+    await staffed(async_client, admin, project, leaver, FIRST + timedelta(days=1))
+    saved = await async_client.post(
+        f"/api/v1/projects/{project['id']}/week-templates",
+        json={"name": "With a leaver", "week": FIRST.isoformat()},
+        headers=admin,
+    )
+    assert saved.status_code == 201, saved.text
+    off = await async_client.post(f"/api/v1/employees/{leaver.id}/deactivate", headers=admin)
+    assert off.status_code in (200, 204), off.text
+    apply = f"/api/v1/projects/{project['id']}/week-templates/{saved.json()['id']}/apply"
+    for dry_run in (True, False):
+        answer = await async_client.post(
+            apply, json={"week": NEXT.isoformat(), "dry_run": dry_run}, headers=admin
+        )
+        assert answer.status_code == 200, answer.text
+        assert [c["people"] for c in answer.json()["changes"]] == [0]
+        assert "assignments.employee_inactive" in [w["code"] for w in answer.json()["warnings"]]
+
+
+async def test_dates_at_the_edge_of_the_calendar_are_a_bad_range_not_a_crash(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R87: 422, never 500, for a range that runs off the end of the calendar."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+    preview = await async_client.get(
+        f"/api/v1/projects/{project['id']}/publish-preview",
+        params={"from": "2026-01-01", "to": "9999-12-31"},
+        headers=admin,
+    )
+    assert preview.status_code == 422, preview.text
+    assert preview.json()["code"] == "shifts.date_range_invalid"

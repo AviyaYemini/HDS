@@ -504,7 +504,7 @@
   "roster.no_shifts": "אין משמרות ביום הזה.",
   "roster.unassign": "הסרה מהמשמרת",
   "roster.coverage": "{{filled}} מתוך {{required}} שובצו",
-  "roster.warnings_one": "אזהרה אחת",
+  "roster.warnings_one": "{{count}} אזהרה",
   "roster.warnings_other": "{{count}} אזהרות",
   "roster.warnings": "{{count}} אזהרות",
   "roster.empty_seat": "מקום פנוי",

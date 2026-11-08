@@ -71,6 +71,7 @@ class WarningLine(BaseModel):
     employee_id: uuid.UUID | None
     shift_ids: list[uuid.UUID]
     detail: str
+    values: dict[str, str] = Field(default_factory=dict, description="The rule's numbers.")
 
 
 class PlanAnswer(BaseModel):

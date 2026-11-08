@@ -41,13 +41,20 @@ export function RosterScreen() {
     async () => (project ? (await call(session.api.GET("/api/v1/projects/{id}/shift-types", { params: { path: { id: project } } }))).items : []),
     [project],
   );
-  const shifts = useLoad(
-    async () =>
-      project
-        ? (await call(session.api.GET("/api/v1/shifts", { params: { query: { from: week, to: addDays(week, 6), project_id: project, limit: 200 } } }))).items
-        : [],
-    [project, week],
-  );
+  // Every page of the week's shifts, so a busy week is never cut short.
+  const shifts = useLoad(async () => {
+    if (!project) return [];
+    const all: Shift[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: { from: string; to: string; project_id: string; limit: number; cursor?: string } = { from: week, to: addDays(week, 6), project_id: project, limit: 200 };
+      if (cursor) query.cursor = cursor;
+      const page: { items: Shift[]; next_cursor?: string | null } = await call(session.api.GET("/api/v1/shifts", { params: { query } }));
+      all.push(...page.items);
+      cursor = page.next_cursor ?? null;
+    } while (cursor);
+    return all;
+  }, [project, week]);
   const people = useLoad(async () => {
     const found = await call(session.api.GET("/api/v1/employees", { params: { query: { is_active: true } } }));
     return found.items.filter((u) => u.role !== "client").map((u): Person => ({ id: u.id, full_name: u.full_name }));
@@ -83,7 +90,7 @@ export function RosterScreen() {
     }
   };
 
-  const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true) => {
+  const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true): Promise<string | null> => {
     let created: string | null = null;
     const done = await change(async () => {
       const answer = await call(
@@ -96,9 +103,10 @@ export function RosterScreen() {
       return answer;
     }, shift.id);
     if (done && record && created) setHistory((h) => [...h, { kind: "assigned", assignmentId: created!, shiftId: shift.id, userId }]);
+    return done ? created : null;
   };
 
-  const unassign = async (shift: Shift, assignmentId: string, record = true) => {
+  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<boolean> => {
     const before = shift.assignments.find((a) => a.id === assignmentId);
     const done = await change(
       () => call(session.api.DELETE("/api/v1/assignments/{id}", { params: { path: { id: assignmentId }, header: { "If-Match": shift.etag } } })),
@@ -110,16 +118,25 @@ export function RosterScreen() {
         { kind: "unassigned", shiftId: shift.id, userId: before.user_id, starts_at: before.own_times ? before.starts_at : null, ends_at: before.own_times ? before.ends_at : null },
       ]);
     }
+    return done;
   };
 
+  // A step leaves the history only once its request has succeeded; re-creating an assignment
+  // gives it a new id, which earlier steps for that person then follow (R88).
   const undo = async () => {
     const last = history[history.length - 1];
     if (!last) return;
-    setHistory((h) => h.slice(0, -1));
     const shift = shifts.data?.find((s) => s.id === last.shiftId);
     if (!shift) return;
-    if (last.kind === "assigned") await unassign(shift, last.assignmentId, false);
-    else await assign(shift, last.userId, { starts_at: last.starts_at, ends_at: last.ends_at }, false);
+    if (last.kind === "assigned") {
+      if (await unassign(shift, last.assignmentId, false)) setHistory((h) => h.slice(0, -1));
+      return;
+    }
+    const id = await assign(shift, last.userId, { starts_at: last.starts_at, ends_at: last.ends_at }, false);
+    if (id === null) return;
+    setHistory((h) =>
+      h.slice(0, -1).map((step) => (step.kind === "assigned" && step.shiftId === last.shiftId && step.userId === last.userId ? { ...step, assignmentId: id } : step)),
+    );
   };
 
   if (!project) {
@@ -250,7 +267,6 @@ function Block({
   const { t } = useTranslation();
   const { colors } = useTheme();
   const { filled, required, open } = coverage(shift);
-  const overnight = isOvernight(shift);
   return (
     <Pressable
       testID="roster-block"
@@ -260,8 +276,8 @@ function Block({
     >
       <View style={styles.blockHead}>
         <Txt role="meta" numeric>
+          {/* formatTimeRange marks a later end with "+1" itself, inside the isolate. */}
           {formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}
-          {overnight ? " +1" : ""}
         </Txt>
         <Txt role="meta" numeric testID="block-coverage">
           {`${filled}/${required}`}

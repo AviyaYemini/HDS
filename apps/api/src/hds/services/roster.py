@@ -442,12 +442,40 @@ class RosterService:
         shift = await self._locked_shift(actor, id)
         await self._require_edit(actor, shift.project_id)
         _refuse_stale(shift, expected)
+        shift_start, shift_end = shift.starts_at, shift.ends_at
         starts_at = data.get("starts_at", shift.starts_at)
         ends_at = data.get("ends_at", shift.ends_at)
         if ends_at <= starts_at:
             raise _times_invalid()
         updated = await self._shifts.update(id, actor.organization_id, **data)
+        moved = starts_at - shift_start
+        if moved or ends_at != shift_end:
+            await self._follow_shift(actor, updated, moved)
         return Judged(updated, await self._judge(actor, [id]))
+
+    async def _follow_shift(self, actor: User, shift: Shift, moved: timedelta) -> None:
+        """Move each person's own times with their shift (R83).
+
+        Own times are instants, so a shift moved by ``moved`` takes them along by the same amount.
+        Where that leaves them out of the shift's reach (4 hours either side) or out of order, they
+        are cleared, and the person has the shift's own times.
+        """
+        [view] = await self._shifts.views([shift])
+        for a in view.assignments:
+            if a.starts_at is None or a.ends_at is None:
+                continue
+            starts_at, ends_at = a.starts_at + moved, a.ends_at + moved
+            within = (
+                starts_at < ends_at
+                and starts_at >= shift.starts_at - OWN_TIMES_REACH
+                and ends_at <= shift.ends_at + OWN_TIMES_REACH
+            )
+            await self._assignments.update(
+                a.id,
+                actor.organization_id,
+                starts_at=starts_at if within else None,
+                ends_at=ends_at if within else None,
+            )
 
     async def delete_shift(self, actor: User, id: uuid.UUID, expected: str | None = None) -> None:
         """Delete a shift and its assignments (its Managers, or an Admin).

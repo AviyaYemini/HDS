@@ -79,11 +79,9 @@ def availability_submissions(
     return submission_service(db)
 
 
-def roster_tools_service(
-    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
-) -> RosterToolsService:
-    """FastAPI dependency: the roster tools (007 FR-034 to FR-040), in the unit of work."""
-    roster = RosterService(
+def roster_service_for(db: AsyncSession) -> RosterService:
+    """The roster service on ``db``: the one place it is wired."""
+    return RosterService(
         shift_repo=ShiftRepository(db),
         assignment_repo=AssignmentRepository(db),
         shift_type_repo=ShiftTypeRepository(db),
@@ -94,8 +92,12 @@ def roster_tools_service(
         project_manager_repo=ProjectManagerRepository(db),
         availability=submission_service(db),
     )
+
+
+def roster_tools_for(db: AsyncSession) -> RosterToolsService:
+    """The roster tools on ``db``: the one place they are wired."""
     return RosterToolsService(
-        roster=roster,
+        roster=roster_service_for(db),
         shift_repo=ShiftRepository(db),
         assignment_repo=AssignmentRepository(db),
         override_repo=RuleOverrideRepository(db),
@@ -104,6 +106,13 @@ def roster_tools_service(
         user_repo=UserRepository(db),
         submissions=submission_service(db),
     )
+
+
+def roster_tools_service(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> RosterToolsService:
+    """FastAPI dependency: the roster tools (007 FR-034 to FR-040), in the unit of work."""
+    return roster_tools_for(db)
 
 
 def input_service(db: AsyncSession) -> ScheduleInputService:

@@ -19,7 +19,7 @@ Rules (research R6, clarification Q4):
 """
 
 import uuid
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Literal
@@ -27,6 +27,7 @@ from typing import Any, Literal
 from hds.core.authz import MANAGER_ROLES, STAFF_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
 from hds.models.availability import AvailabilityEntry
+from hds.models.availability_submission import AvailabilitySubmission
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 from hds.repositories.availability import AvailabilityRepository
@@ -57,6 +58,30 @@ class SubmissionStatus:
     # An Admin's hand change to the submitted snapshot, beside the submission (migration 030).
     changed_by: uuid.UUID | None = None
     changed_at: datetime | None = None
+
+
+def _derive(
+    window: SubmissionWindow,
+    stored: AvailabilitySubmission | None,
+    live: Sequence[Mapping[str, Any]],
+    now: datetime,
+) -> SubmissionStatus:
+    """One employee's status from what they submitted and their live entries (research R6).
+
+    Locked from the deadline; before it Submitted when the live entries hash as submitted, Draft
+    when anything was submitted or entered, otherwise Not submitted.
+    """
+    submitted_at = stored.submitted_at if stored else None
+    by = stored.submitted_by if stored else None
+    changed = (stored.changed_by, stored.changed_at) if stored else (None, None)
+    if now >= window.deadline:
+        unavailable = window.requires_submission and stored is None
+        return SubmissionStatus(window, "locked", submitted_at, unavailable, by, *changed)
+    if stored is not None and stored.snapshot_hash == snapshot_hash(live):
+        return SubmissionStatus(window, "submitted", submitted_at, False, by, *changed)
+    if stored is not None or live:
+        return SubmissionStatus(window, "draft", submitted_at, False, by, *changed)
+    return SubmissionStatus(window, "not_submitted", None, False)
 
 
 def as_entry(stored: AvailabilityEntry) -> Entry:
@@ -141,18 +166,49 @@ class AvailabilitySubmissionService:
         self, org_id: uuid.UUID, user_id: uuid.UUID, window: SubmissionWindow
     ) -> SubmissionStatus:
         stored = await self._submissions.get(org_id, window.id, user_id)
-        submitted_at = stored.submitted_at if stored else None
-        by = stored.submitted_by if stored else None
-        changed = (stored.changed_by, stored.changed_at) if stored else (None, None)
         if self._now() >= window.deadline:
-            unavailable = window.requires_submission and stored is None
-            return SubmissionStatus(window, "locked", submitted_at, unavailable, by, *changed)
+            return _derive(window, stored, [], self._now())
         live = await self._live_snapshot(org_id, user_id, window)
-        if stored is not None and stored.snapshot_hash == snapshot_hash(live):
-            return SubmissionStatus(window, "submitted", submitted_at, False, by, *changed)
-        if stored is not None or live:
-            return SubmissionStatus(window, "draft", submitted_at, False, by, *changed)
-        return SubmissionStatus(window, "not_submitted", None, False)
+        return _derive(window, stored, live, self._now())
+
+    async def statuses_for(
+        self, actor: User, window_id: uuid.UUID, user_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, SubmissionStatus]:
+        """Every listed employee's status for one window, in three reads (the tracker, R92).
+
+        The window once, the submissions of all of them, and all their live entries, rather than
+        three reads per person.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The window is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        org = actor.organization_id
+        window = await self._window(actor, window_id)
+        rows = await self._submissions.for_windows(org, [window.id], user_ids)
+        stored = {row.user_id: row for row in rows}
+        now = self._now()
+        entries: dict[uuid.UUID, list[AvailabilityEntry]] = {u: [] for u in user_ids}
+        if now < window.deadline and user_ids:
+            live = await self._entries.for_users(
+                org, list(user_ids), window.starts_on, window.ends_on
+            )
+            for e in live:
+                entries.setdefault(e.user_id, []).append(e)
+        return {
+            u: _derive(
+                window,
+                stored.get(u),
+                snapshot(
+                    (as_entry(e) for e in sorted(entries.get(u, []), key=lambda e: str(e.id))),
+                    window.starts_on,
+                    window.ends_on,
+                ),
+                now,
+            )
+            for u in user_ids
+        }
 
     async def submit(self, actor: User, window_id: uuid.UUID) -> SubmissionStatus:
         """Submit the caller's availability for an open window; submitting again replaces it.

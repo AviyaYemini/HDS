@@ -38,7 +38,11 @@ def test_a_planned_shift_keeps_its_local_time_across_the_october_clock_change() 
 def test_a_stored_shift_becomes_a_plan_with_peoples_own_times_as_offsets() -> None:
     starts = datetime(2026, 11, 9, 4, tzinfo=UTC)  # Monday 06:00 local
     shift = SimpleNamespace(
-        starts_at=starts, ends_at=starts + timedelta(hours=8), shift_type_id=MORNING, headcount=2
+        pay_rate=None,
+        starts_at=starts,
+        ends_at=starts + timedelta(hours=8),
+        shift_type_id=MORNING,
+        headcount=2,
     )
     people = [
         SimpleNamespace(user_id=ANN, starts_at=starts, ends_at=starts + timedelta(hours=4)),
@@ -56,3 +60,15 @@ def test_a_template_body_round_trips() -> None:
         PlannedShift(5, time(6, 30), 360, MORNING, 2),
     ]
     assert plan_from_json(plan_to_json(plan)) == plan
+
+
+def test_a_template_keeps_a_shifts_own_pay_rate() -> None:
+    """R90: a plan carries the source shift's rate, which an Admin's apply sets again."""
+    from decimal import Decimal
+
+    from hds.services.roster_tools import PlannedShift, plan_from_json, plan_to_json
+
+    plan = [PlannedShift(1, time(7), 480, uuid.uuid4(), 2, (), Decimal("80.00"))]
+    assert plan_from_json(plan_to_json(plan))[0].pay_rate == Decimal("80.00")
+    plain = [PlannedShift(1, time(7), 480, uuid.uuid4(), 2)]
+    assert plan_from_json(plan_to_json(plain))[0].pay_rate is None

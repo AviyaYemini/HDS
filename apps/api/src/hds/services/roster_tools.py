@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -29,7 +30,7 @@ from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.exceptions import DomainValidationError, NotFoundError
 from hds.models.roster_extras import RuleOverride, WeekTemplate
 from hds.models.shift import Shift
-from hds.models.user import User
+from hds.models.user import User, UserRole
 from hds.repositories.roster_extras import (
     PublishEventRepository,
     RuleOverrideRepository,
@@ -74,6 +75,8 @@ class PlannedShift:
     shift_type_id: uuid.UUID
     headcount: int
     people: tuple[PlannedPerson, ...] = ()
+    # The source shift's own pay rate, which only an Admin's copy or apply sets again (R90).
+    pay_rate: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ def to_plan(shift: Shift, zone: str, people: Sequence[Any]) -> PlannedShift:
         shift.shift_type_id,
         shift.headcount,
         tuple(planned),
+        shift.pay_rate,
     )
 
 
@@ -162,6 +166,7 @@ def plan_to_json(plan: Sequence[PlannedShift]) -> list[dict[str, Any]]:
                 }
                 for x in p.people
             ],
+            "pay_rate": str(p.pay_rate) if p.pay_rate is not None else None,
         }
         for p in plan
     ]
@@ -180,9 +185,29 @@ def plan_from_json(body: Sequence[dict[str, Any]]) -> list[PlannedShift]:
                 PlannedPerson(uuid.UUID(x["user_id"]), x.get("start_minutes"), x.get("end_minutes"))
                 for x in item.get("people", [])
             ),
+            Decimal(item["pay_rate"]) if item.get("pay_rate") else None,
         )
         for item in body
     ]
+
+
+def utc_range(first: date, last: date, zone: str) -> tuple[datetime, datetime]:
+    """The UTC instants from ``first``'s start to the end of ``last`` at the site (``zone``).
+
+    Dates at the edge of the calendar have no such instants: they are refused as a bad range
+    (422 ``shifts.date_range_invalid``), never a 500 (R87).
+
+    Raises:
+        DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
+    """
+    try:
+        begins = datetime.combine(first, time(), ZoneInfo(zone)).astimezone(UTC)
+        ends = datetime.combine(last + timedelta(days=1), time(), ZoneInfo(zone)).astimezone(UTC)
+    except (OverflowError, ValueError) as error:
+        raise DomainValidationError(
+            code="shifts.date_range_invalid", detail="The dates are outside the calendar."
+        ) from error
+    return begins, ends
 
 
 def placed(plan: PlannedShift, week: date, zone: str) -> tuple[datetime, datetime]:
@@ -191,9 +216,14 @@ def placed(plan: PlannedShift, week: date, zone: str) -> tuple[datetime, datetim
     The start is the local wall-clock time on that day; the length stays the plan's, so a night
     across a daylight-saving change keeps its hours.
     """
-    local = datetime.combine(week + timedelta(days=plan.day), plan.start, ZoneInfo(zone))
-    starts_at = local.astimezone(UTC)
-    return starts_at, starts_at + timedelta(minutes=plan.minutes)
+    try:
+        local = datetime.combine(week + timedelta(days=plan.day), plan.start, ZoneInfo(zone))
+        starts_at = local.astimezone(UTC)
+        return starts_at, starts_at + timedelta(minutes=plan.minutes)
+    except (OverflowError, ValueError) as error:
+        raise DomainValidationError(
+            code="shifts.date_range_invalid", detail="The week is outside the calendar."
+        ) from error
 
 
 class RosterToolsService:
@@ -282,8 +312,7 @@ class RosterToolsService:
                 code="shifts.date_range_invalid", detail="The range must not end before it starts."
             )
         zone = await self._roster.site_zone(project_id)
-        begins = datetime.combine(first, time(), ZoneInfo(zone)).astimezone(UTC)
-        ends = datetime.combine(last + timedelta(days=1), time(), ZoneInfo(zone)).astimezone(UTC)
+        begins, ends = utc_range(first, last, zone)
         return zone, await self._shifts.in_project(
             actor.organization_id, project_id, begins, ends, status="draft"
         )
@@ -300,7 +329,6 @@ class RosterToolsService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
         """
-        await self._roster.require_project(actor, project_id)
         _, drafts = await self._drafts(actor, project_id, first, last)
         views = await self._roster.views(drafts)
         people = {a.user_id for v in views for a in v.assignments}
@@ -368,8 +396,7 @@ class RosterToolsService:
     async def week_plan(self, actor: User, project_id: uuid.UUID, week: date) -> list[PlannedShift]:
         """The project's shifts in the week starting on Sunday ``week``, as a plan."""
         zone = await self._roster.site_zone(project_id)
-        begins = datetime.combine(week, time(), ZoneInfo(zone)).astimezone(UTC)
-        ends = datetime.combine(week + timedelta(days=7), time(), ZoneInfo(zone)).astimezone(UTC)
+        begins, ends = utc_range(week, week + timedelta(days=6), zone)
         shifts = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)
         views = await self._roster.views(shifts)
         return [to_plan(v.shift, zone, v.assignments) for v in views]
@@ -395,9 +422,20 @@ class RosterToolsService:
         ensure_role(actor, *MANAGER_ROLES)
         await self._roster.require_edit(actor, project_id)
         zone = await self._roster.site_zone(project_id)
-        begins = datetime.combine(week, time(), ZoneInfo(zone)).astimezone(UTC)
-        ends = datetime.combine(week + timedelta(days=8), time(), ZoneInfo(zone)).astimezone(UTC)
+        begins, ends = utc_range(week, week + timedelta(days=7), zone)
         existing = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)
+        # Each shift is matched once: a second plan item at the same type and start does not
+        # replace the same draft twice (R85).
+        matched: set[uuid.UUID] = set()
+        # People no longer active cannot be staffed again; they are left off, with a warning, in a
+        # dry run exactly as in the real one (R86).
+        named = {p.user_id for item in plan for p in item.people}
+        active = {
+            u.id
+            for u in await self._users.get_many(named, actor.organization_id)
+            if u.is_active and not u.is_deleted
+        }
+        keep_rates = actor.role == UserRole.admin
         result = PlanResult(changes=[])
         for item in plan:
             starts_at, ends_at = placed(item, week, zone)
@@ -405,12 +443,25 @@ class RosterToolsService:
                 (
                     s
                     for s in existing
-                    if s.shift_type_id == item.shift_type_id and s.starts_at == starts_at
+                    if s.id not in matched
+                    and s.shift_type_id == item.shift_type_id
+                    and s.starts_at == starts_at
                 ),
                 None,
             )
+            if clash is not None:
+                matched.add(clash.id)
             action: Literal["create", "replace", "skip"] = "create"
-            people = item.people
+            people = tuple(p for p in item.people if p.user_id in active)
+            for gone in (p for p in item.people if p.user_id not in active):
+                result.warnings.append(
+                    {
+                        "code": "assignments.employee_inactive",
+                        "employee_id": gone.user_id,
+                        "shift_ids": [],
+                        "detail": "Left off: no longer an active employee.",
+                    }
+                )
             if clash is not None and on_conflict == "overwrite":
                 action = "replace" if clash.status == "draft" else "skip"
             elif clash is not None and on_conflict == "unfilled":
@@ -437,12 +488,13 @@ class RosterToolsService:
                     "shift_type_id": item.shift_type_id,
                     "date": starts_at.astimezone(ZoneInfo(zone)).date(),
                     "headcount": item.headcount,
-                    "pay_rate": None,
+                    "pay_rate": item.pay_rate if keep_rates else None,
                     "starts_at": starts_at,
                     "ends_at": ends_at,
                 },
             )
             result.warnings.extend(created.warnings)
+            existing.append(created.record)
             for person in people:
                 own_start = own_end = None
                 if person.start_minutes is not None and person.end_minutes is not None:
@@ -597,8 +649,10 @@ class RosterToolsService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         found: list[TrackedSubmission] = []
-        for person in await self._users.staff_of(actor.organization_id):
-            status = await self._submissions.status_for(actor, person.id, window_id)
+        staff = await self._users.staff_of(actor.organization_id)
+        statuses = await self._submissions.statuses_for(actor, window_id, [p.id for p in staff])
+        for person in staff:
+            status = statuses[person.id]
             found.append(
                 TrackedSubmission(
                     person.id,

@@ -136,3 +136,37 @@ async def test_pay_is_priced_on_the_persons_own_times(
     assert pay.status_code == 200, pay.text
     [line] = pay.json()["lines"]
     assert (line["hours"], line["pay"]) == ("4.00", "200.00")
+
+
+async def test_moving_a_shift_moves_its_peoples_own_times(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R83: own times are instants, so a shift moved a day takes them along."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+    shift = (await add_shift(async_client, admin, project, FIRST))["shift"]
+    start = datetime.fromisoformat(shift["starts_at"])
+    end = datetime.fromisoformat(shift["ends_at"])
+    half = await async_client.post(
+        f"{SHIFTS}/{shift['id']}/assignments",
+        json={
+            "user_id": str(seed_users["employee"].id),
+            "starts_at": _iso(start),
+            "ends_at": _iso(start + timedelta(hours=4)),
+        },
+        headers=admin,
+    )
+    assert half.status_code == 201, half.text
+    day = timedelta(days=1)
+    moved = await async_client.patch(
+        f"{SHIFTS}/{shift['id']}",
+        json={"starts_at": _iso(start + day), "ends_at": _iso(end + day)},
+        headers=admin,
+    )
+    assert moved.status_code == 200, moved.text
+    [item] = (
+        await async_client.get(SHIFTS, params={"project_id": project["id"]}, headers=admin)
+    ).json()["items"]
+    [person] = item["assignments"]
+    assert datetime.fromisoformat(person["starts_at"]) == start + day
+    assert datetime.fromisoformat(person["ends_at"]) == start + day + timedelta(hours=4)

@@ -4059,6 +4059,13 @@ export interface components {
             employee_id: string | null;
             /** Shift Ids */
             shift_ids: string[];
+            /**
+             * Values
+             * @description The rule's numbers.
+             */
+            values?: {
+                [key: string]: string;
+            };
         };
         /**
          * WarningRead
