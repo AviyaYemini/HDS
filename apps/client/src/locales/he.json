@@ -608,5 +608,13 @@
   "runs.unknown_person": "מישהו שכבר לא ברשימה",
   "runs.change.added": "נוסף בהרצה הזו",
   "runs.change.removed": "הוסר בהרצה הזו",
-  "runs.open_in_roster": "פתיחת {{project}} בסידור"
+  "runs.open_in_roster": "פתיחת {{project}} בסידור",
+  "picker.done": "סיום",
+  "runs.projects": "פרויקטים",
+  "runs.projects_all": "כל הפרויקטים שלך ({{count}})",
+  "runs.projects_all_one": "הפרויקט היחיד שלך",
+  "runs.projects_all_other": "כל הפרויקטים שלך ({{count}})",
+  "runs.projects_none": "יש לבחור לפחות פרויקט אחד",
+  "runs.every_project": "כל הפרויקטים הפעילים",
+  "runs.covers": "מכסה: {{projects}}"
 }

@@ -608,5 +608,13 @@
   "runs.unknown_person": "Someone no longer listed",
   "runs.change.added": "added by this run",
   "runs.change.removed": "taken off by this run",
-  "runs.open_in_roster": "Open {{project}} in the roster"
+  "runs.open_in_roster": "Open {{project}} in the roster",
+  "picker.done": "Done",
+  "runs.projects": "Projects",
+  "runs.projects_all": "All your projects ({{count}})",
+  "runs.projects_all_one": "Your one project",
+  "runs.projects_all_other": "All your projects ({{count}})",
+  "runs.projects_none": "Choose at least one project",
+  "runs.every_project": "Every active project",
+  "runs.covers": "Covers: {{projects}}"
 }

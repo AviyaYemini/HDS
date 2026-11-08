@@ -120,3 +120,9 @@ export function projectsOf(job: Pick<Job, "project_ids" | "proposal">): string[]
   if (job.project_ids.length > 0) return job.project_ids;
   return [...new Set((job.proposal?.slots ?? []).map((slot) => slot.project_id))];
 }
+
+/** The projects a run covers, by name; an older run without a list covered every active one. */
+export function coveredText(projectIds: readonly string[], names: Map<string, string>, everyProject: string): string {
+  if (projectIds.length === 0) return everyProject;
+  return projectIds.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
+}

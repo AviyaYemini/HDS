@@ -1,5 +1,5 @@
 /** Schedule runs' model (specs/007-ux-redesign FR-042, FR-074): the bar, the label, the count. */
-import { elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, weeksOf } from "../../../src/screens/runs/model";
+import { coveredText, elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, weeksOf } from "../../../src/screens/runs/model";
 
 const START = "2026-11-08T10:00:00Z";
 const running = { status: "running" as const, solver: "cpsat", time_limit_seconds: 20 };
@@ -63,4 +63,10 @@ test("slots sort by start within their day, and an older run's projects come fro
   expect(byDay.get("2026-11-08")!.map((s: { key: string }) => s.key)).toEqual(["a", "b"]);
   expect(projectsOf({ project_ids: [], proposal: { slots: [slot("a", "d", "t", "p1"), slot("b", "d", "t", "p1")] } as never })).toEqual(["p1"]);
   expect(projectsOf({ project_ids: ["p2"], proposal: null })).toEqual(["p2"]);
+});
+
+test("a run names the projects it covers; an older one without a list covered every active one", () => {
+  const names = new Map([["p1", "Night Watch"], ["p2", "Day Patrol"]]);
+  expect(coveredText(["p1", "p2"], names, "every")).toBe("Night Watch, Day Patrol");
+  expect(coveredText([], names, "every")).toBe("every");
 });

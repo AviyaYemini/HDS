@@ -25,7 +25,7 @@ import { useLoad } from "../useLoad";
 import { rosterHref } from "../roster/ProjectChooser";
 import { HonestyLabel } from "./HonestyLabel";
 import { ProposalWeek, type Names } from "./ProposalWeek";
-import { STATUS_TONE, elapsedNow, filled, isActive, projectsOf, runProgress, type Job } from "./model";
+import { STATUS_TONE, coveredText, elapsedNow, filled, isActive, projectsOf, runProgress, type Job } from "./model";
 
 const POLL_MS = 1000;
 const RETRY_MS = 3000;
@@ -277,6 +277,9 @@ export function RunScreen() {
         <SkeletonRows rows={4} />
       ) : (
         <View style={styles.section}>
+          <Txt role="body" testID="run-projects-covered">
+            {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
+          </Txt>
           <View style={styles.summary}>
             <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (
