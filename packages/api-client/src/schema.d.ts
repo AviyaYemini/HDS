@@ -14,9 +14,33 @@ export interface paths {
         post?: never;
         /**
          * Remove an assignment
-         * @description Admin only. Take the employee off the shift; the answer lists the warnings the shift has left, for example too few people.
+         * @description A Manager of the project, or an Admin. Take the employee off the shift; the answer lists the warnings the shift has left, for example too few people. A stale `If-Match` is refused with 412 (`roster.changed`).
          */
         delete: operations["unassign_api_v1_assignments__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a person's own times in a shift
+         * @description A Manager of the project, or an Admin. Set the person's own `starts_at` and `ends_at` in the shift, at most 4 hours before it starts and after it ends (422 `assignment.times_out_of_range`), or both null for the shift's times (007 FR-027). Pay, the rule checks and reports use the person's times. A stale `If-Match` is refused with 412 (`roster.changed`).
+         */
+        patch: operations["change_assignment_times_api_v1_assignments__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/assignments/{id}/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep an assignment despite a warning
+         * @description A Manager of the project, or an Admin. Record why the assignment stays despite one of its current warnings; the publish review then no longer counts that warning as open. A code the assignment does not have now is refused with 422 (`override.warning_not_found`), a second override of the same warning with 409 (`override.duplicate`). Hard stops have no override.
+         */
+        post: operations["override_api_v1_assignments__id__overrides_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -68,6 +92,26 @@ export interface paths {
          * @description Manager or Admin. Move the deadline of a window.
          */
         patch: operations["change_window_api_v1_availability_windows__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/availability-windows/{id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Track who has submitted availability
+         * @description Manager or Admin. Every active employee, manager and admin with their availability status for the window, and after the deadline whether they count as unavailable for not submitting.
+         */
+        get: operations["tracker_api_v1_availability_windows__id__submissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/clients": {
@@ -546,6 +590,26 @@ export interface paths {
         patch: operations["edit_project_api_v1_projects__id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{id}/copy-week": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy a week of the roster
+         * @description A Manager of the project, or an Admin. Copy the week starting on Sunday `from_week` to the one starting on `to_week`, at the same local times, with the same people and their own times. Where a shift of the same type already starts at that time, `on_conflict` decides: `allow` adds it anyway, `overwrite` replaces a draft (never a published shift), `unfilled` adds it without people. `dry_run` answers the plan and changes nothing. A week that does not start on a Sunday is refused with 422 (`roster.week_not_sunday`).
+         */
+        post: operations["copy_week_api_v1_projects__id__copy_week_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/managers": {
         parameters: {
             query?: never;
@@ -605,9 +669,29 @@ export interface paths {
         put?: never;
         /**
          * Publish drafts
-         * @description Manager or Admin. Publish the project's draft shifts that start on `from` to `to` (dates at the project's site); published ones are left as they are. A range that ends before it starts is refused with 422 (`shifts.date_range_invalid`).
+         * @description Manager or Admin. Publish the project's draft shifts that start on `from` to `to` (dates at the project's site); published ones are left as they are. A range that ends before it starts is refused with 422 (`shifts.date_range_invalid`). One event per person on the published shifts is recorded for delivery, with `notify` (default true) as the publisher's choice.
          */
         post: operations["publish_api_v1_projects__id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/publish-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review a publish before making it
+         * @description Manager or Admin. What publishing the project's drafts that start on `from` to `to` (dates at the site) would make live: the shifts, the people on them, filled against required, unfilled seats, and warnings without an override.
+         */
+        get: operations["publish_preview_api_v1_projects__id__publish_preview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -632,6 +716,26 @@ export interface paths {
          */
         put: operations["replace_needs_api_v1_projects__id__requirements_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/roster/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change many drafts at once
+         * @description A Manager of the project, or an Admin. Give every draft of the project that starts on `from` to `to` a new `headcount`, or `remove` them; published shifts are never touched. Exactly one of the two (422 `roster.bulk_change_invalid`). `dry_run` lists exactly the drafts it would hit and changes nothing.
+         */
+        post: operations["bulk_api_v1_projects__id__roster_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -680,6 +784,70 @@ export interface paths {
          * @description Admin. A day for this project only, or this project's rate for an organisation day. One per project and date (409 `special_days.duplicate`); an ended project is fixed (409 `pay.project_ended`).
          */
         post: operations["add_project_day_api_v1_projects__id__special_days_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/week-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the project's saved weeks
+         * @description Manager or Admin. The project's week templates, by name.
+         */
+        get: operations["list_templates_api_v1_projects__id__week_templates_get"];
+        put?: never;
+        /**
+         * Save a week as a template
+         * @description A Manager of the project, or an Admin. Save the project's week starting on Sunday `week` under `name`, unique per project (409 `templates.duplicate_name`).
+         */
+        post: operations["save_template_api_v1_projects__id__week_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/week-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a saved week
+         * @description A Manager of the project, or an Admin. Remove one of the project's templates.
+         */
+        delete: operations["delete_template_api_v1_projects__id__week_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/week-templates/{template_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a saved week
+         * @description A Manager of the project, or an Admin. Create the template's shifts in the week starting on Sunday `week`; `on_conflict` and `dry_run` work as for copy week.
+         */
+        post: operations["apply_template_api_v1_projects__id__week_templates__template_id__apply_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -917,7 +1085,7 @@ export interface paths {
         put?: never;
         /**
          * Create a shift
-         * @description Admin only. A draft shift of one of the project's shift types on `date`, at the type's local times at the project's site unless `starts_at` and `ends_at` are both given. A type the project does not use is refused with 422 (`shifts.type_not_in_project`), times that do not end after they start with 422 (`shifts.times_invalid`). The answer lists the warnings the shift causes.
+         * @description A Manager of the project, or an Admin; only an Admin sets `pay_rate` (403 `shift.pay_rate_admin_only`), and a Manager of other projects is refused with 403 (`roster.project_not_managed`). A draft shift of one of the project's shift types on `date`, at the type's local times at the project's site unless `starts_at` and `ends_at` are both given. A type the project does not use is refused with 422 (`shifts.type_not_in_project`), times that do not end after they start with 422 (`shifts.times_invalid`). The answer lists the warnings the shift causes.
          */
         post: operations["create_shift_api_v1_shifts_post"];
         delete?: never;
@@ -938,14 +1106,14 @@ export interface paths {
         post?: never;
         /**
          * Delete a shift
-         * @description Admin only. Delete the shift and its assignments.
+         * @description A Manager of the project, or an Admin. Delete the shift and its assignments; a stale `If-Match` is refused with 412 (`roster.changed`).
          */
         delete: operations["delete_shift_api_v1_shifts__id__delete"];
         options?: never;
         head?: never;
         /**
          * Change a shift
-         * @description Admin only. Change the times, headcount or pay rate; a published shift stays published. Times that do not end after they start are refused with 422 (`shifts.times_invalid`). The answer lists the warnings the change causes.
+         * @description A Manager of the project, or an Admin; only an Admin changes `pay_rate`. Send the shift's `etag` as `If-Match` to be refused with 412 (`roster.changed`) if it changed since. Change the times, headcount or pay rate; a published shift stays published. Times that do not end after they start are refused with 422 (`shifts.times_invalid`). The answer lists the warnings the change causes.
          */
         patch: operations["change_shift_api_v1_shifts__id__patch"];
         trace?: never;
@@ -961,7 +1129,7 @@ export interface paths {
         put?: never;
         /**
          * Assign an employee
-         * @description Admin only. Put an active employee on the shift; the answer lists the warnings it causes, and none refuses it. An inactive employee is refused with 409 (`assignments.employee_inactive`), the same employee twice with 409 (`assignments.duplicate`). With an `Idempotency-Key`, a repeat of the same request in the next 24 hours gets the first answer and changes nothing; the same key with another request is refused with 422 (`idempotency.key_reused`).
+         * @description A Manager of the project, or an Admin. `starts_at` and `ends_at`, both or neither, are the person's own times, at most 4 hours before the shift starts and after it ends (422 `assignment.times_out_of_range`). A stale `If-Match` is refused with 412. Put an active employee on the shift; the answer lists the warnings it causes, and none refuses it. An inactive employee is refused with 409 (`assignments.employee_inactive`), the same employee twice with 409 (`assignments.duplicate`). With an `Idempotency-Key`, a repeat of the same request in the next 24 hours gets the first answer and changes nothing; the same key with another request is refused with 422 (`idempotency.key_reused`).
          */
         post: operations["assign_api_v1_shifts__id__assignments_post"];
         delete?: never;
@@ -1424,9 +1592,13 @@ export interface components {
         };
         /**
          * AssignRequest
-         * @description The employee to put on the shift.
+         * @description The employee to put on the shift, and optionally their own times in it (007 FR-027).
          */
         AssignRequest: {
+            /** Ends At */
+            ends_at?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
             /**
              * User Id
              * Format: uuid
@@ -1435,28 +1607,60 @@ export interface components {
         };
         /**
          * AssignmentAnswer
-         * @description A stored assignment and the warnings it caused.
+         * @description A stored assignment, the warnings it caused, and its shift's new ``etag``.
          */
         AssignmentAnswer: {
             assignment: components["schemas"]["AssignmentRead"];
+            /** Shift Etag */
+            shift_etag: string;
             /** Warnings */
             warnings: components["schemas"]["WarningRead"][];
         };
         /**
          * AssignmentRead
-         * @description An employee on a shift.
+         * @description An employee on a shift, and when they work it.
+         *
+         *     ``starts_at`` and ``ends_at`` are when this person works the shift: their own times when set,
+         *     otherwise the shift's; ``own_times`` says which (007 FR-026, FR-027).
          */
         AssignmentRead: {
+            /**
+             * Active
+             * @description Whether the person is still active; false for a deactivated one.
+             */
+            active?: boolean | null;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Full Name
+             * @description The person's name, deactivated people included, so an existing assignment always names who it is (CodeRabbit, PR 18).
+             */
+            full_name?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             /**
+             * Overrides
+             * @default []
+             */
+            overrides: components["schemas"]["OverrideRead"][];
+            /** Own Times */
+            own_times: boolean;
+            /**
              * Shift Id
              * Format: uuid
              */
             shift_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
             /**
              * User Id
              * Format: uuid
@@ -1464,11 +1668,49 @@ export interface components {
             user_id: string;
         };
         /**
+         * AssignmentTimesRequest
+         * @description A person's own times in a shift; both null gives them the shift's times again.
+         */
+        AssignmentTimesRequest: {
+            /** Ends At */
+            ends_at: string | null;
+            /** Starts At */
+            starts_at: string | null;
+        };
+        /**
+         * BulkRequest
+         * @description Change every draft of the project on ``from`` to ``to``: a new headcount, or remove.
+         */
+        BulkRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /** Headcount */
+            headcount?: number | null;
+            /**
+             * Remove
+             * @default false
+             */
+            remove: boolean;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
          * Capability
          * @description One thing a signed-in person may do.
          * @enum {string}
          */
-        Capability: "my_work.read" | "my_work.availability" | "roster.read" | "roster.edit:project" | "roster.publish" | "roster.override:project" | "schedule.generate" | "availability.read_others" | "availability.edit_others" | "reports.read" | "pay.read_others" | "pay.edit_shift" | "pay_settings.edit" | "staff.manage" | "clients.manage" | "sites.manage" | "projects.manage" | "projects.read" | "staff.delete" | "clients.delete" | "projects.delete" | "special_days.edit" | "organisation.contact.edit" | "client_portal.read" | "client_portal.requests" | "client_requests.answer" | "account.self";
+        Capability: "my_work.read" | "my_work.availability" | "roster.read" | "roster.edit:project" | "roster.publish:project" | "roster.override:project" | "schedule.generate" | "availability.read_others" | "availability.edit_others" | "reports.read" | "pay.read_others" | "pay.edit_shift" | "pay_settings.edit" | "staff.manage" | "clients.manage" | "sites.manage" | "projects.manage" | "projects.read" | "staff.delete" | "clients.delete" | "projects.delete" | "special_days.edit" | "organisation.contact.edit" | "client_portal.read" | "client_portal.requests" | "client_requests.answer" | "account.self";
         /**
          * Change
          * @description A person on a slot, added or removed against the current drafts.
@@ -1639,6 +1881,33 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * CopyWeekRequest
+         * @description Copy one week of the project's roster to another; both weeks start on a Sunday.
+         */
+        CopyWeekRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * From Week
+             * Format: date
+             */
+            from_week: string;
+            /**
+             * On Conflict
+             * @default allow
+             * @enum {string}
+             */
+            on_conflict: "allow" | "overwrite" | "unfilled";
+            /**
+             * To Week
+             * Format: date
+             */
+            to_week: string;
         };
         /**
          * DayInEffectRead
@@ -2003,6 +2272,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Elapsed Seconds
+             * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
+             */
+            elapsed_seconds: number | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2040,6 +2314,11 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed";
             /**
+             * Time Limit Seconds
+             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
+             */
+            time_limit_seconds: number;
+            /**
              * To
              * Format: date
              */
@@ -2055,6 +2334,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Elapsed Seconds
+             * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
+             */
+            elapsed_seconds: number | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2090,6 +2374,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed";
+            /**
+             * Time Limit Seconds
+             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
+             */
+            time_limit_seconds: number;
             /**
              * To
              * Format: date
@@ -2358,6 +2647,66 @@ export interface components {
             phone?: string | null;
         };
         /**
+         * OverrideCreated
+         * @description A recorded override.
+         */
+        OverrideCreated: {
+            /**
+             * Assignment Id
+             * Format: uuid
+             */
+            assignment_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string;
+            /** Warning Code */
+            warning_code: string;
+        };
+        /**
+         * OverrideRead
+         * @description A recorded reason for keeping an assignment despite a warning (007 FR-034).
+         */
+        OverrideRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Reason */
+            reason: string;
+            /** Warning Code */
+            warning_code: string;
+        };
+        /**
+         * OverrideRequest
+         * @description The warning to keep the assignment despite, and why.
+         */
+        OverrideRequest: {
+            /** Reason */
+            reason: string;
+            /** Warning Code */
+            warning_code: string;
+        };
+        /**
          * PartRead
          * @description Hours paid at one rate, in percent of the base rate.
          */
@@ -2485,6 +2834,50 @@ export interface components {
             pay?: string | null;
             /** Shifts Missing Rate */
             shifts_missing_rate: number;
+        };
+        /**
+         * PlanAnswer
+         * @description A plan's changes; on a dry run nothing was changed and there are no warnings.
+         */
+        PlanAnswer: {
+            /** Changes */
+            changes: components["schemas"]["PlannedChangeRead"][];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Warnings */
+            warnings: components["schemas"]["WarningLine"][];
+        };
+        /**
+         * PlannedChangeRead
+         * @description One line of a plan: what happens to one shift.
+         */
+        PlannedChangeRead: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create" | "replace" | "skip" | "change" | "remove";
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Headcount */
+            headcount: number;
+            /** People */
+            people: number;
+            /** Shift Id */
+            shift_id: string | null;
+            /**
+             * Shift Type Id
+             * Format: uuid
+             */
+            shift_type_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
         };
         /**
          * PremiumChanges
@@ -2833,8 +3226,30 @@ export interface components {
             published: number;
         };
         /**
+         * PublishPreviewRead
+         * @description What publishing the project's drafts on those dates would make live (FR-036).
+         */
+        PublishPreviewRead: {
+            /** Filled */
+            filled: number;
+            /** Open Warnings */
+            open_warnings: number;
+            /** People */
+            people: number;
+            /** Required */
+            required: number;
+            /** Shifts */
+            shifts: number;
+            /** Unfilled */
+            unfilled: number;
+        };
+        /**
          * PublishRequest
          * @description The dates, at the project's site, whose drafts to publish.
+         *
+         *     ``notify`` is the publish review's choice between Notify everyone (the default) and Publish
+         *     silently; one event per affected person is recorded either way, for feature 010 to deliver
+         *     (007 FR-036, research R12).
          */
         PublishRequest: {
             /**
@@ -2842,6 +3257,11 @@ export interface components {
              * Format: date
              */
             from: string;
+            /**
+             * Notify
+             * @default true
+             */
+            notify: boolean;
             /**
              * To
              * Format: date
@@ -3070,6 +3490,8 @@ export interface components {
              * Format: date-time
              */
             ends_at: string;
+            /** Etag */
+            etag: string;
             /** Headcount */
             headcount: number;
             /**
@@ -3405,6 +3827,69 @@ export interface components {
             window_id: string;
         };
         /**
+         * TemplateApply
+         * @description Apply a saved week to the week starting on Sunday ``week``.
+         */
+        TemplateApply: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * On Conflict
+             * @default allow
+             * @enum {string}
+             */
+            on_conflict: "allow" | "overwrite" | "unfilled";
+            /**
+             * Week
+             * Format: date
+             */
+            week: string;
+        };
+        /**
+         * TemplateCreate
+         * @description Save the project's week starting on Sunday ``week`` under ``name``.
+         */
+        TemplateCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Week
+             * Format: date
+             */
+            week: string;
+        };
+        /**
+         * TemplateList
+         * @description The project's saved weeks, by name.
+         */
+        TemplateList: {
+            /** Items */
+            items: components["schemas"]["TemplateRead"][];
+        };
+        /**
+         * TemplateRead
+         * @description A saved week: its name and how many shifts it holds.
+         */
+        TemplateRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Shifts */
+            shifts: number;
+        };
+        /**
          * TokenResponse
          * @description Token pair returned by sign-in and refresh.
          *
@@ -3422,6 +3907,46 @@ export interface components {
              * @default bearer
              */
             token_type: string;
+        };
+        /**
+         * TrackedRead
+         * @description One employee's availability for the window.
+         */
+        TrackedRead: {
+            /**
+             * Changed At
+             * @description When that change was made.
+             */
+            changed_at?: string | null;
+            /**
+             * Changed By
+             * @description The Admin who last changed the submitted availability by hand, if any.
+             */
+            changed_by?: string | null;
+            /** Counted Unavailable */
+            counted_unavailable: boolean;
+            /** Full Name */
+            full_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_submitted" | "draft" | "submitted" | "locked";
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * TrackerRead
+         * @description Every active staff member's availability for the window, by name (FR-040).
+         */
+        TrackerRead: {
+            /** Items */
+            items: components["schemas"]["TrackedRead"][];
         };
         /**
          * UnfilledSlot
@@ -3542,6 +4067,27 @@ export interface components {
             role?: "employee" | "manager" | "admin";
         };
         /**
+         * WarningLine
+         * @description A warning applying a plan caused; nothing was refused.
+         */
+        WarningLine: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /** Employee Id */
+            employee_id: string | null;
+            /** Shift Ids */
+            shift_ids: string[];
+            /**
+             * Values
+             * @description The rule's numbers.
+             */
+            values?: {
+                [key: string]: string;
+            };
+        };
+        /**
          * WarningRead
          * @description A rule a change breaks; the change was stored anyway.
          */
@@ -3554,12 +4100,21 @@ export interface components {
             employee_id: string | null;
             /** Shift Ids */
             shift_ids: string[];
+            /**
+             * Values
+             * @description The rule's numbers, so a screen can say them in its own language: `rest_hours` and `minimum_hours` for a short rest, `hours` and `maximum_hours` for the weekly maximum.
+             */
+            values?: {
+                [key: string]: string;
+            };
         };
         /**
          * WarningsAnswer
-         * @description The warnings a change leaves.
+         * @description The warnings a change leaves, and the shift's new ``etag``.
          */
         WarningsAnswer: {
+            /** Shift Etag */
+            shift_etag: string;
             /** Warnings */
             warnings: components["schemas"]["WarningRead"][];
         };
@@ -3780,7 +4335,10 @@ export interface operations {
     unassign_api_v1_assignments__id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
+                "If-Match"?: string | null;
+            };
             path: {
                 id: string;
             };
@@ -3817,6 +4375,178 @@ export interface operations {
             };
             /** @description The referenced resource does not exist in the caller's organisation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_assignment_times_api_v1_assignments__id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentTimesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    override_api_v1_assignments__id__overrides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverrideCreated"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4041,6 +4771,64 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    tracker_api_v1_availability_windows__id__submissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackerRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
@@ -6521,6 +7309,77 @@ export interface operations {
             };
         };
     };
+    copy_week_api_v1_projects__id__copy_week_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyWeekRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_managers_api_v1_projects__id__managers_get: {
         parameters: {
             query?: never;
@@ -6859,6 +7718,67 @@ export interface operations {
             };
         };
     };
+    publish_preview_api_v1_projects__id__publish_preview_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishPreviewRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     list_needs_api_v1_projects__id__requirements_get: {
         parameters: {
             query?: never;
@@ -6939,6 +7859,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NeedsResponse"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bulk_api_v1_projects__id__roster_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAnswer"];
                 };
             };
             /** @description The request body could not be parsed. */
@@ -7240,6 +8231,273 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_projects__id__week_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateList"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    save_template_api_v1_projects__id__week_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_projects__id__week_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    apply_template_api_v1_projects__id__week_templates__template_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8241,7 +9499,10 @@ export interface operations {
     delete_shift_api_v1_shifts__id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
+                "If-Match"?: string | null;
+            };
             path: {
                 id: string;
             };
@@ -8283,6 +9544,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
             /** @description The request is invalid. */
             422: {
                 headers: {
@@ -8297,7 +9567,10 @@ export interface operations {
     change_shift_api_v1_shifts__id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
+                "If-Match"?: string | null;
+            };
             path: {
                 id: string;
             };
@@ -8354,6 +9627,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
             /** @description The request is invalid. */
             422: {
                 headers: {
@@ -8370,6 +9652,8 @@ export interface operations {
             query?: never;
             header?: {
                 "idempotency-key"?: string | null;
+                /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
+                "If-Match"?: string | null;
             };
             path: {
                 id: string;
@@ -8429,6 +9713,15 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

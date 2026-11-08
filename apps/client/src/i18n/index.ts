@@ -75,13 +75,13 @@ export async function rememberLanguage(language: string): Promise<void> {
 }
 
 /** Lay the app out right to left (`true`) or left to right. */
-export function applyDirection(rightToLeft: boolean): void {
+export function applyDirection(rightToLeft: boolean, language: string = i18n.language ?? "en"): void {
   rtl = rightToLeft;
   I18nManager.allowRTL(rightToLeft);
   I18nManager.forceRTL(rightToLeft);
   if (Platform.OS === "web" && typeof document !== "undefined") {
     document.documentElement.dir = rightToLeft ? "rtl" : "ltr";
-    document.documentElement.lang = i18n.language ?? "en";
+    document.documentElement.lang = language;
   }
 }
 
@@ -104,9 +104,23 @@ export async function setupI18n(language: string = pickLanguage()): Promise<type
       nsSeparator: false,
       interpolation: { escapeValue: false },
     });
+    applyDirection(isRtlLanguage(language), language);
   } else {
+    // The direction first, so the screens that re-render for the new language read it (R122).
+    applyDirection(isRtlLanguage(language), language);
     await i18n.changeLanguage(language);
   }
-  applyDirection(isRtlLanguage(language));
   return i18n;
+}
+
+/**
+ * Switch the UI language and remember it: the one path for Account's switch and the header's
+ * (FR-059). The web turns at once; a phone keeps its layout direction until the app restarts, so
+ * `onRestartNeeded` is told then.
+ */
+export async function switchLanguage(code: string, onRestartNeeded?: () => void): Promise<void> {
+  if (i18n.language.startsWith(code)) return;
+  await setupI18n(code);
+  await rememberLanguage(code);
+  if (Platform.OS !== "web") onRestartNeeded?.();
 }

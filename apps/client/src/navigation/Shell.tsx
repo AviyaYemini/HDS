@@ -36,6 +36,7 @@ import {
   type NavGroup,
   type Tab,
 } from "./destinations";
+import { LanguageToggle, ThemeToggle } from "./DisplayControls";
 
 /** Whether the tree is inside a shell, so pages render flat. */
 export const ShellContext = createContext(false);
@@ -236,6 +237,8 @@ function Header() {
       </Link>
       <View style={styles.headerActions}>
         {previewsEnabled ? <HeaderButton icon="inbox" label={t("nav.inbox")} href="/inbox" testID="link-inbox" preview /> : null}
+        <LanguageToggle />
+        <ThemeToggle />
         <HeaderButton icon="user" label={t("nav.account")} href="/account" testID="link-account" />
         <HeaderButton icon="sign-out" label={t("auth.sign_out")} testID="action-sign-out" onPress={() => void signOut()} />
       </View>
@@ -303,7 +306,8 @@ const styles = StyleSheet.create({
   group: { gap: 2 },
   groupTitle: { paddingHorizontal: 14, paddingBottom: 6 },
   previewMark: { marginStart: "auto" },
-  tabLabel: { maxWidth: "100%", textAlign: "center", letterSpacing: 0 },
+  // A fifth of a phone (FR-005): a size smaller than the eyebrow, so "AVAILABILITY" fits whole.
+  tabLabel: { maxWidth: "100%", textAlign: "center", letterSpacing: -0.2, fontSize: 10 },
   navLabel: { flexShrink: 1 },
   main: { flex: 1 },
   mainContent: { flexGrow: 1 },

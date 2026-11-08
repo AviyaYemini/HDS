@@ -17,6 +17,7 @@ _DESCRIPTIONS = {
     "404": "The referenced resource does not exist in the caller's organisation.",
     "405": "Method not allowed for this resource.",
     "409": "The request conflicts with the current state (duplicate, last admin, in use).",
+    "412": "The record changed since it was read: the If-Match header is stale (roster.changed).",
     "422": "The request is invalid.",
     "423": "The account is temporarily locked after repeated failed sign-ins.",
     "429": "Too many failed sign-ins from this network; retry after the Retry-After interval.",
@@ -86,11 +87,21 @@ _CONFLICTS = {
     ("/api/v1/schedule-jobs/{id}/accept", "post"),
     ("/api/v1/schedule-jobs/{id}/discard", "post"),
     ("/me/availability-submissions", "post"),
+    ("/api/v1/assignments/{id}/overrides", "post"),
+    ("/api/v1/projects/{id}/week-templates", "post"),
     ("/api/v1/projects/{id}/pay-settings", "patch"),
     ("/api/v1/special-days", "post"),
     ("/api/v1/special-days/{id}", "patch"),
     ("/api/v1/special-days/{id}", "delete"),
     ("/api/v1/projects/{id}/special-days", "post"),
+}
+# Roster writes that take an optional If-Match and answer 412 when it is stale (007 FR-041).
+_PRECONDITIONS = {
+    ("/api/v1/shifts/{id}", "patch"),
+    ("/api/v1/shifts/{id}", "delete"),
+    ("/api/v1/shifts/{id}/assignments", "post"),
+    ("/api/v1/assignments/{id}", "patch"),
+    ("/api/v1/assignments/{id}", "delete"),
 }
 # Signed-in operations open to every role, with no other refusal, so they never answer 403.
 _NEVER_FORBIDDEN = {
@@ -156,6 +167,8 @@ def _statuses(
         found.add("409")
     if (path, method) in _HASHING:
         found.add("503")
+    if (path, method) in _PRECONDITIONS:
+        found.add("412")
     return found
 
 

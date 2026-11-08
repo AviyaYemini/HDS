@@ -22,7 +22,7 @@ import { THEME_NAMES, type ThemePreference } from "../../design/theme/themeStore
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { component } from "../../design/theme/theme.generated";
 import { webProps } from "../../design/web";
-import { rememberLanguage, setupI18n } from "../../i18n";
+import { switchLanguage } from "../../i18n";
 import { DEFAULT_TIME_ZONE, formatHeaderDate, dateOf, formatTime, isolateLtr, weekdayNames } from "../../locale";
 import { useLoad } from "../useLoad";
 import { DestinationRow } from "../misc/HubScreen";
@@ -58,12 +58,8 @@ export function LanguageSwitch() {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const keyboard = useKeyboardMode();
-  const choose = async (code: string): Promise<void> => {
-    if (code === i18n.language) return;
-    await setupI18n(code);
-    await rememberLanguage(code);
-    if (Platform.OS !== "web") showToast(t("language.restart_notice"), { tone: "info", duration: 6000 });
-  };
+  const choose = (code: string): Promise<void> =>
+    switchLanguage(code, () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }));
   return (
     <View role="radiogroup" accessibilityLabel={t("language.label")} style={[styles.radios, { borderColor: colors.border.strong }]}>
       {LANGUAGES.map((language) => {

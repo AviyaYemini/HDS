@@ -46,10 +46,10 @@ export async function signIn(page: Page, role: Role, language: Language): Promis
 }
 
 /**
- * Open `path` as `role`. The web app keeps no session across a page load (ADR 010: tokens in
- * memory only), so an address opened in a fresh page shows sign-in first and, once signed in,
- * returns to that address (contracts/ui-routes.md, "Deep links"). This is how a bookmark or a
- * shared link behaves for a real person, so the specs test it rather than work around it.
+ * Open `path` as `role`, as a bookmark or a shared link would. A tab that is not signed in yet shows
+ * sign-in first and, once signed in, returns to that address (contracts/ui-routes.md, "Deep
+ * links"); a tab already signed in opens it straight away, since the web keeps the session
+ * per tab (ADR 019), so a test that changes role in one tab signs out first.
  */
 export async function openAs(
   page: Page,
@@ -59,11 +59,19 @@ export async function openAs(
   query: Record<string, string> = {},
 ): Promise<void> {
   await page.goto(at(path, language, query));
-  await expect(page.getByTestId("sign-in-btn"), `${path} asks for sign-in first`).toBeVisible();
-  await page.getByTestId("email").fill(USERS[role]);
-  await page.getByTestId("password").fill(PASSWORD);
-  await page.getByTestId("sign-in-btn").click();
-  await expect(page, `${path} after sign-in`).toHaveURL((url) => url.pathname === path);
+  const signInButton = page.getByTestId("sign-in-btn");
+  const landed = page.locator('[data-testid^="screen-"], [data-testid^="preview-"]').first();
+  // The sign-in page is a screen too, so take whichever shows first.
+  await expect(signInButton.or(landed).first(), `${path} shows sign-in or its screen`).toBeVisible();
+  if (await signInButton.isVisible()) {
+    await page.getByTestId("email").fill(USERS[role]);
+    await page.getByTestId("password").fill(PASSWORD);
+    await signInButton.click();
+  }
+  // The guard may answer a forbidden address with the no-access page (FR-007).
+  await expect(page, `${path} after sign-in`).toHaveURL(
+    (url) => url.pathname === path || url.pathname === "/no-access",
+  );
 }
 
 /** Run axe-core on the page (WCAG 2.2 A and AA rules) and fail on serious or critical issues. */

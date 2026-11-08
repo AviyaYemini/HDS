@@ -20,6 +20,7 @@ from hds.core.exceptions import (
     DomainValidationError,
     ForbiddenError,
     NotFoundError,
+    PreconditionFailedError,
     RateLimitedError,
     ServiceBusyError,
 )
@@ -58,7 +59,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     """Attach the problem-details handlers to ``app``.
 
     Status mapping: ``AuthError`` 401 (423 for ``auth.account_locked``), ``ForbiddenError``
-    403, ``NotFoundError`` 404, ``ConflictError`` 409, ``DomainValidationError``,
+    403, ``NotFoundError`` 404, ``ConflictError`` 409, ``PreconditionFailedError`` 412,
+    ``DomainValidationError``,
     request-validation errors and database ``IntegrityError``/``DataError`` 422, malformed
     body 400, wrong method 405 with an accurate ``Allow`` header. Other database errors are
     deliberately left unmapped so outages surface as 5xx.
@@ -119,6 +121,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         """Answer 409, naming the offending request field when the service knows it."""
         extra = {"field": exc.field} if exc.field else None
         return _problem(409, "Conflict", exc.detail, exc.code, request, extra)
+
+    @app.exception_handler(PreconditionFailedError)
+    async def handle_precondition(request: Request, exc: PreconditionFailedError) -> JSONResponse:
+        """Answer 412: the record changed since the caller read it (007 FR-041)."""
+        return _problem(412, "Precondition Failed", exc.detail, exc.code, request)
 
     @app.exception_handler(DataError)
     @app.exception_handler(IntegrityError)

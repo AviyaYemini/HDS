@@ -371,7 +371,8 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 1. **Given** a route or data load longer than about 300 ms, **When** it is pending, **Then** a thin bar
    under the header shows indeterminate progress; **given** a load under that, **then** no bar flashes.
 2. **Given** a schedule run, **When** it is running, **Then** the bar is determinate, showing elapsed
-   time against the time limit and the best result so far, and its value is announced.
+   time against the time limit ("up to N s"), completing at once if the run ends early, and its
+   value is announced; a greedy run or one without a limit shows the indeterminate bar.
 3. **Given** the device's reduce-motion setting is on, or switched on while the app is open, **When**
    any screen changes, **Then** nothing animates and the bar shows a still state.
 4. **Given** a sheet or side panel, **When** it opens, **Then** it slides from the leading edge
@@ -526,7 +527,10 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-036**: Publishing MUST go through a review stating the exact scope, the number of shifts and
   people affected, coverage, unfilled slots and open warnings; one notification for each affected person
   MUST be recorded for delivery per publish, however many shifts it covers, with the publisher's
-  choice to notify or publish silently; feature 010 delivers them. [S12]
+  choice to notify or publish silently; feature 010 delivers them. [S12] A Manager publishes only the
+  projects they manage; an Admin publishes any. A publish names one project, so a Manager's publish
+  of a project they do not manage is refused whole (403 `roster.project_not_managed`). This changes
+  the original, where every Manager published every project: the owner's decision of 2026-11-08.
 - **FR-037**: Unpublished changes MUST be undoable step by step. [S13]
 - **FR-038**: Managers MUST be able to copy last week (choosing what happens on conflicts), save and
   apply week templates, and bulk edit with a preview that states the scope. [S14, S15]
@@ -542,6 +546,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-042**: The run list, the generate form (with the date presets) and the proposal view MUST be
   drawn in the new design, and every proposal MUST be labelled "Optimal" or "Best found in N s".
   Accept and discard MUST work as today. [AS9]
+  *Proposed (group E, not in the original):* since a run cannot start in the past, the generate
+  form offers planning presets (Next week, Next 7 days, Next 30 days) instead of the reporting ones,
+  and refuses a range over 31 days before it is sent.
 
 **Admin screens (group F)**
 
@@ -644,9 +651,11 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   submitting availability, assigning and publishing. [E17, moved into scope]
 - **FR-074**: A loading bar of the design's own MUST sit under the header: thin, copper and tan, with
   the clipped-corner motif; indeterminate for route and data loads and shown only after about 300 ms;
-  determinate for schedule runs, showing elapsed time against the time limit and the best result so
-  far. It MUST be exposed as a progress bar with its value announced, and MUST show a still state
-  under reduce-motion. [AS8's visible part]
+  determinate for schedule runs, showing elapsed time against the time limit (labelled "up to N s",
+  never a promised end), completing at once when a run ends early, and indeterminate for a run
+  without a time limit or a greedy run; the best result so far comes with feature 008. It MUST be
+  exposed as a progress bar with its value announced, and MUST show a still state under
+  reduce-motion. [AS8's visible part; reviewer ruling, 2026-11-07]
 - **FR-075**: A glossary MUST fix the Hebrew and English name of every domain term (for example Roster /
   סידור עבודה, Work log / יומן עבודה, Availability / זמינות), and a short voice-and-tone guide MUST set
   plain, short, gender-neutral copy, nouns and infinitives on Hebrew buttons, and one format each for
@@ -705,6 +714,15 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   every domain term in them matches the glossary.
 
 ## Assumptions
+
+- **Owner note, 2026-11-08 (Proposed, for a later feature; no change in 007)**: "training and
+  security projects should not mix", and "an employee assigned to both training and security
+  projects can submit shifts to both - but thats an edge case". 007 relies on nothing that puts a
+  security shift type on a training project or the other way round; where a picker or default must
+  choose, it prefers the shift types already used by projects of the same type. The likely shape
+  later: shift types tagged by project type, rosters, staffing needs and templates offering only
+  matching types, and the availability week showing each employee only the types of the projects
+  they work on (both, for the edge case).
 
 - **Absence approval (O3)**: absence becomes a request with approval in feature 016, approved by any
   manager of a project the employee works on, or an admin (confirmed in clarify). Until then 007

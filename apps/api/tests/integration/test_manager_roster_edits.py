@@ -1,0 +1,180 @@
+"""Managers edit the rosters of the projects they manage (007 FR-028, decision O9, Proposed).
+
+Covers: a Manager of the project creates, changes, staffs and deletes its shifts; a Manager of
+other projects is refused with ``roster.project_not_managed``; only an Admin sets or clears a
+shift's pay rate; employees and clients are refused at the gate.
+"""
+
+from datetime import timedelta
+from typing import Any
+
+import pytest
+from httpx import AsyncClient
+
+from hds.models.user import User
+from tests.pay_support import project_managers
+from tests.roster_support import FIRST, SHIFTS, add_project, add_shift, assign, headers_for
+
+
+async def managed_project(client: AsyncClient, seed_users: dict[str, User]) -> dict[str, Any]:
+    admin = await headers_for(client, "admin")
+    project = await add_project(client, admin)
+    put = await client.put(
+        project_managers(project["id"]),
+        json={"user_ids": [str(seed_users["manager"].id)]},
+        headers=admin,
+    )
+    assert put.status_code == 200, put.text
+    return project
+
+
+async def test_a_manager_runs_the_roster_of_a_project_they_manage(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    project = await managed_project(async_client, seed_users)
+    manager = await headers_for(async_client, "manager")
+
+    created = await add_shift(async_client, manager, project, FIRST)
+    shift = created["shift"]
+    changed = await async_client.patch(
+        f"{SHIFTS}/{shift['id']}", json={"headcount": 2}, headers=manager
+    )
+    assert changed.status_code == 200, changed.text
+    assigned = await assign(async_client, manager, shift["id"], seed_users["employee"].id)
+    assert assigned.status_code == 201, assigned.text
+    removed = await async_client.delete(
+        f"/api/v1/assignments/{assigned.json()['assignment']['id']}", headers=manager
+    )
+    assert removed.status_code == 200, removed.text
+    deleted = await async_client.delete(f"{SHIFTS}/{shift['id']}", headers=manager)
+    assert deleted.status_code == 204
+
+
+async def test_a_manager_of_other_projects_is_refused(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    admin = await headers_for(async_client, "admin")
+    other = await add_project(async_client, admin, "Not theirs")
+    shift = (await add_shift(async_client, admin, other, FIRST))["shift"]
+    manager = await headers_for(async_client, "manager")
+
+    refused = await async_client.patch(
+        f"{SHIFTS}/{shift['id']}", json={"headcount": 2}, headers=manager
+    )
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "roster.project_not_managed"
+    read = await async_client.get(SHIFTS, params={"project_id": other["id"]}, headers=manager)
+    assert read.status_code == 200  # read-only, not hidden
+
+
+async def test_only_an_admin_sets_or_clears_a_shifts_pay_rate(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    project = await managed_project(async_client, seed_users)
+    manager = await headers_for(async_client, "manager")
+    shift = (await add_shift(async_client, manager, project, FIRST))["shift"]
+    for sent in ({"pay_rate": "60.0000"}, {"pay_rate": None}):
+        refused = await async_client.patch(f"{SHIFTS}/{shift['id']}", json=sent, headers=manager)
+        assert refused.status_code == 403, sent
+        assert refused.json()["code"] == "shift.pay_rate_admin_only"
+    admin = await headers_for(async_client, "admin")
+    ok = await async_client.patch(
+        f"{SHIFTS}/{shift['id']}", json={"pay_rate": "60.0000"}, headers=admin
+    )
+    assert ok.status_code == 200, ok.text
+
+
+@pytest.mark.parametrize("role", ["employee", "client"])
+async def test_employees_and_clients_cannot_change_any_roster(
+    role: str, async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    project = await managed_project(async_client, seed_users)
+    shift = (
+        await add_shift(async_client, await headers_for(async_client, "admin"), project, FIRST)
+    )["shift"]
+    refused = await async_client.delete(
+        f"{SHIFTS}/{shift['id']}", headers=await headers_for(async_client, role)
+    )
+    assert refused.status_code == 403
+
+
+async def test_a_manager_publishes_only_the_projects_they_manage(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """The owner's decision of 2026-11-08 (FR-036): ``roster.publish:project``."""
+    admin = await headers_for(async_client, "admin")
+    manager = await headers_for(async_client, "manager")
+    window = {"from": FIRST.isoformat(), "to": FIRST.isoformat()}
+    mine = await managed_project(async_client, seed_users)
+    await add_shift(async_client, admin, mine, FIRST)
+    published = await async_client.post(
+        f"/api/v1/projects/{mine['id']}/publish", json=window, headers=manager
+    )
+    assert published.status_code == 200, published.text
+
+    other = await add_project(async_client, admin)
+    await add_shift(async_client, admin, other, FIRST)
+    refused = await async_client.post(
+        f"/api/v1/projects/{other['id']}/publish", json=window, headers=manager
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["code"] == "roster.project_not_managed"
+    # An Admin publishes any project.
+    by_admin = await async_client.post(
+        f"/api/v1/projects/{other['id']}/publish", json=window, headers=admin
+    )
+    assert by_admin.status_code == 200, by_admin.text
+
+
+async def test_a_manager_of_other_projects_is_refused_every_roster_tool(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """Overrides, copy week, templates and bulk edit change the roster, so each is refused (R108).
+
+    The publish review only reads, as the roster week does, so any Manager may open it.
+    """
+    admin = await headers_for(async_client, "admin")
+    other = await add_project(async_client, admin, "Not theirs")
+    shift = (await add_shift(async_client, admin, other, FIRST))["shift"]
+    placed = await assign(async_client, admin, shift["id"], seed_users["employee"].id)
+    assert placed.status_code == 201, placed.text
+    assignment = placed.json()["assignment"]["id"]
+    project = f"/api/v1/projects/{other['id']}"
+    week = FIRST.isoformat()
+    template = await async_client.post(
+        f"{project}/week-templates", json={"name": "Usual week", "week": week}, headers=admin
+    )
+    assert template.status_code == 201, template.text
+    templated = f"{project}/week-templates/{template.json()['id']}"
+    manager = await headers_for(async_client, "manager")
+    span = {"from": week, "to": week}
+    later = (FIRST + timedelta(days=7)).isoformat()
+
+    for refused in (
+        await async_client.post(
+            f"/api/v1/assignments/{assignment}/overrides",
+            json={"warning_code": "warnings.overlap", "reason": "Agreed"},
+            headers=manager,
+        ),
+        await async_client.post(
+            f"{project}/copy-week",
+            json={"from_week": week, "to_week": later, "dry_run": True},
+            headers=manager,
+        ),
+        await async_client.post(
+            f"{project}/week-templates", json={"name": "Mine", "week": week}, headers=manager
+        ),
+        await async_client.post(
+            f"{templated}/apply", json={"week": later, "dry_run": True}, headers=manager
+        ),
+        await async_client.delete(templated, headers=manager),
+        await async_client.post(
+            f"{project}/roster/bulk",
+            json={**span, "headcount": 3, "dry_run": True},
+            headers=manager,
+        ),
+    ):
+        assert refused.status_code == 403, (refused.request.url, refused.text)
+        assert refused.json()["code"] == "roster.project_not_managed", refused.request.url
+    review = await async_client.get(f"{project}/publish-preview", params=span, headers=manager)
+    assert review.status_code == 200, review.text

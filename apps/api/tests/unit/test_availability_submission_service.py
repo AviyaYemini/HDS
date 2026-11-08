@@ -370,3 +370,35 @@ async def test_only_an_admin_submits_on_behalf(role: UserRole) -> None:
     with pytest.raises(ForbiddenError):
         await service.submit_on_behalf(_user(role), uuid.uuid4(), window.id)
     submissions.put.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_status_shows_an_admins_hand_change_beside_the_submission() -> None:
+    """T101: the tracker lists who changed a submission by hand, and when (migration 030)."""
+    user, window = _user(), _window(NOW - timedelta(hours=1))
+    row = _submitted(window, user, [_stored(user.id)])
+    admin = uuid.uuid4()
+    row.changed_by, row.changed_at = admin, NOW - timedelta(minutes=5)
+    service, _ = _service(window, [_stored(user.id)], row)
+    found = await service.status(user, window.id)
+    assert (found.status, found.changed_by, found.changed_at) == (
+        "locked",
+        admin,
+        NOW - timedelta(minutes=5),
+    )
+    assert found.submitted_at == row.submitted_at
+
+
+@pytest.mark.asyncio
+async def test_the_trackers_batch_read_derives_what_the_single_read_does() -> None:
+    """R92: three reads for everyone, the same statuses as one person at a time."""
+    manager, done, idle = _user(UserRole.manager), _user(), _user()
+    window = _window(NOW + timedelta(days=1))
+    live = [_stored(done.id)]
+    row = _submitted(window, done, live)
+    service, submissions = _service(window, live, row)
+    submissions.for_windows.return_value = [row]
+    found = await service.statuses_for(manager, window.id, [done.id, idle.id])
+    statuses = {u: s.status for u, s in found.items()}
+    assert statuses == {done.id: "submitted", idle.id: "not_submitted"}
+    submissions.get.assert_not_awaited()

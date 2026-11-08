@@ -29,6 +29,7 @@ async def test_a_manager_or_admin_asks_for_a_roster_and_reads_the_queued_job(
     assert (job["from"], job["to"]) == ("2027-06-06", "2027-06-12")
     assert job["requested_by"] == str(seed_users[role].id)
     assert job["settings"] == {"min_rest_hours": 11, "max_weekly_hours": 48}
+    assert job["elapsed_seconds"] is None  # not started: nothing searched yet (007 FR-074)
     read = await async_client.get(f"{JOBS}/{job['id']}", headers=headers)
     assert read.status_code == 200
     assert read.json()["proposal"] is None
@@ -49,6 +50,9 @@ async def test_the_worker_turns_the_job_into_a_proposal_and_changes_no_roster(
     done = (await async_client.get(f"{JOBS}/{job['id']}", headers=manager)).json()
     assert done["status"] == "succeeded", done
     assert isinstance(done["optimal"], bool)
+    # Searched for, by the server's clock: its start to its end, never past the limit by much.
+    assert done["elapsed_seconds"] is not None
+    assert 0 <= done["elapsed_seconds"] <= done["time_limit_seconds"] + 5
     assert done["proposal_state"] == "open"
     proposal = done["proposal"]
     assert len(proposal["slots"]) == 5

@@ -108,8 +108,8 @@ class Pricing:
         shift = worked.shift
         return self.price_one(
             shift.id,
-            shift.starts_at,
-            shift.ends_at,
+            worked.starts_at,
+            worked.ends_at,
             shift.pay_rate,
             worked.project,
             worked.timezone,

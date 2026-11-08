@@ -18,8 +18,15 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from hds.core.authz import ADMIN_ROLES, MANAGER_ROLES, STAFF_ROLES, ensure_role
-from hds.core.exceptions import ConflictError, DomainValidationError, NotFoundError
+from hds.core.authz import MANAGER_ROLES, STAFF_ROLES, ensure_role
+from hds.core.capabilities import Capability, has_on_project
+from hds.core.exceptions import (
+    ConflictError,
+    DomainValidationError,
+    ForbiddenError,
+    NotFoundError,
+    PreconditionFailedError,
+)
 from hds.core.i18n import message
 from hds.models.shift import Assignment, Shift
 from hds.models.user import User, UserRole
@@ -101,6 +108,42 @@ def _bounds(
     return starts_from, starts_before
 
 
+# How far one person's own times may reach before the shift's start and after its end (007 Q3).
+OWN_TIMES_REACH = timedelta(hours=4)
+
+
+def etag(shift: Shift) -> str:
+    """The shift's version for ``ETag`` and ``If-Match``: its ``updated_at`` (007 FR-041)."""
+    return f'"{shift.updated_at.astimezone(UTC).isoformat()}"'
+
+
+def _refuse_stale(shift: Shift, expected: str | None) -> None:
+    """Refuse a change made from an old copy of the shift; no ``If-Match`` skips the check."""
+    if expected is not None and expected != etag(shift):
+        raise PreconditionFailedError(
+            code="roster.changed", detail="The roster changed since it was read; read it again."
+        )
+
+
+def _refuse_bad_own_times(
+    shift: Shift, starts_at: datetime | None, ends_at: datetime | None
+) -> None:
+    """Refuse own times that are half given, end before they start, or reach past 4 hours."""
+    if starts_at is None and ends_at is None:
+        return
+    if starts_at is None or ends_at is None or ends_at <= starts_at:
+        raise DomainValidationError(
+            code="assignment.times_invalid",
+            detail="Give both a start and an end, the end after the start.",
+        )
+    if starts_at < shift.starts_at - OWN_TIMES_REACH or ends_at > shift.ends_at + OWN_TIMES_REACH:
+        raise DomainValidationError(
+            code="assignment.times_out_of_range",
+            detail="A person's times may start at most 4 hours before the shift and end at most "
+            "4 hours after it.",
+        )
+
+
 def _times_invalid() -> DomainValidationError:
     return DomainValidationError(
         code="shifts.times_invalid", detail="A shift must end after it starts."
@@ -113,6 +156,7 @@ def _warning(found: RuleWarning) -> dict[str, Any]:
         "employee_id": found.employee_id,
         "shift_ids": list(found.shift_ids),
         "detail": message(found.code),
+        "values": dict(found.values),
     }
 
 
@@ -251,15 +295,23 @@ class RosterService:
         Dates are at the project's site, as its shifts' dates are. Published shifts are left as
         they are, so publishing again counts only new drafts.
 
+        A Manager publishes only the projects they manage, an Admin any (``roster.publish:project``,
+        the owner's decision of 2026-11-08). A publish names one project, so it is refused whole.
+
         Raises:
-            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` (HTTP 403); ``roster.project_not_managed``
+                for a Manager of other projects (HTTP 403).
             NotFoundError: The project is not in the organisation (HTTP 404).
             DomainValidationError: ``shifts.date_range_invalid`` when ``last`` is before
                 ``first`` (HTTP 422).
         """
-        ensure_role(actor, *MANAGER_ROLES)
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
-            raise NotFoundError(resource="Project", id=project_id)
+        await self.require_project(actor, project_id)
+        managed = await self._managers.manages(actor.id, [project_id])
+        if not has_on_project(actor.role, Capability.ROSTER_PUBLISH_PROJECT, project_id, managed):
+            raise ForbiddenError(
+                code="roster.project_not_managed",
+                detail="Only the project's managers and Admins publish its roster.",
+            )
         # The dates at the project's site, where its shifts were made from local times.
         zone = await self._shifts.site_timezone(project_id)
         starts_from, starts_before = _bounds(zone, first, last)
@@ -269,23 +321,62 @@ class RosterService:
 
     # ------------------------------------------------------------------ shifts
 
-    async def create_shift(self, actor: User, data: dict[str, Any]) -> Judged:
-        """Create a draft shift from one of its project's shift types (Admin only).
+    def _refuse_pay_rate(self, actor: User, data: dict[str, Any], *, change: bool = False) -> None:
+        """Refuse a shift's pay rate from anyone but an Admin (original: Admins edit pay).
 
-        Its times are the type's local times on ``date`` at the project's site, unless
-        ``starts_at`` and ``ends_at`` are both given.
+        On a new shift a missing or null rate is no pay edit; on a change, any ``pay_rate`` sent,
+        null included, is one.
+        """
+        sent = "pay_rate" in data and (change or data["pay_rate"] is not None)
+        if sent and actor.role != UserRole.admin:
+            raise ForbiddenError(
+                code="shift.pay_rate_admin_only", detail="Only an Admin sets a shift's pay rate."
+            )
+
+    async def _require_edit(self, actor: User, project_id: uuid.UUID) -> None:
+        """Refuse a roster change unless ``actor`` may edit ``project_id``'s roster (007 FR-028).
+
+        An Admin may edit every project's roster; a Manager only the projects they manage
+        (``roster.edit:project``, ADR 015). This changes the original split, where only Admins
+        edited by hand, and is Proposed (decision O9).
+
+        The project is looked up in the caller's organisation first: another organisation's project
+        is answered as a missing one, before any capability is asked (an Admin holds
+        ``roster.edit:project`` on every project id, so the capability alone would let one through).
 
         Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` for an Employee or Client;
+                ``roster.project_not_managed`` for a Manager of other projects (HTTP 403).
+            NotFoundError: The project is not in the caller's organisation (HTTP 404).
+        """
+        await self.require_project(actor, project_id)
+        managed = await self._managers.manages(actor.id, [project_id])
+        if not has_on_project(actor.role, Capability.ROSTER_EDIT_PROJECT, project_id, managed):
+            raise ForbiddenError(
+                code="roster.project_not_managed",
+                detail="Only the project's managers and Admins change its roster.",
+            )
+
+    async def create_shift(self, actor: User, data: dict[str, Any]) -> Judged:
+        """Create a draft shift from one of its project's shift types (its Managers, or an Admin).
+
+        Its times are the type's local times on ``date`` at the project's site, unless
+        ``starts_at`` and ``ends_at`` are both given. Only an Admin sets ``pay_rate``.
+
+        Raises:
+            ForbiddenError: ``users.manager_required``, ``roster.project_not_managed`` or
+                ``shift.pay_rate_admin_only`` (HTTP 403).
             NotFoundError: The project or the shift type is not in the organisation (HTTP 404).
             DomainValidationError: ``shifts.type_not_in_project`` or ``shifts.times_invalid``
                 (HTTP 422).
         """
-        ensure_role(actor, *ADMIN_ROLES)
+        ensure_role(actor, *MANAGER_ROLES)
+        self._refuse_pay_rate(actor, data)
         _refuse_bad_pay_rate(data.get("pay_rate"))
         org_id = actor.organization_id
         if await self._projects.get_by_id(data["project_id"], org_id) is None:
             raise NotFoundError(resource="Project", id=data["project_id"])
+        await self._require_edit(actor, data["project_id"])
         shift_type = await self._types.get_by_id(data["shift_type_id"], org_id)
         if shift_type is None:
             raise NotFoundError(resource="ShiftType", id=data["shift_type_id"])
@@ -330,33 +421,75 @@ class RosterService:
             raise NotFoundError(resource="Shift", id=id)
         return shift
 
-    async def change_shift(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Judged:
-        """Change a shift's times, headcount or pay rate (Admin only); its status stays.
+    async def change_shift(
+        self, actor: User, id: uuid.UUID, data: dict[str, Any], expected: str | None = None
+    ) -> Judged:
+        """Change a shift's times, headcount or pay rate (its Managers, or an Admin).
+
+        Its status stays. Only an Admin changes ``pay_rate``. ``expected`` is the caller's
+        ``If-Match``; a stale one changes nothing.
 
         Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required``, ``roster.project_not_managed`` or
+                ``shift.pay_rate_admin_only`` (HTTP 403).
             NotFoundError: The shift is not in the organisation (HTTP 404).
+            PreconditionFailedError: ``roster.changed`` (HTTP 412).
             DomainValidationError: ``shifts.times_invalid`` (HTTP 422).
         """
-        ensure_role(actor, *ADMIN_ROLES)
+        ensure_role(actor, *MANAGER_ROLES)
+        self._refuse_pay_rate(actor, data, change=True)
         _refuse_bad_pay_rate(data.get("pay_rate"))
         shift = await self._locked_shift(actor, id)
+        await self._require_edit(actor, shift.project_id)
+        _refuse_stale(shift, expected)
+        shift_start, shift_end = shift.starts_at, shift.ends_at
         starts_at = data.get("starts_at", shift.starts_at)
         ends_at = data.get("ends_at", shift.ends_at)
         if ends_at <= starts_at:
             raise _times_invalid()
         updated = await self._shifts.update(id, actor.organization_id, **data)
+        moved = starts_at - shift_start
+        if moved or ends_at != shift_end:
+            await self._follow_shift(actor, updated, moved)
         return Judged(updated, await self._judge(actor, [id]))
 
-    async def delete_shift(self, actor: User, id: uuid.UUID) -> None:
-        """Delete a shift and its assignments (Admin only).
+    async def _follow_shift(self, actor: User, shift: Shift, moved: timedelta) -> None:
+        """Move each person's own times with their shift (R83).
+
+        Own times are instants, so a shift moved by ``moved`` takes them along by the same amount.
+        Where that leaves them out of the shift's reach (4 hours either side) or out of order, they
+        are cleared, and the person has the shift's own times.
+        """
+        [view] = await self._shifts.views([shift])
+        for a in view.assignments:
+            if a.starts_at is None or a.ends_at is None:
+                continue
+            starts_at, ends_at = a.starts_at + moved, a.ends_at + moved
+            within = (
+                starts_at < ends_at
+                and starts_at >= shift.starts_at - OWN_TIMES_REACH
+                and ends_at <= shift.ends_at + OWN_TIMES_REACH
+            )
+            await self._assignments.update(
+                a.id,
+                actor.organization_id,
+                starts_at=starts_at if within else None,
+                ends_at=ends_at if within else None,
+            )
+
+    async def delete_shift(self, actor: User, id: uuid.UUID, expected: str | None = None) -> None:
+        """Delete a shift and its assignments (its Managers, or an Admin).
 
         Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
+                (HTTP 403).
             NotFoundError: The shift is not in the organisation (HTTP 404).
+            PreconditionFailedError: ``roster.changed`` (HTTP 412).
         """
-        ensure_role(actor, *ADMIN_ROLES)
-        await self._locked_shift(actor, id)
+        ensure_role(actor, *MANAGER_ROLES)
+        shift = await self._locked_shift(actor, id)
+        await self._require_edit(actor, shift.project_id)
+        _refuse_stale(shift, expected)
         await self._shifts.delete(id, actor.organization_id)
 
     async def views(self, shifts: list[Shift]) -> list[ShiftView]:
@@ -365,18 +498,37 @@ class RosterService:
 
     # ------------------------------------------------------------- assignments
 
-    async def assign(self, actor: User, shift_id: uuid.UUID, user_id: uuid.UUID) -> Judged:
-        """Put an active employee on a shift (Admin only).
+    async def assign(
+        self,
+        actor: User,
+        shift_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        starts_at: datetime | None = None,
+        ends_at: datetime | None = None,
+        expected: str | None = None,
+    ) -> Judged:
+        """Put an active employee on a shift (its Managers, or an Admin).
+
+        ``starts_at`` and ``ends_at``, when given, are the person's own times, within 4 hours of
+        the shift's start and end (007 FR-027).
 
         Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
+                (HTTP 403).
             NotFoundError: The shift or the employee is not in the organisation, or the account is
                 a Client's (HTTP 404).
             ConflictError: ``assignments.employee_inactive`` or ``assignments.duplicate``
                 (HTTP 409).
+            PreconditionFailedError: ``roster.changed`` (HTTP 412).
+            DomainValidationError: ``assignment.times_invalid`` or
+                ``assignment.times_out_of_range`` (HTTP 422).
         """
-        ensure_role(actor, *ADMIN_ROLES)
-        await self._locked_shift(actor, shift_id)
+        ensure_role(actor, *MANAGER_ROLES)
+        shift = await self._locked_shift(actor, shift_id)
+        await self._require_edit(actor, shift.project_id)
+        _refuse_stale(shift, expected)
+        _refuse_bad_own_times(shift, starts_at, ends_at)
         # The employee's row too: a deactivation at the same moment waits, and two assignments of
         # one employee run one after the other, so the second's warnings see the first.
         await self._users.lock_user(user_id)
@@ -391,18 +543,79 @@ class RosterService:
             )
         assignment = await self._assignments.create(
             actor.organization_id,
-            {"shift_id": shift_id, "user_id": user_id, "assigned_by": actor.id},
+            {
+                "shift_id": shift_id,
+                "user_id": user_id,
+                "assigned_by": actor.id,
+                "starts_at": starts_at,
+                "ends_at": ends_at,
+            },
         )
+        await self._shifts.touch(shift_id, actor.organization_id)
         return Judged(assignment, await self._judge(actor, [shift_id]))
 
-    async def unassign(self, actor: User, id: uuid.UUID) -> list[dict[str, Any]]:
-        """Take an employee off a shift (Admin only), answering the warnings the shift has left.
+    async def change_assignment_times(
+        self,
+        actor: User,
+        id: uuid.UUID,
+        starts_at: datetime | None,
+        ends_at: datetime | None,
+        expected: str | None = None,
+    ) -> Judged:
+        """Set or clear one person's own times in a shift (its Managers, or an Admin).
+
+        Both ``None`` gives them the shift's times again (007 FR-027).
 
         Raises:
-            ForbiddenError: ``users.admin_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
+                (HTTP 403).
             NotFoundError: The assignment is not in the organisation (HTTP 404).
+            PreconditionFailedError: ``roster.changed`` (HTTP 412).
+            DomainValidationError: ``assignment.times_invalid`` or
+                ``assignment.times_out_of_range`` (HTTP 422).
         """
-        ensure_role(actor, *ADMIN_ROLES)
+        ensure_role(actor, *MANAGER_ROLES)
+        assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organization_id)
+        if assignment is None:
+            raise NotFoundError(resource="Assignment", id=id)
+        shift = await self._locked_shift(actor, assignment.shift_id)
+        await self._require_edit(actor, shift.project_id)
+        _refuse_stale(shift, expected)
+        _refuse_bad_own_times(shift, starts_at, ends_at)
+        updated = await self._assignments.update(
+            id, actor.organization_id, starts_at=starts_at, ends_at=ends_at
+        )
+        await self._shifts.touch(shift.id, actor.organization_id)
+        return Judged(updated, await self._judge(actor, [shift.id]))
+
+    async def fresh_shift(self, actor: User, id: uuid.UUID) -> Shift:
+        """The shift as stored now, for its new ``etag`` after a change (007 FR-041)."""
+        shift = await self._shifts.get_locked(id, actor.organization_id)
+        if shift is None:
+            raise NotFoundError(resource="Shift", id=id)
+        return shift
+
+    async def unassign_returning_shift(
+        self, actor: User, id: uuid.UUID, expected: str | None = None
+    ) -> tuple[uuid.UUID, list[dict[str, Any]]]:
+        """:meth:`unassign`, also answering the shift the assignment was on."""
+        assignment = await self._assignments.get_by_id(id, actor.organization_id)
+        warnings = await self.unassign(actor, id, expected)
+        assert assignment is not None, "unassign found it"
+        return assignment.shift_id, warnings
+
+    async def unassign(
+        self, actor: User, id: uuid.UUID, expected: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Take an employee off a shift (its Managers, or an Admin); answer the warnings left.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
+                (HTTP 403).
+            NotFoundError: The assignment is not in the organisation (HTTP 404).
+            PreconditionFailedError: ``roster.changed`` (HTTP 412).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
         assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organization_id)
         if assignment is None:
             raise NotFoundError(resource="Assignment", id=id)
@@ -410,10 +623,38 @@ class RosterService:
         # Read again under the lock: another request may have removed it while this one waited.
         if shift is None or not await self._assignments.exists(id, actor.organization_id):
             raise NotFoundError(resource="Assignment", id=id)
+        await self._require_edit(actor, shift.project_id)
+        _refuse_stale(shift, expected)
         await self._assignments.delete(id, actor.organization_id)
+        await self._shifts.touch(shift.id, actor.organization_id)
         return await self._judge(actor, [assignment.shift_id])
 
     # ---------------------------------------------------------------- warnings
+
+    async def require_project(self, actor: User, project_id: uuid.UUID) -> None:
+        """Refuse unless ``actor`` is a Manager or Admin and the project is in their organisation.
+
+        For the roster's reads: another organisation's project is answered as a missing one.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` for an Employee or Client (HTTP 403).
+            NotFoundError: The project is not in the caller's organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+            raise NotFoundError(resource="Project", id=project_id)
+
+    async def require_edit(self, actor: User, project_id: uuid.UUID) -> None:
+        """Refuse unless ``actor`` may edit the project's roster; see :meth:`_require_edit`."""
+        await self._require_edit(actor, project_id)
+
+    async def judge(self, actor: User, focus: Collection[uuid.UUID]) -> list[dict[str, Any]]:
+        """The warnings the shifts in ``focus`` have now (for the publish review, 007 FR-036)."""
+        return await self._judge(actor, focus)
+
+    async def site_zone(self, project_id: uuid.UUID) -> str:
+        """The IANA time zone of the project's site, where its shifts' dates are."""
+        return await self._shifts.site_timezone(project_id)
 
     async def _org(self, actor: User) -> Any:
         org = await self._orgs.get_by_id(actor.organization_id)
@@ -498,4 +739,9 @@ def _slot(view: ShiftView) -> ShiftSlot:
         zone=view.timezone,
         headcount=view.shift.headcount,
         assigned=tuple(a.user_id for a in view.assignments),
+        own_times=tuple(
+            (a.user_id, a.starts_at.astimezone(UTC), a.ends_at.astimezone(UTC))
+            for a in view.assignments
+            if a.starts_at is not None and a.ends_at is not None
+        ),
     )

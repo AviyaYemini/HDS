@@ -115,6 +115,27 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/projects/{id}/publish-preview",
+      "operation_id": "publish_preview_api_v1_projects__id__publish_preview_get",
+      "suites": ["pytest", "cli"],
+      "reason": "the publish's own range rule, to >= from, spans two fields (007 FR-036); answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shifts/{id}/assignments",
+      "operation_id": "assign_api_v1_shifts__id__assignments_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a person's own times come as a pair, end after they start and stay within 4 hours of the stored shift's times (007 FR-027), which spans fields and stored data; answered 422 assignment.times_invalid or assignment.times_out_of_range"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/assignments/{id}",
+      "operation_id": "change_assignment_times_api_v1_assignments__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same own-times rule as the assignment's create (007 FR-027); answered 422 assignment.times_invalid or assignment.times_out_of_range"
+    },
+    {
+      "method": "GET",
       "path": "/me/shifts",
       "operation_id": "my_shifts_me_shifts_get",
       "suites": ["pytest", "cli"],
@@ -203,6 +224,34 @@
       "operation_id": "change_contact_api_v1_organisation_contact_patch",
       "suites": ["pytest", "cli"],
       "reason": "opening hours name each weekday at most once and close after they open (007 FR-012), which spans items and fields and OpenAPI 3.0 cannot state; answered 422 organisation.opening_hours_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/copy-week",
+      "operation_id": "copy_week_api_v1_projects__id__copy_week_post",
+      "suites": ["pytest", "cli"],
+      "reason": "both weeks must start on a Sunday (007 FR-038), which no date format can state; answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/week-templates",
+      "operation_id": "save_template_api_v1_projects__id__week_templates_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the week must start on a Sunday (007 FR-038); answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/week-templates/{template_id}/apply",
+      "operation_id": "apply_template_api_v1_projects__id__week_templates__template_id__apply_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the week must start on a Sunday (007 FR-038); answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/roster/bulk",
+      "operation_id": "bulk_api_v1_projects__id__roster_bulk_post",
+      "suites": ["pytest", "cli"],
+      "reason": "exactly one of headcount and remove (007 FR-038), which spans two fields and OpenAPI 3.0 cannot state; answered 422 roster.bulk_change_invalid"
     }
   ]
 }

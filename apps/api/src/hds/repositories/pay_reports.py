@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from hds.models.project import Project
 from hds.models.shift import Assignment, Shift
@@ -23,11 +23,23 @@ from hds.repositories.base import BaseRepository
 
 @dataclass(frozen=True)
 class WorkedShift:
-    """One published shift, its project and its site's time zone."""
+    """One published shift, its project, its site's time zone, and when the person worked it.
+
+    ``starts_at`` and ``ends_at`` are the person's own times when the assignment has them,
+    otherwise the shift's (007 FR-027); pay prices those.
+    """
 
     shift: Shift
     project: Project
     timezone: str
+    starts_at: datetime
+    ends_at: datetime
+
+
+# When the person on an assignment worked: their own times, otherwise the shift's (007 FR-027).
+# Which shifts count is still decided by the shift's own start, the date it belongs to.
+_STARTS = func.coalesce(Assignment.starts_at, Shift.starts_at)
+_ENDS = func.coalesce(Assignment.ends_at, Shift.ends_at)
 
 
 class PayReportRepository(BaseRepository[Shift]):
@@ -49,7 +61,7 @@ class PayReportRepository(BaseRepository[Shift]):
         Ordered by start. Projects that were deleted or have ended are included: the work was done.
         """
         query = (
-            select(Shift, Project, Site.timezone)
+            select(Shift, Project, Site.timezone, _STARTS, _ENDS)
             .join(Assignment, Assignment.shift_id == Shift.id)
             .join(Project, Project.id == Shift.project_id)
             .join(Site, Site.id == Project.site_id)
@@ -58,13 +70,13 @@ class PayReportRepository(BaseRepository[Shift]):
                 Shift.status == "published",
                 Shift.starts_at >= starts_from,
                 Shift.starts_at < starts_before,
-                Shift.ends_at <= now,
+                _ENDS <= now,
                 Assignment.user_id == user_id,
             )
             .order_by(Shift.starts_at, Shift.id)
         )
         rows = await self.session.execute(query)
-        return [WorkedShift(shift, project, zone) for shift, project, zone in rows.all()]
+        return [WorkedShift(*row) for row in rows.all()]
 
 
 @dataclass(frozen=True)
@@ -106,8 +118,8 @@ class ReportShiftRepository(BaseRepository[Shift]):
         query = (
             select(
                 Shift.id,
-                Shift.starts_at,
-                Shift.ends_at,
+                _STARTS,
+                _ENDS,
                 Shift.pay_rate,
                 Shift.project_id,
                 Site.timezone,
@@ -124,7 +136,7 @@ class ReportShiftRepository(BaseRepository[Shift]):
                 Shift.status == "published",
                 Shift.starts_at >= starts_from,
                 Shift.starts_at < starts_before,
-                Shift.ends_at <= now,
+                _ENDS <= now,
             )
             .order_by(Shift.starts_at, Shift.id, User.id)
         )

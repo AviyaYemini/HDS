@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from hds.core.config import get_settings
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
 from hds.core.types import StrictDate
@@ -135,6 +136,15 @@ class JobSummary(BaseModel):
     error_code: str | None
     optimal: bool | None
     proposal_state: ProposalState | None
+    time_limit_seconds: int = Field(
+        description="How long the solver may search: the determinate progress bar's whole "
+        "(007 FR-074)."
+    )
+    elapsed_seconds: int | None = Field(
+        description="Whole seconds the job has searched by the server's clock, to now while it "
+        "runs and to `finished_at` once done; null before it starts. The bar's value is this over "
+        "`time_limit_seconds` (007 FR-074)."
+    )
 
 
 class JobRead(JobSummary):
@@ -150,7 +160,7 @@ class JobPage(BaseModel):
     next_cursor: str | None
 
 
-def _summary(job: ScheduleJob, state: str | None) -> dict[str, Any]:
+def _summary(job: ScheduleJob, svc: ScheduleJobService) -> dict[str, Any]:
     return {
         "id": job.id,
         "status": job.status,
@@ -165,14 +175,16 @@ def _summary(job: ScheduleJob, state: str | None) -> dict[str, Any]:
         "finished_at": job.finished_at,
         "error_code": job.error_code,
         "optimal": job.optimal,
-        "proposal_state": state,
+        "proposal_state": svc.state(job),
+        "time_limit_seconds": get_settings().SCHEDULE_TIME_LIMIT_SECONDS,
+        "elapsed_seconds": svc.elapsed_seconds(job),
     }
 
 
-def job_read(job: ScheduleJob, state: str | None) -> JobRead:
+def job_read(job: ScheduleJob, svc: ScheduleJobService) -> JobRead:
     """The full answer for one job."""
     proposal = Proposal.model_validate(job.result) if job.result is not None else None
-    return JobRead(**_summary(job, state), proposal=proposal)
+    return JobRead(**_summary(job, svc), proposal=proposal)
 
 
 def _cursor(job: ScheduleJob) -> str:
@@ -232,7 +244,7 @@ async def create_job(
                 "solver": body.solver,
             },
         )
-        return 202, job_read(job, svc.state(job)).model_dump(mode="json", by_alias=True)
+        return 202, job_read(job, svc).model_dump(mode="json", by_alias=True)
 
     status, content = await retries.run_once(
         current_user.id,
@@ -266,7 +278,7 @@ async def list_jobs(
     """
     jobs = await svc.page(current_user, status, _position(cursor), limit + 1)
     page = JobPage(
-        items=[JobSummary(**_summary(j, svc.state(j))) for j in jobs[:limit]],
+        items=[JobSummary(**_summary(j, svc)) for j in jobs[:limit]],
         next_cursor=_cursor(jobs[limit - 1]) if len(jobs) > limit else None,
     )
     return JSONResponse(page.model_dump(mode="json", by_alias=True))
@@ -292,7 +304,7 @@ async def read_job(
     Manager or Admin. Its status and, once it has succeeded, its proposal.
     """
     job = await svc.get(current_user, id)
-    return JSONResponse(job_read(job, svc.state(job)).model_dump(mode="json", by_alias=True))
+    return JSONResponse(job_read(job, svc).model_dump(mode="json", by_alias=True))
 
 
 class AcceptAnswer(BaseModel):
@@ -348,4 +360,4 @@ async def discard_job(
     Manager or Admin. It can no longer be accepted.
     """
     job = await svc.discard(current_user, id)
-    return JSONResponse(job_read(job, svc.state(job)).model_dump(mode="json", by_alias=True))
+    return JSONResponse(job_read(job, svc).model_dump(mode="json", by_alias=True))

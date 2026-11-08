@@ -169,6 +169,9 @@ test.describe("with previews on", () => {
             await expect(page.getByTestId("screen-no-access")).toBeVisible();
           }
         }
+        // The tab keeps the session (ADR 019), so the next role signs in afresh.
+        await page.getByTestId("action-sign-out").first().click();
+        await expect(page).toHaveURL(/\/sign-in/);
       }
     });
   }
@@ -258,3 +261,101 @@ test.describe("with previews off @previews-off", () => {
   });
 });
 
+// The owner's decision of 2026-11-08 (T099, ADR 019): the web keeps the session per tab.
+test.describe("a session per tab", () => {
+  test("a reload and a deep link in the same tab stay signed in", async ({ page }) => {
+    await signIn(page, "employee", "en");
+    await page.reload();
+    await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+    await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+    await page.goto(at("/account", "en"));
+    await expect(page.getByTestId("screen-account")).toBeVisible();
+  });
+
+  test("a duplicated tab signs in again and the original stays signed in", async ({ page, context }) => {
+    await signIn(page, "employee", "en");
+    // A duplicate gets a copy of the tab's storage, which holds nothing while the page is open.
+    const copy = await page.evaluate(() => JSON.stringify(Object.entries(sessionStorage)));
+    const duplicate = await context.newPage();
+    await duplicate.addInitScript((entries) => {
+      for (const [key, value] of JSON.parse(entries) as [string, string][]) sessionStorage.setItem(key, value);
+    }, copy);
+    await duplicate.goto(at("/home", "en"));
+    await expect(duplicate.getByTestId("sign-in-btn")).toBeVisible();
+    await duplicate.close();
+    // No refresh token was presented twice, so nothing ended the original's session.
+    await page.reload();
+    await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+    await page.goto(at("/account", "en"));
+    await expect(page.getByTestId("screen-account")).toBeVisible();
+  });
+});
+
+// The owner, PR 4: "HDS / ניהול מערכת keep jumping around while changing tabs". A Latin start made
+// the eyebrow left to right, so it sat at the title column's left edge and moved with each title.
+test("in Hebrew the eyebrow keeps its right edge from page to page", async ({ page }, testInfo) => {
+  test.skip(isPhone(testInfo), "the desktop's title column");
+  await signIn(page, "admin", "he");
+  const edges: number[] = [];
+  for (const path of ["/admin/staff", "/admin/projects", "/admin/shift-templates", "/home"]) {
+    await page.goto(at(path, "he"));
+    const eyebrow = page.getByTestId("page-title-eyebrow");
+    await expect(eyebrow).toBeVisible();
+    await expect(eyebrow).toHaveAttribute("dir", "rtl");
+    const box = (await eyebrow.boundingBox())!;
+    // Where the text itself ends on the right, not just its box.
+    const right = await eyebrow.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().right;
+    });
+    expect(right).toBeLessThanOrEqual(box.x + box.width + 1);
+    edges.push(Math.round(right));
+  }
+  expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
+});
+
+// The owner, PR 4: "Hebrew/English and dark/light mode should be easily accessible from the top bar".
+test("the top bar switches the language and the theme, and both survive a reload", async ({ page }) => {
+  await signIn(page, "employee", "he");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("dir", "rtl");
+  await page.getByTestId("action-switch-language").click();
+  await expect(html).toHaveAttribute("dir", "ltr");
+  await expect(html).toHaveAttribute("lang", "en");
+  await expect(page.getByTestId("action-sign-out")).toHaveAccessibleName("Sign out");
+
+  const scheme = () => html.evaluate((node) => (node as HTMLElement).style.colorScheme);
+  const before = await scheme();
+  await page.getByTestId("action-toggle-theme").click();
+  await expect.poll(scheme).not.toBe(before);
+  const after = await scheme();
+
+  // Open the address afresh in the same tab, without ?lang=, which would choose for it.
+  await page.goto("/home");
+  await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+  await expect(html).toHaveAttribute("lang", "en");
+  await expect.poll(scheme).toBe(after);
+});
+
+test("sign-in offers the language switch before anyone signs in", async ({ page }) => {
+  await page.goto(at("/sign-in", "he"));
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await page.getByTestId("action-switch-language").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page.getByTestId("sign-in-btn")).toContainText("Sign in");
+});
+
+// From the owner's screenshots (PR 4): the English "AVAILABILITY" tab was cut off.
+test("no phone tab label is cut off, in English or Hebrew", async ({ page }, testInfo) => {
+  test.skip(!isPhone(testInfo), "the phone's tabs");
+  for (const language of LANGUAGES) {
+    await signIn(page, "employee", language);
+    const cut = await page.getByTestId("nav-tabs").locator("[dir]").evaluateAll((nodes) =>
+      nodes.filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent),
+    );
+    expect(cut, language).toEqual([]);
+    await page.getByTestId("action-sign-out").first().click();
+    await expect(page).toHaveURL(/\/sign-in/);
+  }
+});

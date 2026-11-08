@@ -18,8 +18,13 @@ export const RANGE_PRESETS = [
   "last-month",
 ] as const;
 export const PAY_PERIOD_PRESETS = ["this-pay-period", "last-pay-period"] as const;
+/** Ranges that start today or later, for what is planned ahead (a schedule run, FR-042). */
+export const FORWARD_PRESETS = ["next-week", "next-7-days", "next-30-days"] as const;
 
-export type RangePreset = (typeof RANGE_PRESETS)[number] | (typeof PAY_PERIOD_PRESETS)[number];
+export type RangePreset =
+  | (typeof RANGE_PRESETS)[number]
+  | (typeof PAY_PERIOD_PRESETS)[number]
+  | (typeof FORWARD_PRESETS)[number];
 /** A preset key, or `custom` when the dates were set by hand. */
 export type PresetKey = RangePreset | "custom";
 
@@ -51,6 +56,14 @@ export function presetRange(preset: RangePreset, today: string): DateRange {
     case "this-month":
     case "this-pay-period":
       return { start: startOfMonth(today), end: endOfMonth(today) };
+    case "next-week": {
+      const start = addDays(startOfWeek(today), 7);
+      return { start, end: addDays(start, 6) };
+    }
+    case "next-7-days":
+      return { start: today, end: addDays(today, 6) };
+    case "next-30-days":
+      return { start: today, end: addDays(today, 29) };
     case "last-month":
     case "last-pay-period": {
       const start = addMonths(today, -1);

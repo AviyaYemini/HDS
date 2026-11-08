@@ -3,7 +3,7 @@
  * tasks T016, T021, T022): the bar waits 300 ms and stays 400 ms, reduce-motion zeroes every
  * duration, and the four themes follow the device unless overridden.
  */
-import { getLoadingState, resetLoading, setProgress, startLoading, track } from "../../../src/design/loading/loadingStore";
+import { endProgress, getLoadingState, resetLoading, setProgress, startLoading, track } from "../../../src/design/loading/loadingStore";
 import { setReducedMotionForTests, transition } from "../../../src/design/motion";
 import { resolveThemeName } from "../../../src/design/theme/ThemeProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -16,7 +16,7 @@ import {
   resetThemeStore,
   setThemePreference,
 } from "../../../src/design/theme/themeStore";
-import { matches, normalise, order } from "../../../src/design/components";
+import { matches, normalise, order, textDirection } from "../../../src/design/components";
 
 describe("loading store (FR-074)", () => {
   beforeEach(() => {
@@ -62,6 +62,32 @@ describe("loading store (FR-074)", () => {
     await tracked;
     jest.advanceTimersByTime(400);
     expect(getLoadingState()).toMatchObject({ visible: false, value: null, text: null });
+  });
+
+  it("ends a determinate bar full, then hands other loads back the indeterminate sweep", () => {
+    const run = startLoading();
+    const route = startLoading();
+    jest.advanceTimersByTime(300);
+    setProgress(0.4, "up to 5 s");
+    endProgress();
+    run();
+    expect(getLoadingState()).toMatchObject({ visible: true, value: 1, text: "up to 5 s" });
+    jest.advanceTimersByTime(400);
+    // The route change is still pending: it shows the sweep, not the run's full bar.
+    expect(getLoadingState()).toMatchObject({ visible: true, value: null, text: null });
+    route();
+  });
+
+  it("never shows for background work (a status poll, a token refresh)", async () => {
+    let resolve: () => void = () => undefined;
+    const work = new Promise<void>((r) => {
+      resolve = r;
+    });
+    const tracked = track(work, { background: true });
+    jest.advanceTimersByTime(1000);
+    expect(getLoadingState().visible).toBe(false);
+    resolve();
+    await tracked;
   });
 });
 
@@ -157,5 +183,14 @@ describe("searchable picker matching (FR-044)", () => {
   it("puts recent items first", () => {
     expect(order(items, ["2"], "").map((item) => item.id)).toEqual(["2", "1"]);
     expect(order(items, ["2"], "dana").map((item) => item.id)).toEqual(["1"]);
+  });
+});
+
+describe("text direction (owner, PR 4)", () => {
+  it("follows the UI language, not the first letter, so a Latin start stays at the right edge in Hebrew", () => {
+    expect(textDirection(undefined, true)).toBe("rtl");
+    expect(textDirection(undefined, false)).toBe("ltr");
+    expect(textDirection("ltr", true)).toBe("ltr");
+    expect(textDirection("auto", true)).toBeUndefined();
   });
 });

@@ -32,7 +32,11 @@ class ActiveProject:
 
 @dataclass(frozen=True)
 class StoredShift:
-    """A stored shift, its site's zone and the people on it."""
+    """A stored shift, its site's zone and the people on it.
+
+    ``own_times`` holds ``(person, starts_at, ends_at)`` for the people whose assignment has its
+    own times (007 FR-027).
+    """
 
     id: uuid.UUID
     project_id: uuid.UUID
@@ -43,6 +47,7 @@ class StoredShift:
     status: str
     zone: str
     people: tuple[uuid.UUID, ...]
+    own_times: tuple[tuple[uuid.UUID, datetime, datetime], ...] = ()
 
 
 class SchedulingInputRepository(BaseRepository[Shift]):
@@ -103,14 +108,22 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         ).all()
         ids = [shift.id for shift, _ in rows]
         people: dict[uuid.UUID, list[uuid.UUID]] = {i: [] for i in ids}
+        own: dict[uuid.UUID, list[tuple[uuid.UUID, datetime, datetime]]] = {i: [] for i in ids}
         if ids:
             assigned = await self.session.execute(
-                select(Assignment.shift_id, Assignment.user_id)
+                select(
+                    Assignment.shift_id,
+                    Assignment.user_id,
+                    Assignment.starts_at,
+                    Assignment.ends_at,
+                )
                 .where(Assignment.shift_id.in_(ids))
                 .order_by(Assignment.user_id)
             )
-            for shift_id, user_id in assigned.all():
+            for shift_id, user_id, starts_at, ends_at in assigned.all():
                 people[shift_id].append(user_id)
+                if starts_at is not None and ends_at is not None:
+                    own[shift_id].append((user_id, starts_at, ends_at))
         return [
             StoredShift(
                 s.id,
@@ -122,6 +135,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
                 s.status,
                 zone,
                 tuple(people[s.id]),
+                tuple(own[s.id]),
             )
             for s, zone in rows
         ]

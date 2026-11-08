@@ -1,21 +1,22 @@
 /**
  * The app's one session, against `EXPO_PUBLIC_API_URL` (the local API by default). Every request it
- * sends is tracked, so the loading bar shows for a slow one (specs/007-ux-redesign FR-074).
+ * sends is tracked, so the loading bar shows for a slow one (specs/007-ux-redesign FR-074), except a
+ * background one (a poll, the token refresh).
  */
 import { Platform } from "react-native";
 
 import { reportReachable, reportUnreachable } from "../connectivity";
 import { track } from "../design/loading/loadingStore";
-import { Session } from "./session";
+import { Session, type SendOptions } from "./session";
 import { storeFor } from "./tokens";
 
 /** Where the API is. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /** Send a request under the loading bar and tell the connectivity store how it went. */
-async function send(request: Request): Promise<Response> {
+async function send(request: Request, options: SendOptions = {}): Promise<Response> {
   try {
-    const response = await track(fetch(request));
+    const response = await track(fetch(request), options);
     reportReachable();
     return response;
   } catch (failure) {

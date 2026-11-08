@@ -5,6 +5,7 @@
  * Israeli holidays and eves are found.
  */
 import {
+  FORWARD_PRESETS,
   FSI,
   LRI,
   PDI,
@@ -20,6 +21,7 @@ import {
   formatMoney,
   formatNumericDate,
   formatNumericRange,
+  formatShortNumericRange,
   formatTime,
   formatTimeRange,
   groupDigits,
@@ -116,6 +118,14 @@ describe("range presets (US5, FR-051)", () => {
     expect(presetRange("last-pay-period", today)).toEqual(presetRange("last-month", today));
   });
 
+  it("plans ahead from today, never starting in the past (a schedule run, FR-042)", () => {
+    expect(presetRange("next-week", today)).toEqual({ start: "2026-11-08", end: "2026-11-14" });
+    expect(presetRange("next-7-days", today)).toEqual({ start: "2026-11-07", end: "2026-11-13" });
+    // Thirty days, inside a run's 31-day limit.
+    expect(presetRange("next-30-days", today)).toEqual({ start: "2026-11-07", end: "2026-12-06" });
+    expect(presetFor({ start: "2026-11-08", end: "2026-11-14" }, today, FORWARD_PRESETS)).toBe("next-week");
+  });
+
   it("names the preset a range stands for, else custom", () => {
     expect(presetFor({ start: "2026-10-25", end: "2026-10-31" }, today)).toBe("last-week");
     expect(presetFor({ start: "2026-10-20", end: "2026-10-31" }, today)).toBe("custom");
@@ -198,4 +208,9 @@ describe("Israeli holidays (FR-054, D6)", () => {
     expect(found.get("2027-05-12")?.kind).toBe("holiday"); // Yom HaAtzmaut 5787
     expect(found.get("2027-04-22")?.name).toContain("פסח"); // Pesach I
   });
+});
+
+test("a short range drops the first date's year when both share it (R79)", () => {
+  expect(formatShortNumericRange("2026-12-06", "2026-12-12")).toBe("⁦06/12 – 12/12/2026⁩");
+  expect(formatShortNumericRange("2026-12-27", "2027-01-02")).toBe("⁦27/12/2026 – 02/01/2027⁩");
 });

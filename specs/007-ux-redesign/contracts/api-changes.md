@@ -40,7 +40,7 @@ Schemathesis.
 | shift and assignment writes | optional `If-Match` (the shift's `ETag`); stale → 412 `roster.changed` | as above | `GET /shifts` returns each shift's `etag` |
 | `GET /shifts` | each assignment carries effective `starts_at`, `ends_at`, `own_times: bool`, its warnings and overrides | manager, admin | |
 | `POST /assignments/{id}/overrides` | new: `{warning_code, reason}` | `roster.edit:project` | 422 if the warning is not on that assignment |
-| `GET /projects/{id}/publish-preview?first=&last=` | new: shifts, people, coverage (filled/required), unfilled slots, open warnings | `roster.publish` | S12 |
+| `GET /projects/{id}/publish-preview?from=&to=` | new: shifts, people, coverage (filled/required), unfilled slots, open warnings | `roster.read` (any Manager or Admin; publishing itself is `roster.publish:project`) | S12 |
 | `POST /projects/{id}/publish` | adds optional `notify: bool` (default true); records `publish_events` | as today | R12 |
 | `POST /projects/{id}/copy-week` | new: `{from_week, to_week, on_conflict: "allow" \| "overwrite" \| "unfilled", dry_run}` | `roster.edit:project` | dry run returns the change list |
 | `GET/POST/DELETE /projects/{id}/week-templates`, `POST /projects/{id}/week-templates/{tid}/apply` | new | `roster.edit:project` | apply takes `{week, on_conflict, dry_run}` |

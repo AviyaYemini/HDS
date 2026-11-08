@@ -17,6 +17,7 @@ import { Button, InlineBanner, TextField, Txt } from "../design/components";
 import { Screen } from "../design/components/Screen";
 import { useTheme } from "../design/theme/ThemeProvider";
 import { homeFor } from "../navigation/destinations";
+import { LanguageToggle } from "../navigation/DisplayControls";
 
 export function SignInScreen() {
   const { t } = useTranslation();
@@ -59,6 +60,10 @@ export function SignInScreen() {
 
   return (
     <Screen testID="screen-sign-in">
+      {/* Where someone first needs it: the language before signing in (the owner, PR 4). */}
+      <View style={styles.display}>
+        <LanguageToggle />
+      </View>
       <View style={styles.card}>
         <View style={styles.brand}>
           <View style={[styles.brandMark, { backgroundColor: colors.cta.bg }]} />
@@ -111,6 +116,7 @@ export function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
+  display: { flexDirection: "row", justifyContent: "flex-end" },
   card: { gap: 16, maxWidth: 420, width: "100%", alignSelf: "center", paddingTop: 24 },
   brand: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMark: { width: 14, height: 14 },

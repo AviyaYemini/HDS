@@ -161,6 +161,9 @@ def new_project(client_id: uuid.UUID, site_id: uuid.UUID) -> dict[str, Any]:
 
 DUPLICATE: dict[str, Any] = {"status": 409, "code": "users.duplicate_email"}
 
+# A week for the roster tools, which take weeks that start on a Sunday.
+SUNDAY, SATURDAY, NEXT_SUNDAY = "2027-06-06", "2027-06-12", "2027-06-13"
+
 # Key: "METHOD /path" exactly as in the OpenAPI document; value: the requests to send.
 CASES: dict[str, list[Case]] = {
     "GET /api/v1/clients/{id}": [
@@ -416,6 +419,88 @@ CASES: dict[str, list[Case]] = {
     ],
     "GET /me/shifts/{id}": [
         Case("foreign shift id", lambda w: req(f"/me/shifts/{w.theirs.shift.id}")),  # type: ignore[union-attr]
+    ],
+    # 007 group D: the roster tools, each on another organisation's project, window or assignment.
+    "PATCH /api/v1/assignments/{id}": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(
+                f"/api/v1/assignments/{w.theirs.assignment.id}",  # type: ignore[union-attr]
+                json={"starts_at": None, "ends_at": None},
+            ),
+        ),
+    ],
+    "POST /api/v1/assignments/{id}/overrides": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(
+                f"/api/v1/assignments/{w.theirs.assignment.id}/overrides",  # type: ignore[union-attr]
+                json={"warning_code": "warnings.overlap", "reason": "Taken over"},
+            ),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/publish-preview": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/publish-preview",
+                params={"from": SUNDAY, "to": SATURDAY},
+            ),
+        ),
+    ],
+    "POST /api/v1/projects/{id}/copy-week": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/copy-week",
+                json={"from_week": SUNDAY, "to_week": NEXT_SUNDAY, "dry_run": True},
+            ),
+        ),
+    ],
+    "GET /api/v1/projects/{id}/week-templates": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/week-templates"),
+        ),
+    ],
+    "POST /api/v1/projects/{id}/week-templates": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/week-templates",
+                json={"name": "Taken over", "week": SUNDAY},
+            ),
+        ),
+    ],
+    "DELETE /api/v1/projects/{id}/week-templates/{template_id}": [
+        Case(
+            "foreign project id",
+            lambda w: req(f"/api/v1/projects/{w.theirs.project.id}/week-templates/{uuid.uuid4()}"),
+        ),
+    ],
+    "POST /api/v1/projects/{id}/week-templates/{template_id}/apply": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/week-templates/{uuid.uuid4()}/apply",
+                json={"week": NEXT_SUNDAY, "dry_run": True},
+            ),
+        ),
+    ],
+    "POST /api/v1/projects/{id}/roster/bulk": [
+        Case(
+            "foreign project id",
+            lambda w: req(
+                f"/api/v1/projects/{w.theirs.project.id}/roster/bulk",
+                json={"from": SUNDAY, "to": SATURDAY, "headcount": 2, "dry_run": True},
+            ),
+        ),
+    ],
+    "GET /api/v1/availability-windows/{id}/submissions": [
+        Case(
+            "foreign window id",
+            lambda w: req(f"/api/v1/availability-windows/{w.theirs.window.id}/submissions"),  # type: ignore[union-attr]
+        ),
     ],
     "PATCH /api/v1/availability-windows/{id}": [
         Case(
@@ -679,6 +764,8 @@ CASES: dict[str, list[Case]] = {
                     "headcount": 1,
                 },
             ),
+            # A Manager who does not manage the caller's project is refused before any lookup.
+            manager=(403, "roster.project_not_managed"),
         ),
     ],
     "PATCH /api/v1/shifts/{id}": [
@@ -704,6 +791,7 @@ CASES: dict[str, list[Case]] = {
                 f"/api/v1/shifts/{w.mine.shift.id}/assignments",  # type: ignore[union-attr]
                 json={"user_id": str(w.theirs.user.id)},
             ),
+            manager=(403, "roster.project_not_managed"),
         ),
     ],
     "DELETE /api/v1/assignments/{id}": [
@@ -850,12 +938,10 @@ async def test_foreign_id_or_address_is_refused_and_nothing_changes(
 
 # Cases a Manager may not perform at all: the role check comes first, so the answer is 403 and
 # says nothing about whether the foreign id exists.
+# 007 group D opened shift and assignment edits to a project's Managers (roster.edit:project), so
+# they are no longer here: a Manager gets the 404 a missing id gets, or roster.project_not_managed
+# for a project of their own organisation that they do not manage.
 ADMIN_ONLY = {
-    "POST /api/v1/shifts": "users.admin_required",
-    "PATCH /api/v1/shifts/{id}": "users.admin_required",
-    "DELETE /api/v1/shifts/{id}": "users.admin_required",
-    "POST /api/v1/shifts/{id}/assignments": "users.admin_required",
-    "DELETE /api/v1/assignments/{id}": "users.admin_required",
     "DELETE /api/v1/employees/{id}": "users.admin_required",
     "DELETE /api/v1/clients/{id}": "users.admin_required",
     "DELETE /api/v1/projects/{id}": "users.admin_required",

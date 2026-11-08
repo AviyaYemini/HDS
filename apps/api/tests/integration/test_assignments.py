@@ -233,3 +233,19 @@ async def test_removing_an_assignment_twice_answers_404_the_second_time(
     second = await async_client.delete(url, headers=admin)
 
     assert (first.status_code, second.status_code) == (200, 404)
+
+
+async def test_an_assignment_names_its_person_even_after_they_are_deactivated(
+    async_client: AsyncClient, admin: dict[str, str], project: dict[str, Any], ann: Any
+) -> None:
+    """The roster read carries each person's name and state (CodeRabbit, PR 18; R113)."""
+    shift = (await add_shift(async_client, admin, project, MONDAY))["shift"]
+    await assign(async_client, admin, shift["id"], ann)
+    await async_client.post(f"/api/v1/employees/{ann}/deactivate", headers=admin)
+
+    listed = await async_client.get(SHIFTS, params={"project_id": project["id"]}, headers=admin)
+
+    (person,) = next(s for s in listed.json()["items"] if s["id"] == shift["id"])["assignments"]
+    assert person["user_id"] == str(ann)
+    assert person["full_name"]
+    assert person["active"] is False

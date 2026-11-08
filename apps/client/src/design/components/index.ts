@@ -17,7 +17,7 @@ export { SidePanel, type SidePanelProps } from "./SidePanel";
 export { Skeleton, SkeletonRows, type SkeletonProps, type SkeletonRowsProps } from "./Skeleton";
 export { StatusChip, type ChipStatus, type StatusChipProps } from "./StatusChip";
 export { Table, type Column, type SortDirection, type TableProps } from "./Table";
-export { SurfaceContext, Txt, toneColor, type Surface, type Tone, type TxtProps } from "./Text";
+export { SurfaceContext, Txt, textDirection, toneColor, type Surface, type Tone, type TxtProps } from "./Text";
 export { TextField, type TextFieldHandle, type TextFieldProps } from "./TextField";
 export { ToastHost, clearToasts, dismissToast, showToast, type ToastOptions, type ToastTone } from "./Toast";
 export { CalendarMonth, monthGrid, stepDate, type CalendarMonthProps } from "./date/CalendarMonth";
