@@ -13,23 +13,21 @@ description: "Task list template for feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
-**Each group ends with** (HDS, the owner's decision of 2026-11-07 in
-`.claude/hds/process-cuts-proposal.md`). Write it into each group's closing task, naming that
-group's mutants:
+**Each group ends with** (the owner's rules of 2026-11-08, replacing the per-group close of
+2026-11-07). Write it into each group's closing task:
 
-1. the scoped `make ci-local` green: the checks for the paths the branch changed;
-2. `/code-review high`, each finding a row in the feature's `review-ledger.md`, none open;
-3. the mutants named in the closing task, if any: at most three, and only where a passing test
-   could be hollow (a test that could not fail first, or a security, money, time or data-loss
-   rule); one at a time, with the hooks on;
-4. one commit, whose message names the ledger rows it fixes, for example `(R12, R13)`.
+1. the scoped `make ci-local` green: only the checks for the paths the group changed;
+2. mutants only where the group touches risky code (sign-in, pay, or who can see what), named in
+   the closing task; one at a time, with the hooks on; none otherwise;
+3. one commit.
 
-No log: an owner's choice or an accepted limit goes in the commit message, `tasks.md` or
-`research.md`.
+No `/code-review` at a group's close, and no log: an owner's choice or an accepted limit goes in the
+commit message, `tasks.md` or `research.md`.
 
-**When the pull request is ready to push, once**: `make ci-local-full`; `make ci-local-db` if
-`apps/api/` or `specs/001-foundation-auth-org/contracts/openapi.yaml` changed; `/hds-review`; the
-reviewer session; their fixes in one commit. The full suite runs only in CI.
+**When the pull request is ready to push, once**: one `/code-review`, each finding a row in the
+feature's `review-ledger.md`, none open; the fixes in one commit. No `make ci-local-full`,
+`make ci-local-db` or full e2e locally: the full suites run only in CI, and CodeRabbit on GitHub
+catches line-level slips.
 
 ## Format: `[ID] [P?] [Story] Description`
 
