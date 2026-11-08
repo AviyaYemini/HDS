@@ -13,6 +13,8 @@ import {
   PREVIEWS_ON,
   type Language,
   addDays,
+  at,
+  isPhone,
   apiAs,
   checkA11y,
   ok,
@@ -135,6 +137,53 @@ for (const language of LANGUAGES) {
       await expect(locked).toHaveAttribute("data-status", "locked");
       await expect(locked).toHaveAttribute("data-counted-unavailable", "false");
       await expect(tuesday).toBeDisabled();
+    });
+
+    // The owner, PR 4 (R79, R80): on a phone the week title was a one-letter column, and the grid
+    // spilled past its frame with headers out of line and truncated.
+    test("on a phone the week bar and the grid fit", async ({ page }, testInfo) => {
+      test.skip(!isPhone(testInfo), "the phone layout");
+      const { first, last } = weekFor(language, 2);
+      await clearAvailability(admin, me, first, last);
+      const window = await openWindow(manager, first, last, 24);
+      await openAs(page, "employee", language, "/my/availability", { window: window.id });
+      await expect(page.getByTestId("screen-availability")).toBeVisible();
+
+      const title = page.getByRole("heading", { level: 2 }).filter({ hasText: "2026" }).first();
+      await expect(title).toBeVisible();
+      const fitsTwoLines = async (locator: typeof title) => {
+        const box = (await locator.boundingBox())!;
+        const line = await locator.evaluate((node) => parseFloat(getComputedStyle(node).lineHeight) || 20);
+        expect(box.width).toBeGreaterThan(120);
+        expect(box.height).toBeLessThanOrEqual(2 * line + 2);
+      };
+      await fitsTwoLines(title);
+
+      // The page never scrolls sideways; the grid fits its frame or scrolls inside it.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
+      const frame = page.getByTestId("availability-grid-frame");
+      const frameBox = (await frame.boundingBox())!;
+      expect(frameBox.x).toBeGreaterThanOrEqual(0);
+      expect(frameBox.x + frameBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+
+      // Each header sits over its own column.
+      const heads = page.getByTestId("availability-column-head");
+      for (let i = 0; i < (await heads.count()); i += 1) {
+        const head = heads.nth(i);
+        const type = await head.getAttribute("data-shift-type");
+        const headBox = (await head.boundingBox())!;
+        const slotBox = (await page.locator(`[data-testid="availability-slot"][data-shift-type="${type}"]`).first().boundingBox())!;
+        expect(Math.abs(headBox.x - slotBox.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(headBox.x + headBox.width - (slotBox.x + slotBox.width))).toBeLessThanOrEqual(1);
+      }
+      // No name is cut off: each wraps within its header.
+      const clipped = await page.getByTestId("availability-column-name").evaluateAll((nodes) =>
+        nodes.filter((n) => (n.textContent ?? "").length <= 12 && n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent),
+      );
+      expect(clipped).toEqual([]);
+
+      await page.goto(at("/my/pay", language));
+      await fitsTwoLines(page.getByTestId("pay-period"));
     });
 
     test("a missed deadline shows as counted unavailable", async ({ page }) => {

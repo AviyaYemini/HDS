@@ -345,3 +345,17 @@ test("sign-in offers the language switch before anyone signs in", async ({ page 
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
   await expect(page.getByTestId("sign-in-btn")).toContainText("Sign in");
 });
+
+// From the owner's screenshots (PR 4): the English "AVAILABILITY" tab was cut off.
+test("no phone tab label is cut off, in English or Hebrew", async ({ page }, testInfo) => {
+  test.skip(!isPhone(testInfo), "the phone's tabs");
+  for (const language of LANGUAGES) {
+    await signIn(page, "employee", language);
+    const cut = await page.getByTestId("nav-tabs").locator("[dir]").evaluateAll((nodes) =>
+      nodes.filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent),
+    );
+    expect(cut, language).toEqual([]);
+    await page.getByTestId("action-sign-out").first().click();
+    await expect(page).toHaveURL(/\/sign-in/);
+  }
+});

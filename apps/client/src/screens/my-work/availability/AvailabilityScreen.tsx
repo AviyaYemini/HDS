@@ -9,7 +9,7 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ApiError, call, codeOf, useErrorText } from "../../../api/errors";
 import { useSession } from "../../../api/SessionContext";
@@ -21,7 +21,7 @@ import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { component } from "../../../design/theme/theme.generated";
 import { webProps } from "../../../design/web";
-import { DEFAULT_TIME_ZONE, addDays, dateOf, endOfWeek, formatNumericDate, formatNumericRange, formatTime, holidaysBetween, startOfWeek, todayIn, weekdayNames } from "../../../locale";
+import { DEFAULT_TIME_ZONE, addDays, dateOf, endOfWeek, formatNumericDate, formatNumericRange, formatShortNumericRange, formatTime, holidaysBetween, startOfWeek, todayIn, weekdayNames } from "../../../locale";
 import { useLoad } from "../../useLoad";
 import type { PendingChange } from "./draftQueue";
 import {
@@ -47,6 +47,8 @@ import {
   type Mark,
   type PlannedCall,
   type Submission,
+  Serial,
+  CellLedger,
 } from "./model";
 import { usePendingQueue } from "./usePendingQueue";
 
@@ -62,6 +64,9 @@ function lightTap(): void {
 function successTap(): void {
   if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
 }
+
+/** The grid's scroll frame on the web: a keyboard can reach and scroll it even when every cell is locked (axe: scrollable-region-focusable). */
+const GRID_FRAME_ROLE = "region";
 
 export function AvailabilityScreen() {
   const { t, i18n } = useTranslation();
@@ -106,6 +111,15 @@ export function AvailabilityScreen() {
   const shownStatus: Submission["status"] | null = status ?? submission.data?.status ?? null;
   const canEdit = editable(submission.data ? { status: shownStatus ?? submission.data.status } : null, window);
   const serverEntries: Entry[] = useMemo(() => entries.data ?? [], [entries.data]);
+  // The cell writes in flight, one after another, and a fresh reading of the entries for each.
+  const [writes] = useState(() => new Serial());
+  const [ledger] = useState(() => new CellLedger<CellState, Change>());
+  const readEntries = useCallback(
+    async (): Promise<Entry[]> =>
+      range ? (await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: range } }))).items : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the range's two dates are the dependency
+    [range?.from, range?.to, userId, session],
+  );
 
   /** Run a plan's calls in order. */
   const runPlan = useCallback(
@@ -187,42 +201,69 @@ export function AvailabilityScreen() {
     async (key: CellKey, to: CellState, record: boolean, batch: boolean): Promise<void> => {
       if (!window) return;
       const target = targetKey(serverEntries, key);
-      const before = stateOf(target);
+      // The latest tap's state, not the last render's: a quick second tap builds on the first.
+      const before = ledger.current(keyOf(target)) ?? stateOf(target);
       if (before === to) return;
+      const marks = [ledger.set(keyOf(target), to), ledger.set(keyOf(key), to)] as const;
       setOverrides((current) => new Map(current).set(keyOf(target), to).set(keyOf(key), to));
-      if (record) setUndo((stack) => [...stack, { key: target, before, after: to }]);
+      const change = { key: target, before, after: to };
+      if (record) {
+        ledger.history.push(change);
+        setUndo([...ledger.history]);
+      }
+      // Done with this write: forget its marks, and show the server's state unless a newer tap
+      // is still on its way.
+      const settle = (): void => {
+        ledger.settle(keyOf(target), marks[0]);
+        ledger.settle(keyOf(key), marks[1]);
+        if (ledger.current(keyOf(target)) === undefined) dropOverride(target);
+        if (ledger.current(keyOf(key)) === undefined) dropOverride(key);
+      };
       if (shownStatus) setStatus(statusAfterChange(shownStatus));
       lightTap();
-      try {
-        await runPlan(planCellChange(serverEntries, key, to, window));
+      // One write at a time, each planned from the entries as they are once the one before has
+      // landed: a quick second tap, or Undo, must never be planned against entries already out of
+      // date. A batch (Copy last week) plans from one reading and reloads once (R57).
+      const write = async (): Promise<void> => {
+        const current = batch ? serverEntries : await readEntries();
+        await runPlan(planCellChange(current, key, to, window));
         if (!batch) {
           await reload();
-          dropOverride(target);
-          dropOverride(key);
+          settle();
+        }
+      };
+      try {
+        if (batch) {
+          await write();
+        } else {
+          await writes.run(write);
         }
       } catch (failure) {
         if (failure instanceof ApiError && failure.status === 0) {
           // No server: keep the change on the device and send it when the connection is back.
           queue.enqueue({ key: target, state: to });
-          dropOverride(target);
-          dropOverride(key);
+          settle();
           return;
         }
-        dropOverride(target);
-        dropOverride(key);
-        if (record) setUndo((stack) => stack.slice(0, -1));
+        settle();
+        if (record) {
+          const at = ledger.history.lastIndexOf(change);
+          if (at >= 0) ledger.history.splice(at, 1);
+          setUndo([...ledger.history]);
+        }
         setStatus(null);
         showToast(errorText(codeOf(failure)), { tone: "warning" });
       }
     },
-    [window, serverEntries, stateOf, shownStatus, runPlan, reload, dropOverride, queue, errorText],
+    [window, serverEntries, stateOf, shownStatus, runPlan, reload, dropOverride, queue, errorText, readEntries, writes, ledger],
   );
   const setCell = useCallback((key: CellKey, to: CellState, record: boolean) => applyCell(key, to, record, false), [applyCell]);
 
   const undoLast = async (): Promise<void> => {
-    const last = undo[undo.length - 1];
+    // From the ledger, which already holds a tap made just before Undo.
+    const last = ledger.history.pop();
     if (!last) return;
-    setUndo((stack) => stack.slice(0, -1));
+    setUndo([...ledger.history]);
     await setCell(last.key, last.before, false);
   };
 
@@ -298,6 +339,7 @@ export function AvailabilityScreen() {
   const bannerData: Record<string, string> = { status: shownStatus ?? "" };
   if (shownStatus === "locked" && submission.data) bannerData.countedUnavailable = String(submission.data.counted_unavailable);
 
+  const gridFrameWeb = webProps({ tabIndex: 0, role: GRID_FRAME_ROLE, "aria-label": t("availability.grid_label") });
   return (
     <Screen testID="screen-availability">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.my_work")]} title={t("availability.title")}>
@@ -357,27 +399,38 @@ export function AvailabilityScreen() {
       {!online && pending.length > 0 ? <InlineBanner tone="warning" testID="availability-pending" title={t("availability.pending", { count: pending.length })} /> : null}
 
       <View style={styles.weekBar}>
-        <Button variant="quiet" icon="chevron-back" label={t("availability.prev_week")} onPress={() => setWeek(weeks[weekIndex - 1] ?? shownWeek)} disabled={weekIndex <= 0} testID="availability-prev-week" />
-        <Txt role="section" heading={2} numeric style={styles.weekTitle}>
-          {t("availability.week_of", { range: formatNumericRange(days[0]!, days[6]!) })}
+        {/* On a phone the arrows are icons (their names stay for screen readers), so the title has room (R79). */}
+        <Button variant="quiet" icon="chevron-back" label={isDesktop ? t("availability.prev_week") : ""} accessibilityLabel={t("availability.prev_week")} onPress={() => setWeek(weeks[weekIndex - 1] ?? shownWeek)} disabled={weekIndex <= 0} testID="availability-prev-week" />
+        <Txt role={isDesktop ? "section" : "label"} heading={2} numeric style={styles.weekTitle}>
+          {t("availability.week_of", { range: (isDesktop ? formatNumericRange : formatShortNumericRange)(days[0]!, days[6]!) })}
         </Txt>
-        <Button variant="quiet" icon="chevron-next" label={t("availability.next_week")} iconPosition="trailing" onPress={() => setWeek(weeks[weekIndex + 1] ?? shownWeek)} disabled={weekIndex >= weeks.length - 1} testID="availability-next-week" />
+        <Button variant="quiet" icon="chevron-next" label={isDesktop ? t("availability.next_week") : ""} accessibilityLabel={t("availability.next_week")} iconPosition="trailing" onPress={() => setWeek(weeks[weekIndex + 1] ?? shownWeek)} disabled={weekIndex >= weeks.length - 1} testID="availability-next-week" />
       </View>
 
-      <View accessibilityLabel={t("availability.grid_label")} style={[styles.grid, { borderColor: colors.border.subtle }]}>
+      {/* The grid never grows past its frame: when the columns cannot all fit at a 48 px slot, it
+          scrolls sideways inside it (R80). */}
+      <ScrollView
+        horizontal
+        style={styles.gridFrame}
+        contentContainerStyle={styles.gridContent}
+        testID="availability-grid-frame"
+        {...gridFrameWeb}
+      >
+      <View accessibilityLabel={t("availability.grid_label")} style={[styles.grid, { borderColor: colors.border.subtle, minWidth: (isDesktop ? 92 : 60) + columns.length * 48 + 2 }]} testID="availability-grid">
         <View style={[styles.row, styles.headRow, { borderBottomColor: colors.border.strong }]}>
-          <View style={styles.dayCol}>
+          <View style={[styles.dayCol, isDesktop ? null : styles.dayColPhone]}>
             <Txt role="eyebrow" tone="secondary">
               {t("availability.day")}
             </Txt>
           </View>
           {columns.map((column) => (
-            <View key={column.id} style={styles.cellCol}>
-              <Txt role="eyebrow" tone="secondary" numberOfLines={1}>
+            <View key={column.id} style={styles.slot} testID="availability-column-head" {...webProps({ dataSet: { shiftType: column.id } })}>
+              {/* Wraps rather than truncates: the name, then its times in a smaller size. */}
+              <Txt role={isDesktop ? "eyebrow" : "meta"} tone="secondary" style={styles.headName} testID="availability-column-name">
                 {column.label}
               </Txt>
               {column.times ? (
-                <Txt role="meta" tone="secondary" numeric numberOfLines={1}>
+                <Txt role="meta" tone="secondary" numeric style={styles.headName}>
                   {column.times}
                 </Txt>
               ) : null}
@@ -391,7 +444,7 @@ export function AvailabilityScreen() {
           const rest = index === 6;
           return (
             <View key={date} style={[styles.row, { borderBottomColor: colors.border.subtle }, rest ? { backgroundColor: colors.bg.surface } : null]}>
-              <View style={styles.dayCol}>
+              <View style={[styles.dayCol, isDesktop ? null : styles.dayColPhone]}>
                 <Txt role="label" numberOfLines={1}>
                   {dayNames[index]}
                 </Txt>
@@ -414,15 +467,16 @@ export function AvailabilityScreen() {
                   const key = { date, shiftType: column.id };
                   const state = stateOf(key);
                   return (
+                    <View key={column.id} style={styles.slot} testID="availability-slot" {...webProps({ dataSet: { shiftType: column.id, date } })}>
                     <Cell
-                      key={column.id}
                       cellKey={key}
                       state={state}
                       label={`${dayNames[index]} ${formatNumericDate(date)}, ${column.label}: ${t(`availability.state.${state}`)}`}
                       disabled={!canEdit || !inWindow}
-                      onPress={() => void setCell(key, nextState(state), true)}
+                      onPress={() => void setCell(key, nextState(ledger.current(keyOf(key)) ?? state), true)}
                       onLongPress={() => setChooser(key)}
                     />
+                    </View>
                   );
                 })
               )}
@@ -430,6 +484,7 @@ export function AvailabilityScreen() {
           );
         })}
       </View>
+      </ScrollView>
 
       <View testID="availability-rules" style={[styles.rules, { borderColor: colors.border.subtle }]}>
         <Txt role="eyebrow" tone="secondary">
@@ -541,13 +596,18 @@ const styles = StyleSheet.create({
   bannerHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   weekBar: { flexDirection: "row", alignItems: "center", gap: 8 },
-  weekTitle: { flex: 1, textAlign: "center" },
-  grid: { borderWidth: 1 },
+  weekTitle: { flex: 1, minWidth: 0, flexShrink: 1, textAlign: "center" },
+  gridFrame: { flexGrow: 0 },
+  gridContent: { flexGrow: 1 },
+  grid: { borderWidth: 1, flexGrow: 1 },
+  slot: { flex: 1, minWidth: 48, flexBasis: 0, padding: 0, justifyContent: "center", alignItems: "stretch" },
+  headName: { textAlign: "center", ...(Platform.OS === "web" ? ({ overflowWrap: "anywhere" } as object) : {}) },
+  dayColPhone: { width: 60 },
   row: { flexDirection: "row", alignItems: "stretch", borderBottomWidth: 1, minHeight: component.target.phone + 8 },
   headRow: { minHeight: 44 },
   dayCol: { width: 92, padding: 6, justifyContent: "center", gap: 1 },
   cellCol: { flex: 1, padding: 6, justifyContent: "center", alignItems: "center" },
-  cell: { flex: 1, minWidth: component.target.phone, minHeight: component.target.phone, margin: 3, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  cell: { flex: 1, minWidth: 0, minHeight: component.target.phone, margin: 2, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   cellDisabled: { opacity: 0.6 },
   band: { flex: 1, margin: 3, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 },
   rules: { gap: 8, padding: 14, borderWidth: 1 },

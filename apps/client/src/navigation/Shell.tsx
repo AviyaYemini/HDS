@@ -306,7 +306,8 @@ const styles = StyleSheet.create({
   group: { gap: 2 },
   groupTitle: { paddingHorizontal: 14, paddingBottom: 6 },
   previewMark: { marginStart: "auto" },
-  tabLabel: { maxWidth: "100%", textAlign: "center", letterSpacing: 0 },
+  // A fifth of a phone (FR-005): a size smaller than the eyebrow, so "AVAILABILITY" fits whole.
+  tabLabel: { maxWidth: "100%", textAlign: "center", letterSpacing: -0.2, fontSize: 10 },
   navLabel: { flexShrink: 1 },
   main: { flex: 1 },
   mainContent: { flexGrow: 1 },

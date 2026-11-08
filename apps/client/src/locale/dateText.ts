@@ -89,3 +89,9 @@ export function monthNames(locale: string, width: "long" | "short" = "long"): st
 export function formatNumericRange(start: string, end: string): string {
   return `${LRI}${formatNumericDate(start)} ${RANGE_DASH} ${formatNumericDate(end)}${PDI}`;
 }
+
+/** The same range for a narrow screen: the first date without its year when both share one. */
+export function formatShortNumericRange(start: string, end: string): string {
+  const first = start.slice(0, 4) === end.slice(0, 4) ? formatNumericDate(start).slice(0, 5) : formatNumericDate(start);
+  return `${LRI}${first} ${RANGE_DASH} ${formatNumericDate(end)}${PDI}`;
+}

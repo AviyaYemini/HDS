@@ -15,6 +15,8 @@ import {
   targetKey,
   weeksOf,
   type Entry,
+  Serial,
+  CellLedger,
 } from "../../../src/screens/my-work/availability/model";
 
 const entry = (over: Partial<Entry>): Entry => ({
@@ -178,5 +180,52 @@ describe("a change touches one cell only (R48, R55)", () => {
       { call: "create", kind: "open", starts_on: "2026-11-17", ends_on: "2026-11-17", shift_type_id: null, weekday: null },
     ]);
     expect(targetKey([], key)).toEqual(key);
+  });
+});
+
+describe("Serial (the availability week's one-at-a-time writes)", () => {
+  it("runs each task after the one before has settled, even when that one failed", async () => {
+    const serial = new Serial();
+    const seen: string[] = [];
+    let release: () => void = () => undefined;
+    const first = serial.run(
+      () =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            seen.push("first");
+            resolve();
+          };
+        }),
+    );
+    const failing = serial.run(async () => {
+      seen.push("second");
+      throw new Error("refused");
+    });
+    const third = serial.run(async () => {
+      seen.push("third");
+      return 3;
+    });
+    // The first task starts on a later turn; nothing else may run before it finishes.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual([]);
+    release();
+    await first;
+    await expect(failing).rejects.toThrow("refused");
+    await expect(third).resolves.toBe(3);
+    expect(seen).toEqual(["first", "second", "third"]);
+  });
+});
+
+describe("CellLedger (taps ahead of the next render)", () => {
+  it("answers the latest tap's state, and a landed write clears only its own mark", () => {
+    const ledger = new CellLedger<string, string>();
+    const first = ledger.set("tue", "open");
+    expect(ledger.current("tue")).toBe("open");
+    const second = ledger.set("tue", "close");
+    // The first write lands after the second tap: the second tap's state stays.
+    ledger.settle("tue", first);
+    expect(ledger.current("tue")).toBe("close");
+    ledger.settle("tue", second);
+    expect(ledger.current("tue")).toBeUndefined();
   });
 });

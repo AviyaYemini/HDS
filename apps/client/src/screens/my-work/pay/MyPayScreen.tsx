@@ -27,7 +27,7 @@ export function MyPayScreen() {
   const { t, i18n } = useTranslation();
   const session = useSession();
   const errorText = useErrorText();
-  const { colors } = useTheme();
+  const { colors, isDesktop } = useTheme();
   const { period: askedPeriod, view: askedView } = useLocalSearchParams<{ period?: string; view?: string }>();
   const current = todayIn(DEFAULT_TIME_ZONE).slice(0, 7);
   const [period, setPeriod] = useState(askedPeriod && PERIOD.test(askedPeriod) ? askedPeriod : current);
@@ -54,11 +54,11 @@ export function MyPayScreen() {
         <SegmentedControl options={options} value={view} onChange={setView} label={t("pay.view_label")} testID="pay-view" />
       </PageTitle>
       <View testID="pay-period-picker" role="group" accessibilityLabel={t("pay.period_label")} style={styles.picker}>
-        <Button variant="quiet" icon="chevron-back" label={t("pay.prev_period")} onPress={() => setPeriod(previousPeriod(period))} testID="pay-period-prev" />
+        <Button variant="quiet" icon="chevron-back" label={isDesktop ? t("pay.prev_period") : ""} accessibilityLabel={t("pay.prev_period")} onPress={() => setPeriod(previousPeriod(period))} testID="pay-period-prev" />
         <Txt role="section" heading={2} style={styles.pickerTitle} testID="pay-period">
           {formatMonthYear(`${period}-01`, i18n.language)}
         </Txt>
-        <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={t("pay.next_period")} onPress={() => setPeriod(nextPeriod(period))} disabled={period >= current} testID="pay-period-next" />
+        <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={isDesktop ? t("pay.next_period") : ""} accessibilityLabel={t("pay.next_period")} onPress={() => setPeriod(nextPeriod(period))} disabled={period >= current} testID="pay-period-next" />
       </View>
       {pay.error ? (
         <InlineBanner tone="warning" title={errorText(pay.error)} action={{ label: t("common.retry"), onPress: () => void pay.reload() }} />
@@ -153,7 +153,7 @@ function HoursRow({ label, minutes, testID }: { label: string; minutes: number |
 
 const styles = StyleSheet.create({
   picker: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pickerTitle: { flex: 1, textAlign: "center" },
+  pickerTitle: { flex: 1, minWidth: 0, flexShrink: 1, textAlign: "center" },
   stack: { gap: 16 },
   table: { gap: 0, padding: 14, borderWidth: 1 },
   tableRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderTopWidth: 1 },

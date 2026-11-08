@@ -212,3 +212,47 @@ export function editable(submission: Pick<Submission, "status"> | null, window: 
 export function statusAfterChange(status: Submission["status"]): Submission["status"] {
   return status === "locked" ? "locked" : "draft";
 }
+
+/** Runs tasks one after another, each once the one before has settled, failed or not. */
+export class Serial {
+  private last: Promise<unknown> = Promise.resolve();
+
+  /** Run `task` after every task given before it; answers its own result. */
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const turn = this.last.then(task);
+    this.last = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+}
+
+/**
+ * What the screen has just done to its cells, ahead of the next render: each cell's latest state
+ * (marked by the tap that set it) and the Undo history. A quick second tap, or Undo, reads from
+ * here, so it never acts on a render that does not show the tap before it yet; a write that lands
+ * clears only its own mark, never a newer tap's.
+ */
+export class CellLedger<S, C> {
+  private readonly shown = new Map<string, { state: S; mark: number }>();
+  private marks = 0;
+  readonly history: C[] = [];
+
+  /** The state the latest tap gave `key`, if one is still on its way. */
+  current(key: string): S | undefined {
+    return this.shown.get(key)?.state;
+  }
+
+  /** Record that `key` is now `state`; answers the mark to settle it with. */
+  set(key: string, state: S): number {
+    this.marks += 1;
+    this.shown.set(key, { state, mark: this.marks });
+    return this.marks;
+  }
+
+  /** The write behind `mark` has landed (or failed): forget it, unless a newer tap followed. */
+  settle(key: string, mark: number): void {
+    if (this.shown.get(key)?.mark === mark) this.shown.delete(key);
+  }
+}

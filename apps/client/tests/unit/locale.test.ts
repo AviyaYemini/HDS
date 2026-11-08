@@ -20,6 +20,7 @@ import {
   formatMoney,
   formatNumericDate,
   formatNumericRange,
+  formatShortNumericRange,
   formatTime,
   formatTimeRange,
   groupDigits,
@@ -198,4 +199,9 @@ describe("Israeli holidays (FR-054, D6)", () => {
     expect(found.get("2027-05-12")?.kind).toBe("holiday"); // Yom HaAtzmaut 5787
     expect(found.get("2027-04-22")?.name).toContain("פסח"); // Pesach I
   });
+});
+
+test("a short range drops the first date's year when both share it (R79)", () => {
+  expect(formatShortNumericRange("2026-12-06", "2026-12-12")).toBe("⁦06/12 – 12/12/2026⁩");
+  expect(formatShortNumericRange("2026-12-27", "2027-01-02")).toBe("⁦27/12/2026 – 02/01/2027⁩");
 });
