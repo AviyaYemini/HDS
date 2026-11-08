@@ -229,8 +229,8 @@ group H's close or the PR 5 marker. Record each result in the table below: the d
 and its system version, the language, pass or what failed.
 
 **Before you start**: a Release build of 007 on an iPhone (VoiceOver) and a mid-range Android
-phone (TalkBack), signed in once as an employee and once as a manager. On each phone, do the
-whole list in Hebrew and again in English.
+phone (TalkBack). On each phone, do the whole list in Hebrew and again in English: as an employee
+and as a manager for checks 1 to 8, then check 9 as an admin and check 10 as a client.
 
 1. **Screen reader, every tab**: with VoiceOver or TalkBack on, move through Home, Availability,
    My shifts, Pay, More (employee) and Home, Roster, My work, Reports, More (manager). Every
@@ -245,18 +245,27 @@ whole list in Hebrew and again in English.
 5. **Language switch (T105)**: from the top bar, switch to the other language on a deep screen
    (My shifts, Past). You see "Switching to …" in the new language, then the splash, then the same
    screen in the new direction, still signed in, with no second Face ID or fingerprint prompt.
-   Switch back. If the phone shows the "restart to finish" notice instead, note it: the reload
+   Switch back. If the phone shows instead the notice "The layout direction changes fully after the
+   app restarts." ("כיוון הפריסה משתנה במלואו אחרי הפעלה מחדש של האפליקציה."), note it: the reload
    did not happen.
-6. **Intl on Android**: dates, times and money read correctly in both languages (07/11/2026,
-   07:00–15:00, ₪48.00), and the week starts on Sunday.
+6. **Intl on Android**: dates, times and money read correctly, and the week starts on Sunday. In
+   English: 07/11/2026, 07:00–15:00, ₪48.00. In Hebrew: 07/11/2026, 07:00–15:00, 48.00 ₪ (the
+   symbol after the amount, as the voice guide has it).
 7. **Status without colour**: with the phone's grayscale filter on, every status (availability
    cells, roster coverage, run status, chips) is still told apart by its icon and its words.
 8. **Roster scrolling**: on the Android phone, scroll the roster week up and down and across for
    ten seconds. It keeps up with the finger (60 frames a second, no visible stutter).
+9. **Admin's screens**: as an admin, with the screen reader on, open Special days and Pay
+   settings, change a value, save, and confirm. The confirmation reads the old and the new value;
+   a removed special day offers Undo, and Undo is read out.
+10. **Client shell**: as a client, move through Projects, a project's page and Contact. Every
+    control is named, in the reading direction, with nothing read twice.
 
 **Done in the code already (no device needed)**: Hebrew copy uses plural or noun forms rather
 than a gendered singular (checked across `he.json` in group H, seven strings reworded); every
-screen passes axe in both languages, light and dark, at desktop and phone sizes (h-a11y-sweep);
+screen each role can reach passes axe in both languages, in all four themes (light, dark and both
+high-contrast), at desktop and phone sizes, each on its own screen rather than a refusal
+(h-a11y-sweep);
 status chips carry a mark and a label beside their colour.
 
 | Date | Device and system | Language | Check | Result |
