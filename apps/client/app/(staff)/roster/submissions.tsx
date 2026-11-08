@@ -1,12 +1,12 @@
-/** Submissions: built by a later group of 007; a guarded placeholder until then (FR-007). */
+/** Who has submitted availability for a window (specs/007-ux-redesign T074, FR-040, FR-007). */
 import { RequireCapability } from "../../../src/capabilities";
-import { PlaceholderScreen } from "../../../src/screens/misc/HubScreen";
 import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
+import { SubmissionsScreen } from "../../../src/screens/roster/SubmissionsScreen";
 
 export default function Route() {
   return (
     <RequireCapability need="availability.read_others" denied={<NoAccessScreen />}>
-      <PlaceholderScreen titleKey="nav.submissions" bodyKey="placeholder.submissions" eyebrowKey="nav.group.manage" testID="screen-submissions" />
+      <SubmissionsScreen />
     </RequireCapability>
   );
 }

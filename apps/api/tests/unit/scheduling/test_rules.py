@@ -92,10 +92,14 @@ def test_night_then_morning_rests_one_hour() -> None:
 
     assert codes(warnings) == ["warnings.rest_too_short"]
     assert set(warnings[0].shift_ids) == {night.id, morning.id}
+    # The rule's numbers, so the roster can say them (007 FR-041): one hour against eleven.
+    assert dict(warnings[0].values) == {"rest_hours": "1", "minimum_hours": "11"}
 
 
 def test_shifts_that_touch_rest_zero_hours_and_do_not_overlap() -> None:
-    assert codes(run(shift(at(1, 15)), (shift(at(1, 7)),))) == ["warnings.rest_too_short"]
+    warnings = run(shift(at(1, 15)), (shift(at(1, 7)),))
+    assert codes(warnings) == ["warnings.rest_too_short"]
+    assert dict(warnings[0].values)["rest_hours"] == "0"
 
 
 def test_exactly_the_minimum_rest_is_enough() -> None:
@@ -109,6 +113,7 @@ def test_more_than_the_weekly_maximum_in_one_sunday_to_saturday_week() -> None:
     warnings = run(week[-1], week[:-1])
 
     assert codes(warnings) == ["warnings.weekly_hours_exceeded"]
+    assert dict(warnings[0].values)["hours"] == "54"
     assert set(warnings[0].shift_ids) == {s.id for s in week}
 
 

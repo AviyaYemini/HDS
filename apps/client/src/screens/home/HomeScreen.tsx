@@ -16,6 +16,7 @@ import {
   EmptyState,
   FeaturePanel,
   InlineBanner,
+  LinkPressable,
   PageTitle,
   Skeleton,
   StatusChip,
@@ -26,6 +27,7 @@ import { Icon, type IconName } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import {
   DEFAULT_TIME_ZONE,
+  addDays,
   dateOf,
   daysBetween,
   formatHeaderDate,
@@ -161,6 +163,64 @@ function EmployeeHome() {
   );
 }
 
+/**
+ * Today's coverage, the open seats on today's shifts, and who has not yet submitted for the nearest
+ * open availability window (FR-006, T074), each linking to where it is dealt with.
+ */
+function ManagerCards() {
+  const { t } = useTranslation();
+  const session = useSession();
+  const today = todayIn(DEFAULT_TIME_ZONE);
+  const shifts = useLoad(async () => (await call(session.api.GET("/api/v1/shifts", { params: { query: { from: today, to: today, limit: 200 } } }))).items, [today]);
+  const missing = useLoad(async () => {
+    const windows = (await call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: today, to: addDays(today, 60) } } }))).items;
+    const open = windows.filter((w) => new Date(w.deadline).getTime() > Date.now()).sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+    if (!open) return { window: null, count: 0 };
+    const rows = (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id: open.id } } }))).items;
+    return { window: open.id, count: rows.filter((r) => r.status === "not_submitted").length };
+  }, [today]);
+  const filled = (shifts.data ?? []).reduce((n, s) => n + s.assignments.length, 0);
+  const required = (shifts.data ?? []).reduce((n, s) => n + s.headcount, 0);
+  const open = (shifts.data ?? []).reduce((n, s) => n + Math.max(0, s.headcount - s.assignments.length), 0);
+  return (
+    <View style={styles.cards}>
+      {shifts.data === null ? (
+        <>
+          <PendingCard titleKey="home.coverage_today" testID="home-card-coverage" />
+          <PendingCard titleKey="home.unfilled" testID="home-card-unfilled" />
+        </>
+      ) : (
+        <>
+          <FigureCard titleKey="home.coverage_today" value={`${filled}/${required}`} href="/roster" testID="home-card-coverage" />
+          <FigureCard titleKey="home.unfilled" value={String(open)} href="/roster" testID="home-card-unfilled" />
+        </>
+      )}
+      {missing.data === null && !missing.error ? (
+        <PendingCard titleKey="home.not_submitted" testID="home-card-not-submitted" />
+      ) : missing.data?.window ? (
+        <FigureCard titleKey="home.not_submitted" value={String(missing.data.count)} href={`/roster/submissions?window=${missing.data.window}`} testID="home-card-not-submitted" />
+      ) : (
+        <FigureCard titleKey="home.not_submitted" value={t("home.no_open_window")} href="/roster/submissions" testID="home-card-not-submitted" />
+      )}
+    </View>
+  );
+}
+
+function FigureCard({ titleKey, value, href, testID }: { titleKey: string; value: string; href: string; testID: string }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  return (
+      <LinkPressable href={href} testID={testID} role="link" style={() => [styles.card, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+        <Txt role="eyebrow" tone="secondary">
+          {t(titleKey)}
+        </Txt>
+        <Txt role="display" numeric>
+          {value}
+        </Txt>
+      </LinkPressable>
+  );
+}
+
 function ManagerHome({ admin }: { admin: boolean }) {
   const { t } = useTranslation();
   const session = useSession();
@@ -168,11 +228,7 @@ function ManagerHome({ admin }: { admin: boolean }) {
   return (
     <Screen testID="screen-home">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("home.greeting", { name: firstName(session.user?.full_name) })} />
-      <View style={styles.cards}>
-        <PendingCard titleKey="home.coverage_today" testID="home-card-coverage" />
-        <PendingCard titleKey="home.unfilled" testID="home-card-unfilled" />
-        <PendingCard titleKey="home.not_submitted" testID="home-card-not-submitted" />
-      </View>
+      <ManagerCards />
       <View style={styles.row}>
         <QuickLink href="/roster" icon="grid" label={t("nav.roster")} testID="home-link-roster" />
         <QuickLink href="/roster/submissions" icon="list" label={t("nav.submissions")} testID="home-link-submissions" />

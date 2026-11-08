@@ -149,6 +149,12 @@ def _as_worked_by(slot: ShiftSlot, person: uuid.UUID) -> ShiftSlot:
     return replace(slot, starts_at=starts_at, ends_at=ends_at, own_times=())
 
 
+def _hours(span: timedelta) -> str:
+    """``span`` in hours, as a screen shows it: whole hours bare, otherwise one decimal place."""
+    tenths = round(span.total_seconds() / 360)
+    return str(tenths // 10) if tenths % 10 == 0 else f"{tenths / 10:.1f}"
+
+
 def _pair(code: str, person: uuid.UUID, a: ShiftSlot, b: ShiftSlot) -> RuleWarning:
     """A warning about two shifts, with their ids sorted so a pair is reported once."""
     return RuleWarning(code, person, tuple(sorted((a.id, b.id), key=str)))
@@ -192,7 +198,12 @@ def _short_rests(
             if b.starts_at != nearest or (a.id not in focus and b.id not in focus):
                 continue
             if b.starts_at - a.ends_at < min_rest:
-                found.add(_pair("warnings.rest_too_short", person, a, b))
+                pair = _pair("warnings.rest_too_short", person, a, b)
+                values = (
+                    ("rest_hours", _hours(b.starts_at - a.ends_at)),
+                    ("minimum_hours", _hours(min_rest)),
+                )
+                found.add(RuleWarning(pair.code, pair.employee_id, pair.shift_ids, values))
     return found
 
 
@@ -228,7 +239,8 @@ def _week(
     if total <= max_weekly:
         return set()
     ids = tuple(sorted((s.id for s in same_week), key=str))
-    return {RuleWarning("warnings.weekly_hours_exceeded", person, ids)}
+    values = (("hours", _hours(total)), ("maximum_hours", _hours(max_weekly)))
+    return {RuleWarning("warnings.weekly_hours_exceeded", person, ids, values)}
 
 
 def _entries(slot: ShiftSlot, person: uuid.UUID, theirs: Iterable[Entry]) -> set[RuleWarning]:

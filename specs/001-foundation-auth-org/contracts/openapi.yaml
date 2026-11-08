@@ -1753,7 +1753,7 @@ components:
       properties:
         code:
           type: string
-          enum: [warnings.overlap, warnings.rest_too_short, warnings.weekly_hours_exceeded, warnings.blocked, warnings.absence, warnings.close_preference, warnings.over_headcount, warnings.under_headcount, warnings.employee_inactive]
+          enum: [warnings.overlap, warnings.rest_too_short, warnings.weekly_hours_exceeded, warnings.blocked, warnings.absence, warnings.close_preference, warnings.over_headcount, warnings.under_headcount, warnings.employee_inactive, warnings.not_submitted]
         employee_id:
           anyOf:
             - $ref: "#/components/schemas/UUIDv4"
@@ -1764,6 +1764,13 @@ components:
             $ref: "#/components/schemas/UUIDv4"
         detail:
           type: string
+        values:
+          type: object
+          additionalProperties: {type: string}
+          description: >
+            The rule's numbers, so a screen can say them in its own language: `rest_hours` and
+            `minimum_hours` for a short rest, `hours` and `maximum_hours` for the weekly maximum
+            (007 FR-041).
 
     ShiftAnswer:
       type: object

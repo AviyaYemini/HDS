@@ -96,9 +96,12 @@ class RuleWarning:
 
     ``code`` is stable and has a translated text in the API's locale files. ``employee_id`` is the
     employee it concerns, ``None`` for a headcount warning, which concerns the shift.
-    ``shift_ids`` holds every shift involved, sorted.
+    ``shift_ids`` holds every shift involved, sorted. ``values`` are the rule's numbers, as
+    ``(name, text)`` pairs, so a screen can say them in its own language: for a short rest
+    ``rest_hours`` and ``minimum_hours``, for the weekly maximum ``hours`` and ``maximum_hours``.
     """
 
     code: str
     employee_id: uuid.UUID | None
     shift_ids: tuple[uuid.UUID, ...]
+    values: tuple[tuple[str, str], ...] = ()

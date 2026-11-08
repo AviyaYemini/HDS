@@ -156,6 +156,7 @@ def _warning(found: RuleWarning) -> dict[str, Any]:
         "employee_id": found.employee_id,
         "shift_ids": list(found.shift_ids),
         "detail": message(found.code),
+        "values": dict(found.values),
     }
 
 

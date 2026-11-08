@@ -201,12 +201,12 @@ agenda and the submission tracker.
 
 ### [UI] then
 
-- [ ] T070 [US3] [UI] Roster week `apps/client/src/screens/roster/`: Sunday–Saturday columns, rows by shift template, blocks with people and their bars (partial, extended), overnight continuation, shapes for status, coverage per block and per day and hours against the cap in row headers (FR-031), holidays, compact density, the span and grouping switches and the range mode, all in the web address (FR-025, FR-026, FR-029–FR-032)
-- [ ] T071 [US3] [UI] Tap path for every drag (select → Assign to / Move to sheet, people who prefer first, availability shown), drag as a shortcut with a qualification hint, and screen-reader actions; assign and drag feedback in motion (lift, target highlight, settle) and a success haptic on assign and publish (FR-071, FR-073); edit an assignment's own times with the live duration and the DST notice (FR-033, FR-035, FR-053)
-- [ ] T072 [US3] [UI] Layered warnings: badge, detail with rule and numbers, totals per person, the warnings list with "Show on roster", the override sheet with a reason; the stale-save banner (FR-034, FR-041)
-- [ ] T073 [US3] [UI] Publish review (scope, counts, coverage, unfilled, open warnings, Notify everyone / Publish silently), the multi-step undo next to Publish (FR-037), copy last week, week templates and bulk edit with their previews (FR-036–FR-038)
-- [ ] T074 [US3] [UI] Phone day agenda for managers with tap-to-assign and publishing, and the submission tracker screen (FR-039, FR-040); finish the manager home's coverage, unfilled and not-submitted cards from T037 (FR-006)
-- [ ] T075 [P] [US3] [UI] Unit tests for the bar geometry (partial, extended, overnight, RTL) in `apps/client/tests/unit/roster/*.test.tsx`
+- [x] T070 [US3] [UI] Roster week `apps/client/src/screens/roster/`: Sunday–Saturday columns, rows by shift template, blocks with people and their bars (partial, extended), overnight continuation, shapes for status, coverage per block and per day and hours against the cap in row headers (FR-031), holidays, compact density, the span and grouping switches and the range mode, all in the web address (FR-025, FR-026, FR-029–FR-032)
+- [x] T071 [US3] [UI] Tap path for every drag (select → Assign to / Move to sheet, people who prefer first, availability shown), drag as a shortcut with a qualification hint, and screen-reader actions; assign and drag feedback in motion (lift, target highlight, settle) and a success haptic on assign and publish (FR-071, FR-073); edit an assignment's own times with the live duration and the DST notice (FR-033, FR-035, FR-053)
+- [x] T072 [US3] [UI] Layered warnings: badge, detail with rule and numbers, totals per person, the warnings list with "Show on roster", the override sheet with a reason; the stale-save banner (FR-034, FR-041)
+- [x] T073 [US3] [UI] Publish review (scope, counts, coverage, unfilled, open warnings, Notify everyone / Publish silently), the multi-step undo next to Publish (FR-037), copy last week, week templates and bulk edit with their previews (FR-036–FR-038)
+- [x] T074 [US3] [UI] Phone day agenda for managers with tap-to-assign and publishing, and the submission tracker screen (FR-039, FR-040); finish the manager home's coverage, unfilled and not-submitted cards from T037 (FR-006)
+- [x] T075 [P] [US3] [UI] Unit tests for the bar geometry (partial, extended, overnight, RTL) in `apps/client/tests/unit/roster/*.test.tsx`
 
 ### Close
 

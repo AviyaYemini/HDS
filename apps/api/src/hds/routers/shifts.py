@@ -82,6 +82,13 @@ class WarningRead(BaseModel):
     employee_id: uuid.UUID | None
     shift_ids: list[uuid.UUID]
     detail: str
+    values: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "The rule's numbers, so a screen can say them in its own language: `rest_hours` and "
+            "`minimum_hours` for a short rest, `hours` and `maximum_hours` for the weekly maximum."
+        ),
+    )
 
 
 class ShiftAnswer(BaseModel):

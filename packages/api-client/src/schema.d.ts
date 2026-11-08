@@ -4073,6 +4073,13 @@ export interface components {
             employee_id: string | null;
             /** Shift Ids */
             shift_ids: string[];
+            /**
+             * Values
+             * @description The rule's numbers, so a screen can say them in its own language: `rest_hours` and `minimum_hours` for a short rest, `hours` and `maximum_hours` for the weekly maximum.
+             */
+            values?: {
+                [key: string]: string;
+            };
         };
         /**
          * WarningsAnswer
