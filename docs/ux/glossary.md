@@ -42,6 +42,8 @@ Client shell: **Projects** / **פרויקטים**, **Billing** / **חיוב**, *
 | `unreachable.title` | Can't reach HDS | אין חיבור ל-HDS | Offline, Network error, שגיאת רשת |
 | `unreachable.sign_in` | Sign in again | התחברות מחדש | Log in, Login, לוגין |
 | `common.retry` | Try again | ניסיון נוסף | Retry, Reload, רענון |
+| `unreachable.body` | Your device is signed in, but HDS did not answer. Check the connection and try again; signing in again also works. | החשבון עדיין מחובר במכשיר הזה, אבל HDS לא ענה. כדאי לבדוק את החיבור לרשת ולנסות שוב; אפשר גם להתחבר מחדש. | המכשיר מחובר (reads as "connected to the network") |
+| `account.session_renewed` | The session on the device you chose was just renewed. Press Sign out again. | החיבור במכשיר שבחרת התחדש הרגע. אפשר ללחוץ שוב על 'יציאה'. | המכשיר הזה (the chip on the caller's own row) |
 
 ## Availability
 
