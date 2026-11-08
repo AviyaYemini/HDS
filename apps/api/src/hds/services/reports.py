@@ -191,9 +191,10 @@ def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:
     for line in lines:
         if group_by == "employee":
             outer, inner = (line.user_id, line.user_name), (line.project_id, line.project_name)
-        elif group_by == "client" and line.client_id is not None:
+        elif group_by == "client":
             # A client's hours, one row per employee across its projects (007, PR 5).
-            outer, inner = (line.client_id, line.client_name), (line.user_id, line.user_name)
+            client = line.client_id or line.project_id  # every project has its client
+            outer, inner = (client, line.client_name), (line.user_id, line.user_name)
         else:
             outer, inner = (line.project_id, line.project_name), (line.user_id, line.user_name)
         group = groups.setdefault(outer[0], Group(id=outer[0], name=outer[1]))
@@ -403,8 +404,14 @@ class ReportsService:
             p.id: p for p in await self._projects.get_many(actor.organization_id, project_ids)
         }
         visible = await self._visible(actor, projects.values())
+        # Only the report's own clients, deleted ones too: the work was done (code review, PR 5).
         clients = (
-            {c.id: c.name for c in await self._clients.list_by_org(actor.organization_id)}
+            {
+                c.id: c.name
+                for c in await self._clients.get_many(
+                    actor.organization_id, {p.client_id for p in projects.values()}
+                )
+            }
             if group_by == "client"
             else {}
         )

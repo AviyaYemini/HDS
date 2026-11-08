@@ -262,3 +262,22 @@ async def test_by_client_a_manager_sees_pay_only_where_it_is_open(
     assert groups["Alpha Ltd"]["pay"] == "720.00"
     assert "pay" not in groups["Bravo Ltd"]
     assert all("pay" not in r for r in groups["Bravo Ltd"]["rows"])
+
+
+async def test_by_client_a_deleted_clients_past_hours_keep_its_name(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """The work was done: a client deleted since still names its hours (code review, PR 5)."""
+    world = await setup(async_client, seed_users)
+    admin = world["admin"]
+    b = world["b"]
+    gone = await async_client.delete(f"/api/v1/projects/{b['id']}", headers=admin)
+    assert gone.status_code == 204, gone.text
+    client = await async_client.delete(f"/api/v1/clients/{b['client_id']}", headers=admin)
+    assert client.status_code == 204, client.text
+
+    body = (
+        await async_client.get(HOURS, params={**OCTOBER, "group_by": "client"}, headers=admin)
+    ).json()
+
+    assert {g["name"] for g in body["groups"]} == {"Alpha Ltd", "Bravo Ltd"}

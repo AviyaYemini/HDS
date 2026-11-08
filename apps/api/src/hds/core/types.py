@@ -180,6 +180,9 @@ def whole_number(value: object) -> object:
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise ValueError("must be a whole number")
+    # JSON's 1e400 reads as infinity, which no floor turns into a number (code review, PR 5).
+    if not math.isfinite(value):
+        raise ValueError("must be a whole number")
     whole = math.floor(value)
     if whole != value:
         raise ValueError("must be a whole number")

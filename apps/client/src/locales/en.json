@@ -763,5 +763,14 @@
   "admin.bulk_partial_removed": "{{done}} of {{total}} removed; {{count}} could not be: {{reason}}",
   "admin.bulk_partial_changed_one": "{{done}} of {{total}} changed; 1 could not be: {{reason}}",
   "admin.bulk_partial_changed_other": "{{done}} of {{total}} changed; {{count}} could not be: {{reason}}",
-  "admin.bulk_partial_changed": "{{done}} of {{total}} changed; {{count}} could not be: {{reason}}"
+  "admin.bulk_partial_changed": "{{done}} of {{total}} changed; {{count}} could not be: {{reason}}",
+  "admin.not_yourself": "Your own account was left as it is.",
+  "admin.bulk_already_active": "They are all active already.",
+  "admin.bulk_already_inactive": "They are all inactive already.",
+  "admin.bulk_remove_body_one": "Remove 1 from {{title}}? You can undo it for a few seconds.",
+  "admin.bulk_remove_body_other": "Remove {{count}} from {{title}}? You can undo it for a few seconds.",
+  "admin.bulk_remove_body": "Remove {{count}} from {{title}}? You can undo it for a few seconds.",
+  "admin.bulk_remove_confirm_one": "Remove 1",
+  "admin.bulk_remove_confirm_other": "Remove {{count}}",
+  "admin.bulk_remove_confirm": "Remove {{count}}"
 }

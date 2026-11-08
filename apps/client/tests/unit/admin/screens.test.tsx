@@ -222,6 +222,7 @@ describe("the bulk-action bar (FR-043; the owner, PR 5)", () => {
       for (const id of ["c1", "c2", "c3"]) api.on("DELETE", `/api/v1/clients/${id}`, new Response(null, { status: 204 }));
       await selectAll(api, session);
       await fireEvent.press(screen.getByTestId("bulk-remove"));
+      await fireEvent.press(screen.getByTestId("action-confirm-bulk-delete"));
       expect(screen.queryAllByTestId("table-row")).toHaveLength(0);
       await act(async () => {
         await jest.advanceTimersByTimeAsync(5000);
@@ -245,6 +246,7 @@ describe("the bulk-action bar (FR-043; the owner, PR 5)", () => {
       api.on("DELETE", "/api/v1/clients/c3", new Response(null, { status: 204 }));
       await selectAll(api, session);
       await fireEvent.press(screen.getByTestId("bulk-remove"));
+      await fireEvent.press(screen.getByTestId("action-confirm-bulk-delete"));
       await act(async () => {
         await jest.advanceTimersByTimeAsync(7000);
       });
@@ -252,6 +254,20 @@ describe("the bulk-action bar (FR-043; the owner, PR 5)", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test("a bulk deactivation of staff leaves your own account alone", async () => {
+    const me = { ...PERSON, id: ME.id, full_name: "Dana Employee", email: "me@hds.test" };
+    const other = { ...PERSON, id: "u9", full_name: "Omer Cohen", email: "omer@hds.test" };
+    const { api, session } = await open(ADMIN);
+    api.on("GET", "/api/v1/employees", json(200, { items: [me, other] })).on("POST", "/api/v1/employees/u9/deactivate", json(200, {}));
+    await renderWith(session, <StaffScreen />);
+    await screen.findByText("Omer Cohen", {}, { timeout: 5000 });
+    await fireEvent.press(screen.getByTestId("action-select-mode"));
+    for (const row of screen.getAllByTestId("table-row")) await fireEvent.press(row);
+    await fireEvent.press(screen.getByTestId("bulk-deactivate"));
+    await waitFor(() => expect(api.calls("POST", "/api/v1/employees/u9/deactivate")).toHaveLength(1));
+    expect(api.calls("POST", `/api/v1/employees/${ME.id}/deactivate`)).toHaveLength(0);
   });
 
   test("deactivating several goes through each record's own change", async () => {

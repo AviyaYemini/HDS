@@ -85,3 +85,17 @@ def test_the_walk_finds_a_lax_field() -> None:
     found: list[str] = []
     _lax(Probe, [], "Probe", set(), found)
     assert found == ["Probe.count: int", "Probe.flag: bool"]
+
+
+def test_an_infinite_number_is_a_validation_error_not_a_crash() -> None:
+    """JSON's 1e400 reads as infinity; a whole number refuses it like any other bad value."""
+    import math
+
+    import pytest
+
+    from hds.core.types import whole_number
+
+    for value in (math.inf, -math.inf, math.nan):
+        with pytest.raises(ValueError, match="whole number"):
+            whole_number(value)
+    assert whole_number(40.0) == 40

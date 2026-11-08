@@ -64,8 +64,11 @@ export interface AdminTableProps<Row> {
   /** Shown only to whoever may delete (an Admin); the record is removed after a confirmation. */
   /** `urgent` when the page or app is going away: the request must outlive it (keepalive). */
   onDelete?: ((row: Row, urgent: boolean) => Promise<void>) | null;
-  /** A record's active state, where it has one: offered as Activate and Deactivate on several. */
-  active?: { of: (row: Row) => boolean; set: (row: Row, active: boolean) => Promise<void> } | null;
+  /**
+   * A record's active state, where it has one: offered as Activate and Deactivate on several.
+   * `keep` names a row a bulk change leaves alone and why (your own account), or null.
+   */
+  active?: { of: (row: Row) => boolean; set: (row: Row, active: boolean) => Promise<void>; keep?: (row: Row) => string | null } | null;
   emptyTitle: string;
   emptyBody: string;
 }
@@ -241,6 +244,7 @@ export function AdminTable<Row>({
   // The bulk-action bar (FR-043; the owner, PR 5): chosen rows, and a phone's Select mode.
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
+  const [confirmingBulk, setConfirmingBulk] = useState(false);
   const bulkable = onDelete !== null || active !== null;
 
   const [naming, setNaming] = useState(false);
@@ -298,20 +302,19 @@ export function AdminTable<Row>({
         for (const key of back) next.delete(key);
         return next;
       });
-    // One held action for all of them, with one undo (heldActions, R163).
+    // One held action for all of them, with one undo (heldActions, R163). Every delete is sent at
+    // once, so a page closing during an urgent flush still sends them all (code review, PR 5).
     const undo = hold(
       async (urgent) => {
-        const failed: { code: string }[] = [];
-        for (const row of picked) {
-          try {
-            await onDelete(row, urgent);
-          } catch (failure) {
-            failed.push({ code: codeOf(failure) });
-          }
-        }
-        await rows.reload();
-        restore(keys);
+        const settled = await Promise.allSettled(picked.map((row) => onDelete(row, urgent)));
+        const failed = settled.flatMap((r) => (r.status === "rejected" ? [{ code: codeOf(r.reason) }] : []));
         summarise("removed", picked.length, failed);
+        restore(keys);
+        try {
+          await rows.reload();
+        } catch {
+          // The list says so itself on its next read; the summary has gone out.
+        }
       },
       UNDO_MS,
       () => restore(keys),
@@ -324,8 +327,16 @@ export function AdminTable<Row>({
   };
   const bulkActive = async (to: boolean) => {
     if (!active) return;
-    const picked = visibleChosen.filter((r) => active.of(r) !== to);
+    // Rows a bulk change leaves alone (your own account) are named, never changed.
+    const kept = visibleChosen.map((r) => active.keep?.(r) ?? null).filter((reason): reason is string => reason !== null);
+    const allowed = visibleChosen.filter((r) => (active.keep?.(r) ?? null) === null);
+    const picked = allowed.filter((r) => active.of(r) !== to);
     clearChosen();
+    if (kept.length > 0) showToast(kept[0]!, { tone: "info" });
+    if (picked.length === 0) {
+      showToast(t(to ? "admin.bulk_already_active" : "admin.bulk_already_inactive"));
+      return;
+    }
     const failed: { code: string }[] = [];
     for (const row of picked) {
       try {
@@ -334,9 +345,13 @@ export function AdminTable<Row>({
         failed.push({ code: codeOf(failure) });
       }
     }
-    await rows.reload();
     if (failed.length === 0) showToast(t(to ? "admin.bulk_activated" : "admin.bulk_deactivated", { count: picked.length }));
     else summarise("changed", picked.length, failed);
+    try {
+      await rows.reload();
+    } catch {
+      // The list says so on its next read.
+    }
   };
   const bulkBar =
     bulkable && visibleChosen.length > 0 ? (
@@ -352,15 +367,16 @@ export function AdminTable<Row>({
             testID="bulk-select-all"
           />
         ) : null}
-        {onDelete ? <Button label={t("admin.bulk_remove")} icon="close" onPress={bulkRemove} testID="bulk-remove" /> : null}
+        {onDelete ? <Button label={t("admin.bulk_remove")} icon="close" onPress={() => setConfirmingBulk(true)} testID="bulk-remove" /> : null}
         {active ? <Button label={t("admin.bulk_activate")} onPress={() => void bulkActive(true)} testID="bulk-activate" /> : null}
         {active ? <Button label={t("admin.bulk_deactivate")} onPress={() => void bulkActive(false)} testID="bulk-deactivate" /> : null}
         <Button variant="quiet" label={t("admin.bulk_clear")} onPress={clearChosen} testID="bulk-clear" />
       </View>
     ) : null;
-  // A desktop selects by a checkbox column ahead of the others.
+  // A desktop selects by a checkbox column ahead of the others, while no record is open (the bar
+  // is hidden then, so nothing may be chosen out of sight; code review, PR 5).
   const tableColumns: readonly Column<Row>[] =
-    bulkable && isDesktop
+    bulkable && isDesktop && !panelOpen
       ? [
           {
             key: "__select",
@@ -533,7 +549,6 @@ export function AdminTable<Row>({
             const openIt = () => go({ open: keyOf(row) });
             if (mayLeaveFor(openIt)) openIt();
           }}
-          scrollable={!isDesktop}
           selectedKey={openRow ? keyOf(openRow) : null}
           empty={<Txt role="body" tone="secondary">{t("admin.no_match")}</Txt>}
         />
@@ -547,6 +562,20 @@ export function AdminTable<Row>({
         <View style={styles.sheet}>
           <TextField label={t("admin.view_name")} value={viewName} onChangeText={setViewName} testID="save-view-name" />
           <Button variant="primary" label={t("common.save")} onPress={() => void saveView()} disabled={!viewName.trim()} testID="action-confirm-save-view" />
+        </View>
+      </Sheet>
+      <Sheet open={confirmingBulk} onClose={() => setConfirmingBulk(false)} title={t("admin.bulk_remove")} testID="confirm-bulk-delete">
+        <View style={styles.sheet}>
+          <Txt role="body">{t("admin.bulk_remove_body", { count: visibleChosen.length, title })}</Txt>
+          <Button
+            variant="primary"
+            label={t("admin.bulk_remove_confirm", { count: visibleChosen.length })}
+            onPress={() => {
+              setConfirmingBulk(false);
+              bulkRemove();
+            }}
+            testID="action-confirm-bulk-delete"
+          />
         </View>
       </Sheet>
       <Sheet open={deleting !== null} onClose={() => setDeleting(null)} title={t("admin.delete", { noun })} testID="confirm-delete">

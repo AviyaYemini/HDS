@@ -763,5 +763,14 @@
   "admin.bulk_partial_removed": "הוסרו {{done}} מתוך {{total}}; {{count}} לא הוסרו: {{reason}}",
   "admin.bulk_partial_changed_one": "שונו {{done}} מתוך {{total}}; אחת לא שונתה: {{reason}}",
   "admin.bulk_partial_changed_other": "שונו {{done}} מתוך {{total}}; {{count}} לא שונו: {{reason}}",
-  "admin.bulk_partial_changed": "שונו {{done}} מתוך {{total}}; {{count}} לא שונו: {{reason}}"
+  "admin.bulk_partial_changed": "שונו {{done}} מתוך {{total}}; {{count}} לא שונו: {{reason}}",
+  "admin.not_yourself": "החשבון שלך נשאר כמו שהוא.",
+  "admin.bulk_already_active": "כולם כבר פעילים.",
+  "admin.bulk_already_inactive": "כולם כבר לא פעילים.",
+  "admin.bulk_remove_body_one": "להסיר אחת מ{{title}}? אפשר לבטל בשניות הקרובות.",
+  "admin.bulk_remove_body_other": "להסיר {{count}} מ{{title}}? אפשר לבטל בשניות הקרובות.",
+  "admin.bulk_remove_body": "להסיר {{count}} מ{{title}}? אפשר לבטל בשניות הקרובות.",
+  "admin.bulk_remove_confirm_one": "הסרת אחת",
+  "admin.bulk_remove_confirm_other": "הסרת {{count}}",
+  "admin.bulk_remove_confirm": "הסרת {{count}}"
 }

@@ -29,7 +29,8 @@ const orNull = (value: string | undefined): string | null => (value && value.tri
 
 export function StaffScreen() {
   const { t, i18n } = useTranslation();
-  const { api } = useSession();
+  const session = useSession();
+  const { api } = session;
   const capabilities = useCapabilities();
   type Row = Awaited<ReturnType<typeof loadStaff>>[number];
   async function loadStaff() {
@@ -68,6 +69,8 @@ export function StaffScreen() {
       emptyBody={t("admin.empty.staff_body")}
       active={{
         of: (u) => u.is_active,
+        // Never your own account: a bulk deactivation would sign you out partway (code review, PR 5).
+        keep: (u) => (u.id === session.user?.id ? t("admin.not_yourself") : null),
         set: async (u, to) => void (await call(to ? api.POST("/api/v1/employees/{id}/reactivate", { params: { path: { id: u.id } } }) : api.POST("/api/v1/employees/{id}/deactivate", { params: { path: { id: u.id } } }))),
       }}
       onDelete={capabilities.has("staff.delete") ? async (u, urgent) => void (await call(api.DELETE("/api/v1/employees/{id}", { params: { path: { id: u.id } }, keepalive: urgent }))) : null}

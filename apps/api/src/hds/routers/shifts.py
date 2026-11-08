@@ -38,8 +38,7 @@ from hds.services.roster import etag
 
 router = APIRouter(prefix="/api/v1", tags=["shifts"])
 
-Headcount = Field(ge=1, le=1000, description="How many employees the shift needs.")
-# A JSON whole number only: never true or "2" (R165).
+# A JSON whole number only: never true or "2" (R165); one type for create and change.
 HeadcountNumber = Annotated[int, Field(ge=1, le=1000), WHOLE_NUMBER]
 
 
@@ -149,7 +148,7 @@ class ShiftCreateRequest(BaseModel):
     project_id: uuid.UUID
     shift_type_id: uuid.UUID
     date: StrictDate
-    headcount: Annotated[int, Headcount, WHOLE_NUMBER]
+    headcount: HeadcountNumber = Field(description="How many employees the shift needs.")
     pay_rate: Money | None = None
     starts_at: IsoDateTime | None = None
     ends_at: IsoDateTime | None = None

@@ -161,6 +161,7 @@ test("several records are chosen, counted and removed together, and one undo kee
   }
   await expect(page.getByTestId("bulk-count")).toContainText("2 selected in Special days");
   await page.getByTestId("bulk-remove").click();
+  await page.getByTestId("action-confirm-bulk-delete").click();
   await expect(page.locator('[data-testid="table-row"]')).toHaveCount(0);
   await page.getByTestId("toast-deleted").getByText("Undo").click();
   await expect(page.locator('[data-testid="table-row"]')).toHaveCount(2);
