@@ -117,6 +117,26 @@ def _sunday(day: date) -> date:
     return day - timedelta(days=(day.weekday() + 1) % 7)
 
 
+def _check_week(week: date) -> None:
+    """Refuse a week that does not start on a Sunday, or whose days run off the calendar.
+
+    Asked without date arithmetic, so a date at either end of the calendar is a 422, never a 500
+    (R112, like R87 for ranges).
+
+    Raises:
+        DomainValidationError: ``roster.week_not_sunday``; ``shifts.date_range_invalid`` for a week
+            within seven days of the calendar's last date (HTTP 422).
+    """
+    if week.weekday() != 6:
+        raise DomainValidationError(
+            code="roster.week_not_sunday", detail="A week starts on a Sunday."
+        )
+    if week > date.max - timedelta(days=7):
+        raise DomainValidationError(
+            code="shifts.date_range_invalid", detail="The week runs past the end of the calendar."
+        )
+
+
 def _local(moment: datetime, zone: str) -> datetime:
     return moment.astimezone(ZoneInfo(zone))
 
@@ -531,10 +551,7 @@ class RosterToolsService:
                 Sunday (HTTP 422).
         """
         for week in (from_week, to_week):
-            if _sunday(week) != week:
-                raise DomainValidationError(
-                    code="roster.week_not_sunday", detail="A week starts on a Sunday."
-                )
+            _check_week(week)
         ensure_role(actor, *MANAGER_ROLES)
         plan = await self.week_plan(actor, project_id, from_week)
         return await self.apply_plan(actor, project_id, plan, to_week, on_conflict, dry_run)
@@ -548,10 +565,7 @@ class RosterToolsService:
         self, actor: User, project_id: uuid.UUID, name: str, week: date
     ) -> WeekTemplate:
         """Save the project's week starting on Sunday ``week`` as a template."""
-        if _sunday(week) != week:
-            raise DomainValidationError(
-                code="roster.week_not_sunday", detail="A week starts on a Sunday."
-            )
+        _check_week(week)
         ensure_role(actor, *MANAGER_ROLES)
         await self._roster.require_edit(actor, project_id)
         plan = await self.week_plan(actor, project_id, week)
@@ -582,10 +596,7 @@ class RosterToolsService:
         dry_run: bool,
     ) -> PlanResult:
         """Apply a saved week to the week starting on Sunday ``week``."""
-        if _sunday(week) != week:
-            raise DomainValidationError(
-                code="roster.week_not_sunday", detail="A week starts on a Sunday."
-            )
+        _check_week(week)
         ensure_role(actor, *MANAGER_ROLES)
         template = await self._templates.get(actor.organization_id, project_id, id)
         if template is None:
