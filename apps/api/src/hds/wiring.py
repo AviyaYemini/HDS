@@ -272,6 +272,7 @@ def reports(
         project_repo=ProjectRepository(db),
         site_repo=SiteRepository(db),
         group_repo=GroupRepository(db),
+        client_repo=ClientRepository(db),
     )
 
 

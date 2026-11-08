@@ -223,3 +223,42 @@ async def test_missing_rates_are_counted_only_where_pay_is_shown(
     assert groups["Alpha"]["shifts_missing_rate"] == 1  # Dana on Alpha, which the Manager sees
     assert groups["Bravo"]["shifts_missing_rate"] == 0  # hidden: nothing about its rates shows
     assert body["shifts_missing_rate"] == 1
+
+
+async def test_by_client_each_clients_rows_are_its_employees(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """The owner, 2026-11-08, PR 5: a client's hours, one row per employee."""
+    world = await setup(async_client, seed_users)
+
+    body = (
+        await async_client.get(
+            HOURS, params={**OCTOBER, "group_by": "client"}, headers=world["admin"]
+        )
+    ).json()
+
+    assert body["group_by"] == "client"
+    assert {(g["name"], g["hours"], g["shifts"]) for g in body["groups"]} == {
+        ("Alpha Ltd", "16.00", 2),
+        ("Bravo Ltd", "8.00", 1),
+    }
+    rows = flat(body)
+    assert rows[("Alpha Ltd", "Dana Levi")]["pay"] == "400.00"
+    assert rows[("Alpha Ltd", "Omer Cohen")]["pay"] == "320.00"
+    assert body["hours"] == "24.00"
+
+
+async def test_by_client_a_manager_sees_pay_only_where_it_is_open(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    await setup(async_client, seed_users)
+    manager = await headers_for(async_client, "manager")
+
+    body = (
+        await async_client.get(HOURS, params={**OCTOBER, "group_by": "client"}, headers=manager)
+    ).json()
+
+    groups = {g["name"]: g for g in body["groups"]}
+    assert groups["Alpha Ltd"]["pay"] == "720.00"
+    assert "pay" not in groups["Bravo Ltd"]
+    assert all("pay" not in r for r in groups["Bravo Ltd"]["rows"])

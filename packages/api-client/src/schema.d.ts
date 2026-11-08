@@ -910,8 +910,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Hours and pay per employee or project
-         * @description Manager or Admin. Hours and shift counts from `from` to `to` (at most 366 days, 422 `reports.range_invalid`), grouped by employee or by project, with the grand totals. An Admin sees pay for every project with pay on; a Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere there is no pay figure at all, and pay totals cover only the lines shown with pay.
+         * Hours and pay per employee, project or client
+         * @description Manager or Admin. Hours and shift counts from `from` to `to` (at most 366 days, 422 `reports.range_invalid`), grouped by employee, by project or by client (a client's rows are its employees), with the grand totals. An Admin sees pay for every project with pay on; a Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere there is no pay figure at all, and pay totals cover only the lines shown with pay.
          */
         get: operations["hours_api_v1_reports_hours_get"];
         put?: never;
@@ -930,8 +930,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Who worked at a project, site or group
-         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for exactly one of a project, a site or a group (422 `reports.scope_invalid`). For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site or a group needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
+         * Who worked at a project, site, group or the whole organisation
+         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for at most one of a project, a site or a group (two or more 422 `reports.scope_invalid`); none means the whole organisation, which any Manager or Admin may read, as they may any project's log. For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site, a group or the whole organisation needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
          */
         get: operations["work_log_api_v1_reports_work_log_get"];
         put?: never;
@@ -2198,7 +2198,7 @@ export interface components {
              * Group By
              * @enum {string}
              */
-            group_by: "employee" | "project";
+            group_by: "employee" | "project" | "client";
             /** Groups */
             groups: components["schemas"]["HoursGroupRead"][];
             /**
@@ -8862,7 +8862,7 @@ export interface operations {
             query: {
                 from: string;
                 to: string;
-                group_by: "employee" | "project";
+                group_by: "employee" | "project" | "client";
             };
             header?: never;
             path?: never;

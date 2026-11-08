@@ -2374,7 +2374,7 @@ components:
       properties:
         from: {$ref: "#/components/schemas/ISODate"}
         to: {$ref: "#/components/schemas/ISODate"}
-        group_by: {type: string, enum: [employee, project]}
+        group_by: {type: string, enum: [employee, project, client]}
         groups:
           type: array
           items: {$ref: "#/components/schemas/HoursGroup"}
@@ -6068,12 +6068,13 @@ paths:
 
     get:
       operationId: reports_work_log
-      summary: Who worked at a project, site or group (Manager+)
+      summary: Who worked at a project, site, group or the whole organisation (Manager+)
       description: >
-        Each person once per project with shift count, hours, and first and last date, for
-        exactly one of project_id, site_id, group_id (422 reports.scope_invalid). For a project
-        the range starts on its start date unless from is given; a site or group needs from (422
-        reports.start_required); to is today by default; at most 366 days (422
+        Each person once per project with shift count, hours, and first and last date, for at
+        most one of project_id, site_id, group_id (two or more, 422 reports.scope_invalid); none
+        is the whole organisation, which any Manager or Admin may read, as they may any project's
+        log (007, PR 5). For a project the range starts on its start date unless from is given; a
+        site, a group or the whole organisation needs from (422 reports.start_required); to is today by default; at most 366 days (422
         reports.range_invalid). Only published shifts that have ended count; no pay.
       tags: [Reports]
       parameters:
@@ -6117,10 +6118,10 @@ paths:
 
     get:
       operationId: reports_hours
-      summary: Hours and pay per employee or project (Manager+)
+      summary: Hours and pay per employee, project or client (Manager+)
       description: >
         Hours and shift counts from from to to (at most 366 days, 422 reports.range_invalid),
-        grouped by employee or project. An Admin sees pay for every project with pay on; a
+        grouped by employee, project or client (a client's rows are its employees; 007, PR 5). An Admin sees pay for every project with pay on; a
         Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere
         there is no pay figure at all.
       tags: [Reports]
@@ -6136,7 +6137,7 @@ paths:
         - name: group_by
           in: query
           required: true
-          schema: {type: string, enum: [employee, project]}
+          schema: {type: string, enum: [employee, project, client]}
       responses:
         "200":
           description: The hours report.

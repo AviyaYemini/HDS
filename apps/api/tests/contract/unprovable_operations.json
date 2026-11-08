@@ -202,7 +202,7 @@
       "path": "/api/v1/reports/work-log",
       "operation_id": "work_log_api_v1_reports_work_log_get",
       "suites": ["pytest", "cli"],
-      "reason": "exactly one of three optional ids, a start needed for a site or group, and a range of at most 366 days span several parameters, which OpenAPI 3.0 cannot state (005 FR-023, FR-024, FR-030); answered 422 reports.scope_invalid, reports.start_required or reports.range_invalid"
+      "reason": "at most one of three optional ids, a start needed for a site, a group or the whole organisation (no id, 007 PR 5), and a range of at most 366 days span several parameters, which OpenAPI 3.0 cannot state (005 FR-023, FR-024, FR-030); answered 422 reports.scope_invalid, reports.start_required or reports.range_invalid"
     },
     {
       "method": "GET",

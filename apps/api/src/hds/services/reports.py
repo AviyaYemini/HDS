@@ -27,6 +27,7 @@ from hds.models.organisation import Organisation
 from hds.models.project import Project
 from hds.models.user import User
 from hds.payroll import MICROS_PER_HOUR
+from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import ReportShift, ReportShiftRepository
@@ -38,7 +39,7 @@ from hds.services.pay import Pricing, shown, spanned, utc_window
 from hds.services.pay_visibility import pay_visible
 
 MAX_DAYS = 366
-GroupBy = Literal["employee", "project"]
+GroupBy = Literal["employee", "project", "client"]
 _ZERO = Decimal("0.00")
 
 
@@ -70,6 +71,8 @@ class ReportLine:
     pay_shown: bool
     pay: Decimal | None
     rate_missing: bool
+    client_id: uuid.UUID | None = None
+    client_name: str = ""
 
 
 @dataclass
@@ -173,7 +176,7 @@ class WorkLog:
 
 
 def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:
-    """Group priced lines by employee (rows per project) or by project (rows per employee).
+    """Group priced lines by employee (rows per project), or by project or client (rows per person).
 
     Hours are person-hours, summed; shifts are distinct shifts. A pay total exists exactly where
     some line under it is one whose pay the reader may see and that has a rate; it is the sum of
@@ -188,6 +191,9 @@ def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:
     for line in lines:
         if group_by == "employee":
             outer, inner = (line.user_id, line.user_name), (line.project_id, line.project_name)
+        elif group_by == "client" and line.client_id is not None:
+            # A client's hours, one row per employee across its projects (007, PR 5).
+            outer, inner = (line.client_id, line.client_name), (line.user_id, line.user_name)
         else:
             outer, inner = (line.project_id, line.project_name), (line.user_id, line.user_name)
         group = groups.setdefault(outer[0], Group(id=outer[0], name=outer[1]))
@@ -236,6 +242,7 @@ class ReportsService:
         project_repo: ProjectRepository,
         site_repo: SiteRepository,
         group_repo: GroupRepository,
+        client_repo: ClientRepository,
     ) -> None:
         """Wire the service to its read-only queries."""
         self._shifts = report_shift_repo
@@ -245,6 +252,7 @@ class ReportsService:
         self._projects = project_repo
         self._sites = site_repo
         self._groups = group_repo
+        self._clients = client_repo
 
     async def _organisation(self, actor: User) -> Organisation:
         org = await self._orgs.get_by_id(actor.organization_id)
@@ -284,7 +292,10 @@ class ReportsService:
         last: date | None,
         now: datetime | None = None,
     ) -> WorkLog:
-        """Who worked at a project, a site or a group in a range (Manager or Admin).
+        """Who worked at a project, a site, a group or the whole organisation (Manager or Admin).
+
+        No project, site or group means the whole organisation, read under the same rule as any one
+        project's log: every Manager and Admin (007, the owner's PR 5 addition); it needs a start.
 
         Args:
             actor: The caller.
@@ -298,15 +309,15 @@ class ReportsService:
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
-            DomainValidationError: ``reports.scope_invalid``, ``reports.start_required`` or
-                ``reports.range_invalid`` (HTTP 422).
+            DomainValidationError: ``reports.scope_invalid`` (more than one scope),
+                ``reports.start_required`` or ``reports.range_invalid`` (HTTP 422).
             NotFoundError: The project, site or group is not the organisation's (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if sum(x is not None for x in (project_id, site_id, group_id)) != 1:
+        if sum(x is not None for x in (project_id, site_id, group_id)) > 1:
             raise DomainValidationError(
                 code="reports.scope_invalid",
-                detail="Give exactly one of project_id, site_id and group_id.",
+                detail="Give at most one of project_id, site_id and group_id.",
             )
         now = now or datetime.now(UTC)
         org = await self._organisation(actor)
@@ -332,7 +343,7 @@ class ReportsService:
         if first is None:  # only a project has a start of its own
             raise DomainValidationError(
                 code="reports.start_required",
-                detail="A work-log of a site or a group needs a start date.",
+                detail="A work-log of a site, a group or the organisation needs a start date.",
             )
         check_range(first, last, limited=not whole_project)
         shifts = await self._in_range(actor, first, last, now, scope)
@@ -376,7 +387,7 @@ class ReportsService:
         group_by: GroupBy,
         now: datetime | None = None,
     ) -> HoursReport:
-        """Hours, shifts and, where the reader may see it, pay, by employee or by project.
+        """Hours, shifts and, where the reader may see it, pay, by employee, project or client.
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
@@ -392,6 +403,11 @@ class ReportsService:
             p.id: p for p in await self._projects.get_many(actor.organization_id, project_ids)
         }
         visible = await self._visible(actor, projects.values())
+        clients = (
+            {c.id: c.name for c in await self._clients.list_by_org(actor.organization_id)}
+            if group_by == "client"
+            else {}
+        )
         paid_shifts = [s for s in shifts if s.project_id in visible]
         days = (
             await self._days.for_projects(actor.organization_id, visible, *spanned(paid_shifts))
@@ -416,6 +432,8 @@ class ReportsService:
                         pay_shown=False,
                         pay=None,
                         rate_missing=False,
+                        client_id=project.client_id,
+                        client_name=clients.get(project.client_id, ""),
                     )
                 )
                 continue
@@ -441,6 +459,8 @@ class ReportsService:
                     pay_shown=True,
                     pay=priced.pay,
                     rate_missing=priced.rate_missing,
+                    client_id=project.client_id,
+                    client_name=clients.get(project.client_id, ""),
                 )
             )
         report = aggregate(lines, group_by)
