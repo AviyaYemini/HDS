@@ -10,7 +10,7 @@ import { FakeApi, ME, json, renderWith, signedIn } from "../fakeApi";
 const EMPLOYEE: Me = { ...(ME as Me), id: "me", capabilities: ["my_work.read", "account.self"], managed_project_ids: [] };
 const setSearchParams = (Router as unknown as { __setSearchParams: (params: Record<string, string>) => void }).__setSearchParams;
 
-const line = (base_rate: string, parts: { hours: string; rate_pct: string }[], pay: string) => ({
+const line = (base_rate: string, parts: { hours: string; rate_pct: string; pay: string }[], pay: string) => ({
   base_rate, date: "2026-10-03", starts_at: "2026-10-03T06:00:00Z", ends_at: "2026-10-03T14:00:00Z", hours: "8", parts, pay, pay_enabled: true, project_id: "p", project_name: "Night Watch", rate_missing: false, shift_id: "s", timezone: "Asia/Jerusalem",
 });
 
@@ -20,8 +20,8 @@ it("asks for the month's shifts to its last day and shows rows that add up to th
     .on("GET", "/me", json(200, EMPLOYEE))
     .on("GET", "/me/pay", (seen) =>
       seen.query.includes("month=2026-10")
-        ? json(200, { month: "2026-10", hours: "16", pay: "937.5000", shifts_missing_rate: 0, lines: [line("50.0000", [{ hours: "8", rate_pct: "100" }], "400.0000"), line("50.0000", [{ hours: "6", rate_pct: "100" }, { hours: "2", rate_pct: "137.5" }], "437.5000"), line("50.0000", [{ hours: "2", rate_pct: "100" }], "100.0000")] })
-        : json(200, { month: "2026-09", hours: "8", pay: "400.0000", shifts_missing_rate: 0, lines: [] }),
+        ? json(200, { month: "2026-10", hours: "16", pay: "937.50", shifts_missing_rate: 0, lines: [line("50.00", [{ hours: "8", rate_pct: "100", pay: "400.00" }], "400.00"), line("50.00", [{ hours: "6", rate_pct: "100", pay: "300.00" }, { hours: "2", rate_pct: "137.5", pay: "137.50" }], "437.50"), line("50.00", [{ hours: "2", rate_pct: "100", pay: "100.00" }], "100.00")] })
+        : json(200, { month: "2026-09", hours: "8", pay: "400.00", shifts_missing_rate: 0, lines: [] }),
     )
     .on("GET", "/me/shifts", json(200, { items: [{ id: "x", starts_at: "2026-10-31T22:30:00Z", ends_at: "2026-11-01T06:00:00Z", timezone: "Asia/Jerusalem", project: { id: "p", name: "P" }, site: { id: "s", name: "S" }, shift_type: "night" }] }));
   await renderWith(await signedIn(api), <MyPayScreen />);
@@ -32,7 +32,7 @@ it("asks for the month's shifts to its last day and shows rows that add up to th
   expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveTextContent(/100%/);
   expect(rows[1]).toHaveTextContent(/137\.5%/);
-  expect(units("937.5000")).toBe(9375000n);
+  expect(units("937.50")).toBe(9375000n);
   expect(screen.getByTestId("pay-estimate-label")).toBeTruthy();
   expect(screen.getByTestId("pay-change")).toHaveTextContent(/537\.50/);
   await waitFor(() => expect(api.calls("GET", "/me/shifts")).toHaveLength(1));

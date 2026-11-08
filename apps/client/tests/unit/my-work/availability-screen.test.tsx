@@ -4,6 +4,7 @@
  * change, Undo puts the cell back, and a locked window cannot be changed.
  */
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { setOnlineForTests } from "../../../src/connectivity";
 import * as Router from "expo-router";
 
 import type { Me } from "../../../src/api/session";
@@ -21,6 +22,8 @@ function availabilityApi(status: "not_submitted" | "draft" | "submitted" | "lock
   const entries: { id: string; kind: string; shift_type_id: string | null; starts_on: string; ends_on: string }[] = [];
   let next = 1;
   let current = status;
+  // While `network.down`, every request fails the way a lost connection does.
+  const network = { down: false };
   const api = new FakeApi()
     .on("GET", "/me", json(200, EMPLOYEE))
     .on("GET", "/api/v1/availability-windows", json(200, { items: [WINDOW] }))
@@ -41,6 +44,7 @@ function availabilityApi(status: "not_submitted" | "draft" | "submitted" | "lock
   const original = api.fetch;
   // PATCH and DELETE carry the entry's id in the path, so they are answered here by hand.
   const fetch = async (request: Request): Promise<Response> => {
+    if (network.down) throw new TypeError("Network request failed");
     const url = new URL(request.url);
     const match = /^\/api\/v1\/constraints\/(.+)$/.exec(url.pathname);
     if (match && request.method === "PATCH") {
@@ -58,7 +62,7 @@ function availabilityApi(status: "not_submitted" | "draft" | "submitted" | "lock
     }
     return original(request);
   };
-  return { api: Object.assign(api, { fetch }), entries };
+  return { api: Object.assign(api, { fetch }), entries, network };
 }
 
 const tuesdayMorning = () => screen.getAllByTestId("availability-cell").find((cell) => cell.props.accessibilityLabel.includes("17/11/2026") && cell.props.accessibilityLabel.includes("Morning"))!;
@@ -168,5 +172,47 @@ describe("AvailabilityScreen, changes that land right (R55, R57)", () => {
     await waitFor(() => expect(api.calls("POST", "/api/v1/employees/me/constraints")).toHaveLength(2));
     await waitFor(() => expect(api.calls("GET", "/api/v1/employees/me/constraints").length).toBe(loadsBefore + 1));
     expect(entries.map((e) => `${e.starts_on}:${e.shift_type_id ?? "all"}:${e.kind}`).sort()).toEqual(["2026-11-09:all:open", "2026-11-11:morning:blocked", "2026-11-16:all:open", "2026-11-18:morning:blocked"]);
+  });
+});
+
+describe("Submit and the device draft (PR 3 review)", () => {
+  beforeEach(() => setSearchParams({ window: "w1" }));
+  afterEach(() => {
+    setSearchParams({});
+    setOnlineForTests(true);
+  });
+
+  it("sends the queued changes first, so the snapshot holds them", async () => {
+    const { api, entries, network } = availabilityApi("not_submitted");
+    await renderWith(await signedIn(api), <AvailabilityScreen />);
+    await screen.findByTestId("availability-banner");
+    network.down = true;
+    setOnlineForTests(false);
+    await fireEvent.press(tuesdayMorning());
+    await waitFor(() => expect(screen.getByTestId("availability-pending")).toBeTruthy());
+    expect(entries).toHaveLength(0);
+    network.down = false;
+    // Still thought offline by the device, so nothing was sent on its own; Submit must send it.
+    await fireEvent.press(screen.getByTestId("action-review"));
+    expect(await screen.findByTestId("review-waiting", { includeHiddenElements: true })).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("action-submit", { includeHiddenElements: true }));
+    await waitFor(() => expect(api.calls("POST", "/me/availability-submissions")).toHaveLength(1));
+    expect(entries).toEqual([expect.objectContaining({ kind: "open", shift_type_id: "morning", starts_on: "2026-11-17" })]);
+    const order = api.seen.filter((s) => s.method === "POST").map((s) => s.path);
+    expect(order.indexOf("/api/v1/employees/me/constraints")).toBeLessThan(order.indexOf("/me/availability-submissions"));
+  });
+
+  it("refuses Submit while changes cannot be sent, saying how many", async () => {
+    const { api, network } = availabilityApi("not_submitted");
+    await renderWith(await signedIn(api), <AvailabilityScreen />);
+    await screen.findByTestId("availability-banner");
+    network.down = true;
+    setOnlineForTests(false);
+    await fireEvent.press(tuesdayMorning());
+    await waitFor(() => expect(screen.getByTestId("availability-pending")).toBeTruthy());
+    await fireEvent.press(screen.getByTestId("action-review"));
+    await fireEvent.press(screen.getByTestId("action-submit", { includeHiddenElements: true }));
+    await waitFor(() => expect(screen.getByTestId("review-waiting", { includeHiddenElements: true })).toHaveTextContent(/1 change is still waiting/));
+    expect(api.calls("POST", "/me/availability-submissions")).toHaveLength(0);
   });
 });

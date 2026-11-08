@@ -1765,6 +1765,11 @@ components:
             properties:
               rate_pct: {$ref: "#/components/schemas/Percent"}
               hours: {$ref: "#/components/schemas/Hours"}
+              pay:
+                allOf: [{$ref: "#/components/schemas/Amount"}]
+                description: >
+                  This rate's share of the line's pay, to the agora; the parts of a line add up to
+                  its `pay` exactly (largest remainder, 007 PR 3). Left out when the line has none.
         pay: {$ref: "#/components/schemas/Amount"}
 
     PayToDate:

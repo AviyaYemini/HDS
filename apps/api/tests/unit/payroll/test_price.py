@@ -10,12 +10,13 @@ Covers: 005 FR-004, FR-009 to FR-015, SC-003; US3 acceptance scenarios 1 to 5 an
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, time
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from hds.payroll import DEFAULT_SETTINGS, PayLine, RestWindow, SpecialDay, price
+from hds.payroll.price import split_pay
 
 ZONE = "Asia/Jerusalem"
 RATE = Decimal("50")
@@ -238,3 +239,21 @@ def test_a_naive_or_empty_shift_is_refused(starts_at: datetime, ends_at: datetim
     """Shifts are UTC instants with an end after the start (Constitution VII)."""
     with pytest.raises(ValueError):
         price(starts_at, ends_at, ZONE, RATE, DEFAULT_SETTINGS, ())
+
+
+def test_the_line_s_pay_is_split_by_largest_remainder() -> None:
+    """Cut down to the agora; the agorot left over go to the parts that lost the most (PR 3)."""
+    exacts = [Decimal("10.004"), Decimal("20.006"), Decimal("30.007")]
+    pay = sum(exacts, Decimal(0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)  # 60.02
+    assert split_pay(exacts, pay) == [Decimal("10.00"), Decimal("20.01"), Decimal("30.01")]
+
+
+def test_a_tie_goes_to_the_first_part_and_nothing_left_changes_nothing() -> None:
+    assert split_pay([Decimal("1.005"), Decimal("1.005")], Decimal("2.01")) == [
+        Decimal("1.01"),
+        Decimal("1.00"),
+    ]
+    assert split_pay([Decimal("3.00"), Decimal("4.50")], Decimal("7.50")) == [
+        Decimal("3.00"),
+        Decimal("4.50"),
+    ]

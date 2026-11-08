@@ -239,10 +239,18 @@ export function AvailabilityScreen() {
     setOverrides(new Map());
   };
 
+  const [waiting, setWaiting] = useState(0);
   const submit = async (): Promise<void> => {
     if (!window) return;
     setSubmitting(true);
     try {
+      // The snapshot must hold every change made, so the device draft goes first (PR 3 review).
+      const left = await queue.drain();
+      setWaiting(left);
+      if (left > 0) {
+        showToast(t("availability.waiting_count", { count: left }), { tone: "warning" });
+        return;
+      }
       await call(session.api.POST("/me/availability-submissions", { body: { window_id: window.id } }));
       successTap();
       setReviewOpen(false);
@@ -470,6 +478,9 @@ export function AvailabilityScreen() {
         <Txt role="body" tone="secondary">
           {t("availability.review_intro", { first: formatNumericDate(window.starts_on), last: formatNumericDate(window.ends_on) })}
         </Txt>
+        {pending.length > 0 || waiting > 0 ? (
+          <InlineBanner tone="warning" testID="review-waiting" title={t("availability.waiting_count", { count: Math.max(pending.length, waiting) })} />
+        ) : null}
         {rows.length === 0 ? (
           <Txt role="body" tone="secondary" testID="review-empty">
             {t("availability.review_empty")}

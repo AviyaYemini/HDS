@@ -28,6 +28,13 @@ class PartRead(BaseModel):
 
     rate_pct: PercentOut
     hours: HoursOut
+    pay: Amount | None = Field(
+        default=None,
+        description=(
+            "This rate's share of the line's pay, to the agora; the parts of a line add up to its "
+            "`pay` exactly. Left out when the line has no pay."
+        ),
+    )
 
 
 class PayLineRead(BaseModel):
@@ -82,7 +89,13 @@ def read_line(line: LineView) -> PayLineRead:
         "base_rate": line.base_rate,
         "rate_missing": line.rate_missing,
         "pay_enabled": line.pay_enabled,
-        "parts": [PartRead(rate_pct=p.rate_pct, hours=p.hours) for p in line.parts],
+        # A part's pay is shown exactly when the line's is: never a zero for missing pay.
+        "parts": [
+            PartRead(
+                rate_pct=p.rate_pct, hours=p.hours, pay=p.pay if line.pay is not None else None
+            )
+            for p in line.parts
+        ],
     }
     if line.pay is not None:
         fields["pay"] = line.pay

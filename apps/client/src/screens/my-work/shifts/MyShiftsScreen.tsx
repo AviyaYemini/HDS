@@ -13,7 +13,7 @@ import { ApiError, call, useErrorText } from "../../../api/errors";
 import { useSession } from "../../../api/SessionContext";
 import { previewsEnabled } from "../../../config/previews";
 import { useOnline } from "../../../connectivity";
-import { EmptyState, FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Txt, focusRing } from "../../../design/components";
+import { Button, EmptyState, FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Txt, focusRing } from "../../../design/components";
 import { Screen } from "../../../design/components/Screen";
 import { useKeyboardMode } from "../../../design/focus";
 import { Icon } from "../../../design/icons/Icon";
@@ -33,11 +33,12 @@ export function MyShiftsScreen() {
   const online = useOnline();
   const { view: askedView } = useLocalSearchParams<{ view?: string }>();
   const [view, setView] = useState<Mode>(askedView === "past" ? "past" : "upcoming");
+  const [periodsBack, setPeriodsBack] = useState(3);
   const userId = session.user?.id ?? "";
   const today = todayIn(DEFAULT_TIME_ZONE);
   const now = new Date();
 
-  const range: { from: string; to?: string } = view === "upcoming" ? upcomingRange(today) : pastRange(today);
+  const range: { from: string; to?: string } = view === "upcoming" ? upcomingRange(today) : pastRange(today, periodsBack);
   const shifts = useLoad(async () => {
     try {
       const answer = await call(session.api.GET("/me/shifts", { params: { query: range } }));
@@ -127,7 +128,15 @@ export function MyShiftsScreen() {
 
   function Past({ items, pay }: { items: Shift[]; pay: Record<string, string | null> }) {
     const groups = byPeriod(items);
-    if (groups.length === 0) return <EmptyState icon="clock" title={t("shifts.none_past_title")} body={t("shifts.none_past_body")} testID="shifts-none-past" />;
+    const earlier = <Button variant="secondary" label={t("shifts.show_earlier")} icon="chevron-down" onPress={() => setPeriodsBack((count) => count + 3)} testID="action-show-earlier" />;
+    if (groups.length === 0) {
+      return (
+        <View style={styles.stack}>
+          <EmptyState icon="clock" title={t("shifts.none_past_title")} body={t("shifts.none_past_body", { months: periodsBack })} testID="shifts-none-past" />
+          {earlier}
+        </View>
+      );
+    }
     return (
       <View style={styles.stack}>
         {groups.map((group) => {
@@ -150,6 +159,7 @@ export function MyShiftsScreen() {
             </View>
           );
         })}
+        {earlier}
       </View>
     );
   }

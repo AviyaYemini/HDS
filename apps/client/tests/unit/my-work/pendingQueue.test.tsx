@@ -89,3 +89,30 @@ it("keeps a change the server could not take and tries again after a pause", asy
     jest.useRealTimers();
   }
 });
+
+it("drains everything now for Submit, ignoring the backoff, and reports what is left", async () => {
+  setOnlineForTests(false);
+  let reachable = false;
+  const send = jest.fn(async () => {
+    if (!reachable) throw Object.assign(new Error("unreachable"), { retry: true });
+  });
+  let queue: PendingQueue | null = null;
+  await render(<Probe send={send} onRefused={jest.fn()} expose={(q) => (queue = q)} />);
+  await act(async () => {
+    queue!.enqueue(change("2026-11-17"));
+    queue!.enqueue(change("2026-11-18"));
+  });
+  let left = -1;
+  await act(async () => {
+    left = await queue!.drain();
+  });
+  expect(left).toBe(2);
+  expect(send).toHaveBeenCalledTimes(1);
+  reachable = true;
+  await act(async () => {
+    left = await queue!.drain();
+  });
+  expect(left).toBe(0);
+  expect(send).toHaveBeenCalledTimes(3);
+  expect(queue!.pending).toEqual([]);
+});
