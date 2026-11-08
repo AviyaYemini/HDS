@@ -7,7 +7,7 @@
  * work as today.
  */
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -15,23 +15,34 @@ import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { Button, EmptyState, InlineBanner, PageTitle, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
-import { setProgress, startLoading } from "../../design/loading/loadingStore";
+import { endProgress, setProgress, startLoading } from "../../design/loading/loadingStore";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { previewsEnabled } from "../../config/previews";
 import { DEFAULT_TIME_ZONE, formatNumericDate, formatNumericRange, formatTimeRange } from "../../locale";
+import { useLoad } from "../useLoad";
 import { HonestyLabel } from "./HonestyLabel";
-import { filled, isActive, runProgress, type Job } from "./model";
+import { STATUS_TONE, elapsedNow, filled, isActive, runProgress, type Job } from "./model";
 
 const POLL_MS = 1000;
+const RETRY_MS = 3000;
 const TICK_MS = 250;
-const TONE = { queued: "neutral", running: "info", succeeded: "success", failed: "danger" } as const;
 
-/** Hold the bar while `job` runs and feed it elapsed over the limit. */
-function useRunBar(job: Job | null): void {
+/** A job and when it was read, by the device's clock. */
+interface Reading {
+  job: Job;
+  readAt: number;
+}
+
+/** Hold the bar while the run goes and feed it elapsed (by the server's clock) over the limit. */
+function useRunBar(reading: Reading | null): void {
   const { t } = useTranslation();
+  const latest = useRef(reading);
+  useEffect(() => {
+    latest.current = reading;
+  });
+  const job = reading?.job ?? null;
   const active = job !== null && isActive(job);
   const solver = job?.solver ?? null;
-  const startedAt = job?.started_at ?? null;
   const limit = job?.time_limit_seconds ?? 0;
   const text = t("runs.up_to", { count: limit });
   useEffect(() => {
@@ -39,7 +50,9 @@ function useRunBar(job: Job | null): void {
     const done = startLoading();
     let floor = 0;
     const tick = () => {
-      const value = runProgress({ status: "running", solver, started_at: startedAt, time_limit_seconds: limit }, Date.now(), floor);
+      const now = latest.current;
+      const elapsed = now === null ? null : elapsedNow(now.job, now.readAt, Date.now());
+      const value = runProgress({ status: "running", solver, time_limit_seconds: limit }, elapsed, floor);
       if (value !== null) floor = value;
       setProgress(value, value === null ? null : text);
     };
@@ -47,33 +60,46 @@ function useRunBar(job: Job | null): void {
     const timer = setInterval(tick, TICK_MS);
     return () => {
       clearInterval(timer);
-      // Ended (or left): the bar completes at once and goes.
-      if (solver !== "greedy") setProgress(1, text);
+      // Ended (or left): the bar completes at once and goes, and nothing after inherits it.
+      endProgress();
       done();
     };
-  }, [active, solver, startedAt, limit, text]);
+  }, [active, solver, limit, text]);
 }
 
-/** Read the run, and keep reading it in the background while it runs. */
-function useJob(id: string | undefined): { job: Job | null; error: string | null; setJob: (job: Job) => void; reload: () => void } {
+/**
+ * Read the run, and keep reading it in the background while it runs. A failed background read keeps
+ * the last answer on screen, says so, and tries again; only a failed first read replaces the page.
+ */
+function useJob(id: string | undefined) {
   const session = useSession();
-  const [job, setJob] = useState<Job | null>(null);
+  const [reading, setReading] = useState<Reading | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!id) return undefined;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let seen = false;
     const read = async (background: boolean) => {
       try {
         const client = background ? session.quiet : session.api;
         const next = await call(client.GET("/api/v1/schedule-jobs/{id}", { params: { path: { id } } }));
         if (stopped) return;
-        setJob(next);
+        seen = true;
+        setReading({ job: next, readAt: Date.now() });
         setError(null);
+        setPollError(null);
         if (isActive(next)) timer = setTimeout(() => void read(true), POLL_MS);
       } catch (failure) {
-        if (!stopped) setError(codeOf(failure));
+        if (stopped) return;
+        if (!seen) {
+          setError(codeOf(failure));
+          return;
+        }
+        setPollError(codeOf(failure));
+        timer = setTimeout(() => void read(true), RETRY_MS);
       }
     };
     void read(false);
@@ -82,10 +108,32 @@ function useJob(id: string | undefined): { job: Job | null; error: string | null
       if (timer) clearTimeout(timer);
     };
   }, [id, session, attempt]);
-  return { job, error, setJob, reload: () => setAttempt((n) => n + 1) };
+  return {
+    reading,
+    error,
+    pollError,
+    setJob: (job: Job) => setReading({ job, readAt: Date.now() }),
+    reload: () => setAttempt((n) => n + 1),
+  };
 }
 
-function Proposal({ job }: { job: Job }) {
+/** Project and shift type names, to tell one empty place from another (a run covers every project). */
+function useNames(): { projects: Map<string, string>; types: Map<string, string> } {
+  const session = useSession();
+  const loaded = useLoad(async () => {
+    const [projects, types] = await Promise.all([
+      call(session.api.GET("/api/v1/projects")),
+      call(session.api.GET("/api/v1/shift-types")),
+    ]);
+    return {
+      projects: new Map(projects.items.map((p) => [p.id, p.name])),
+      types: new Map(types.items.map((type) => [type.id, type.name])),
+    };
+  });
+  return loaded.data ?? { projects: new Map(), types: new Map() };
+}
+
+function Proposal({ job, names }: { job: Job; names: ReturnType<typeof useNames> }) {
   const { t, i18n } = useTranslation();
   // A code this build does not know yet still reads as a reason.
   const reasonText = (code: string) => {
@@ -119,9 +167,12 @@ function Proposal({ job }: { job: Job }) {
             return (
               <View key={gap.key} testID="unfilled" style={[styles.row, { borderColor: colors.border.subtle }]}>
                 {slot ? (
-                  <Txt role="label" numeric style={styles.when}>
-                    {`${formatNumericDate(slot.date)} ${formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}`}
-                  </Txt>
+                  <View style={styles.when}>
+                    <Txt role="label">{[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}</Txt>
+                    <Txt role="meta" tone="secondary" numeric>
+                      {`${formatNumericDate(slot.date)} ${formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}`}
+                    </Txt>
+                  </View>
                 ) : null}
                 <Txt role="meta" tone="warning">
                   {t("runs.places_empty", { count: gap.places })}
@@ -158,18 +209,22 @@ export function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const session = useSession();
   const errorText = useErrorText();
-  const { job, error, setJob, reload } = useJob(id);
+  const { reading, error, pollError, setJob, reload } = useJob(id);
+  const job = reading?.job ?? null;
+  const names = useNames();
   const [busy, setBusy] = useState<"accept" | "discard" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  useRunBar(job);
+  useRunBar(reading);
 
   const accept = async () => {
-    if (!id) return;
+    if (!id || job === null) return;
     setBusy("accept");
     setActionError(null);
     try {
       const answer = await call(session.api.POST("/api/v1/schedule-jobs/{id}/accept", { params: { path: { id } } }));
       showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), { tone: "success" });
+      // Closed at once, so Accept and Discard cannot be pressed again before the fresh read lands.
+      setJob({ ...job, proposal_state: "accepted" });
       reload();
     } catch (failure) {
       setActionError(codeOf(failure));
@@ -208,7 +263,7 @@ export function RunScreen() {
       ) : (
         <View style={styles.section}>
           <View style={styles.summary}>
-            <StatusChip status={TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
+            <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (
               <Txt role="meta" tone="secondary" testID="run-proposal-state">
                 {t(`runs.proposal.${job.proposal_state}`)}
@@ -222,7 +277,8 @@ export function RunScreen() {
           ) : null}
           {job.status === "failed" ? <InlineBanner tone="danger" title={t("runs.failed")} /> : null}
           {actionError ? <InlineBanner tone="warning" title={errorText(actionError)} /> : null}
-          {job.status === "succeeded" ? <Proposal job={job} /> : null}
+          {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
+          {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
           {previewsEnabled && job.status === "succeeded" ? (
             <EmptyState
               testID="preview-proposal-diff"

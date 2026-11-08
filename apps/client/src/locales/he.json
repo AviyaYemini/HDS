@@ -596,5 +596,7 @@
   "schedule.proposal_closed": "ההצעה הזו כבר התקבלה, נדחתה או שפג תוקפה.",
   "schedule.proposal_out_of_date": "הסידור או הזמינות השתנו מאז ההרצה. הפיקו אותה שוב.",
   "runs.reasons.no_active_employee": "אין אנשי צוות פעילים לשיבוץ",
-  "runs.reasons.other": "כלל אחר"
+  "runs.reasons.other": "כלל אחר",
+  "runs.poll_failed": "לא ניתן היה לקרוא את מצב ההרצה; מנסים שוב.",
+  "runs.more": "הצגת הרצות קודמות"
 }

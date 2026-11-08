@@ -596,5 +596,7 @@
   "schedule.proposal_closed": "This proposal was already accepted, discarded or has expired.",
   "schedule.proposal_out_of_date": "The roster or availability changed since this run. Generate it again.",
   "runs.reasons.no_active_employee": "No active staff to place",
-  "runs.reasons.other": "Another rule"
+  "runs.reasons.other": "Another rule",
+  "runs.poll_failed": "The run's status could not be read; trying again.",
+  "runs.more": "Show earlier runs"
 }

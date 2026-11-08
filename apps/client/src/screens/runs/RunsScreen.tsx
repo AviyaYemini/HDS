@@ -4,7 +4,7 @@
  * the past chosen from the planning presets or the calendar. Generating opens the run.
  */
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -24,12 +24,14 @@ import {
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { DEFAULT_TIME_ZONE, formatNumericRange, presetRange, todayIn, type DateRange } from "../../locale";
-import { useLoad } from "../useLoad";
+import { DEFAULT_TIME_ZONE, addDays, compareDates, formatNumericRange, presetRange, todayIn, type DateRange } from "../../locale";
 import { HonestyLabel } from "./HonestyLabel";
-import type { JobSummary } from "./model";
+import { STATUS_TONE, isActive, type JobSummary } from "./model";
 
-const TONE = { queued: "neutral", running: "info", succeeded: "success", failed: "danger" } as const;
+/** A run covers at most this many days (the API's limit, 004 FR-005). */
+const MAX_DAYS = 31;
+const REFRESH_MS = 2000;
+
 
 function RunRow({ job }: { job: JobSummary }) {
   const { t } = useTranslation();
@@ -44,7 +46,7 @@ function RunRow({ job }: { job: JobSummary }) {
       <Txt role="label" numeric style={styles.range}>
         {formatNumericRange(job.from, job.to)}
       </Txt>
-      <StatusChip status={TONE[job.status]} label={t(`runs.status.${job.status}`)} />
+      <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} />
       <HonestyLabel job={job} testID="run-row-honesty" />
       {job.proposal_state && job.status === "succeeded" ? (
         <Txt role="meta" tone="secondary">
@@ -77,6 +79,8 @@ function GenerateForm({ onCancel }: { onCancel: () => void }) {
     setKey(newKey());
   };
 
+  const tooLong = compareDates(range.end, addDays(range.start, MAX_DAYS - 1)) > 0;
+
   const generate = async () => {
     setBusy(true);
     setError(null);
@@ -102,19 +106,80 @@ function GenerateForm({ onCancel }: { onCancel: () => void }) {
       </Txt>
       {error ? <InlineBanner tone="warning" title={errorText(error)} /> : null}
       <View style={styles.formActions}>
-        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} testID="action-generate" />
+        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong} disabledReason={tooLong ? t("schedule.range_invalid") : undefined} testID="action-generate" />
         <Button label={t("common.cancel")} onPress={onCancel} testID="action-cancel-run" />
       </View>
     </View>
   );
 }
 
+/**
+ * The runs, newest first: the first page, and the next on request. While a run on screen is queued or
+ * running, the first page is read again in the background, so its status keeps up.
+ */
+function useRuns() {
+  const session = useSession();
+  const [items, setItems] = useState<JobSummary[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // State is set in the answer's callbacks, never in an effect's own body.
+  const first = useCallback(
+    (background: boolean) =>
+      call((background ? session.quiet : session.api).GET("/api/v1/schedule-jobs", { params: { query: { limit: 50 } } })).then(
+        (page) => {
+          setItems((held) => {
+            const fresh = new Set(page.items.map((job) => job.id));
+            return [...page.items, ...(held ?? []).filter((job) => !fresh.has(job.id))];
+          });
+          // Only a first read sets where the next page starts; a refresh keeps the list's end.
+          if (!background) setCursor(page.next_cursor);
+          setError(null);
+        },
+        (failure: unknown) => {
+          if (!background) setError(codeOf(failure));
+        },
+      ),
+    [session],
+  );
+
+  useEffect(() => {
+    void first(false);
+  }, [first]);
+
+  const running = (items ?? []).some(isActive);
+  useEffect(() => {
+    if (!running) return undefined;
+    const timer = setInterval(() => void first(true), REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [running, first]);
+
+  const more = async () => {
+    if (cursor === null) return;
+    setLoadingMore(true);
+    try {
+      const page = await call(session.api.GET("/api/v1/schedule-jobs", { params: { query: { limit: 50, cursor } } }));
+      setItems((held) => {
+        const ids = new Set((held ?? []).map((job) => job.id));
+        return [...(held ?? []), ...page.items.filter((job) => !ids.has(job.id))];
+      });
+      setCursor(page.next_cursor);
+    } catch (failure) {
+      setError(codeOf(failure));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  return { data: items, error, reload: () => first(false), more: cursor === null ? null : more, loadingMore };
+}
+
 export function RunsScreen() {
   const { t } = useTranslation();
-  const session = useSession();
   const errorText = useErrorText();
   const [creating, setCreating] = useState(false);
-  const jobs = useLoad(async () => (await call(session.api.GET("/api/v1/schedule-jobs", { params: { query: { limit: 50 } } }))).items);
+  const jobs = useRuns();
   return (
     <Screen testID="screen-runs">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>
@@ -139,6 +204,7 @@ export function RunsScreen() {
           {jobs.data.map((job) => (
             <RunRow key={job.id} job={job} />
           ))}
+          {jobs.more ? <Button label={t("runs.more")} onPress={() => void jobs.more?.()} busy={jobs.loadingMore} testID="action-more-runs" /> : null}
         </View>
       )}
     </Screen>

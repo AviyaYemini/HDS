@@ -546,6 +546,9 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-042**: The run list, the generate form (with the date presets) and the proposal view MUST be
   drawn in the new design, and every proposal MUST be labelled "Optimal" or "Best found in N s".
   Accept and discard MUST work as today. [AS9]
+  *Proposed (group E, not in the original):* since a run cannot start in the past, the generate
+  form offers planning presets (Next week, Next 7 days, Next 30 days) instead of the reporting ones,
+  and refuses a range over 31 days before it is sent.
 
 **Admin screens (group F)**
 

@@ -1506,7 +1506,7 @@ components:
 
     JobSummary:
       type: object
-      required: [id, status, from, to, project_ids, solver, requested_by, settings, created_at, time_limit_seconds]
+      required: [id, status, from, to, project_ids, solver, requested_by, settings, created_at, time_limit_seconds, elapsed_seconds]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
@@ -1552,6 +1552,10 @@ components:
         time_limit_seconds:
           type: integer
           description: How long the solver may search, the progress bar's whole (007 FR-074).
+        elapsed_seconds:
+          type: integer
+          nullable: true
+          description: Whole seconds the job has searched by the server's clock, to now while it runs and to finished_at once done; null before it starts (007 FR-074).
 
     JobRead:
       allOf:

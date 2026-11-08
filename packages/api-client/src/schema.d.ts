@@ -2262,6 +2262,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Elapsed Seconds
+             * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
+             */
+            elapsed_seconds: number | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2300,7 +2305,7 @@ export interface components {
             status: "queued" | "running" | "succeeded" | "failed";
             /**
              * Time Limit Seconds
-             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074). Elapsed is now minus `started_at`.
+             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
              */
             time_limit_seconds: number;
             /**
@@ -2319,6 +2324,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Elapsed Seconds
+             * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
+             */
+            elapsed_seconds: number | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2356,7 +2366,7 @@ export interface components {
             status: "queued" | "running" | "succeeded" | "failed";
             /**
              * Time Limit Seconds
-             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074). Elapsed is now minus `started_at`.
+             * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
              */
             time_limit_seconds: number;
             /**

@@ -94,9 +94,28 @@ export function track<T>(work: Promise<T>, { background = false }: { background?
   return work.finally(done);
 }
 
+let progressSet = 0;
+let progressTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** Switch to a determinate bar at `value` (0 to 1) with `text`; null for indeterminate again. */
 export function setProgress(value: number | null, text: string | null = null): void {
+  progressSet += 1;
   emit({ value: value === null ? null : Math.min(1, Math.max(0, value)), text });
+}
+
+/**
+ * Finish a determinate bar: full at once, then, after the minimum it stays shown, indeterminate
+ * again unless something set a value since, so loads still pending (or the next one) never inherit
+ * it (group E review).
+ */
+export function endProgress(): void {
+  setProgress(1, state.text);
+  const mine = progressSet;
+  if (progressTimer) clearTimeout(progressTimer);
+  progressTimer = setTimeout(() => {
+    progressTimer = null;
+    if (progressSet === mine) emit({ value: null, text: null });
+  }, MIN_VISIBLE);
 }
 
 /** The current state. */
@@ -120,6 +139,8 @@ export function useLoadingState(): LoadingState {
 /** For tests: nothing pending, nothing shown. */
 export function resetLoading(): void {
   clearTimers();
+  if (progressTimer) clearTimeout(progressTimer);
+  progressTimer = null;
   pending = 0;
   emit({ visible: false, value: null, text: null });
 }

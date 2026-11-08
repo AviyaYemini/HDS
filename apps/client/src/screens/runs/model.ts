@@ -13,20 +13,36 @@ export function isActive(job: Pick<JobSummary, "status">): boolean {
   return job.status === "queued" || job.status === "running";
 }
 
+/** A status's chip tone, in the list and on the run's page. */
+export const STATUS_TONE = { queued: "neutral", running: "info", succeeded: "success", failed: "danger" } as const;
+
 /**
- * The bar's value, 0 to 1, `now` milliseconds after the epoch: elapsed over the limit, never below
- * `floor` (the last value shown, so it only rises), and 1 at once when the run has ended. Null (the
- * indeterminate bar) for a greedy run, which has no limit to measure against.
+ * Seconds searched by the server's clock, `now` milliseconds after the epoch: the job's
+ * `elapsed_seconds` as read at `readAt`, plus the time since while it runs. The device's clock only
+ * measures the time since the answer, so a clock that is off never moves the bar.
+ */
+export function elapsedNow(
+  job: Pick<JobSummary, "status" | "elapsed_seconds">,
+  readAt: number,
+  now: number,
+): number | null {
+  if (job.elapsed_seconds === null) return null;
+  return job.elapsed_seconds + (isActive(job) ? Math.max(0, now - readAt) / 1000 : 0);
+}
+
+/**
+ * The bar's value, 0 to 1: `elapsed` seconds over the limit, never below `floor` (the last value
+ * shown, so it only rises), and 1 at once when the run has ended. Null (the indeterminate bar) for a
+ * greedy run or one without a limit, which have nothing to measure against.
  */
 export function runProgress(
-  job: Pick<JobSummary, "status" | "solver" | "started_at" | "time_limit_seconds">,
-  now: number,
+  job: Pick<JobSummary, "status" | "solver" | "time_limit_seconds">,
+  elapsed: number | null,
   floor = 0,
 ): number | null {
-  if (job.solver === "greedy") return null;
+  if (job.solver === "greedy" || job.time_limit_seconds <= 0) return null;
   if (!isActive(job)) return 1;
-  if (job.started_at === null || job.time_limit_seconds <= 0) return floor;
-  const elapsed = (now - new Date(job.started_at).getTime()) / 1000;
+  if (elapsed === null) return floor;
   return Math.max(floor, Math.min(1, elapsed / job.time_limit_seconds));
 }
 

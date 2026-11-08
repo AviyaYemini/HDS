@@ -3,7 +3,7 @@
  * tasks T016, T021, T022): the bar waits 300 ms and stays 400 ms, reduce-motion zeroes every
  * duration, and the four themes follow the device unless overridden.
  */
-import { getLoadingState, resetLoading, setProgress, startLoading, track } from "../../../src/design/loading/loadingStore";
+import { endProgress, getLoadingState, resetLoading, setProgress, startLoading, track } from "../../../src/design/loading/loadingStore";
 import { setReducedMotionForTests, transition } from "../../../src/design/motion";
 import { resolveThemeName } from "../../../src/design/theme/ThemeProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -62,6 +62,20 @@ describe("loading store (FR-074)", () => {
     await tracked;
     jest.advanceTimersByTime(400);
     expect(getLoadingState()).toMatchObject({ visible: false, value: null, text: null });
+  });
+
+  it("ends a determinate bar full, then hands other loads back the indeterminate sweep", () => {
+    const run = startLoading();
+    const route = startLoading();
+    jest.advanceTimersByTime(300);
+    setProgress(0.4, "up to 5 s");
+    endProgress();
+    run();
+    expect(getLoadingState()).toMatchObject({ visible: true, value: 1, text: "up to 5 s" });
+    jest.advanceTimersByTime(400);
+    // The route change is still pending: it shows the sweep, not the run's full bar.
+    expect(getLoadingState()).toMatchObject({ visible: true, value: null, text: null });
+    route();
   });
 
   it("never shows for background work (a status poll, a token refresh)", async () => {

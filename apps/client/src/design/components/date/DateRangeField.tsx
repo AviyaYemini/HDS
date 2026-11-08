@@ -162,11 +162,11 @@ export function DateRangeField({
     if (presetFocus !== null) presetRefs.current[presetFocus]?.focus?.();
   }, [presetFocus]);
   const onPresetKey = (index: number) => (event: WebKeyEvent) => {
-    const forward = rtl ? "ArrowLeft" : "ArrowRight";
-    const back = rtl ? "ArrowRight" : "ArrowLeft";
+    const nextKey = rtl ? "ArrowLeft" : "ArrowRight";
+    const backKey = rtl ? "ArrowRight" : "ArrowLeft";
     let next: number | null = null;
-    if (event.key === "ArrowDown" || event.key === forward) next = (index + 1) % presets.length;
-    else if (event.key === "ArrowUp" || event.key === back) next = (index - 1 + presets.length) % presets.length;
+    if (event.key === "ArrowDown" || event.key === nextKey) next = (index + 1) % presets.length;
+    else if (event.key === "ArrowUp" || event.key === backKey) next = (index - 1 + presets.length) % presets.length;
     else if (event.key === "Home") next = 0;
     else if (event.key === "End") next = presets.length - 1;
     if (next === null) return;

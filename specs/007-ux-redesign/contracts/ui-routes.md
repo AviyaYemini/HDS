@@ -134,7 +134,8 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
 ## Schedule run test ids (e-schedule-runs.spec.ts)
 
 - `/runs`: `screen-runs`, `run-row` items (`data-job-id`, `data-status`); `action-new-run` opens
-  the generate form with `date-range` (the presets of the date picker) and `action-generate`.
+  the generate form with `date-range` (the planning presets, `preset-next-week`, `preset-next-7-days`,
+  `preset-next-30-days`: Proposed, spec FR-042) and `action-generate`; `action-more-runs` reads the next page.
 - `/runs/<id>`: `screen-run`; while it runs, the `loading-bar` is determinate
   (`aria-valuenow` from elapsed over `time_limit_seconds`, only rising); when done,
   `run-honesty-label` ("Optimal" or "Best found in N s"), `run-filled` (filled over required),

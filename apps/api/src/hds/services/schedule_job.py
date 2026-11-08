@@ -246,6 +246,17 @@ class ScheduleJobService:
         """The proposal's state now, ``expired`` included."""
         return proposal_state(job, self._now())
 
+    def elapsed_seconds(self, job: ScheduleJob) -> int | None:
+        """How long the job has searched, by the server's clock.
+
+        Whole seconds, to now while it runs, to its end once finished; None before it starts (007
+        FR-074: the progress bar never reads a device's clock).
+        """
+        if job.started_at is None:
+            return None
+        end = job.finished_at or self._now()
+        return max(0, (end - job.started_at) // timedelta(seconds=1))
+
     async def _open(self, actor: User, id: uuid.UUID) -> ScheduleJob:
         """The job, locked, if its proposal can still be decided."""
         ensure_role(actor, *MANAGER_ROLES)
