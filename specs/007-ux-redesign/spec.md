@@ -527,7 +527,10 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-036**: Publishing MUST go through a review stating the exact scope, the number of shifts and
   people affected, coverage, unfilled slots and open warnings; one notification for each affected person
   MUST be recorded for delivery per publish, however many shifts it covers, with the publisher's
-  choice to notify or publish silently; feature 010 delivers them. [S12]
+  choice to notify or publish silently; feature 010 delivers them. [S12] A Manager publishes only the
+  projects they manage; an Admin publishes any. A publish names one project, so a Manager's publish
+  of a project they do not manage is refused whole (403 `roster.project_not_managed`). This changes
+  the original, where every Manager published every project: the owner's decision of 2026-11-08.
 - **FR-037**: Unpublished changes MUST be undoable step by step. [S13]
 - **FR-038**: Managers MUST be able to copy last week (choosing what happens on conflicts), save and
   apply week templates, and bulk edit with a preview that states the scope. [S14, S15]

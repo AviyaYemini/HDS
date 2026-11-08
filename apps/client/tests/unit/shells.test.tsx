@@ -29,7 +29,7 @@ const MANAGER: Capability[] = [
   ...EMPLOYEE,
   "roster.read",
   "roster.edit:project",
-  "roster.publish",
+  "roster.publish:project",
   "roster.override:project",
   "schedule.generate",
   "availability.read_others",

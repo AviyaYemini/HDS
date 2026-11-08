@@ -95,3 +95,31 @@ async def test_employees_and_clients_cannot_change_any_roster(
         f"{SHIFTS}/{shift['id']}", headers=await headers_for(async_client, role)
     )
     assert refused.status_code == 403
+
+
+async def test_a_manager_publishes_only_the_projects_they_manage(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """The owner's decision of 2026-11-08 (FR-036): ``roster.publish:project``."""
+    admin = await headers_for(async_client, "admin")
+    manager = await headers_for(async_client, "manager")
+    window = {"from": FIRST.isoformat(), "to": FIRST.isoformat()}
+    mine = await managed_project(async_client, seed_users)
+    await add_shift(async_client, admin, mine, FIRST)
+    published = await async_client.post(
+        f"/api/v1/projects/{mine['id']}/publish", json=window, headers=manager
+    )
+    assert published.status_code == 200, published.text
+
+    other = await add_project(async_client, admin)
+    await add_shift(async_client, admin, other, FIRST)
+    refused = await async_client.post(
+        f"/api/v1/projects/{other['id']}/publish", json=window, headers=manager
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["code"] == "roster.project_not_managed"
+    # An Admin publishes any project.
+    by_admin = await async_client.post(
+        f"/api/v1/projects/{other['id']}/publish", json=window, headers=admin
+    )
+    assert by_admin.status_code == 200, by_admin.text

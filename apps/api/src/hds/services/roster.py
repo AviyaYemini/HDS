@@ -294,15 +294,23 @@ class RosterService:
         Dates are at the project's site, as its shifts' dates are. Published shifts are left as
         they are, so publishing again counts only new drafts.
 
+        A Manager publishes only the projects they manage, an Admin any (``roster.publish:project``,
+        the owner's decision of 2026-11-08). A publish names one project, so it is refused whole.
+
         Raises:
-            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` (HTTP 403); ``roster.project_not_managed``
+                for a Manager of other projects (HTTP 403).
             NotFoundError: The project is not in the organisation (HTTP 404).
             DomainValidationError: ``shifts.date_range_invalid`` when ``last`` is before
                 ``first`` (HTTP 422).
         """
-        ensure_role(actor, *MANAGER_ROLES)
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
-            raise NotFoundError(resource="Project", id=project_id)
+        await self.require_project(actor, project_id)
+        managed = await self._managers.manages(actor.id, [project_id])
+        if not has_on_project(actor.role, Capability.ROSTER_PUBLISH_PROJECT, project_id, managed):
+            raise ForbiddenError(
+                code="roster.project_not_managed",
+                detail="Only the project's managers and Admins publish its roster.",
+            )
         # The dates at the project's site, where its shifts were made from local times.
         zone = await self._shifts.site_timezone(project_id)
         starts_from, starts_before = _bounds(zone, first, last)

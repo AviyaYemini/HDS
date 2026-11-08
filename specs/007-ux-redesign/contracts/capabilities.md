@@ -11,7 +11,7 @@ rows marked **Proposed** come from 007's spec.
 | `my_work.availability` (submit own) | ✓ | ✓ | ✓ | | |
 | `roster.read` (all projects) | | ✓ | ✓ | | |
 | `roster.edit:project` | | managed projects | all | | **Proposed** (O9) |
-| `roster.publish` | | ✓ | ✓ | | every Manager publishes, as in the original; not scoped to projects |
+| `roster.publish:project` | | managed projects | all | | the owner's decision of 2026-11-08: a Manager publishes only the projects they manage |
 | `roster.override:project` | | managed projects | all | | **Proposed** (S10) |
 | `schedule.generate` | | ✓ | ✓ | | |
 | `availability.read_others` | | ✓ | ✓ | | submission tracker |
