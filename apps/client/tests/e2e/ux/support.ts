@@ -76,6 +76,9 @@ export async function openAs(
 
 /** Run axe-core on the page (WCAG 2.2 A and AA rules) and fail on serious or critical issues. */
 export async function checkA11y(page: Page, context: string): Promise<void> {
+  // A side panel or dialog slides in for the surface motion (320 ms): axe reads colours, so it
+  // waits for the surface to be fully drawn rather than judging a half-faded one.
+  if ((await page.locator('[data-testid="side-panel"], [role="dialog"]').count()) > 0) await page.waitForTimeout(SURFACE_MS);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -90,6 +93,9 @@ export async function checkA11y(page: Page, context: string): Promise<void> {
   // At phone width, every screen axe checks is also checked for content spilling out of its box.
   if ((page.viewportSize()?.width ?? 1280) <= PHONE_WIDTH) await expectNothingOverflows(page, context);
 }
+
+/** The design's surface motion, plus a frame (theme tokens: motion.surface.duration 320 ms). */
+const SURFACE_MS = 360;
 
 /** The phone viewport's width (playwright.config.ts, ux-phone). */
 export const PHONE_WIDTH = 390;

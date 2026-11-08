@@ -1,48 +1,41 @@
 /**
- * US3 — Employee and Group Management: Playwright smoke tests.
- *
- * NOTE: SKIPPED pending apps/client implementation.
+ * US3 — Staff on 007's admin screens (T082, T083): a Manager adds a staff member, and an Admin
+ * deletes one. Deactivating from the staff panel is not part of 007's screens yet, so that journey
+ * waits for it (the API is covered by the API tests).
  */
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const BASE = process.env.APP_URL ?? "http://localhost:3000";
+import { signIn } from "./support";
 
-async function signIn(page: any, email: string, password = "Dev1234!") {
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', email);
-  await page.fill('[data-testid="password"]', password);
-  await page.click('[data-testid="sign-in-btn"]');
-}
-
-test.skip("Manager can create an employee", async ({ page }) => {
-  await signIn(page, "manager@hds.test");
-  await page.click('[data-testid="nav-employees"]');
-  await page.click('[data-testid="create-employee-btn"]');
-  await page.fill('[data-testid="email"]', "teststaff@hds.test");
-  await page.fill('[data-testid="full_name"]', "Test Staff");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="submit-btn"]');
-  await expect(page.locator('[data-testid="employee-list"]')).toContainText("teststaff@hds.test");
+test("a Manager adds a staff member, who is listed", async ({ page }) => {
+  const email = `new.${Date.now()}@hds.test`;
+  await signIn(page, "manager");
+  await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+  await page.goto("/admin/staff?open=new");
+  await page.getByTestId("field-full_name").fill("New Person");
+  await page.getByTestId("field-email").fill(email);
+  await page.getByTestId("field-initial_password").fill("Welcome1234!");
+  await page.getByTestId("action-save").click();
+  await page.getByTestId("table-search").fill(email);
+  await expect(page.getByTestId("table-row").filter({ hasText: email })).toBeVisible();
 });
 
-test.skip("Manager can deactivate an employee and they can no longer sign in", async ({ page }) => {
-  await signIn(page, "manager@hds.test");
-  await page.click('[data-testid="nav-employees"]');
-  await page.click('[data-testid="employee-employee@hds.test"] [data-testid="deactivate-btn"]');
-  await page.click('[data-testid="confirm-btn"]');
-
-  // Now try to sign in as the deactivated employee
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', "employee@hds.test");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="sign-in-btn"]');
-  await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
+test("an Admin deletes a staff member after confirming", async ({ page }) => {
+  const email = `leaving.${Date.now()}@hds.test`;
+  await signIn(page, "admin");
+  await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+  await page.goto("/admin/staff?open=new");
+  await page.getByTestId("field-full_name").fill("Leaving Person");
+  await page.getByTestId("field-email").fill(email);
+  await page.getByTestId("field-initial_password").fill("Welcome1234!");
+  await page.getByTestId("action-save").click();
+  await expect(page.getByTestId("action-delete")).toBeVisible();
+  await page.getByTestId("action-delete").click();
+  await page.getByTestId("action-confirm-delete").click();
+  await page.getByTestId("table-search").fill(email);
+  await expect(page.getByTestId("table-row").filter({ hasText: email })).toHaveCount(0);
 });
 
-test.skip("Admin can delete a non-last employee", async ({ page }) => {
-  await signIn(page, "admin@hds.test");
-  await page.click('[data-testid="nav-employees"]');
-  await page.click('[data-testid="employee-employee@hds.test"] [data-testid="delete-btn"]');
-  await page.click('[data-testid="confirm-delete-btn"]');
-  await expect(page.locator('[data-testid="employee-list"]')).not.toContainText("employee@hds.test");
+test.skip("a Manager deactivates a staff member, who can no longer sign in", async () => {
+  // Waits for a deactivate action in the staff panel (not in 007's screens).
 });

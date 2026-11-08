@@ -24,6 +24,7 @@ import { markSessionEnded, noteRestore } from "../src/auth/sessionEnded";
 import { startAfterRestore, type StartState } from "../src/auth/startState";
 import { LoadingBar, ToastHost } from "../src/design/components";
 import { useDirectionProps } from "../src/design/components/Screen";
+import { ConfirmLeave } from "../src/design/unsaved";
 import { startLoading } from "../src/design/loading/loadingStore";
 import { useAppFonts } from "../src/design/theme/fonts";
 import { ThemeProvider, useTheme } from "../src/design/theme/ThemeProvider";
@@ -95,6 +96,7 @@ function Shell({
         <LoadingBar />
       </View>
       <ToastHost />
+      <ConfirmLeave />
       <LanguageSwitching />
     </View>
   );
