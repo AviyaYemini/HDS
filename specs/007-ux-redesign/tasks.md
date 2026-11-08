@@ -287,7 +287,7 @@ loading and empty states, filters in the address, the setup checklist.
 ## Phase 10: Polish & cross-cutting
 
 - [x] T094 [P] [CORE] Documentation: `apps/api/README.md` (new endpoints and settings), `docs/hds-api.md` (Proposed rows: managers' roster edits, assignment times, submissions), `docs/README` index for ADRs 014–018, and `.claude/hds/` working-plan pointers
-- [ ] T095 [CORE] Remove what the redesign retired: `apps/client/src/components/EmployeeNav.tsx`, the old `(employee)` routes and screens, and their locale keys, once no spec or route uses them
+- [x] T095 [CORE] Remove what the redesign retired: `apps/client/src/components/EmployeeNav.tsx`, the old `(employee)` routes and screens, and their locale keys, once no spec or route uses them
 - [ ] T096 [CORE] Run quickstart.md's checks for every group. **PR 5 ready** (F, G, H): once-per-PR steps, including `make ci-local-db`
 
 ---
