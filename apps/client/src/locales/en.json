@@ -600,5 +600,8 @@
   "roster.no_projects": "No projects yet",
   "roster.no_projects_body": "A project's roster appears here once it is created.",
   "submissions.no_window": "No availability window is open",
-  "submissions.no_window_body": "Open a window for the coming weeks, and who has submitted shows here."
+  "submissions.no_window_body": "Open a window for the coming weeks, and who has submitted shows here.",
+  "language.switching_to.en": "Switching to English…",
+  "language.switching_to.he": "Switching to Hebrew…",
+  "language.switching_body": "You'll be back on this screen in a moment."
 }

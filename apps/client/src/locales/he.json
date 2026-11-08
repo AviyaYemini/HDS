@@ -600,5 +600,8 @@
   "roster.no_projects": "אין עדיין פרויקטים",
   "roster.no_projects_body": "הסידור של פרויקט יופיע כאן אחרי שייווצר.",
   "submissions.no_window": "אין חלון זמינות פתוח",
-  "submissions.no_window_body": "פתחו חלון לשבועות הקרובים, ומי שהגיש יופיע כאן."
+  "submissions.no_window_body": "פתחו חלון לשבועות הקרובים, ומי שהגיש יופיע כאן.",
+  "language.switching_to.en": "עוברים לאנגלית…",
+  "language.switching_to.he": "עוברים לעברית…",
+  "language.switching_body": "עוד רגע חוזרים למסך הזה."
 }

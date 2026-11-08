@@ -8,7 +8,7 @@
  */
 import "../src/locale/intl";
 
-import { Slot, usePathname } from "expo-router";
+import { Slot, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
@@ -28,6 +28,8 @@ import { startLoading } from "../src/design/loading/loadingStore";
 import { useAppFonts } from "../src/design/theme/fonts";
 import { ThemeProvider, useTheme } from "../src/design/theme/ThemeProvider";
 import { i18n, loadRememberedLanguage, setupI18n } from "../src/i18n";
+import { takeResume } from "../src/i18n/restart";
+import { LanguageSwitching } from "../src/navigation/LanguageSwitching";
 import { OfflineBanner } from "../src/navigation/OfflineBanner";
 import { LockScreen } from "../src/screens/misc/LockScreen";
 import { UnreachableScreen } from "../src/screens/misc/UnreachableScreen";
@@ -55,11 +57,35 @@ function hideWebSplash(): void {
 
 type Start = "starting" | "locked" | StartState;
 
-function Shell({ locked, onUnlock, onForget, unlocking }: { locked: boolean; onUnlock: () => void; onForget: () => void; unlocking: boolean }) {
+function Shell({
+  locked,
+  onUnlock,
+  onForget,
+  unlocking,
+  resumeTo,
+  onResumed,
+}: {
+  locked: boolean;
+  onUnlock: () => void;
+  onForget: () => void;
+  unlocking: boolean;
+  resumeTo: string | null;
+  onResumed: () => void;
+}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const direction = useDirectionProps();
+  const router = useRouter();
+  const pathname = usePathname();
   useRouteLoading();
+  // Back to the screen the language switch left (FR-078), before the splash comes down.
+  useEffect(() => {
+    if (resumeTo === null) return;
+    // The web reload kept the address; a phone starts at its first route and is taken back.
+    const [path] = resumeTo.split("?");
+    if (Platform.OS !== "web" || path !== pathname) router.replace(resumeTo as never);
+    onResumed();
+  }, [resumeTo, pathname, router, onResumed]);
   return (
     <View {...direction.web} style={[styles.root, direction.style, { backgroundColor: colors.bg.canvas }]}>
       <OfflineBanner />
@@ -68,6 +94,7 @@ function Shell({ locked, onUnlock, onForget, unlocking }: { locked: boolean; onU
         <LoadingBar />
       </View>
       <ToastHost />
+      <LanguageSwitching />
     </View>
   );
 }
@@ -78,6 +105,9 @@ function Starter() {
   const [unlocking, setUnlocking] = useState(false);
 
   const [retrying, setRetrying] = useState(false);
+  // The screen a language restart left, taken once at the start (FR-078).
+  const [resumeTo, setResumeTo] = useState<string | null>(null);
+  const resumed = useCallback(() => setResumeTo(null), []);
 
   /** Take up the kept session, and say what to show: the routes, or the "can't reach HDS" state. */
   const restore = useCallback(async (): Promise<StartState> => {
@@ -120,7 +150,11 @@ function Starter() {
     void (async () => {
       try {
         const hadTokens = (await storeFor(Platform.OS).load()) !== null;
-        if (hadTokens && Platform.OS !== "web") {
+        const resume = await takeResume();
+        if (resume) setResumeTo(resume.path);
+        // A restart for the language, seconds ago, by someone already unlocked: not a new start,
+        // so no second biometric prompt (the owner: it must never look like a cold start).
+        if (hadTokens && Platform.OS !== "web" && resume === null) {
           await tryUnlock();
         } else {
           setStart(await restore());
@@ -132,10 +166,11 @@ function Starter() {
   }, [restore, tryUnlock]);
 
   useEffect(() => {
-    if (start === "starting") return;
+    // Held until the restart's screen is back, so the person never sees the home screen first.
+    if (start === "starting" || (resumeTo !== null && start === "ready")) return;
     hideWebSplash();
     void SplashScreen.hideAsync().catch(() => undefined);
-  }, [start]);
+  }, [start, resumeTo]);
 
   useEffect(() => {
     // A refresh the server refused while the app was open: say so on the sign-in screen.
@@ -153,6 +188,8 @@ function Starter() {
     <Shell
       locked={start === "locked"}
       unlocking={unlocking}
+      resumeTo={start === "ready" ? resumeTo : null}
+      onResumed={resumed}
       onUnlock={() => void tryUnlock()}
       onForget={() => {
         void session.signOut().then(() => setStart("ready"));
