@@ -10,7 +10,7 @@ import "../src/locale/intl";
 
 import { Slot, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -111,7 +111,12 @@ function Starter() {
     }
   }, [restore, t]);
 
+  // The start runs once. `tryUnlock` changes whenever `t` does, so switching the language would
+  // otherwise take the kept session up again and ask for biometrics a second time (R72).
+  const started = useRef(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     void (async () => {
       try {
         const hadTokens = (await storeFor(Platform.OS).load()) !== null;
