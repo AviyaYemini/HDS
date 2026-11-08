@@ -314,3 +314,34 @@ test("in Hebrew the eyebrow keeps its right edge from page to page", async ({ pa
   }
   expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
 });
+
+// The owner, PR 4: "Hebrew/English and dark/light mode should be easily accessible from the top bar".
+test("the top bar switches the language and the theme, and both survive a reload", async ({ page }) => {
+  await signIn(page, "employee", "he");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("dir", "rtl");
+  await page.getByTestId("action-switch-language").click();
+  await expect(html).toHaveAttribute("dir", "ltr");
+  await expect(html).toHaveAttribute("lang", "en");
+  await expect(page.getByTestId("action-sign-out")).toHaveAccessibleName("Sign out");
+
+  const scheme = () => html.evaluate((node) => (node as HTMLElement).style.colorScheme);
+  const before = await scheme();
+  await page.getByTestId("action-toggle-theme").click();
+  await expect.poll(scheme).not.toBe(before);
+  const after = await scheme();
+
+  // Open the address afresh in the same tab, without ?lang=, which would choose for it.
+  await page.goto("/home");
+  await expect(page.getByTestId("sign-in-btn")).toHaveCount(0);
+  await expect(html).toHaveAttribute("lang", "en");
+  await expect.poll(scheme).toBe(after);
+});
+
+test("sign-in offers the language switch before anyone signs in", async ({ page }) => {
+  await page.goto(at("/sign-in", "he"));
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await page.getByTestId("action-switch-language").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page.getByTestId("sign-in-btn")).toContainText("Sign in");
+});

@@ -493,5 +493,8 @@
   "warnings.over_headcount": "משובצים יותר עובדים ממה שהמשמרת צריכה.",
   "warnings.under_headcount": "משובצים פחות עובדים ממה שהמשמרת צריכה.",
   "warnings.employee_inactive": "עובד משובץ כבר אינו פעיל.",
-  "warnings.not_submitted": "הזמינות לשבוע הזה לא הוגשה עד המועד האחרון, ולכן השבוע נספר כלא זמין לשיבוץ."
+  "warnings.not_submitted": "הזמינות לשבוע הזה לא הוגשה עד המועד האחרון, ולכן השבוע נספר כלא זמין לשיבוץ.",
+  "display.language_to": "שפה: {{language}}",
+  "display.dark_mode": "מצב כהה",
+  "display.light_mode": "מצב בהיר"
 }

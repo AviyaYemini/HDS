@@ -110,3 +110,15 @@ export async function setupI18n(language: string = pickLanguage()): Promise<type
   applyDirection(isRtlLanguage(language));
   return i18n;
 }
+
+/**
+ * Switch the UI language and remember it: the one path for Account's switch and the header's
+ * (FR-059). The web turns at once; a phone keeps its layout direction until the app restarts, so
+ * `onRestartNeeded` is told then.
+ */
+export async function switchLanguage(code: string, onRestartNeeded?: () => void): Promise<void> {
+  if (i18n.language.startsWith(code)) return;
+  await setupI18n(code);
+  await rememberLanguage(code);
+  if (Platform.OS !== "web") onRestartNeeded?.();
+}

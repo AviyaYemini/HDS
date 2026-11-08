@@ -493,5 +493,8 @@
   "warnings.over_headcount": "More employees are assigned than the shift needs.",
   "warnings.under_headcount": "Fewer employees are assigned than the shift needs.",
   "warnings.employee_inactive": "An assigned employee is no longer active.",
-  "warnings.not_submitted": "The employee did not submit availability for this week by the deadline, so they count as unavailable."
+  "warnings.not_submitted": "The employee did not submit availability for this week by the deadline, so they count as unavailable.",
+  "display.language_to": "Language: {{language}}",
+  "display.dark_mode": "Dark mode",
+  "display.light_mode": "Light mode"
 }
