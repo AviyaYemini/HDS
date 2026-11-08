@@ -171,3 +171,52 @@ test.describe("a run's output", () => {
     await manager.dispose();
   });
 });
+
+// ── Runs for chosen projects (FR-081, T108) ─────────────────────────────────
+
+test.describe("runs for chosen projects", () => {
+  test.setTimeout(120_000);
+
+  test("a manager is offered only the projects they manage, each with its type", async ({ page }) => {
+    await openAs(page, "manager", "en", "/runs");
+    await page.getByTestId("action-new-run").click();
+    await page.getByTestId("run-projects").click();
+    const options = page.getByTestId("run-projects-sheet").getByRole("checkbox");
+    // The seeded Manager manages Night Watch only.
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Night Watch");
+    await expect(options.first()).toContainText(/Security|Training/);
+  });
+
+  test("an admin generates for one project, and the proposal holds only its slots", async ({ page }) => {
+    const admin = await apiAs("admin");
+    const projects = await ok<{ items: { id: string; name: string }[] }>(admin.get("/api/v1/projects"));
+    const night = projects.items.find((p) => p.name === "Night Watch")!.id;
+
+    await openAs(page, "admin", "en", "/runs");
+    await page.getByTestId("action-new-run").click();
+    await page.getByTestId("run-projects").click();
+    const sheet = page.getByTestId("run-projects-sheet");
+    // Everything is chosen at first; leave only Night Watch.
+    for (const project of projects.items.filter((p) => p.id !== night)) {
+      const option = sheet.getByTestId(`run-projects-option-${project.id}`);
+      if ((await option.count()) > 0) await option.click();
+    }
+    await sheet.getByTestId("run-projects-done").click();
+    await page.getByTestId("date-range").getByTestId("preset-next-week").click();
+    await page.getByTestId("action-generate").click();
+
+    await expect(page.getByTestId("screen-run")).toBeVisible();
+    await expect(page.getByTestId("run-projects-covered")).toContainText("Night Watch");
+    const id = new URL(page.url()).pathname.split("/").pop()!;
+    let job: { status: string; project_ids: string[]; proposal: { slots: { project_id: string }[] } | null } | null = null;
+    for (let i = 0; i < 120; i += 1) {
+      job = await ok(admin.get(`/api/v1/schedule-jobs/${id}`));
+      if (job!.status === "succeeded") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(job!.project_ids).toEqual([night]);
+    expect(new Set(job!.proposal!.slots.map((s) => s.project_id))).toEqual(new Set([night]));
+    await admin.dispose();
+  });
+});
