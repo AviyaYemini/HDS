@@ -957,7 +957,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a roster
-         * @description Manager or Admin. Queue a run that proposes a roster for `from` to `to` (at most 31 days) over every active project, or the `project_ids` given. A worker solves it; follow it with `GET /schedule-jobs/{id}`. Nothing in the roster changes until the proposal is accepted. A backwards or too long range is refused with 422 (`schedule.range_invalid`), a project that is not active with 422 (`schedule.project_not_active`). With an `Idempotency-Key`, a repeat of the same request answers the first job, and the same key with another request is refused with 422 (`idempotency.key_reused`).
+         * @description Manager or Admin. Queue a run that proposes a roster for `from` to `to` (at most 31 days) over the `project_ids` given, or, when none are, the caller's: a Manager's managed active projects, an Admin's every active one; the job keeps the list it covers. A worker solves it; follow it with `GET /schedule-jobs/{id}`. Nothing in the roster changes until the proposal is accepted. A Manager naming a project they do not manage is refused with 403 (`roster.project_not_managed`) and no job is made (007 T108). A backwards or too long range is refused with 422 (`schedule.range_invalid`), a project that is not active with 422 (`schedule.project_not_active`), and no project to schedule with 422 (`schedule.no_projects`). With an `Idempotency-Key`, a repeat of the same request answers the first job, and the same key with another request is refused with 422 (`idempotency.key_reused`).
          */
         post: operations["create_job_api_v1_schedule_jobs_post"];
         delete?: never;
@@ -997,7 +997,7 @@ export interface paths {
         put?: never;
         /**
          * Accept a proposal
-         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then.
+         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then. A Manager who does not manage every project of the run, now, is refused the whole of it with 403 (`roster.project_not_managed`, 007 T108).
          */
         post: operations["accept_job_api_v1_schedule_jobs__id__accept_post"];
         delete?: never;
@@ -1017,7 +1017,7 @@ export interface paths {
         put?: never;
         /**
          * Discard a proposal
-         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`).
+         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`); with 403 (`roster.project_not_managed`) for a Manager who does not manage every project of the run (007 T108).
          */
         post: operations["discard_job_api_v1_schedule_jobs__id__discard_post"];
         delete?: never;
