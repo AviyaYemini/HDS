@@ -125,21 +125,21 @@ dead ends; account, sessions, contact card, previews.
 
 ### [UI] then
 
-- [ ] T035 [US1] [UI] Staff shell `apps/client/app/(staff)/_layout.tsx`: bottom tabs on phone (≤ 5, per role), side navigation on web with My work, Manage and Admin groups, mirrored in Hebrew, 64 px header with the 2 px accent rule; replaces `apps/client/src/components/EmployeeNav.tsx` (FR-003, FR-005)
-- [ ] T036 [US1] [UI] Client shell `apps/client/app/(client)/_layout.tsx` with Projects, Billing, Requests, Contact; client home `apps/client/app/(client)/index.tsx` (one card per project from the client-scoped projects list, no employee fields) and project page (FR-004)
-- [ ] T037 [US1] [UI] Home per role `apps/client/src/screens/home/`: employee (next shift, availability deadline banner), manager (today's coverage, unfilled slots, who hasn't submitted — reading what group C and D expose, placeholders until then), admin (the setup checklist entry) (FR-006). The manager home's coverage, unfilled and not-submitted cards are finished in T074, once groups C and D serve that data; until then they show skeletons, never invented numbers
-- [ ] T038 [US1] [UI] No-access page and inline refusal banner `apps/client/src/screens/no-access/`; disabled-with-reason and read-only patterns in the primitives (FR-007, FR-008); remove the string "You are not allowed to do this." from both locale files
-- [ ] T039 [US1] [UI] Account screen `apps/client/app/account.tsx`: language switch (FR-059) (restart notice on native; immediate `dir`/`lang` on web), active sessions with revoke and "sign out of other devices", profile; sign-out, help, contact and the accessibility link in the same place on every screen (FR-009)
-- [ ] T040 [US1] [UI] Biometric unlock on phones with `expo-local-authentication` in front of the stored refresh token; the visible "session ended" notice (FR-010)
-- [ ] T041 [US1] [UI] Set-password screen for invitations in the invitee's language, then the role's home (FR-011); sign-in with paste, password managers, `autoComplete`/`textContentType`, no puzzle (FR-064)
-- [ ] T042 [US1] [UI] Contact card `apps/client/app/(client)/contact.tsx` and the admin's contact-details form (FR-012)
-- [ ] T043 [US8] [UI] Preview stubs for every row of contracts/ui-routes.md's preview table in `apps/client/src/screens/previews/`, each an Option B empty state naming its feature, gated by its capability, registered only with the previews switch (FR-068, FR-069)
-- [ ] T044 [US9] [UI] Finishing touches: an Option B splash screen (`expo-splash-screen`), app icon and favicon in `apps/client/assets/` and `app.json`; the branded sign-in; the 404 page `apps/client/app/+not-found.tsx` with a way home; the offline banner; styled toasts; focus rings; all copy so far written against `docs/ux/glossary.md` and `docs/ux/voice-and-tone.md` (FR-075, FR-077)
-- [ ] T045 [P] [US1] [UI] Unit tests for the shells' tab sets per capability list in `apps/client/tests/unit/shells.test.tsx`
+- [x] T035 [US1] [UI] Staff shell `apps/client/app/(staff)/_layout.tsx`: bottom tabs on phone (≤ 5, per role), side navigation on web with My work, Manage and Admin groups, mirrored in Hebrew, 64 px header with the 2 px accent rule; replaces `apps/client/src/components/EmployeeNav.tsx` (FR-003, FR-005)
+- [x] T036 [US1] [UI] Client shell `apps/client/app/(client)/_layout.tsx` with Projects, Billing, Requests, Contact; client home `apps/client/app/(client)/index.tsx` (one card per project from the client-scoped projects list, no employee fields) and project page (FR-004)
+- [x] T037 [US1] [UI] Home per role `apps/client/src/screens/home/`: employee (next shift, availability deadline banner), manager (today's coverage, unfilled slots, who hasn't submitted — reading what group C and D expose, placeholders until then), admin (the setup checklist entry) (FR-006). The manager home's coverage, unfilled and not-submitted cards are finished in T074, once groups C and D serve that data; until then they show skeletons, never invented numbers
+- [x] T038 [US1] [UI] No-access page and inline refusal banner `apps/client/src/screens/no-access/`; disabled-with-reason and read-only patterns in the primitives (FR-007, FR-008); remove the string "You are not allowed to do this." from both locale files
+- [x] T039 [US1] [UI] Account screen `apps/client/app/account.tsx`: language switch (FR-059) (restart notice on native; immediate `dir`/`lang` on web), active sessions with revoke and "sign out of other devices", profile; sign-out, help, contact and the accessibility link in the same place on every screen (FR-009)
+- [x] T040 [US1] [UI] Biometric unlock on phones with `expo-local-authentication` in front of the stored refresh token; the visible "session ended" notice (FR-010)
+- [x] T041 [US1] [UI] Set-password screen for invitations in the invitee's language, then the role's home (FR-011); sign-in with paste, password managers, `autoComplete`/`textContentType`, no puzzle (FR-064)
+- [x] T042 [US1] [UI] Contact card `apps/client/app/(client)/contact.tsx` and the admin's contact-details form (FR-012)
+- [x] T043 [US8] [UI] Preview stubs for every row of contracts/ui-routes.md's preview table in `apps/client/src/screens/previews/`, each an Option B empty state naming its feature, gated by its capability, registered only with the previews switch (FR-068, FR-069)
+- [x] T044 [US9] [UI] Finishing touches: an Option B splash screen (`expo-splash-screen`), app icon and favicon in `apps/client/assets/` and `app.json`; the branded sign-in; the 404 page `apps/client/app/+not-found.tsx` with a way home; the offline banner; styled toasts; focus rings; all copy so far written against `docs/ux/glossary.md` and `docs/ux/voice-and-tone.md` (FR-075, FR-077)
+- [x] T045 [P] [US1] [UI] Unit tests for the shells' tab sets per capability list in `apps/client/tests/unit/shells.test.tsx`
 
 ### Close
 
-- [ ] T046 [CORE] Close group B as the template says. Mutants (≤ 3): the client role given `my_work.read` in `core/capabilities.py` (b-roles and the unit test must fail), a manager's `roster.edit:project` granted for an unmanaged project, and the native refresh lifetime falling back to 7 days. Commit `feat(client): add role shells built from the capability map (…)`. **PR 2 ready**: once-per-PR steps, including `make ci-local-db`
+- [x] T046 [CORE] Close group B as the template says. Mutants (≤ 3): the client role given `my_work.read` in `core/capabilities.py` (b-roles and the unit test must fail), a manager's `roster.edit:project` granted for an unmanaged project, and the native refresh lifetime falling back to 7 days. Commit `feat(client): add role shells built from the capability map (…)`. **PR 2 ready**: once-per-PR steps, including `make ci-local-db`
 
 ---
 
