@@ -133,6 +133,29 @@ test("a 401 refreshes once and the request is sent again with the new token", as
   expect(api.calls("GET", "/me/shifts").map((c) => c.auth)).toEqual(["Bearer a1", "Bearer a2"]);
 });
 
+test("the token refresh and quiet requests are sent in the background; others are not", async () => {
+  const api = new FakeApi()
+    .on("GET", "/me/shifts", problem(401, "auth.token_expired"), json(200, { items: [] }), json(200, { items: [] }))
+    .on("POST", "/auth/refresh", json(200, { ...TOKENS, access_token: "a2", refresh_token: "r2" }));
+  const seen: [string, boolean][] = [];
+  const store = memoryStore();
+  await signedIn(api, store);
+  const session = new Session(BASE, store, (request, options) => {
+    seen.push([new URL(request.url).pathname, options?.background === true]);
+    return api.fetch(request);
+  });
+  await session.restore();
+  seen.length = 0;
+  await session.api.GET("/me/shifts");
+  await session.quiet.GET("/me/shifts");
+  expect(seen).toEqual([
+    ["/me/shifts", false],
+    ["/auth/refresh", true],
+    ["/me/shifts", false],
+    ["/me/shifts", true],
+  ]);
+});
+
 test("a second 401 after the refresh is returned as it is, with no second refresh", async () => {
   const api = new FakeApi()
     .on("GET", "/me/shifts", problem(401, "auth.token_revoked"))

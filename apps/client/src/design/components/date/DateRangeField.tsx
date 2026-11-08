@@ -13,6 +13,7 @@ import { Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle
 
 import {
   DEFAULT_TIME_ZONE,
+  FORWARD_PRESETS,
   PAY_PERIOD_PRESETS,
   RANGE_PRESETS,
   addMonths,
@@ -48,6 +49,8 @@ export interface DateRangeFieldProps {
   onChange: (range: DateRange) => void;
   /** Add "This pay period" and "Last pay period" (reports). */
   payPeriods?: boolean;
+  /** Offer ranges ahead (Next week, Next 7 days, Next 30 days) instead, for planning. */
+  forward?: boolean;
   minDate?: string | null;
   maxDate?: string | null;
   /** Today in the site's zone; read from the clock by default. */
@@ -64,6 +67,7 @@ export function DateRangeField({
   value,
   onChange,
   payPeriods = false,
+  forward = false,
   minDate = null,
   maxDate = null,
   today: givenToday,
@@ -75,7 +79,11 @@ export function DateRangeField({
   const { t, i18n } = useTranslation();
   const keyboard = useKeyboardMode();
   const today = givenToday ?? todayIn(DEFAULT_TIME_ZONE);
-  const presets: readonly RangePreset[] = payPeriods ? [...RANGE_PRESETS, ...PAY_PERIOD_PRESETS] : RANGE_PRESETS;
+  const presets: readonly RangePreset[] = forward
+    ? FORWARD_PRESETS
+    : payPeriods
+      ? [...RANGE_PRESETS, ...PAY_PERIOD_PRESETS]
+      : RANGE_PRESETS;
   const current: PresetKey = presetFor(value, today, presets);
   const months = isDesktop ? 2 : 1;
   const [anchor, setAnchor] = useState(startOfMonth(value.start));

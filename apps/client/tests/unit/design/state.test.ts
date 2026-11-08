@@ -63,6 +63,18 @@ describe("loading store (FR-074)", () => {
     jest.advanceTimersByTime(400);
     expect(getLoadingState()).toMatchObject({ visible: false, value: null, text: null });
   });
+
+  it("never shows for background work (a status poll, a token refresh)", async () => {
+    let resolve: () => void = () => undefined;
+    const work = new Promise<void>((r) => {
+      resolve = r;
+    });
+    const tracked = track(work, { background: true });
+    jest.advanceTimersByTime(1000);
+    expect(getLoadingState().visible).toBe(false);
+    resolve();
+    await tracked;
+  });
 });
 
 describe("motion (FR-070, FR-072)", () => {

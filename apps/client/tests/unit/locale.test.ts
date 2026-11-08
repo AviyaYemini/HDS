@@ -5,6 +5,7 @@
  * Israeli holidays and eves are found.
  */
 import {
+  FORWARD_PRESETS,
   FSI,
   LRI,
   PDI,
@@ -115,6 +116,14 @@ describe("range presets (US5, FR-051)", () => {
     expect(presetRange("this-month", today)).toEqual({ start: "2026-11-01", end: "2026-11-30" });
     expect(presetRange("last-month", today)).toEqual({ start: "2026-10-01", end: "2026-10-31" });
     expect(presetRange("last-pay-period", today)).toEqual(presetRange("last-month", today));
+  });
+
+  it("plans ahead from today, never starting in the past (a schedule run, FR-042)", () => {
+    expect(presetRange("next-week", today)).toEqual({ start: "2026-11-08", end: "2026-11-14" });
+    expect(presetRange("next-7-days", today)).toEqual({ start: "2026-11-07", end: "2026-11-13" });
+    // Thirty days, inside a run's 31-day limit.
+    expect(presetRange("next-30-days", today)).toEqual({ start: "2026-11-07", end: "2026-12-06" });
+    expect(presetFor({ start: "2026-11-08", end: "2026-11-14" }, today, FORWARD_PRESETS)).toBe("next-week");
   });
 
   it("names the preset a range stands for, else custom", () => {

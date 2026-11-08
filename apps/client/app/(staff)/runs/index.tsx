@@ -1,12 +1,12 @@
-/** Runs: built by a later group of 007; a guarded placeholder until then (FR-007). */
+/** Schedule runs: the list and the generate form (specs/007-ux-redesign T079, FR-042, FR-007). */
 import { RequireCapability } from "../../../src/capabilities";
-import { PlaceholderScreen } from "../../../src/screens/misc/HubScreen";
 import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
+import { RunsScreen } from "../../../src/screens/runs/RunsScreen";
 
 export default function Route() {
   return (
     <RequireCapability need="schedule.generate" denied={<NoAccessScreen />}>
-      <PlaceholderScreen titleKey="nav.runs" bodyKey="placeholder.runs" eyebrowKey="nav.group.manage" testID="screen-runs" />
+      <RunsScreen />
     </RequireCapability>
   );
 }

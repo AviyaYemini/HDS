@@ -19,12 +19,19 @@ export type Me = components["schemas"]["MeRead"];
  */
 export const CLIENT_KIND: "web" | "native" = Platform.OS === "web" ? "web" : "native";
 
-type Send = (request: Request) => Promise<Response>;
+/** What `send` is told about a request: a background one never shows the loading bar. */
+export interface SendOptions {
+  background?: boolean;
+}
+
+type Send = (request: Request, options?: SendOptions) => Promise<Response>;
 
 /** One signed-in user's tokens and an API client that uses them. */
 export class Session {
   /** The API client for signed-in requests. */
   readonly api: ApiClient;
+  /** The same, for background requests (a poll) that never show the loading bar (FR-074). */
+  readonly quiet: ApiClient;
   /**
    * Whether the last {@link restore} found kept tokens but could not reach the server. The tokens
    * stay kept; the start screen shows Retry instead of the sign-in form (PR 2 review).
@@ -36,6 +43,8 @@ export class Session {
   endedUnexpectedly = false;
 
   private readonly plain: ApiClient;
+  /** Unsigned and in the background: the token refresh. */
+  private readonly plainQuiet: ApiClient;
   private tokens: Tokens | null = null;
   private refreshing: Promise<boolean> | null = null;
   private reloading: Promise<void> | null = null;
@@ -46,8 +55,10 @@ export class Session {
     private readonly store: TokenStore,
     private readonly send: Send = (request) => fetch(request),
   ) {
-    this.plain = createApiClient({ baseUrl, fetch: send });
+    this.plain = createApiClient({ baseUrl, fetch: (request) => send(request) });
+    this.plainQuiet = createApiClient({ baseUrl, fetch: (request) => send(request, { background: true }) });
     this.api = createApiClient({ baseUrl, fetch: (request) => this.authorised(request) });
+    this.quiet = createApiClient({ baseUrl, fetch: (request) => this.authorised(request, { background: true }) });
   }
 
   /** Whether someone is signed in. */
@@ -202,13 +213,13 @@ export class Session {
     return sent;
   }
 
-  private async authorised(request: Request): Promise<Response> {
+  private async authorised(request: Request, options: SendOptions = {}): Promise<Response> {
     const spare = request.clone();
-    const first = await this.send(this.withToken(request));
+    const first = await this.send(this.withToken(request), options);
     if (first.status === 403) this.refusedBy(request);
     if (first.status !== 401 || this.tokens === null) return first;
     if (!(await this.refresh())) return first;
-    const second = await this.send(this.withToken(spare));
+    const second = await this.send(this.withToken(spare), options);
     if (second.status === 403) this.refusedBy(spare);
     return second;
   }
@@ -231,7 +242,7 @@ export class Session {
     const refresh = this.tokens?.refresh;
     if (refresh === undefined) return false;
     try {
-      const answer = await call(this.plain.POST("/auth/refresh", { body: { refresh_token: refresh } }));
+      const answer = await call(this.plainQuiet.POST("/auth/refresh", { body: { refresh_token: refresh } }));
       await this.keep({ access: answer.access_token, refresh: answer.refresh_token });
       return true;
     } catch (error) {

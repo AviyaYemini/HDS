@@ -84,8 +84,12 @@ export function startLoading(): () => void {
   };
 }
 
-/** Run `work` under the bar; the promise is returned as it is. */
-export function track<T>(work: Promise<T>): Promise<T> {
+/**
+ * Run `work` under the bar; the promise is returned as it is. `background` work (a status poll, a
+ * token refresh) is not counted, so it never keeps the bar showing (PR 1 review).
+ */
+export function track<T>(work: Promise<T>, { background = false }: { background?: boolean } = {}): Promise<T> {
+  if (background) return work;
   const done = startLoading();
   return work.finally(done);
 }
