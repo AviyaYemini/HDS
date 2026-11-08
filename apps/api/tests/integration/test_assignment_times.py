@@ -85,3 +85,54 @@ async def test_times_past_four_hours_are_refused(
     )
     assert refused.status_code == 422
     assert refused.json()["code"] == "assignment.times_out_of_range"
+
+
+async def test_pay_is_priced_on_the_persons_own_times(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """A half shift pays half: My pay prices the person's own span, not the shift's (FR-027)."""
+    admin = await headers_for(async_client, "admin")
+    employee = seed_users["employee"]
+    rate = await async_client.patch(
+        f"/api/v1/employees/{employee.id}", json={"default_hourly_rate": "50.0000"}, headers=admin
+    )
+    assert rate.status_code == 200, rate.text
+    project = await add_project(async_client, admin)
+    # 08:00 to 16:00 in Israel on Monday 5 October 2026; the employee works 08:00 to 12:00.
+    created = await async_client.post(
+        SHIFTS,
+        json={
+            "project_id": project["id"],
+            "shift_type_id": project["types"]["morning"],
+            "date": "2026-10-05",
+            "starts_at": "2026-10-05T05:00:00Z",
+            "ends_at": "2026-10-05T13:00:00Z",
+            "headcount": 1,
+        },
+        headers=admin,
+    )
+    assert created.status_code == 201, created.text
+    shift = created.json()["shift"]
+    half = await async_client.post(
+        f"{SHIFTS}/{shift['id']}/assignments",
+        json={
+            "user_id": str(employee.id),
+            "starts_at": "2026-10-05T05:00:00Z",
+            "ends_at": "2026-10-05T09:00:00Z",
+        },
+        headers=admin,
+    )
+    assert half.status_code == 201, half.text
+    published = await async_client.post(
+        f"/api/v1/projects/{project['id']}/publish",
+        json={"from": "2026-10-05", "to": "2026-10-05"},
+        headers=admin,
+    )
+    assert published.status_code == 200, published.text
+
+    pay = await async_client.get(
+        "/me/pay", params={"month": "2026-10"}, headers=await headers_for(async_client, "employee")
+    )
+    assert pay.status_code == 200, pay.text
+    [line] = pay.json()["lines"]
+    assert (line["hours"], line["pay"]) == ("4.00", "200.00")
