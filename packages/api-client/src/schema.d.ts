@@ -3893,6 +3893,16 @@ export interface components {
          * @description One employee's availability for the window.
          */
         TrackedRead: {
+            /**
+             * Changed At
+             * @description When that change was made.
+             */
+            changed_at?: string | null;
+            /**
+             * Changed By
+             * @description The Admin who last changed the submitted availability by hand, if any.
+             */
+            changed_by?: string | null;
             /** Counted Unavailable */
             counted_unavailable: boolean;
             /** Full Name */

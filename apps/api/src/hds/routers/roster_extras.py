@@ -140,6 +140,11 @@ class TrackedRead(BaseModel):
     status: Literal["not_submitted", "draft", "submitted", "locked"]
     submitted_at: datetime | None
     counted_unavailable: bool
+    changed_by: uuid.UUID | None = Field(
+        default=None,
+        description="The Admin who last changed the submitted availability by hand, if any.",
+    )
+    changed_at: datetime | None = Field(default=None, description="When that change was made.")
 
 
 class TrackerRead(BaseModel):

@@ -203,6 +203,34 @@
       "operation_id": "change_contact_api_v1_organisation_contact_patch",
       "suites": ["pytest", "cli"],
       "reason": "opening hours name each weekday at most once and close after they open (007 FR-012), which spans items and fields and OpenAPI 3.0 cannot state; answered 422 organisation.opening_hours_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/copy-week",
+      "operation_id": "copy_week_api_v1_projects__id__copy_week_post",
+      "suites": ["pytest", "cli"],
+      "reason": "both weeks must start on a Sunday (007 FR-038), which no date format can state; answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/week-templates",
+      "operation_id": "save_template_api_v1_projects__id__week_templates_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the week must start on a Sunday (007 FR-038); answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/week-templates/{template_id}/apply",
+      "operation_id": "apply_template_api_v1_projects__id__week_templates__template_id__apply_post",
+      "suites": ["pytest", "cli"],
+      "reason": "the week must start on a Sunday (007 FR-038); answered 422 roster.week_not_sunday"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/roster/bulk",
+      "operation_id": "bulk_api_v1_projects__id__roster_bulk_post",
+      "suites": ["pytest", "cli"],
+      "reason": "exactly one of headcount and remove (007 FR-038), which spans two fields and OpenAPI 3.0 cannot state; answered 422 roster.bulk_change_invalid"
     }
   ]
 }

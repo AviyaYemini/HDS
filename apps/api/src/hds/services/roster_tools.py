@@ -106,6 +106,8 @@ class TrackedSubmission:
     status: str
     submitted_at: datetime | None
     counted_unavailable: bool
+    changed_by: uuid.UUID | None = None
+    changed_at: datetime | None = None
 
 
 def _sunday(day: date) -> date:
@@ -273,6 +275,8 @@ class RosterToolsService:
     async def _drafts(
         self, actor: User, project_id: uuid.UUID, first: date, last: date
     ) -> tuple[str, list[Shift]]:
+        # The project first: another organisation's, or no project at all, is a 404 (R70).
+        await self._roster.require_project(actor, project_id)
         if last < first:
             raise DomainValidationError(
                 code="shifts.date_range_invalid", detail="The range must not end before it starts."
@@ -602,6 +606,8 @@ class RosterToolsService:
                     status.status,
                     status.submitted_at,
                     status.counted_unavailable,
+                    status.changed_by,
+                    status.changed_at,
                 )
             )
         return found

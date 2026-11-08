@@ -370,3 +370,20 @@ async def test_only_an_admin_submits_on_behalf(role: UserRole) -> None:
     with pytest.raises(ForbiddenError):
         await service.submit_on_behalf(_user(role), uuid.uuid4(), window.id)
     submissions.put.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_status_shows_an_admins_hand_change_beside_the_submission() -> None:
+    """T101: the tracker lists who changed a submission by hand, and when (migration 030)."""
+    user, window = _user(), _window(NOW - timedelta(hours=1))
+    row = _submitted(window, user, [_stored(user.id)])
+    admin = uuid.uuid4()
+    row.changed_by, row.changed_at = admin, NOW - timedelta(minutes=5)
+    service, _ = _service(window, [_stored(user.id)], row)
+    found = await service.status(user, window.id)
+    assert (found.status, found.changed_by, found.changed_at) == (
+        "locked",
+        admin,
+        NOW - timedelta(minutes=5),
+    )
+    assert found.submitted_at == row.submitted_at

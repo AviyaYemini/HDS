@@ -54,6 +54,9 @@ class SubmissionStatus:
     submitted_at: datetime | None
     counted_unavailable: bool
     submitted_by: uuid.UUID | None = None
+    # An Admin's hand change to the submitted snapshot, beside the submission (migration 030).
+    changed_by: uuid.UUID | None = None
+    changed_at: datetime | None = None
 
 
 def as_entry(stored: AvailabilityEntry) -> Entry:
@@ -140,14 +143,15 @@ class AvailabilitySubmissionService:
         stored = await self._submissions.get(org_id, window.id, user_id)
         submitted_at = stored.submitted_at if stored else None
         by = stored.submitted_by if stored else None
+        changed = (stored.changed_by, stored.changed_at) if stored else (None, None)
         if self._now() >= window.deadline:
             unavailable = window.requires_submission and stored is None
-            return SubmissionStatus(window, "locked", submitted_at, unavailable, by)
+            return SubmissionStatus(window, "locked", submitted_at, unavailable, by, *changed)
         live = await self._live_snapshot(org_id, user_id, window)
         if stored is not None and stored.snapshot_hash == snapshot_hash(live):
-            return SubmissionStatus(window, "submitted", submitted_at, False, by)
+            return SubmissionStatus(window, "submitted", submitted_at, False, by, *changed)
         if stored is not None or live:
-            return SubmissionStatus(window, "draft", submitted_at, False, by)
+            return SubmissionStatus(window, "draft", submitted_at, False, by, *changed)
         return SubmissionStatus(window, "not_submitted", None, False)
 
     async def submit(self, actor: User, window_id: uuid.UUID) -> SubmissionStatus:

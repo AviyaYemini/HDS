@@ -622,6 +622,20 @@ components:
     TrackedRead:
       description: One employee's availability for the window.
       properties:
+        changed_by:
+          anyOf:
+          - format: uuid
+            type: string
+          - type: 'null'
+          description: The Admin who last changed the submitted availability by hand, if any.
+          title: Changed By
+        changed_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When that change was made.
+          title: Changed At
         counted_unavailable:
           title: Counted Unavailable
           type: boolean
