@@ -36,9 +36,14 @@ _NO_NUL = r"^[^\x00]*$"
 _Str = StringConstraints
 
 
-def _text(max_length: int) -> object:
-    """Build the length-and-no-NUL constraint shared by the text types below."""
-    return _Str(max_length=max_length, pattern=_NO_NUL)
+def text(max_length: int, min_length: int | None = None) -> object:
+    """Build the length-and-no-NUL constraint for a request's free text.
+
+    Every free-text field of a request body uses it (or a type below built on it), so a NUL is a
+    422 and never reaches the database (``test_strict_request_fields``). ``min_length`` stays
+    unset unless given, so a ``Field(min_length=...)`` on a field of these types still applies.
+    """
+    return _Str(min_length=min_length, max_length=max_length, pattern=_NO_NUL)
 
 
 class ChangeRequest(BaseModel):
@@ -68,12 +73,12 @@ def omittable() -> Any:
 # ``Bob@Corp.com`` and ``bob@corp.com`` are one address (FR-215). The published schema stays a
 # string with ``format: email``. Not for contact addresses of clients, which identify nobody.
 Email = Annotated[EmailStr, AfterValidator(lambda address: address.strip().lower())]
-Name = Annotated[str, _text(255)]
-Phone = Annotated[str, _text(32)]
-Timezone = Annotated[str, _text(64)]
-Address = Annotated[str, _text(2000)]
-Password = Annotated[str, _text(128)]
-Token = Annotated[str, _text(512)]
+Name = Annotated[str, text(255)]
+Phone = Annotated[str, text(32)]
+Timezone = Annotated[str, text(64)]
+Address = Annotated[str, text(2000)]
+Password = Annotated[str, text(128)]
+Token = Annotated[str, text(512)]
 # The schema's shape, plus a leading minus and zero: "> 0" is stated in the schema but enforced by
 # the services with their own 422 error codes, so these must reach them. ASCII digits only, because
 # ``\d`` and ``Decimal`` also accept digits of other scripts.

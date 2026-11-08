@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from hds.core.deps import require_staff
+from hds.core.types import text
 from hds.models.user import User
 from hds.services.saved_view import SavedViewService
 from hds.wiring import saved_views
@@ -25,8 +26,8 @@ class SavedViewCreate(BaseModel):
     """A view to save: the screen, a name, and the web address's query it restores."""
 
     screen: Screen
-    name: Annotated[str, Field(min_length=1, max_length=60)]
-    query: Annotated[str, Field(max_length=2000)]
+    name: Annotated[str, text(60, min_length=1)]
+    query: Annotated[str, text(2000)]
 
 
 class SavedViewRead(BaseModel):

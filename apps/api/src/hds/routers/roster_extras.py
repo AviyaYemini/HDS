@@ -12,21 +12,21 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from hds.core.deps import require_manager
-from hds.core.types import IsoDate, StrictDate
+from hds.core.types import IsoDate, StrictDate, text
 from hds.models.user import User
 from hds.services.roster_tools import PlanResult, RosterToolsService
 from hds.wiring import roster_tools_service
 
 router = APIRouter(prefix="/api/v1", tags=["roster tools"])
 
-Reason = Annotated[str, Field(min_length=1, max_length=500)]
+Reason = Annotated[str, text(500, min_length=1)]
 OnConflict = Literal["allow", "overwrite", "unfilled"]
 
 
 class OverrideRequest(BaseModel):
     """The warning to keep the assignment despite, and why."""
 
-    warning_code: Annotated[str, Field(min_length=1, max_length=64)]
+    warning_code: Annotated[str, text(64, min_length=1)]
     reason: Reason
 
 
@@ -94,7 +94,7 @@ class CopyWeekRequest(BaseModel):
 class TemplateCreate(BaseModel):
     """Save the project's week starting on Sunday ``week`` under ``name``."""
 
-    name: Annotated[str, Field(min_length=1, max_length=80)]
+    name: Annotated[str, text(80, min_length=1)]
     week: StrictDate
 
 

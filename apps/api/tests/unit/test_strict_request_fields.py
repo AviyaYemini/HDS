@@ -1,9 +1,11 @@
-"""Every request body takes integers and booleans exactly as JSON sends them (R165).
+"""Request bodies take JSON's own integers and booleans (R165) and text without NUL (R184).
 
 Pydantic's lax types read ``true`` as 1 and ``"3"`` as 3, which the published schema does not
 allow, so the contract suite finds them one field at a time (R111, R165). This walks every route's
 body model, nested models and lists included, and fails on an ``int`` without ``WHOLE_NUMBER`` (or
-``Strict``) and a ``bool`` without ``Strict``. Response models and query parameters are not bodies.
+``Strict``), a ``bool`` without ``Strict``, and a ``str`` without a pattern: PostgreSQL text cannot
+hold NUL, so a free-text field uses ``hds.core.types.text`` (or a type built on it) and answers
+422, not 500. Response models and query parameters are not bodies.
 """
 
 import types
@@ -55,6 +57,8 @@ def _lax(
         found.append(f"{where}: bool")
     elif annotation is int and not _safe(metadata):
         found.append(f"{where}: int")
+    elif annotation is str and not any(getattr(m, "pattern", None) for m in metadata):
+        found.append(f"{where}: str")
     elif (
         isinstance(annotation, type)
         and issubclass(annotation, BaseModel)
@@ -65,7 +69,7 @@ def _lax(
             _lax(field.annotation, list(field.metadata), f"{where}.{name}", seen, found)
 
 
-def test_no_request_body_takes_a_lax_integer_or_boolean() -> None:
+def test_no_request_body_takes_a_lax_integer_boolean_or_text() -> None:
     found: list[str] = []
     for route in _routes(app.routes):
         for param in route.dependant.body_params:
@@ -76,15 +80,28 @@ def test_no_request_body_takes_a_lax_integer_or_boolean() -> None:
 
 
 def test_the_walk_finds_a_lax_field() -> None:
-    """The check itself fails on a plain int or bool, so a passing run means something."""
+    """The check itself fails on a plain int, bool or str, so a passing run means something."""
 
     class Probe(BaseModel):
         count: int
         flag: bool
+        note: str
 
     found: list[str] = []
     _lax(Probe, [], "Probe", set(), found)
-    assert found == ["Probe.count: int", "Probe.flag: bool"]
+    assert found == ["Probe.count: int", "Probe.flag: bool", "Probe.note: str"]
+
+
+def test_a_nul_in_free_text_is_a_validation_error() -> None:
+    """The template name the contract suite sent with a NUL (R184) is refused, not stored."""
+    import pytest
+    from pydantic import ValidationError
+
+    from hds.routers.roster_extras import TemplateCreate
+
+    with pytest.raises(ValidationError):
+        TemplateCreate.model_validate({"name": "a\u0000b", "week": "2026-11-08"})
+    assert TemplateCreate.model_validate({"name": "שבוע א", "week": "2026-11-08"}).name == "שבוע א"
 
 
 def test_an_infinite_number_is_a_validation_error_not_a_crash() -> None:
@@ -99,3 +116,10 @@ def test_an_infinite_number_is_a_validation_error_not_a_crash() -> None:
         with pytest.raises(ValueError, match="whole number"):
             whole_number(value)
     assert whole_number(40.0) == 40
+
+
+def test_the_text_guard_keeps_a_fields_own_minimum() -> None:
+    """``text()`` leaves the minimum alone, so an initial password still publishes 12 (R184)."""
+    schemas = app.openapi()["components"]["schemas"]
+    for name in ("UserCreateRequest", "ClientUserCreateRequest"):
+        assert schemas[name]["properties"]["initial_password"]["minLength"] == 12
