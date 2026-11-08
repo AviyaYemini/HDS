@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, insert, or_, select, update
+from sqlalchemy import and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from hds.core.exceptions import ConflictError
@@ -121,6 +121,19 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         """
         return await self._update_scoped(id, org_id, **fields)
 
+    async def touch(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
+        """Mark a shift changed (``updated_at`` now) after one of its assignments changed.
+
+        The roster's ETag is the shift's ``updated_at``, so an assignment change makes a reader's
+        ``If-Match`` stale too (007 FR-041), and "changed since publish" sees it.
+        """
+        await self.session.execute(
+            update(Shift)
+            .where(Shift.id == id, Shift.organization_id == org_id)
+            .values(updated_at=func.now())
+            .execution_options(synchronize_session=False)
+        )
+
     async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
         """Remove a shift; its assignments go with it (``ON DELETE CASCADE``)."""
         await self.session.execute(
@@ -195,6 +208,30 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         result = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id).limit(limit))
         return list(result.scalars().all())
 
+    async def in_project(
+        self,
+        org_id: uuid.UUID,
+        project_id: uuid.UUID,
+        starts_from: datetime,
+        starts_before: datetime,
+        status: str | None = None,
+    ) -> list[Shift]:
+        """A project's shifts that start in ``[starts_from, starts_before)``, by start.
+
+        ``status`` limits them to ``draft`` or ``published`` when given (007 publish review, copy
+        week, bulk edit).
+        """
+        stmt = select(Shift).where(
+            Shift.organization_id == org_id,
+            Shift.project_id == project_id,
+            Shift.starts_at >= starts_from,
+            Shift.starts_at < starts_before,
+        )
+        if status is not None:
+            stmt = stmt.where(Shift.status == status)
+        result = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id))
+        return list(result.scalars())
+
     async def publish(
         self,
         org_id: uuid.UUID,
@@ -232,8 +269,8 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         stmt = (
             select(
                 Shift.id,
-                Shift.starts_at,
-                Shift.ends_at,
+                func.coalesce(Assignment.starts_at, Shift.starts_at),
+                func.coalesce(Assignment.ends_at, Shift.ends_at),
                 Site.timezone,
                 ShiftType.name,
                 Project.id,
@@ -266,8 +303,8 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         stmt = (
             select(
                 Shift.id,
-                Shift.starts_at,
-                Shift.ends_at,
+                func.coalesce(Assignment.starts_at, Shift.starts_at),
+                func.coalesce(Assignment.ends_at, Shift.ends_at),
                 Site.timezone,
                 ShiftType.name,
                 Project.id,
@@ -345,6 +382,14 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
                 ) from None
             raise
         return assignment
+
+    async def update(self, id: uuid.UUID, org_id: uuid.UUID, **fields: Any) -> Assignment:
+        """Change an assignment of the organisation (its own times, 007 FR-027).
+
+        Raises:
+            NotFoundError: The assignment is not in the organisation.
+        """
+        return await self._update_scoped(id, org_id, **fields)
 
     async def create_many(self, org_id: uuid.UUID, rows: Sequence[dict[str, Any]]) -> None:
         """Insert many assignments in one statement.

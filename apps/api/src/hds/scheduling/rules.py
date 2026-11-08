@@ -8,6 +8,7 @@ refused for a rule: callers report the warnings and keep the change (003 FR-116)
 
 import uuid
 from collections.abc import Collection, Iterable, Mapping
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -106,12 +107,14 @@ def validate(
     by_employee: dict[uuid.UUID, list[ShiftSlot]] = {}
     for slot in all_shifts:
         for person in slot.assigned:
-            by_employee.setdefault(person, []).append(slot)
+            by_employee.setdefault(person, []).append(_as_worked_by(slot, person))
     entries_by_employee: dict[uuid.UUID, list[Entry]] = {}
     for entry in entries:
         if entry.kind not in _KINDS:
             raise ValueError(f"unknown availability entry kind {entry.kind!r}")
         entries_by_employee.setdefault(entry.employee_id, []).append(entry)
+    original = {slot.id: slot for slot in all_shifts}
+    # A shift counts in the week of the date it starts, whoever works it and for how long.
     week_of = {slot.id: week_start(slot.starts_at, settings.week_zone) for slot in all_shifts}
 
     found: set[RuleWarning] = set()
@@ -125,13 +128,25 @@ def validate(
             if slot.id not in focus:
                 continue
             found |= _week(slot, person, theirs, week_of, settings.max_weekly)
-            found |= _entries(slot, person, entries_by_employee.get(person, ()))
+            found |= _entries(original[slot.id], person, entries_by_employee.get(person, ()))
             if not employee.is_active:
                 found.add(RuleWarning("warnings.employee_inactive", person, (slot.id,)))
     for slot in all_shifts:
         if slot.id in focus:
             found |= _headcount(slot)
     return sorted(found, key=lambda w: (w.code, str(w.employee_id), [str(i) for i in w.shift_ids]))
+
+
+def _as_worked_by(slot: ShiftSlot, person: uuid.UUID) -> ShiftSlot:
+    """``slot`` with the times ``person`` works it, for the rules judged per person.
+
+    Only rest, overlap and weekly hours read these times; availability entries are matched by the
+    shift's own start, and the week by the shift's own date.
+    """
+    starts_at, ends_at = slot.span(person)
+    if (starts_at, ends_at) == (slot.starts_at, slot.ends_at):
+        return slot
+    return replace(slot, starts_at=starts_at, ends_at=ends_at, own_times=())
 
 
 def _pair(code: str, person: uuid.UUID, a: ShiftSlot, b: ShiftSlot) -> RuleWarning:

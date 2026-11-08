@@ -371,7 +371,8 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 1. **Given** a route or data load longer than about 300 ms, **When** it is pending, **Then** a thin bar
    under the header shows indeterminate progress; **given** a load under that, **then** no bar flashes.
 2. **Given** a schedule run, **When** it is running, **Then** the bar is determinate, showing elapsed
-   time against the time limit and the best result so far, and its value is announced.
+   time against the time limit ("up to N s"), completing at once if the run ends early, and its
+   value is announced; a greedy run or one without a limit shows the indeterminate bar.
 3. **Given** the device's reduce-motion setting is on, or switched on while the app is open, **When**
    any screen changes, **Then** nothing animates and the bar shows a still state.
 4. **Given** a sheet or side panel, **When** it opens, **Then** it slides from the leading edge
@@ -644,9 +645,11 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
   submitting availability, assigning and publishing. [E17, moved into scope]
 - **FR-074**: A loading bar of the design's own MUST sit under the header: thin, copper and tan, with
   the clipped-corner motif; indeterminate for route and data loads and shown only after about 300 ms;
-  determinate for schedule runs, showing elapsed time against the time limit and the best result so
-  far. It MUST be exposed as a progress bar with its value announced, and MUST show a still state
-  under reduce-motion. [AS8's visible part]
+  determinate for schedule runs, showing elapsed time against the time limit (labelled "up to N s",
+  never a promised end), completing at once when a run ends early, and indeterminate for a run
+  without a time limit or a greedy run; the best result so far comes with feature 008. It MUST be
+  exposed as a progress bar with its value announced, and MUST show a still state under
+  reduce-motion. [AS8's visible part; reviewer ruling, 2026-11-07]
 - **FR-075**: A glossary MUST fix the Hebrew and English name of every domain term (for example Roster /
   סידור עבודה, Work log / יומן עבודה, Availability / זמינות), and a short voice-and-tone guide MUST set
   plain, short, gender-neutral copy, nouns and infinitives on Hebrew buttons, and one format each for

@@ -49,7 +49,13 @@ def worked(start: str, end: str, *, pay_rate: str | None = None, pay_enabled: bo
         ends_at=datetime.fromisoformat(end),
         pay_rate=None if pay_rate is None else Decimal(pay_rate),
     )
-    return SimpleNamespace(shift=shift, project=project, timezone=ZONE)
+    return SimpleNamespace(
+        shift=shift,
+        project=project,
+        timezone=ZONE,
+        starts_at=shift.starts_at,
+        ends_at=shift.ends_at,
+    )
 
 
 def service(rows: list[Any]) -> tuple[PayService, Any]:

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from hds.core.config import get_settings
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
 from hds.core.types import StrictDate
@@ -135,6 +136,10 @@ class JobSummary(BaseModel):
     error_code: str | None
     optimal: bool | None
     proposal_state: ProposalState | None
+    time_limit_seconds: int = Field(
+        description="How long the solver may search: the determinate progress bar's whole "
+        "(007 FR-074). Elapsed is now minus `started_at`."
+    )
 
 
 class JobRead(JobSummary):
@@ -166,6 +171,7 @@ def _summary(job: ScheduleJob, state: str | None) -> dict[str, Any]:
         "error_code": job.error_code,
         "optimal": job.optimal,
         "proposal_state": state,
+        "time_limit_seconds": get_settings().SCHEDULE_TIME_LIMIT_SECONDS,
     }
 
 

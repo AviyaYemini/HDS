@@ -29,6 +29,11 @@ from hds.repositories.pay_reports import PayReportRepository, ReportShiftReposit
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
+from hds.repositories.roster_extras import (
+    PublishEventRepository,
+    RuleOverrideRepository,
+    WeekTemplateRepository,
+)
 from hds.repositories.schedule_job import ScheduleJobRepository
 from hds.repositories.scheduling_inputs import SchedulingInputRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
@@ -48,6 +53,8 @@ from hds.services.pay_settings import PaySettingsService
 from hds.services.project import ProjectService
 from hds.services.project_manager import ProjectManagerService
 from hds.services.reports import ReportsService
+from hds.services.roster import RosterService
+from hds.services.roster_tools import RosterToolsService
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService
 from hds.services.scheduling_settings import SchedulingSettingsService
@@ -70,6 +77,33 @@ def availability_submissions(
 ) -> AvailabilitySubmissionService:
     """FastAPI dependency: availability submissions, in the request's unit of work."""
     return submission_service(db)
+
+
+def roster_tools_service(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> RosterToolsService:
+    """FastAPI dependency: the roster tools (007 FR-034 to FR-040), in the unit of work."""
+    roster = RosterService(
+        shift_repo=ShiftRepository(db),
+        assignment_repo=AssignmentRepository(db),
+        shift_type_repo=ShiftTypeRepository(db),
+        project_repo=ProjectRepository(db),
+        user_repo=UserRepository(db),
+        entry_repo=AvailabilityRepository(db),
+        organisation_repo=OrganisationRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
+        availability=submission_service(db),
+    )
+    return RosterToolsService(
+        roster=roster,
+        shift_repo=ShiftRepository(db),
+        assignment_repo=AssignmentRepository(db),
+        override_repo=RuleOverrideRepository(db),
+        template_repo=WeekTemplateRepository(db),
+        event_repo=PublishEventRepository(db),
+        user_repo=UserRepository(db),
+        submissions=submission_service(db),
+    )
 
 
 def input_service(db: AsyncSession) -> ScheduleInputService:

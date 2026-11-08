@@ -117,3 +117,22 @@ class RateLimitedError(Exception):
         self.detail = "Too many failed sign-ins from this network; try again later."
         self.retry_after = retry_after
         super().__init__(self.detail)
+
+
+class PreconditionFailedError(Exception):
+    """The record changed since the caller read it: their ``If-Match`` is stale (HTTP 412).
+
+    Used for the roster (007 FR-041): two people changing the same shift never silently overwrite
+    each other; the later save is told and reads the current version again.
+    """
+
+    def __init__(self, code: str, detail: str) -> None:
+        """Create the error.
+
+        Args:
+            code: Stable error code such as ``roster.changed``.
+            detail: English explanation for the response body.
+        """
+        self.code = code
+        self.detail = detail
+        super().__init__(detail)

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from hds.core.authz import STAFF_ROLES, ensure_role
+from hds.core.authz import MANAGER_ROLES, STAFF_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
 from hds.models.availability import AvailabilityEntry
 from hds.models.submission_window import SubmissionWindow
@@ -120,6 +120,19 @@ class AvailabilitySubmissionService:
         ensure_role(actor, *STAFF_ROLES)
         window = await self._window(actor, window_id)
         return await self._status_of(actor.organization_id, actor.id, window)
+
+    async def status_for(
+        self, actor: User, user_id: uuid.UUID, window_id: uuid.UUID
+    ) -> SubmissionStatus:
+        """Another employee's status for one window (Manager or Admin, the tracker, FR-040).
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            NotFoundError: The window is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        window = await self._window(actor, window_id)
+        return await self._status_of(actor.organization_id, user_id, window)
 
     async def _status_of(
         self, org_id: uuid.UUID, user_id: uuid.UUID, window: SubmissionWindow

@@ -22,6 +22,11 @@ class ShiftSlot:
     ``zone`` is the site's IANA time zone, which decides the shift's date: a shift belongs to the
     local date it starts on, so a night shift is judged against the date it begins. ``assigned``
     holds the employees on it.
+
+    ``own_times`` holds ``(employee, starts_at, ends_at)`` for the people whose work in the shift
+    has its own start and end (007 FR-027: a half shift, or two extra hours); everyone else works
+    the shift's times. Rest, overlap and weekly hours judge each person by :meth:`span`; the
+    shift's date and its headcount stay the shift's.
     """
 
     id: uuid.UUID
@@ -32,6 +37,14 @@ class ShiftSlot:
     zone: str
     headcount: int
     assigned: tuple[uuid.UUID, ...]
+    own_times: tuple[tuple[uuid.UUID, datetime, datetime], ...] = ()
+
+    def span(self, person: uuid.UUID) -> tuple[datetime, datetime]:
+        """When ``person`` works this shift: their own times if set, otherwise the shift's."""
+        for who, starts_at, ends_at in self.own_times:
+            if who == person:
+                return starts_at, ends_at
+        return self.starts_at, self.ends_at
 
 
 @dataclass(frozen=True)

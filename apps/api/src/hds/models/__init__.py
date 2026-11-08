@@ -19,6 +19,7 @@ from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.project_manager import ProjectManager
 from hds.models.qualification import Qualification, user_qualifications
 from hds.models.refresh_token import RefreshToken
+from hds.models.roster_extras import PublishEvent, RuleOverride, WeekTemplate
 from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
@@ -36,7 +37,10 @@ __all__ = [
     "Site",
     "User",
     "UserRole",
+    "PublishEvent",
     "RefreshToken",
+    "RuleOverride",
+    "WeekTemplate",
     "LoginThrottle",
     "Group",
     "user_groups",

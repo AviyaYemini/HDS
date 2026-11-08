@@ -51,10 +51,11 @@ rotation keeps the token's lifetime class.
 **availability_submissions** gains `changed_by` (uuid fk → users, null) and `changed_at`
 (timestamptz, null): the Admin whose hand edit last changed the snapshot, and when. `submitted_at`
 and `submitted_by` stay the employee's (or the on-behalf Admin's), so an on-time submission still
-reads as on time; a fresh submit clears both. Numbered 030 because 027 to 029 (groups D and F)
-revise 026 and are not merged yet; a merge revision joins the heads when they are.
+reads as on time; a fresh submit clears both. Numbered 030 because 027 to 029 were taken on the
+group D and F branches; when D merged, its 027 and 028 were added again as 031 and 032 on top of
+030, so the chain stays one line (F's 029 becomes 033 the same way).
 
-## 027 — assignment times and shift concurrency (group D)
+## 031 — assignment times and shift concurrency (group D; written as 027)
 
 **assignments** (changed)
 
@@ -72,7 +73,7 @@ revise 026 and are not merged yet; a merge revision joins the heads when they ar
 
 **shifts**: no new column; `updated_at` (already on `TimestampedBase`) becomes the ETag source.
 
-## 028 — overrides, templates, publish events (group D)
+## 032 — overrides, templates, publish events (group D; written as 028)
 
 **rule_overrides** (new): `id`, `organization_id`, `assignment_id` (fk, on delete cascade),
 `warning_code` (string 64), `reason` (text, 1–500 chars), `created_by` (fk users), `created_at`.

@@ -148,7 +148,7 @@ async def test_an_admin_changes_and_deletes_a_shift_and_its_assignments(
     assert listed.json()["items"] == []
 
 
-async def test_a_manager_reads_the_roster_but_cannot_change_it(
+async def test_a_manager_reads_another_projects_roster_but_cannot_change_it(
     async_client: AsyncClient,
     admin: dict[str, str],
     project: dict[str, Any],
@@ -178,9 +178,10 @@ async def test_a_manager_reads_the_roster_but_cannot_change_it(
     assert listed.status_code == 200
     [item] = listed.json()["items"]
     assert [a["user_id"] for a in item["assignments"]] == [str(seed_users["employee"].id)]
+    # Since 007 (FR-028) a Manager changes only the rosters of projects they manage.
     for refused in attempts:
         assert refused.status_code == 403, refused.text
-        assert refused.json()["code"] == "users.admin_required"
+        assert refused.json()["code"] == "roster.project_not_managed"
 
 
 @pytest.mark.parametrize("role", ["employee", "client"])
