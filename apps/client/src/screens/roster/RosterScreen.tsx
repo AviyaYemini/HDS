@@ -36,6 +36,8 @@ export function RosterScreen() {
   const week = startOfWeek(params.week ?? todayIn(DEFAULT_TIME_ZONE));
   const days = weekDays(week);
   const editable = project !== null && capabilities.hasOnProject("roster.edit:project", project);
+  // Publishing has its own capability, the one the API checks (roster.publish:project).
+  const publishable = project !== null && capabilities.hasOnProject("roster.publish:project", project);
 
   const types = useLoad(
     async () => (project ? (await call(session.api.GET("/api/v1/projects/{id}/shift-types", { params: { path: { id: project } } }))).items : []),
@@ -167,7 +169,7 @@ export function RosterScreen() {
     <Screen testID="screen-roster" fixed={isDesktop}>
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")}>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
-        {editable ? <Button variant="primary" icon="check" label={t("roster.publish")} onPress={() => setPublishing(true)} testID="action-publish" /> : null}
+        {publishable ? <Button variant="primary" icon="check" label={t("roster.publish")} onPress={() => setPublishing(true)} testID="action-publish" /> : null}
       </PageTitle>
       {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={() => setStale(false)} /> : null}
       {previewsEnabled ? (
