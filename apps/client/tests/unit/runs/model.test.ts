@@ -1,5 +1,5 @@
 /** Schedule runs' model (specs/007-ux-redesign FR-042, FR-074): the bar, the label, the count. */
-import { elapsedNow, filled, honesty, runProgress } from "../../../src/screens/runs/model";
+import { elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, weeksOf } from "../../../src/screens/runs/model";
 
 const START = "2026-11-08T10:00:00Z";
 const running = { status: "running" as const, solver: "cpsat", time_limit_seconds: 20 };
@@ -40,4 +40,27 @@ test("a proposal is labelled optimal, or the best found in the seconds it search
 test("filled counts each slot's people up to its headcount", () => {
   const slot = (headcount: number, assigned: number) => ({ headcount, assigned: Array.from({ length: assigned }, (_, i) => `u${i}`) });
   expect(filled({ slots: [slot(2, 1), slot(1, 1), slot(1, 3)] as never })).toEqual({ filled: 3, required: 4 });
+});
+
+test("a run's weeks start on Sundays and cover its whole range", () => {
+  const weeks = weeksOf("2026-11-10", "2026-11-17");
+  expect(weeks.map((w) => w[0])).toEqual(["2026-11-08", "2026-11-15"]);
+  expect(weeks[0]).toHaveLength(7);
+});
+
+test("a slot's people say what the run does to each against the drafts", () => {
+  const changes = { added: [{ key: "k1", user_id: "new" }], removed: [{ key: "k1", user_id: "gone" }, { key: "k2", user_id: "x" }] };
+  expect(peopleOf({ key: "k1", assigned: ["kept", "new"] }, changes)).toEqual([
+    { userId: "kept", change: "kept" },
+    { userId: "new", change: "added" },
+    { userId: "gone", change: "removed" },
+  ]);
+});
+
+test("slots sort by start within their day, and an older run's projects come from its slots", () => {
+  const slot = (key: string, date: string, starts_at: string, project_id = "p") => ({ key, date, starts_at, project_id }) as never;
+  const byDay = slotsByDay({ slots: [slot("b", "2026-11-08", "2026-11-08T12:00:00Z"), slot("a", "2026-11-08", "2026-11-08T05:00:00Z")] });
+  expect(byDay.get("2026-11-08")!.map((s: { key: string }) => s.key)).toEqual(["a", "b"]);
+  expect(projectsOf({ project_ids: [], proposal: { slots: [slot("a", "d", "t", "p1"), slot("b", "d", "t", "p1")] } as never })).toEqual(["p1"]);
+  expect(projectsOf({ project_ids: ["p2"], proposal: null })).toEqual(["p2"]);
 });

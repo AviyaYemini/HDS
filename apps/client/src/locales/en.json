@@ -603,5 +603,10 @@
   "submissions.no_window_body": "Open a window for the coming weeks, and who has submitted shows here.",
   "language.switching_to.en": "Switching to English…",
   "language.switching_to.he": "Switching to Hebrew…",
-  "language.switching_body": "You'll be back on this screen in a moment."
+  "language.switching_body": "You'll be back on this screen in a moment.",
+  "runs.proposal_title": "The proposed roster",
+  "runs.unknown_person": "Someone no longer listed",
+  "runs.change.added": "added by this run",
+  "runs.change.removed": "taken off by this run",
+  "runs.open_in_roster": "Open {{project}} in the roster"
 }

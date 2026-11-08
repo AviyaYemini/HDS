@@ -603,5 +603,10 @@
   "submissions.no_window_body": "פתחו חלון לשבועות הקרובים, ומי שהגיש יופיע כאן.",
   "language.switching_to.en": "עוברים לאנגלית…",
   "language.switching_to.he": "עוברים לעברית…",
-  "language.switching_body": "עוד רגע חוזרים למסך הזה."
+  "language.switching_body": "עוד רגע חוזרים למסך הזה.",
+  "runs.proposal_title": "הסידור המוצע",
+  "runs.unknown_person": "מישהו שכבר לא ברשימה",
+  "runs.change.added": "נוסף בהרצה הזו",
+  "runs.change.removed": "הוסר בהרצה הזו",
+  "runs.open_in_roster": "פתיחת {{project}} בסידור"
 }

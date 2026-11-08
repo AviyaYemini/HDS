@@ -13,15 +13,19 @@ import { StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { Button, EmptyState, InlineBanner, PageTitle, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
+import { Icon } from "../../design/icons/Icon";
+import { webProps } from "../../design/web";
 import { Screen } from "../../design/components/Screen";
 import { endProgress, setProgress, startLoading } from "../../design/loading/loadingStore";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { previewsEnabled } from "../../config/previews";
-import { DEFAULT_TIME_ZONE, formatNumericDate, formatNumericRange, formatTimeRange } from "../../locale";
+import { DEFAULT_TIME_ZONE, formatNumericDate, formatNumericRange, formatTimeRange, startOfWeek } from "../../locale";
 import { useLoad } from "../useLoad";
+import { rosterHref } from "../roster/ProjectChooser";
 import { HonestyLabel } from "./HonestyLabel";
-import { STATUS_TONE, elapsedNow, filled, isActive, runProgress, type Job } from "./model";
+import { ProposalWeek, type Names } from "./ProposalWeek";
+import { STATUS_TONE, elapsedNow, filled, isActive, projectsOf, runProgress, type Job } from "./model";
 
 const POLL_MS = 1000;
 const RETRY_MS = 3000;
@@ -117,23 +121,28 @@ function useJob(id: string | undefined) {
   };
 }
 
-/** Project and shift type names, to tell one empty place from another (a run covers every project). */
-function useNames(): { projects: Map<string, string>; types: Map<string, string> } {
+/**
+ * Project, shift type and people's names, to read the proposal by (FR-080). Everyone, deactivated
+ * people included, so an older run still names who it proposed.
+ */
+function useNames(): Names {
   const session = useSession();
   const loaded = useLoad(async () => {
-    const [projects, types] = await Promise.all([
+    const [projects, types, people] = await Promise.all([
       call(session.api.GET("/api/v1/projects")),
       call(session.api.GET("/api/v1/shift-types")),
+      call(session.api.GET("/api/v1/employees")),
     ]);
     return {
       projects: new Map(projects.items.map((p) => [p.id, p.name])),
       types: new Map(types.items.map((type) => [type.id, type.name])),
+      people: new Map(people.items.map((person) => [person.id, person.full_name])),
     };
   });
-  return loaded.data ?? { projects: new Map(), types: new Map() };
+  return loaded.data ?? { projects: new Map(), types: new Map(), people: new Map() };
 }
 
-function Proposal({ job, names }: { job: Job; names: ReturnType<typeof useNames> }) {
+function Proposal({ job, names }: { job: Job; names: Names }) {
   const { t, i18n } = useTranslation();
   // A code this build does not know yet still reads as a reason.
   const reasonText = (code: string) => {
@@ -188,9 +197,14 @@ function Proposal({ job, names }: { job: Job; names: ReturnType<typeof useNames>
         </View>
       )}
       {proposal.no_availability.length > 0 ? (
-        <Txt role="meta" tone="secondary">
-          {t("runs.no_availability", { count: proposal.no_availability.length })}
-        </Txt>
+        <View testID="no-availability" style={styles.list}>
+          <Txt role="label" heading={2}>
+            {t("runs.no_availability", { count: proposal.no_availability.length })}
+          </Txt>
+          <Txt role="body" tone="secondary">
+            {proposal.no_availability.map((id) => names.people.get(id) ?? t("runs.unknown_person")).join(", ")}
+          </Txt>
+        </View>
       ) : null}
       {proposal.short_published.length > 0 ? (
         <Txt role="meta" tone="secondary">
@@ -209,6 +223,7 @@ export function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const session = useSession();
   const errorText = useErrorText();
+  const { colors } = useTheme();
   const { reading, error, pollError, setJob, reload } = useJob(id);
   const job = reading?.job ?? null;
   const names = useNames();
@@ -279,6 +294,23 @@ export function RunScreen() {
           {actionError ? <InlineBanner tone="warning" title={errorText(actionError)} /> : null}
           {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
           {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
+          {job.status === "succeeded" && job.proposal_state === "accepted" ? (
+            <View style={styles.summary}>
+              {projectsOf(job).map((project) => (
+                <LinkPressable
+                  key={project}
+                  href={rosterHref(project, startOfWeek(job.from))}
+                  testID="action-open-in-roster"
+                  {...webProps({ dataSet: { projectId: project } })}
+                  style={[styles.link, { borderColor: colors.accent.default }]}
+                >
+                  <Icon name="grid" size={18} color={colors.text.primary} />
+                  <Txt role="label">{t("runs.open_in_roster", { project: names.projects.get(project) ?? "" })}</Txt>
+                </LinkPressable>
+              ))}
+            </View>
+          ) : null}
+          {job.status === "succeeded" ? <ProposalWeek job={job} names={names} /> : null}
           {previewsEnabled && job.status === "succeeded" ? (
             <EmptyState
               testID="preview-proposal-diff"
@@ -300,5 +332,6 @@ const styles = StyleSheet.create({
   summary: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
   list: { gap: 8 },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12, padding: 12, borderWidth: 1 },
+  link: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderWidth: 1 },
   when: { flexGrow: 1, minWidth: 160 },
 });
