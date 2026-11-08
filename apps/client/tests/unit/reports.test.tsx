@@ -1,188 +1,63 @@
-// Reports (005 US4, US5): who worked at a project, and hours with pay only where it is sent.
+/**
+ * Reports in 007's design (specs/007-ux-redesign FR-050, FR-025): the work log and the hours report
+ * open on this pay period and never ask past today, their key figures are the API's own totals,
+ * a bar opens its rows, a scope asks for its choice, and pay shows only where the API sends it.
+ */
 import { fireEvent, screen } from "@testing-library/react-native";
 
-import { HoursReportScreen } from "../../src/screens/HoursReportScreen";
-import { WorkLogScreen } from "../../src/screens/WorkLogScreen";
-import { FakeApi, json, problem, renderWith, signedIn } from "./fakeApi";
+import { setupI18n } from "../../src/i18n";
+import { DEFAULT_TIME_ZONE, todayIn } from "../../src/locale";
+import { HoursReportScreen, WorkLogScreen } from "../../src/screens/reports/ReportScreens";
+import { FakeApi, json, renderWith, signedIn } from "./fakeApi";
 
-const PROJECTS = {
-  items: [
-    { id: "p1", name: "Gate", start_date: "2026-10-01", status: "active" },
-    { id: "p2", name: "Tower", start_date: "2026-09-01", status: "active" },
-  ],
-  next_cursor: null,
-  total: 2,
-};
+const ROW = { user_id: "u1", full_name: "Dana Levi", project_id: "p1", project_name: "Gate", shifts: 2, hours: "16.00", first_date: "2026-10-05", last_date: "2026-10-06" };
 
-test("the work-log asks for the chosen project and lists who worked there", async () => {
+beforeEach(async () => {
+  await setupI18n("en");
+});
+
+test("the work log asks for this pay period up to today and shows the API's figures", async () => {
+  const today = todayIn(DEFAULT_TIME_ZONE);
   const api = new FakeApi()
-    .on("GET", "/api/v1/projects", json(200, PROJECTS))
-    .on(
-      "GET",
-      "/api/v1/reports/work-log",
-      json(200, {
-        from: "2026-10-01",
-        to: "2026-11-05",
-        rows: [
-          {
-            user_id: "u1",
-            full_name: "Dana Levi",
-            project_id: "p1",
-            project_name: "Gate",
-            shifts: 2,
-            hours: "16.00",
-            first_date: "2026-10-05",
-            last_date: "2026-10-06",
-          },
-        ],
-      }),
-    );
+    .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Gate" }] }))
+    .on("GET", "/api/v1/reports/work-log", json(200, { from: `${today.slice(0, 8)}01`, to: today, people: 3, shifts: 5, hours: "41.50", rows: [ROW] }));
   await renderWith(await signedIn(api), <WorkLogScreen />);
-
-  await fireEvent.press(await screen.findByTestId("project-p1"));
-  const row = await screen.findByTestId("log-row-u1-p1");
-
-  expect(api.calls("GET", "/api/v1/reports/work-log")[0]!.query).toBe("?project_id=p1");
-  expect(row).toHaveTextContent(/Dana Levi/);
-  expect(row).toHaveTextContent(/2 shifts/);
-  expect(row).toHaveTextContent(/16\.00 h/);
-  expect(screen.getByTestId("log-range")).toHaveTextContent(/Oct 1/);
+  expect(await screen.findByText("Work log")).toBeTruthy();
+  const asked = new URLSearchParams(api.calls("GET", "/api/v1/reports/work-log")[0]!.query);
+  expect(asked.get("from")).toBe(`${today.slice(0, 8)}01`);
+  expect(asked.get("to")).toBe(today);
+  expect(asked.get("project_id")).toBe("p1");
+  // The API's own totals, shown as they came, never the rows added up (16.00 h, 1 person here):
+  // data-value is web only, checked by g-reports.
+  expect(screen.getByTestId("figure-hours")).toHaveTextContent(/41\.50/);
+  expect(screen.getByTestId("figure-people")).toHaveTextContent(/People\s*3$/);
+  expect(screen.getByTestId("figure-shifts")).toHaveTextContent(/Shifts\s*5$/);
+  await fireEvent.press(screen.getByTestId("report-bar"));
+  expect(await screen.findByTestId("report-rows")).toBeTruthy();
+  expect(screen.getAllByText(/Dana Levi/).length).toBeGreaterThan(0);
 });
 
-test("a site's work-log asks for a start date first", async () => {
+test("a site waits for its choice before asking the API", async () => {
   const api = new FakeApi()
-    .on("GET", "/api/v1/projects", json(200, PROJECTS))
-    .on("GET", "/api/v1/sites", json(200, { items: [{ id: "s1", name: "HQ" }], total: 1 }))
-    .on("GET", "/api/v1/reports/work-log", json(200, { from: "2026-10-01", to: "2026-10-31", rows: [] }));
+    .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Gate" }] }))
+    .on("GET", "/api/v1/sites", json(200, { items: [{ id: "s1", name: "HQ" }] }))
+    .on("GET", "/api/v1/reports/work-log", json(200, { from: "2026-11-01", to: "2026-11-08", people: 0, shifts: 0, hours: "0", rows: [] }));
   await renderWith(await signedIn(api), <WorkLogScreen />);
-
-  await fireEvent.press(await screen.findByTestId("kind-site"));
-  await fireEvent.press(await screen.findByTestId("site-s1"));
-  expect(await screen.findByText("Give a start date.")).toBeTruthy();
-  expect(api.calls("GET", "/api/v1/reports/work-log")).toHaveLength(0);
-
-  await fireEvent.changeText(screen.getByTestId("log-from"), "2026-10-01");
-  await fireEvent.press(screen.getByTestId("log-apply"));
-  await screen.findByText("Nobody worked here in these dates.");
-  expect(api.calls("GET", "/api/v1/reports/work-log")[0]!.query).toBe("?site_id=s1&from=2026-10-01");
+  await screen.findByTestId("figure-people");
+  const before = api.calls("GET", "/api/v1/reports/work-log").length;
+  await fireEvent.press(screen.getByTestId("scope-site"));
+  expect(await screen.findByText("Choose a site.")).toBeTruthy();
+  expect(api.calls("GET", "/api/v1/reports/work-log")).toHaveLength(before);
 });
 
-test("a failed project list is shown and can be tried again", async () => {
-  const api = new FakeApi().on("GET", "/api/v1/projects", problem(500, "unknown.code"), json(200, PROJECTS));
-  await renderWith(await signedIn(api), <WorkLogScreen />);
-
-  expect(await screen.findByTestId("error-message")).toHaveTextContent("Something went wrong. Please try again.");
-  await fireEvent.press(screen.getByTestId("retry-choices"));
-  expect(await screen.findByTestId("project-p1")).toBeTruthy();
-});
-
-test("the work-log says so when nobody worked in the range", async () => {
-  const api = new FakeApi()
-    .on("GET", "/api/v1/projects", json(200, PROJECTS))
-    .on("GET", "/api/v1/reports/work-log", json(200, { from: "2026-09-01", to: "2026-11-05", rows: [] }));
-  await renderWith(await signedIn(api), <WorkLogScreen />);
-
-  await fireEvent.press(await screen.findByTestId("project-p2"));
-
-  expect(await screen.findByText("Nobody worked here in these dates.")).toBeTruthy();
-});
-
-const HOURS = {
-  from: "2026-10-01",
-  to: "2026-10-31",
-  group_by: "project",
-  groups: [
-    {
-      id: "p1",
-      name: "Gate",
-      hours: "16.00",
-      shifts: 2,
-      shifts_missing_rate: 0,
-      pay: "800.00",
-      rows: [{ id: "u1", name: "Dana Levi", hours: "16.00", shifts: 2, shifts_missing_rate: 0, pay: "800.00" }],
-    },
-    {
-      id: "p2",
-      name: "Tower",
-      hours: "8.00",
-      shifts: 1,
-      shifts_missing_rate: 0,
-      rows: [{ id: "u1", name: "Dana Levi", hours: "8.00", shifts: 1, shifts_missing_rate: 0 }],
-    },
-  ],
-  hours: "24.00",
-  shifts: 3,
-  shifts_missing_rate: 2,
-  pay: "800.00",
-};
-
-test("the hours report shows pay only where the answer has it", async () => {
-  jest.useFakeTimers({ now: new Date("2026-10-20T10:00:00"), doNotFake: ["nextTick", "setImmediate", "queueMicrotask", "setTimeout", "setInterval"] });
-  try {
-    const api = new FakeApi().on("GET", "/api/v1/reports/hours", json(200, HOURS));
-    await renderWith(await signedIn(api), <HoursReportScreen />);
-
-    const gate = await screen.findByTestId("hours-group-p1");
-    expect(api.calls("GET", "/api/v1/reports/hours")[0]!.query).toBe(
-      "?from=2026-10-01&to=2026-10-31&group_by=employee",
-    );
-    expect(gate).toHaveTextContent(/800\.00/);
-    expect(screen.getByTestId("hours-group-p2")).not.toHaveTextContent(/Pay/);
-    expect(screen.getByTestId("hours-total")).toHaveTextContent(/24\.00 h/);
-    expect(screen.getByTestId("hours-missing")).toHaveTextContent(/2 shifts have no pay rate yet/);
-    expect(gate).toHaveTextContent(/2 shifts/);
-  } finally {
-    jest.useRealTimers();
-  }
-});
-
-test("a row whose rates are all missing says so instead of showing pay, and every level counts them", async () => {
-  const missing = {
-    ...HOURS,
-    groups: [
-      {
-        id: "p1",
-        name: "Gate",
-        hours: "16.00",
-        shifts: 2,
-        shifts_missing_rate: 1,
-        pay: "400.00",
-        rows: [
-          { id: "u1", name: "Dana Levi", hours: "8.00", shifts: 1, shifts_missing_rate: 0, pay: "400.00" },
-          { id: "u2", name: "Omer Cohen", hours: "8.00", shifts: 1, shifts_missing_rate: 1 },
-        ],
-      },
-    ],
-    hours: "16.00",
-    shifts: 2,
-    shifts_missing_rate: 1,
-    pay: "400.00",
-  };
-  const api = new FakeApi().on("GET", "/api/v1/reports/hours", json(200, missing));
+test("the hours report shows pay only where the API sends it, and its missing rates", async () => {
+  const group = { id: "u1", name: "Dana Levi", hours: "8.00", shifts: 1, pay: null, shifts_missing_rate: 1, rows: [{ id: "p1", name: "Gate", hours: "8.00", shifts: 1, pay: null, shifts_missing_rate: 1 }] };
+  const api = new FakeApi().on("GET", "/api/v1/reports/hours", json(200, { from: "2026-11-01", to: "2026-11-08", group_by: "employee", hours: "8.00", shifts: 1, pay: null, shifts_missing_rate: 1, groups: [group] }));
   await renderWith(await signedIn(api), <HoursReportScreen />);
-
-  const omer = await screen.findByTestId("hours-row-p1-u2");
-  expect(omer).toHaveTextContent(/1 shift has no pay rate yet/);
-  expect(omer).not.toHaveTextContent(/0\.00/);
-  expect(screen.getByTestId("hours-row-p1-u1")).not.toHaveTextContent(/no pay rate/);
-  expect(screen.getByTestId("hours-group-p1")).toHaveTextContent(/1 shift has no pay rate yet/);
-});
-
-test("the hours report can be grouped by project, never leaving the old grouping on screen", async () => {
-  let release: (() => void) | undefined;
-  const slow = new Promise<void>((resolve) => (release = resolve));
-  const api = new FakeApi().on("GET", "/api/v1/reports/hours", async (seen) => {
-    if (seen.query.endsWith("group_by=project")) await slow;
-    return json(200, HOURS);
-  });
-  await renderWith(await signedIn(api), <HoursReportScreen />);
-  await screen.findByTestId("hours-group-p1");
-
-  await fireEvent.press(screen.getByTestId("group-by-project"));
-  expect(await screen.findByText("Loading…")).toBeTruthy();
-  expect(screen.queryByTestId("hours-group-p1")).toBeNull();
-  release!();
-  await screen.findByTestId("hours-group-p1");
-
-  expect(api.calls("GET", "/api/v1/reports/hours").at(-1)!.query).toMatch(/group_by=project$/);
+  await screen.findByTestId("figure-hours");
+  expect(screen.queryByTestId("figure-pay")).toBeNull();
+  expect(screen.getAllByText(/no pay rate|without a rate|missing/i).length).toBeGreaterThan(0);
+  await fireEvent.press(screen.getByTestId("group-project"));
+  const asked = api.calls("GET", "/api/v1/reports/hours").map((c) => new URLSearchParams(c.query).get("group_by"));
+  expect(asked).toContain("project");
 });

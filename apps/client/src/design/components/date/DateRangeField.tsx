@@ -84,7 +84,9 @@ export function DateRangeField({
     : payPeriods
       ? [...RANGE_PRESETS, ...PAY_PERIOD_PRESETS]
       : RANGE_PRESETS;
-  const current: PresetKey = presetFor(value, today, presets);
+  // Where a pay period and a plain range cover the same dates (this month), a report's range reads
+  // as the pay period: matched first, shown in its usual place.
+  const current: PresetKey = presetFor(value, today, payPeriods ? [...PAY_PERIOD_PRESETS, ...presets] : presets);
   const months = isDesktop ? 2 : 1;
   const [anchor, setAnchor] = useState(startOfMonth(value.start));
   const [pendingStart, setPendingStart] = useState<string | null>(null);

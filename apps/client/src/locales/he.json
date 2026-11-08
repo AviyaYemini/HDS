@@ -728,5 +728,18 @@
   "admin.view_too_long": "החיפוש בתצוגה הזו ארוך מכדי לשמור אותו.",
   "projects.more_matches_one": "עוד אחד: הקלידו עוד מהשם",
   "projects.more_matches_other": "עוד {{count}}: הקלידו עוד מהשם",
-  "projects.more_matches": "עוד {{count}}: הקלידו עוד מהשם"
+  "projects.more_matches": "עוד {{count}}: הקלידו עוד מהשם",
+  "reports.figure.people": "אנשים",
+  "reports.figure.shifts": "משמרות",
+  "reports.figure.hours": "שעות",
+  "reports.figure.pay": "שכר, לפני מס",
+  "reports.people_count_one": "אדם אחד",
+  "reports.people_count_other": "{{count}} אנשים",
+  "reports.people_count": "{{count}} אנשים",
+  "reports.scope": "מי נכלל",
+  "reports.group_by": "קיבוץ לפי",
+  "reports.range_label": "תאריכים",
+  "reports.previous": "הקודם",
+  "reports.next": "הבא",
+  "reports.page": "עמוד {{page}} מתוך {{pages}}"
 }

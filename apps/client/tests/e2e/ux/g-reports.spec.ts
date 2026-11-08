@@ -19,7 +19,9 @@ for (const language of LANGUAGES) {
   test(`${language}: the work log is named as decided and its figures match the API`, async ({ page }) => {
     const manager = await apiAs("manager");
     const range = thisMonth();
-    const api = await ok<{ people: number; shifts: number; hours: string }>(manager.get("/api/v1/reports/work-log", { params: range }));
+    // The log opens on the first project (the API asks for exactly one scope).
+    const projects = await ok<{ items: { id: string }[] }>(manager.get("/api/v1/projects"));
+    const api = await ok<{ people: number; shifts: number; hours: string }>(manager.get("/api/v1/reports/work-log", { params: { ...range, project_id: projects.items[0]!.id } }));
     await manager.dispose();
 
     await signIn(page, "manager", language);

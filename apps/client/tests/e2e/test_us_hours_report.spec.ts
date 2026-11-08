@@ -14,9 +14,10 @@ test("an Admin sees the month's hours with pay, both ways", async ({ page }) => 
   await signIn(page, "admin");
   await page.getByTestId("nav-hours").click();
   await expect(page).toHaveURL(/\/reports\/hours$/);
-  // The site files a shift under its local start date; the screen opens at the device month.
-  if (inEarlierMonth(startsAt)) await page.getByTestId("hours-prev").click();
-  await expect(page.getByTestId("hours-total")).toContainText(/Total \d+\.\d{2}/);
-  await page.getByTestId("group-by-project").click();
-  await expect(page.getByText("Night Watch").first()).toBeVisible();
+  // The site files a shift under its local start date; the report opens on this pay period.
+  if (inEarlierMonth(startsAt)) await page.getByTestId("preset-last-pay-period").click();
+  await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", /^\d+(\.\d+)?$/);
+  await expect(page.getByTestId("figure-pay")).toBeVisible();
+  await page.getByTestId("group-project").click();
+  await expect(page.getByTestId("report-bar").filter({ hasText: "Night Watch" }).first()).toBeVisible();
 });

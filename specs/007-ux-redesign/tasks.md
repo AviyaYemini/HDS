@@ -267,8 +267,8 @@ loading and empty states, filters in the address, the setup checklist.
 
 **Independent Test**: `ux/g-reports.spec.ts`.
 
-- [ ] T087 [US7] [CORE] Write `apps/client/tests/e2e/ux/g-reports.spec.ts`, failing: presets default to the current pay period and can't reach the future; key figures match the table; a bar opens its rows; the work log is titled "Work log" / "יומן עבודה" and no screen says "מי עבד"; add `totals` to `GET /reports/hours` and `GET /reports/work-log` in the 001 contract and `services/reports.py` if missing, with tests; regenerate; update `apps/client/tests/e2e/test_us_work_log.spec.ts` and `test_us_hours_report.spec.ts`; commit
-- [ ] T088 [US7] [UI] Work log and hours report in `apps/client/src/screens/reports/`: key figures, bars by employee, project or client that open into rows, pay-period presets, pagination (FR-050, FR-025)
+- [x] T087 [US7] [CORE] Write `apps/client/tests/e2e/ux/g-reports.spec.ts`, failing: presets default to the current pay period and can't reach the future; key figures match the table; a bar opens its rows; the work log is titled "Work log" / "יומן עבודה" and no screen says "מי עבד"; add `totals` to `GET /reports/hours` and `GET /reports/work-log` in the 001 contract and `services/reports.py` if missing, with tests; regenerate; update `apps/client/tests/e2e/test_us_work_log.spec.ts` and `test_us_hours_report.spec.ts`; commit
+- [x] T088 [US7] [UI] Work log and hours report in `apps/client/src/screens/reports/`: key figures, bars by employee, project or client that open into rows, pay-period presets, pagination (FR-050, FR-025)
 - [ ] T089 [CORE] Close group G as the template says (mutant: totals summed on the client instead of read from the server). Commit `feat(client): redraw the work log and hours report (…)`
 
 ---

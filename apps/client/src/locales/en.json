@@ -728,5 +728,18 @@
   "admin.view_too_long": "This view's search is too long to save.",
   "projects.more_matches_one": "1 more: type more of the name",
   "projects.more_matches_other": "{{count}} more: type more of the name",
-  "projects.more_matches": "{{count}} more: type more of the name"
+  "projects.more_matches": "{{count}} more: type more of the name",
+  "reports.figure.people": "People",
+  "reports.figure.shifts": "Shifts",
+  "reports.figure.hours": "Hours",
+  "reports.figure.pay": "Pay, before tax",
+  "reports.people_count_one": "1 person",
+  "reports.people_count_other": "{{count}} people",
+  "reports.people_count": "{{count}} people",
+  "reports.scope": "Who to include",
+  "reports.group_by": "Group by",
+  "reports.range_label": "Dates",
+  "reports.previous": "Previous",
+  "reports.next": "Next",
+  "reports.page": "Page {{page}} of {{pages}}"
 }
