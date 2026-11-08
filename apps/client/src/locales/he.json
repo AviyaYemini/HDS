@@ -717,7 +717,16 @@
   "form.summary_title_other": "{{count}} שדות צריכים תיקון",
   "form.summary_title": "{{count}} שדות צריכים תיקון",
   "form.confirm_money_title": "לשנות שכר?",
-  "form.confirm_money": "{{field}}: מ־{{from}} ל־{{to}}, החל מ־{{date}}.",
+  "form.confirm_money": "{{field}}: מ־{{from}} ל־{{to}}, שונה ב־{{date}}.",
   "form.confirm_money_yes": "שינוי",
-  "projects.billing_rate_positive": "תעריף חיוב גדול מאפס"
+  "projects.billing_rate_positive": "תעריף חיוב גדול מאפס",
+  "scope.hourly_rate": "הדוחות מתמחרים את המשמרות של האדם הזה בתעריף החדש, גם משמרות שעברו, אלא אם למשמרת יש תעריף משלה.",
+  "scope.billing_rate": "הוא נשמר לחיוב של הפרויקט, שיגיע ביכולת עתידית; אף דוח עוד לא משתמש בו.",
+  "scope.special_day": "זה חל על כל משמרת בתאריך הזה.",
+  "scope.rest_pct": "זה חל על כל משמרת במנוחה השבועית, גם משמרות שעברו.",
+  "admin.remove_view": "הסרת התצוגה",
+  "admin.view_too_long": "החיפוש בתצוגה הזו ארוך מכדי לשמור אותו.",
+  "projects.more_matches_one": "עוד אחד: הקלידו עוד מהשם",
+  "projects.more_matches_other": "עוד {{count}}: הקלידו עוד מהשם",
+  "projects.more_matches": "עוד {{count}}: הקלידו עוד מהשם"
 }

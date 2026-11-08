@@ -11,7 +11,8 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
 import { codeOf, useErrorText } from "../../api/errors";
-import { Button, InlineBanner, SegmentedControl, Sheet, TextField, Txt } from "../../design/components";
+import { Button, InlineBanner, SearchablePicker, SegmentedControl, Sheet, TextField, Txt } from "../../design/components";
+import type { PickerItem } from "../../design/components/SearchablePicker";
 import { DateField } from "../../design/components/date/DateField";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { useUnsavedChanges } from "../../design/unsaved";
@@ -23,10 +24,14 @@ export type Values = Record<string, string>;
 export interface FieldSpec {
   name: string;
   label: string;
-  kind?: "text" | "email" | "money" | "percent" | "minutes" | "date" | "time" | "choice";
+  kind?: "text" | "email" | "money" | "percent" | "minutes" | "date" | "time" | "choice" | "pick";
   required?: boolean;
   /** For a `choice`: two to five options, as a segmented control. */
   options?: readonly { value: string; label: string }[];
+  /** For a `pick`: a long list (clients, sites), as the searchable picker. */
+  items?: readonly PickerItem[];
+  /** For a pay field: what its change reaches, named in the confirmation (FR-046). */
+  scope?: string;
   /** A further check of the value, given every value; the error's text, or null. */
   validate?: (value: string, values: Values) => string | null;
   /** Shown but not changed once the record exists (an e-mail, a time zone). */
@@ -85,6 +90,8 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
   const errorText = useErrorText();
   const { colors } = useTheme();
   const [values, setValues] = useState<Values>(initial);
+  // What the form was opened or last saved with: unsaved means "differs from this" (group F review).
+  const [baseline, setBaseline] = useState<Values>(initial);
   const [shownErrors, setShownErrors] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<string[] | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -92,7 +99,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
   const [confirming, setConfirming] = useState<ReturnType<typeof moneyChanges> | null>(null);
   const summaryRef = useRef<ComponentRef<typeof View>>(null);
 
-  const dirty = fields.some((f) => (values[f.name] ?? "") !== (initial[f.name] ?? ""));
+  const dirty = fields.some((f) => (values[f.name] ?? "") !== (baseline[f.name] ?? ""));
   useUnsavedChanges(dirty && !busy);
 
   // The latest values, for a field left right after a change, before the next render.
@@ -115,7 +122,9 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
     try {
       setBusy(true);
       setSaveError(null);
-      await onSave(latest.current);
+      const saved = latest.current;
+      await onSave(saved);
+      setBaseline(saved);
     } catch (failure) {
       setSaveError(codeOf(failure));
     } finally {
@@ -137,7 +146,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
       return;
     }
     setSummary(null);
-    const changes = existing ? moneyChanges(fields, initial, latest.current) : [];
+    const changes = existing ? moneyChanges(fields, baseline, latest.current) : [];
     if (changes.length > 0) {
       setConfirming(changes);
       return;
@@ -172,7 +181,22 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
         const readOnly = existing && field.fixedOnceSaved === true;
         const label = field.required ? `${field.label} *` : field.label;
         let input: ReactNode;
-        if (field.kind === "choice" && field.options) {
+        if (field.kind === "pick" && field.items) {
+          input = (
+            <SearchablePicker
+              label={label}
+              items={field.items}
+              value={values[field.name] || null}
+              onChange={(id) => {
+                set(field.name, id);
+                leave(field);
+              }}
+              disabled={readOnly}
+              error={error}
+              testID={`field-${field.name}`}
+            />
+          );
+        } else if (field.kind === "choice" && field.options) {
           input = (
             <SegmentedControl
               label={field.label}
@@ -238,6 +262,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
                 to: payText(change.field, change.to),
                 date: today,
               })}
+              {change.field.scope ? ` ${change.field.scope}` : ""}
             </Txt>
           ))}
           <View style={styles.actions}>

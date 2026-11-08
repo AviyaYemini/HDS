@@ -717,7 +717,16 @@
   "form.summary_title_other": "{{count}} fields need a change",
   "form.summary_title": "{{count}} fields need a change",
   "form.confirm_money_title": "Change pay?",
-  "form.confirm_money": "{{field}}: from {{from}} to {{to}}, from {{date}}.",
+  "form.confirm_money": "{{field}}: from {{from}} to {{to}}, changed on {{date}}.",
   "form.confirm_money_yes": "Change it",
-  "projects.billing_rate_positive": "A billing rate above zero"
+  "projects.billing_rate_positive": "A billing rate above zero",
+  "scope.hourly_rate": "Reports price this person's shifts at the new rate, past ones included, unless a shift has its own rate.",
+  "scope.billing_rate": "It is kept for the project's billing, which comes with a later feature; no report uses it yet.",
+  "scope.special_day": "It applies to every shift on that date.",
+  "scope.rest_pct": "It applies to every shift in the weekly rest, past ones included.",
+  "admin.remove_view": "Remove this view",
+  "admin.view_too_long": "This view's search is too long to save.",
+  "projects.more_matches_one": "1 more: type more of the name",
+  "projects.more_matches_other": "{{count}} more: type more of the name",
+  "projects.more_matches": "{{count}} more: type more of the name"
 }

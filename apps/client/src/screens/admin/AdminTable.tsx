@@ -5,7 +5,7 @@
  * the first load (never "No records" while loading), and an empty state that names one next action.
  */
 import { router, useLocalSearchParams } from "expo-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
@@ -65,6 +65,13 @@ export interface AdminTableProps<Row> {
 
 type Saved = { id: string; name: string; query: string };
 
+/** The pause after typing before the search reaches the address. */
+const SEARCH_PAUSE_MS = 250;
+/** How long a removal can be undone, the toast's time with an action. */
+const UNDO_MS = 6000;
+/** The longest view query the API keeps (`saved_views.query`). */
+const VIEW_QUERY_MAX = 2000;
+
 export function AdminTable<Row>({
   screen,
   testID,
@@ -95,11 +102,33 @@ export function AdminTable<Row>({
   const rows = useLoad(load, []);
   const views = useLoad(async () => (await call(session.api.GET("/me/saved-views", { params: { query: { screen } } }))).items as Saved[], [screen]);
 
+  // Typed here and written to the address after a pause, so fast typing never fights the address
+  // (group F review); an address that changes from elsewhere (a view tab) wins.
+  const [typed, setTyped] = useState(state.q);
+  const lastWritten = useRef(state.q);
+  useEffect(() => {
+    if (state.q !== lastWritten.current) {
+      lastWritten.current = state.q;
+      setTyped(state.q);
+    }
+  }, [state.q]);
+  useEffect(() => {
+    if (typed === lastWritten.current) return undefined;
+    const handle = setTimeout(() => {
+      lastWritten.current = typed;
+      go({ q: typed, view: null });
+    }, SEARCH_PAUSE_MS);
+    return () => clearTimeout(handle);
+  });
+  // Records being removed: hidden at once, deleted when the undo toast's time is up (FR-046).
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
+
   const [naming, setNaming] = useState(false);
   const [viewName, setViewName] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
 
-  const shown = sorted(searched(rows.data ?? [], state.q, searchText), state.sort, sortValue, i18n.language);
+  const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)));
+  const shown = sorted(searched(listed, state.q, searchText), state.sort, sortValue, i18n.language);
   const openRow = state.open && state.open !== "new" ? ((rows.data ?? []).find((r) => keyOf(r) === state.open) ?? null) : null;
   const panelOpen = state.open === "new" || openRow !== null;
   // Closing a record with unsaved changes asks first, as leaving the screen does (FR-045).
@@ -123,6 +152,10 @@ export function AdminTable<Row>({
     openRow && onDelete ? <Button label={t("admin.delete", { noun })} icon="close" onPress={() => setDeleting(openRow)} testID="action-delete" /> : null;
 
   const saveView = async () => {
+    if (viewQuery(state).length > VIEW_QUERY_MAX) {
+      showToast(t("admin.view_too_long"), { tone: "warning" });
+      return;
+    }
     try {
       const made = await call(session.api.POST("/me/saved-views", { body: { screen, name: viewName.trim(), query: viewQuery(state) } }));
       await views.reload();
@@ -167,8 +200,8 @@ export function AdminTable<Row>({
           label={t("admin.search")}
           hideLabel
           placeholder={t("admin.search")}
-          value={state.q}
-          onChangeText={(q) => go({ q, view: null })}
+          value={typed}
+          onChangeText={setTyped}
           testID="table-search"
           containerStyle={styles.search}
         />
@@ -179,6 +212,22 @@ export function AdminTable<Row>({
           </View>
         ) : null}
         <Button label={t("admin.save_view")} icon="star" onPress={() => setNaming(true)} testID="action-save-view" />
+        {state.view ? (
+          <Button
+            variant="quiet"
+            label={t("admin.remove_view")}
+            onPress={() => {
+              const id = state.view!;
+              void call(session.api.DELETE("/me/saved-views/{id}", { params: { path: { id } } }))
+                .then(async () => {
+                  go({ view: null });
+                  await views.reload();
+                })
+                .catch((failure: unknown) => showToast(errorText(codeOf(failure)), { tone: "warning" }));
+            }}
+            testID="action-remove-view"
+          />
+        ) : null}
       </View>
       {!isDesktop && panelOpen ? (
         <View testID="side-panel" style={styles.page}>
@@ -209,7 +258,11 @@ export function AdminTable<Row>({
           loading={rows.data === null}
           sort={state.sort}
           onSort={(key: string, direction: SortDirection) => go({ sort: { key, direction }, view: null })}
-          onRowPress={(row) => go({ open: keyOf(row) })}
+          onRowPress={(row) => {
+            // Another record while this one has unsaved edits: ask first (group F review).
+            const openIt = () => go({ open: keyOf(row) });
+            if (mayLeaveFor(openIt)) openIt();
+          }}
           scrollable={!isDesktop}
           selectedKey={openRow ? keyOf(openRow) : null}
           empty={<Txt role="body" tone="secondary">{t("admin.no_match")}</Txt>}
@@ -236,13 +289,40 @@ export function AdminTable<Row>({
               const row = deleting;
               setDeleting(null);
               if (!row || !onDelete) return;
-              void onDelete(row)
-                .then(async () => {
-                  go({ open: null });
-                  await rows.reload();
-                  showToast(t("admin.deleted", { name: nameOf(row) }));
-                })
-                .catch((failure: unknown) => showToast(errorText(codeOf(failure)), { tone: "warning" }));
+              // Gone from the list at once, deleted when the toast's undo has passed: the API's
+              // delete is final, so the undo is the wait before it (FR-046).
+              const key = keyOf(row);
+              let undone = false;
+              go({ open: null });
+              setRemoving((held) => new Set(held).add(key));
+              const restore = () => setRemoving((held) => {
+                const next = new Set(held);
+                next.delete(key);
+                return next;
+              });
+              showToast(t("admin.deleted", { name: nameOf(row) }), {
+                duration: UNDO_MS,
+                action: {
+                  label: t("common.undo"),
+                  onPress: () => {
+                    undone = true;
+                    restore();
+                  },
+                },
+                testID: "toast-deleted",
+              });
+              setTimeout(() => {
+                if (undone) return;
+                void onDelete(row)
+                  .then(async () => {
+                    await rows.reload();
+                    restore();
+                  })
+                  .catch((failure: unknown) => {
+                    restore();
+                    showToast(errorText(codeOf(failure)), { tone: "warning" });
+                  });
+              }, UNDO_MS);
             }}
             testID="action-confirm-delete"
           />

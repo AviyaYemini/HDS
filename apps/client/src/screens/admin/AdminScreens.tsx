@@ -11,13 +11,16 @@ import { StyleSheet, View } from "react-native";
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { Button, InlineBanner, PageTitle, SkeletonRows, TextField, Txt, showToast, type Column } from "../../design/components";
+import { Button, InlineBanner, PageTitle, SkeletonRows, TextField, Txt, matches as matchesItem, showToast, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { formatMoney, formatNumericDate, weekdayNames } from "../../locale";
 import { useLoad } from "../useLoad";
 import { AdminTable, orDash } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec, type Values } from "./RecordForm";
+
+/** How many people the managers search lists before asking for more letters. */
+const MATCHES_SHOWN = 8;
 
 /** Empty text as null, for the API's optional fields. */
 const orNull = (value: string | undefined): string | null => (value && value.trim() ? value.trim() : null);
@@ -38,7 +41,7 @@ export function StaffScreen() {
     { name: "email", label: t("entity.email"), kind: "email", required: true, fixedOnceSaved: true },
     { name: "role", label: t("entity.role"), kind: "choice", options: roles.map((r) => ({ value: r, label: t(`role.${r}`) })) },
     { name: "phone", label: t("entity.phone") },
-    { name: "default_hourly_rate", label: t("entity.default_hourly_rate"), kind: "money" },
+    { name: "default_hourly_rate", label: t("entity.default_hourly_rate"), kind: "money", scope: t("scope.hourly_rate") },
     ...(existing ? [] : [{ name: "initial_password", label: t("entity.initial_password"), required: true, helper: t("entity.initial_password_help") }]),
   ];
   const columns: Column<Row>[] = [
@@ -245,11 +248,13 @@ function ManagersEditor({ projectId }: { projectId: string }) {
   const people = useLoad(async () => (await call(api.GET("/api/v1/employees", { params: { query: { is_active: true } } }))).items, []);
   const managers = useLoad(async () => (await call(api.GET("/api/v1/projects/{id}/managers", { params: { path: { id: projectId } } }))).items, [projectId]);
   const chosen = new Set((managers.data ?? []).map((m) => m.id));
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return (people.data ?? []).filter((p) => p.role !== "client" && `${p.full_name} ${p.email}`.toLowerCase().includes(q)).slice(0, 8);
+  // The shared picker's matching (Hebrew and English, vowel points ignored), shown inline as the
+  // routes contract has it (`searchable-picker`, a text input).
+  const found = useMemo(() => {
+    if (!query.trim()) return [];
+    return (people.data ?? []).filter((p) => p.role !== "client" && matchesItem({ id: p.id, label: p.full_name, keywords: [p.email] }, query));
   }, [people.data, query]);
+  const matches = found.slice(0, MATCHES_SHOWN);
   const replace = async (ids: string[]) => {
     try {
       await call(api.PUT("/api/v1/projects/{id}/managers", { params: { path: { id: projectId } }, body: { user_ids: ids } }));
@@ -273,6 +278,11 @@ function ManagersEditor({ projectId }: { projectId: string }) {
         </View>
       ))}
       <TextField label={t("projects.add_manager")} value={query} onChangeText={setQuery} testID="searchable-picker" />
+      {found.length > MATCHES_SHOWN ? (
+        <Txt role="meta" tone="secondary">
+          {t("projects.more_matches", { count: found.length - MATCHES_SHOWN })}
+        </Txt>
+      ) : null}
       {matches.map((person) => {
         const can = person.role === "manager" || person.role === "admin";
         return (
@@ -323,18 +333,13 @@ export function ProjectsScreen() {
     ...(existing
       ? [{ name: "status", label: t("entity.status"), kind: "choice" as const, options: (["active", "ended"] as const).map((v) => ({ value: v, label: t(`project.status.${v}`) })) }]
       : [
-          {
-            name: "client_id",
-            label: t("entity.client"),
-            kind: "choice" as const,
-            required: true,
-            options: (lists.data?.clients ?? []).slice(0, 5).map((c) => ({ value: c.id, label: c.name })),
-          },
-          { name: "site_id", label: t("entity.site"), kind: "choice" as const, required: true, options: (lists.data?.sites ?? []).slice(0, 5).map((s) => ({ value: s.id, label: s.name })) },
+          // Every client and site, by name, however many (group F review).
+          { name: "client_id", label: t("entity.client"), kind: "pick" as const, required: true, items: (lists.data?.clients ?? []).map((c) => ({ id: c.id, label: c.name, secondary: c.contact_name ?? undefined })) },
+          { name: "site_id", label: t("entity.site"), kind: "pick" as const, required: true, items: (lists.data?.sites ?? []).map((s) => ({ id: s.id, label: s.name, secondary: s.address })) },
         ]),
     { name: "start_date", label: t("entity.start_date"), kind: "date", required: true, fixedOnceSaved: true },
     { name: "end_date", label: t("entity.end_date"), kind: "date", validate: (end, all) => (all.start_date && end < all.start_date ? t("projects.date_range_invalid") : null) },
-    { name: "billing_rate", label: t("entity.billing_rate"), kind: "money", required: true, validate: (rate) => (Number(rate) > 0 ? null : t("projects.billing_rate_positive")) },
+    { name: "billing_rate", label: t("entity.billing_rate"), kind: "money", required: true, scope: t("scope.billing_rate"), validate: (rate) => (Number(rate) > 0 ? null : t("projects.billing_rate_positive")) },
   ];
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.name"), sortable: true, render: (p) => p.name },
@@ -474,10 +479,11 @@ export function SpecialDaysScreen() {
   async function loadDays() {
     return (await call(api.GET("/api/v1/special-days"))).items;
   }
-  const fields: FieldSpec[] = [
+  // Once saved, a day keeps a rate: clearing it would not change it, so it is required then.
+  const fields = (existing: boolean): FieldSpec[] => [
     { name: "name", label: t("entity.name"), required: true },
     { name: "day", label: t("entity.day"), kind: "date", required: true },
-    { name: "rate_pct", label: t("entity.rate_pct"), kind: "percent", helper: t("entity.rate_pct_help") },
+    { name: "rate_pct", label: t("entity.rate_pct"), kind: "percent", required: existing, helper: t("entity.rate_pct_help"), scope: t("scope.special_day") },
   ];
   const columns: Column<Row>[] = [
     { key: "day", title: t("entity.day"), sortable: true, render: (d) => formatNumericDate(d.day) },
@@ -504,7 +510,7 @@ export function SpecialDaysScreen() {
         <RecordForm
           key={row?.id ?? "new"}
           existing={row !== null}
-          fields={fields}
+          fields={fields(row !== null)}
           initial={{ name: row?.name ?? "", day: row?.day ?? "", rate_pct: row?.rate_pct ?? "" }}
           onSave={async (v) => {
             if (row) {
@@ -533,7 +539,7 @@ export function PaySettingsScreen() {
   const fields: FieldSpec[] = [
     { name: "day_normal_minutes", label: t("pay_settings.day_normal_minutes"), kind: "minutes", required: true, helper: t("pay_settings.minutes_help") },
     { name: "night_normal_minutes", label: t("pay_settings.night_normal_minutes"), kind: "minutes", required: true, helper: t("pay_settings.minutes_help") },
-    { name: "rest_pct", label: t("pay_settings.rest_pct"), kind: "percent", required: true },
+    { name: "rest_pct", label: t("pay_settings.rest_pct"), kind: "percent", required: true, scope: t("scope.rest_pct") },
   ];
   return (
     <Screen testID="screen-admin-pay-settings">

@@ -76,6 +76,32 @@ test("a pay change is confirmed in words, old and new, before anything is saved"
   await fireEvent.press(screen.getByTestId("action-confirm-save"));
   await waitFor(() => expect(api.calls("PATCH", "/api/v1/employees/u1")).toHaveLength(1));
   expect(api.calls("PATCH", "/api/v1/employees/u1")[0]!.body).toMatchObject({ default_hourly_rate: "49.00" });
+  // Saved: nothing is unsaved any more, so leaving no longer asks.
+  await waitFor(() => expect(hasUnsaved()).toBe(false));
+});
+
+test("a removal waits out its undo time before the delete is sent", async () => {
+  jest.useFakeTimers();
+  try {
+    const { api, session } = await open(ADMIN, { open: "c1" });
+    api.on("GET", "/api/v1/clients", json(200, { items: [CLIENT] })).on("DELETE", "/api/v1/clients/c1", new Response(null, { status: 204 }));
+    await renderWith(session, <ClientsScreen />);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(100);
+    });
+    await fireEvent.press(screen.getByTestId("action-delete"));
+    await fireEvent.press(screen.getByTestId("action-confirm-delete"));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(api.calls("DELETE", "/api/v1/clients/c1")).toHaveLength(0);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(6000);
+    });
+    expect(api.calls("DELETE", "/api/v1/clients/c1")).toHaveLength(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test("delete shows for an admin, never for a manager", async () => {
