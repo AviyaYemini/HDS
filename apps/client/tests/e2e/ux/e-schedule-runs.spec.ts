@@ -22,6 +22,9 @@ async function needsSomething(admin: APIRequestContext): Promise<string> {
   return project.id;
 }
 
+// A run searches for up to 5 s here (the e2e time limit) after the worker claims it.
+test.setTimeout(120_000);
+
 for (const language of LANGUAGES) {
   test(`${language}: generate with a preset range, watch it run, read the honesty label, discard`, async ({ page }) => {
     const admin = await apiAs("admin");

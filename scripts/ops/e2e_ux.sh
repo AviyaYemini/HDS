@@ -23,6 +23,8 @@ PLAYWRIGHT_IMAGE="mcr.microsoft.com/playwright:v1.64.1-noble"
 DB_NAME="hds_p3_test"
 DATABASE_URL="postgresql+asyncpg://hds:hds_dev@localhost:5432/$DB_NAME"
 PORT=8100
+# The schedule worker's operations port, for its health check.
+WORKER_PORT=8102
 PREVIEWS="${PREVIEWS:-1}"
 
 # The lock lives in the common git folder, so worktrees of this clone share it. mkdir is atomic.
@@ -54,17 +56,19 @@ fi
 # Set at once, so every exit from here on (a refusal, or a failure under set -e) frees the lock.
 scratch=""
 api_pid=""
+worker_pid=""
 # Called by the EXIT trap below, which ShellCheck does not follow.
 # shellcheck disable=SC2329
 cleanup() {
     if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
+    if [ -n "$worker_pid" ]; then kill "$worker_pid" 2>/dev/null || true; fi
     if [ -n "$scratch" ]; then rm -rf "$scratch"; fi
     rm -rf "$LOCK"
 }
 trap cleanup EXIT
 printf '%s pid %s in %s since %s\n' "${HDS_SESSION_NAME:-$(whoami)}" "$$" "$ROOT" "$(date -u +%H:%M:%SZ)" \
     > "$LOCK/holder"
-for port in "$PORT" 3000; do
+for port in "$PORT" "$WORKER_PORT" 3000; do
     if holder=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1 " pid " $2}') \
         && [ -n "$holder" ]; then
         echo "e2e_ux: port $port is taken by $holder" >&2
@@ -83,7 +87,9 @@ scratch="$(mktemp -d)"
 
 api_env=(ENVIRONMENT=test "DATABASE_URL=$DATABASE_URL"
     JWT_SECRET_KEY=e2e-only-not-a-secret-0123456789-abcdefgh LOGIN_RATE_LIMIT_PER_NETWORK=0
-    'CORS_ORIGINS=["http://localhost:3000"]')
+    'CORS_ORIGINS=["http://localhost:3000"]'
+    # Schedule runs search for 5 s, so a run fits in a test (as apps/client/playwright.config.ts).
+    SCHEDULE_TIME_LIMIT_SECONDS=5)
 
 (cd apps/api && env "${api_env[@]}" uv run alembic upgrade head >/dev/null \
     && env "${api_env[@]}" uv run python -m hds.scripts.seed_dev >/dev/null)
@@ -92,6 +98,9 @@ api_env=(ENVIRONMENT=test "DATABASE_URL=$DATABASE_URL"
 (cd apps/api && exec env "${api_env[@]}" uv run uvicorn hds.main:app --host 127.0.0.1 --port "$PORT" \
     --log-level warning) &
 api_pid=$!
+# The schedule worker solves the runs the specs queue (group E).
+(cd apps/api && exec env "${api_env[@]}" METRICS_PORT="$WORKER_PORT" uv run python -m hds.worker) &
+worker_pid=$!
 curl --retry 30 --retry-connrefused --retry-delay 1 -sf "http://localhost:$PORT/health" -o /dev/null
 
 mkdir "$scratch/repo"

@@ -8,8 +8,9 @@
  *
  * The 007 redesign's specs live in `tests/e2e/ux/` and run in two projects, a desktop and a
  * 390 × 844 phone viewport (`ux-desktop`, `ux-phone`). `E2E_EXTERNAL_API` set means the API is
- * already running (scripts/ops/e2e_ux.sh starts it on the host and runs Playwright in the pinned
- * Playwright image); then only the web build is served here, and the host did the migrations.
+ * already running (scripts/ops/e2e_ux.sh starts it and the schedule worker on the host and runs
+ * Playwright in the pinned Playwright image); then only the web build is served here, and the host
+ * did the migrations. Otherwise the schedule worker runs here too, its health on port 8102.
  */
 import { defineConfig, devices } from "@playwright/test";
 
@@ -29,6 +30,8 @@ export const apiEnv = {
   // The lockout specs fail sign-ins on purpose; the per-network limit would then refuse the rest.
   LOGIN_RATE_LIMIT_PER_NETWORK: "0",
   CORS_ORIGINS: '["http://localhost:3000"]',
+  // Schedule runs search for 5 s, so a run fits in a test; the worker reads the same value.
+  SCHEDULE_TIME_LIMIT_SECONDS: "5",
 };
 
 export default defineConfig({
@@ -61,6 +64,14 @@ export default defineConfig({
       cwd: "../api",
       url: "http://localhost:8100/health",
       env: apiEnv,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    }, {
+      // The schedule worker solves the runs the specs queue (007 group E); healthy on its ops port.
+      command: "uv run python -m hds.worker",
+      cwd: "../api",
+      url: "http://localhost:8102/livez",
+      env: { ...apiEnv, METRICS_PORT: "8102" },
       reuseExistingServer: false,
       timeout: 120_000,
     }]),
