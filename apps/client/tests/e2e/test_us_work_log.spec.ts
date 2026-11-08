@@ -19,7 +19,10 @@ test("a Manager sees who worked at a project", async ({ page }) => {
   await page.getByTestId("report-scope-picker").click();
   await page.getByTestId("report-scope-picker-sheet").getByText("Night Watch").first().click();
   await expect(page.getByTestId("figure-shifts")).toBeVisible();
-  await expect(page.getByTestId("report-row").first()).toContainText("Night Watch");
+  // Each project is a bar that opens into who worked there.
+  const bar = page.getByTestId("report-bar").filter({ hasText: "Night Watch" }).first();
+  await bar.click();
+  await expect(page.getByTestId("report-rows").first().getByTestId("report-row").first()).toBeVisible();
 });
 
 test("an employee has no reports in the bar", async ({ page }) => {

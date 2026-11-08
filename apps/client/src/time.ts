@@ -76,27 +76,3 @@ export function today(): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
 }
-
-/** The device's current month, `YYYY-MM`. */
-export function currentMonth(): string {
-  return today().slice(0, 7);
-}
-
-/** The month `count` months after `month` (`YYYY-MM`); a negative count goes back. */
-export function addMonths(month: string, count: number): string {
-  const [year, number] = month.split("-").map(Number) as [number, number];
-  const moved = new Date(Date.UTC(year, number - 1 + count, 1));
-  return moved.toISOString().slice(0, 7);
-}
-
-/** A month (`YYYY-MM`) as people read it, such as "October 2026". */
-export function formatMonth(month: string, locale: string): string {
-  return format(new Date(`${month}-01T00:00:00Z`), locale, "UTC", { month: "long", year: "numeric" });
-}
-
-/** The first and last day (`YYYY-MM-DD`) of a month (`YYYY-MM`). */
-export function monthBounds(month: string): { first: string; last: string } {
-  const next = new Date(`${addMonths(month, 1)}-01T00:00:00Z`);
-  next.setUTCDate(0);
-  return { first: `${month}-01`, last: next.toISOString().slice(0, 10) };
-}

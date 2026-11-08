@@ -16,7 +16,7 @@ import { InlineBanner, PageTitle, SearchablePicker, SegmentedControl, SkeletonRo
 import { Screen } from "../../design/components/Screen";
 import { formatMoney, formatNumericRange } from "../../locale";
 import { useLoad } from "../useLoad";
-import { Bars, Figures, ReportRange, usePage, useReportRange, type Bar, type Figure } from "./parts";
+import { Bars, Figures, PagedRows, ReportRange, usePage, useReportRange, type Bar, type Figure } from "./parts";
 
 type Scope = "project" | "site" | "group";
 
@@ -28,12 +28,18 @@ export function WorkLogScreen() {
   const [scope, setScope] = useState<Scope>("project");
   const [picked, setPicked] = useState<string | null>(null);
   const choices = useLoad(async () => {
-    if (scope === "project") return (await call(api.GET("/api/v1/projects"))).items.map((p) => ({ id: p.id, label: p.name }));
-    if (scope === "site") return (await call(api.GET("/api/v1/sites"))).items.map((s) => ({ id: s.id, label: s.name }));
-    return (await call(api.GET("/api/v1/groups"))).items.map((g) => ({ id: g.id, label: g.name }));
+    const items =
+      scope === "project"
+        ? (await call(api.GET("/api/v1/projects"))).items.map((p) => ({ id: p.id, label: p.name }))
+        : scope === "site"
+          ? (await call(api.GET("/api/v1/sites"))).items.map((s) => ({ id: s.id, label: s.name }))
+          : (await call(api.GET("/api/v1/groups"))).items.map((g) => ({ id: g.id, label: g.name }));
+    return { scope, items };
   }, [scope]);
+  // Only this scope's list counts: the previous scope's, until the new one loads, is not it.
+  const listed = choices.data?.scope === scope ? choices.data.items : null;
   // The first project at first, so the log opens with figures; a site or group waits for a choice.
-  const chosen = picked ?? (scope === "project" ? (choices.data?.[0]?.id ?? null) : null);
+  const chosen = picked ?? (scope === "project" ? (listed?.[0]?.id ?? null) : null);
   const log = useLoad(async () => {
     if (chosen === null) return null;
     const query: { from: string; to: string; project_id?: string; site_id?: string; group_id?: string } = { ...asked, [`${scope}_id`]: chosen };
@@ -41,7 +47,7 @@ export function WorkLogScreen() {
   }, [scope, chosen, asked.from, asked.to]);
 
   const rows = log.data?.rows ?? [];
-  const { shown, pager } = usePage(rows);
+  const pageKey = `${scope}|${chosen}|${asked.from}|${asked.to}`;
   const figures: Figure[] = log.data
     ? [
         { key: "people", label: t("reports.figure.people"), shown: String(log.data.people), value: String(log.data.people) },
@@ -49,25 +55,31 @@ export function WorkLogScreen() {
         { key: "hours", label: t("reports.figure.hours"), shown: t("pay.hours", { hours: log.data.hours }), value: log.data.hours },
       ]
     : [];
-  // A bar a project, sized by its people's hours as the API answered them (FR-050).
-  const byProject = new Map<string, { name: string; hours: number; people: typeof rows }>();
+  // A bar a project, sized by how many people worked there: a count of the API's rows, never a
+  // sum of their hours (the figures above are the API's own totals; group G review).
+  const byProject = new Map<string, { name: string; people: typeof rows }>();
   for (const row of rows) {
-    const group = byProject.get(row.project_id) ?? { name: row.project_name, hours: 0, people: [] };
-    group.hours += Number(row.hours);
+    const group = byProject.get(row.project_id) ?? { name: row.project_name, people: [] };
     group.people.push(row);
     byProject.set(row.project_id, group);
   }
   const bars: Bar[] = [...byProject.entries()].map(([id, g]) => ({
     id,
     name: g.name,
-    hours: g.hours,
+    hours: g.people.length,
     detail: t("reports.people_count", { count: g.people.length }),
-    rows: g.people.map((p) => (
-      <Txt key={`${p.user_id}-${p.project_id}`} role="body">
-        {`${p.full_name} · ${t("reports.shifts", { count: p.shifts })} · ${t("pay.hours", { hours: p.hours })}`}
-      </Txt>
-    )),
+    rows: (
+      <PagedRows
+        pageKey={`${pageKey}|${id}`}
+        rows={g.people.map((p) => (
+          <Txt key={`${p.user_id}-${p.project_id}`} role="body" testID="report-row">
+            {`${p.full_name} · ${t("reports.shifts", { count: p.shifts })} · ${t("pay.hours", { hours: p.hours })} · ${formatNumericRange(p.first_date, p.last_date)}`}
+          </Txt>
+        ))}
+      />
+    ),
   }));
+  const largest = Math.max(0, ...bars.map((b) => b.hours));
 
   return (
     <Screen testID="screen-work-log">
@@ -82,10 +94,12 @@ export function WorkLogScreen() {
           setPicked(null);
         }}
       />
-      <SearchablePicker label={t(`reports.kind.${scope}`)} items={choices.data ?? []} value={chosen} onChange={setPicked} testID="report-scope-picker" />
-      {log.error ? (
+      <SearchablePicker label={t(`reports.kind.${scope}`)} items={listed ?? []} value={chosen} onChange={setPicked} testID="report-scope-picker" />
+      {choices.error ? (
+        <InlineBanner tone="warning" title={errorText(choices.error)} action={{ label: t("common.retry"), onPress: () => void choices.reload() }} />
+      ) : log.error ? (
         <InlineBanner tone="warning" title={errorText(log.error)} action={{ label: t("common.retry"), onPress: () => void log.reload() }} />
-      ) : chosen === null && choices.data !== null ? (
+      ) : chosen === null && listed !== null ? (
         <Txt role="body" tone="secondary">
           {t(`reports.choose.${scope}`)}
         </Txt>
@@ -97,15 +111,7 @@ export function WorkLogScreen() {
             {formatNumericRange(log.data.from, log.data.to)}
           </Txt>
           <Figures figures={figures} />
-          <Bars bars={bars} title={t("reports.by_project")} />
-          <View style={styles.list}>
-            {shown.map((row) => (
-              <Txt key={`${row.user_id}-${row.project_id}`} role="body" testID="report-row">
-                {`${row.full_name} · ${row.project_name} · ${t("reports.shifts", { count: row.shifts })} · ${t("pay.hours", { hours: row.hours })} · ${formatNumericRange(row.first_date, row.last_date)}`}
-              </Txt>
-            ))}
-          </View>
-          {pager}
+          <Bars bars={bars} title={t("reports.by_project")} largest={largest} empty={t("reports.nobody")} />
         </View>
       )}
     </Screen>
@@ -133,7 +139,9 @@ export function HoursReportScreen() {
       ]
     : [];
   const groups = data?.groups ?? [];
-  const { shown, pager } = usePage(groups);
+  const { shown, pager } = usePage(groups, `${groupBy}|${asked.from}|${asked.to}`);
+  // Sized against the largest group of the whole report, so bars compare across pages.
+  const largest = Math.max(0, ...groups.map((g) => Number(g.hours)));
   const bars: Bar[] = shown.map((g) => ({
     id: g.id,
     name: g.name,
@@ -164,7 +172,7 @@ export function HoursReportScreen() {
         <View style={styles.body}>
           <Figures figures={figures} />
           {data.shifts_missing_rate > 0 ? <InlineBanner tone="warning" title={t("pay.missing_count", { count: data.shifts_missing_rate })} /> : null}
-          <Bars bars={bars} title={t(`reports.by_${groupBy}`)} />
+          <Bars bars={bars} title={t(`reports.by_${groupBy}`)} largest={largest} empty={t("reports.nothing_in_range")} />
           {pager}
         </View>
       )}
@@ -174,5 +182,4 @@ export function HoursReportScreen() {
 
 const styles = StyleSheet.create({
   body: { gap: 16 },
-  list: { gap: 4 },
 });

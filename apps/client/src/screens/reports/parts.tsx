@@ -60,21 +60,21 @@ export function Figures({ figures }: { figures: readonly Figure[] }) {
 export interface Bar {
   id: string;
   name: string;
-  /** The group's hours as the API answered them, to size the bar (display only, never summed). */
+  /** What sizes the bar, a figure the API answered (a group's hours, a project's people). */
   hours: number;
   detail: string;
   rows: ReactNode;
 }
 
-export function Bars({ bars, title }: { bars: readonly Bar[]; title: string }) {
-  const { t } = useTranslation();
+export function Bars({ bars, title, largest, empty }: { bars: readonly Bar[]; title: string; largest: number; empty: string }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState<string | null>(null);
-  const largest = Math.max(1, ...bars.map((b) => b.hours));
+  // Every bar is sized against the report's largest, on every page alike (group G review).
+  const scale = Math.max(1, largest);
   if (bars.length === 0) {
     return (
       <Txt role="body" tone="secondary">
-        {t("reports.nothing")}
+        {empty}
       </Txt>
     );
   }
@@ -104,7 +104,7 @@ export function Bars({ bars, title }: { bars: readonly Bar[]; title: string }) {
                 </Txt>
               </View>
               <View style={[styles.track, { backgroundColor: colors.bg.selected }]}>
-                <View style={[styles.fill, { width: `${(bar.hours / largest) * 100}%`, backgroundColor: colors.accent.default }]} />
+                <View style={[styles.fill, { width: `${(bar.hours / scale) * 100}%`, backgroundColor: colors.accent.default }]} />
               </View>
             </Pressable>
             {expanded ? (
@@ -119,10 +119,15 @@ export function Bars({ bars, title }: { bars: readonly Bar[]; title: string }) {
   );
 }
 
-/** A page of `items` at a time, with the pager below it. */
-export function usePage<T>(items: readonly T[], size = 25): { shown: T[]; pager: ReactNode } {
+/**
+ * A page of `items` at a time, with the pager below it; a new report (`key`: its range, grouping or
+ * scope) opens on its first page (group G review).
+ */
+export function usePage<T>(items: readonly T[], key: string, size = 25): { shown: T[]; pager: ReactNode } {
   const { t } = useTranslation();
-  const [page, setPage] = useState(0);
+  const [at, setAt] = useState<{ key: string; page: number }>({ key, page: 0 });
+  const page = at.key === key ? at.page : 0;
+  const setPage = (next: number) => setAt({ key, page: next });
   const pages = Math.max(1, Math.ceil(items.length / size));
   const current = Math.min(page, pages - 1);
   const shown = items.slice(current * size, current * size + size);
@@ -154,3 +159,14 @@ const styles = StyleSheet.create({
   rows: { gap: 4, paddingStart: 12 },
   pager: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
 });
+
+/** A bar's rows, a page at a time (a project with many people). */
+export function PagedRows({ rows, pageKey }: { rows: readonly ReactNode[]; pageKey: string }) {
+  const { shown, pager } = usePage(rows, pageKey);
+  return (
+    <>
+      {shown}
+      {pager}
+    </>
+  );
+}
