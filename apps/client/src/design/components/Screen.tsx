@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { isRtlLanguage } from "../../i18n";
+import { isRtl } from "../../i18n";
 import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
 import { webProps } from "../web";
@@ -29,8 +29,10 @@ export interface ScreenProps {
 
 /** The direction props for a root view, so logical styles below it resolve for the language. */
 export function useDirectionProps(): { style: ViewStyle; web: Record<string, unknown> } {
-  const { i18n } = useTranslation();
-  const rtl = isRtlLanguage(i18n.language);
+  // Re-rendered on a language change through react-i18next; the direction itself is the one
+  // `applyDirection` set, so a forced layout (tests, a phone's kept direction) is honoured.
+  useTranslation();
+  const rtl = isRtl();
   return { style: { direction: rtl ? "rtl" : "ltr" }, web: webProps({ dir: rtl ? "rtl" : "ltr" }) };
 }
 

@@ -149,7 +149,7 @@ export function ErrorText({ lines }: { lines: string[] }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#ffffff" },
+  root: { flex: 1, backgroundColor: "transparent" },
   content: { padding: 16, gap: 12, maxWidth: 720, width: "100%", alignSelf: "center" },
   title: { fontSize: 24, fontWeight: "600", color: colors.text, textAlign: "auto" },
   heading: { fontSize: 18, fontWeight: "600", color: colors.text, marginTop: 8 },

@@ -110,6 +110,17 @@ async def _prepare_database(url: str, named: bool) -> None:
         await admin.dispose()
 
 
+async def _empty_tables(url: str) -> None:
+    """Truncate every application table of ``url``, as each test does after itself."""
+    engine = create_async_engine(url, poolclass=NullPool)
+    tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    finally:
+        await engine.dispose()
+
+
 async def _drop_database(url: str) -> None:
     name = _assert_safe_test_db(url)
     admin = _admin_engine(url)
@@ -148,6 +159,10 @@ def _migrated() -> Generator[str, None, None]:
             env=env,
             check=True,
         )
+        if _NAMED_DATABASE:
+            # A named database is shared, with the ux e2e runs among others, which leave seeded
+            # rows behind; tests truncate after themselves, so the run starts from empty tables.
+            asyncio.run(_empty_tables(TEST_DATABASE_URL))
         yield TEST_DATABASE_URL
     finally:
         if not _NAMED_DATABASE:

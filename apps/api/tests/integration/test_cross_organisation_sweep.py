@@ -701,6 +701,11 @@ CASES: dict[str, list[Case]] = {
 
 # Operations that take an id or an address but are not refused by organisation, with the reason.
 EXEMPT: dict[str, str] = {
+    "DELETE /me/sessions/{id}": "the id is one of the caller's own sessions: any other id, another "
+    "user's in this or another organisation, is answered 404 by one conditional update on the id "
+    "and the caller (test_sessions.py::test_another_users_session_cannot_be_ended)",
+    "PATCH /api/v1/organisation/contact": "the e-mail is the caller's own organisation's contact "
+    "address, written only to that organisation; it names no user or record (007 FR-012)",
     "POST /auth/login": "public; authenticates by email and password, so another organisation's "
     "address with its password is that organisation's own sign-in",
     "POST /auth/password-reset/request": "public; answers 204 whether or not the address exists "

@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 test("an employee sees the pay for a shift they worked", async ({ page }) => {
   await signIn(page, "employee");
   await page.getByTestId("nav-pay").click();
-  await expect(page).toHaveURL(/\/pay$/);
+  await expect(page).toHaveURL(/\/my\/pay/);
   // The site files a shift under its local start date; the screen opens at the device month.
   if (inEarlierMonth(startsAt)) await page.getByTestId("pay-prev").click();
   const line = page.getByTestId(`pay-line-${shiftId}`);

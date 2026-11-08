@@ -71,3 +71,13 @@ ran:
   both rely only on React Native's own direction handling.
 - Revisit if a later feature needs gesture-driven motion (Reanimated) or if HeroUI Native gains a
   square theme worth adopting.
+- Found while building the shells (group B):
+  - expo-router's `Link asChild` merges its child's style as a plain object, so a `Pressable`
+    style function renders unstyled on the web. `LinkPressable`
+    (`apps/client/src/design/components/LinkPressable.tsx`) keeps the press state itself and
+    hands the link one flat style; a unit test reproduces the merge.
+  - The web build turns expo-router's async routes off (`asyncRoutes: false` in `app.json`). With
+    them on (SDK 58's default on the web), each route sat behind a lazy import and React held each
+    Suspense retry for 300 ms, so a cold load took about 650 ms to the sign-in button. One bundle
+    (about 3.9 MB, against 4 MB in 56 chunks) shows it at about 75 ms. Revisit if the bundle grows
+    enough that splitting pays for itself.

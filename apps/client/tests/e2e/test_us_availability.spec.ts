@@ -43,7 +43,10 @@ test.afterAll(async () => {
 
 test("an employee adds, changes and removes an entry in the open window", async ({ page }) => {
   await signIn(page, "employee");
-  await expect(page).toHaveURL(/\/availability$/);
+  // Sign-in lands on the role's home; availability is under My work (007 contracts/ui-routes.md).
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByTestId("nav-availability").click();
+  await expect(page).toHaveURL(/\/my\/availability/);
   await expect(page.getByTestId(`window-${windowId}`)).toContainText("Jun 2");
 
   await page.getByTestId("add-entry").click();
@@ -69,6 +72,9 @@ test("an employee adds, changes and removes an entry in the open window", async 
 
 test("dates outside the open window are refused with the API's reason", async ({ page }) => {
   await signIn(page, "employee");
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByTestId("nav-availability").click();
+  await expect(page).toHaveURL(/\/my\/availability/);
   await page.getByTestId("add-entry").click();
   await page.getByTestId("kind-blocked").click();
   await page.getByTestId("first-day").fill("2031-01-05");

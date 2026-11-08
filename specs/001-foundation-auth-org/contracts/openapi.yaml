@@ -111,6 +111,14 @@ components:
           type: string
           format: password
           minLength: 1
+        client_kind:
+          type: string
+          enum: [web, native]
+          default: web
+          description: >
+            What is signing in (007 FR-010, ADR 016). A `native` refresh token lasts
+            REFRESH_TOKEN_TTL_DAYS_NATIVE days (30) and renews on every refresh; `web` keeps
+            REFRESH_TOKEN_TTL_DAYS (7).
 
     TokenResponse:
       type: object
@@ -154,6 +162,124 @@ components:
           $ref: "#/components/schemas/ISODateTime"
 
     # ── Users / Employees ─────────────────────────────────────────────────────
+
+    MeRead:
+      description: >
+        The signed-in user's profile with what they may do (007 FR-001). `capabilities` are the
+        names in specs/007-ux-redesign/contracts/capabilities.md, sorted; `managed_project_ids`
+        are the projects a Manager manages, empty for every other role.
+      allOf:
+        - $ref: "#/components/schemas/UserRead"
+        - type: object
+          required: [capabilities, managed_project_ids]
+          properties:
+            capabilities:
+              type: array
+              items:
+                $ref: "#/components/schemas/Capability"
+            managed_project_ids:
+              type: array
+              items:
+                $ref: "#/components/schemas/UUIDv4"
+
+    Capability:
+      type: string
+      description: >
+        One thing a signed-in person may do (specs/007-ux-redesign/contracts/capabilities.md). A
+        name ending in `:project` holds only on the projects in `managed_project_ids`, or on every
+        project for an Admin.
+      enum:
+        - my_work.read
+        - my_work.availability
+        - roster.read
+        - roster.edit:project
+        - roster.publish
+        - roster.override:project
+        - schedule.generate
+        - availability.read_others
+        - availability.edit_others
+        - reports.read
+        - pay.read_others
+        - pay.edit_shift
+        - pay_settings.edit
+        - staff.manage
+        - clients.manage
+        - sites.manage
+        - projects.manage
+        - projects.read
+        - staff.delete
+        - clients.delete
+        - projects.delete
+        - special_days.edit
+        - organisation.contact.edit
+        - client_portal.read
+        - client_portal.requests
+        - client_requests.answer
+        - account.self
+
+    SessionRead:
+      type: object
+      description: >
+        One signed-in device (007 FR-009); `current` marks the session the request was made in.
+      required: [id, client_kind, last_refreshed_at, expires_at, current]
+      properties:
+        id:
+          $ref: "#/components/schemas/UUIDv4"
+        client_kind:
+          type: string
+          enum: [web, native]
+        last_refreshed_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+
+    OpeningHours:
+      type: object
+      required: [weekday, opens, closes]
+      properties:
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 is Sunday.
+        opens:
+          type: string
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+        closes:
+          type: string
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+
+    OrganisationContact:
+      type: object
+      properties:
+        phone:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+        opening_hours:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpeningHours"
+
+    OrganisationContactUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        phone:
+          type: [string, "null"]
+          maxLength: 32
+        email:
+          type: [string, "null"]
+          format: email
+        opening_hours:
+          type: [array, "null"]
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/OpeningHours"
 
     UserRead:
       type: object
@@ -928,7 +1054,48 @@ components:
           minimum: 1
           maximum: 168
 
-    # ── Schedule jobs (004) ──────────────────────────────────────────────────
+    /organisation/contact:
+    get:
+      operationId: organisation_contact_read
+      summary: Read the contact card (every role, 007 FR-012)
+      tags: [Organisation]
+      responses:
+        "200":
+          description: The organisation's phone, e-mail and opening hours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganisationContact"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      operationId: organisation_contact_change
+      summary: Change the contact card (Admin, 007 FR-012)
+      tags: [Organisation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganisationContactUpdate"
+      responses:
+        "200":
+          description: The card as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganisationContact"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Schedule jobs (004) ──────────────────────────────────────────────────
 
     JobCreateRequest:
       type: object
@@ -1790,6 +1957,23 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /auth/logout-others:
+    post:
+      operationId: auth_logout_others
+      summary: Sign out of the current user's other devices (007 FR-009)
+      description: >
+        Ends every live session except the one the request was made in. When that session is not
+        known (an access token issued before sessions were marked), nothing is ended and the
+        answer is 409 `session.current_unknown`; signing in again fixes it.
+      tags: [Auth]
+      responses:
+        "204":
+          description: Every other session ended; their access tokens lapse within 15 minutes.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /auth/logout-all:
     post:
       operationId: auth_logout_all
@@ -1945,15 +2129,15 @@ paths:
   /me:
     get:
       operationId: me_get
-      summary: Get the current user's profile
+      summary: Get the current user's profile and capabilities
       tags: [Me]
       responses:
         "200":
-          description: Current user's profile.
+          description: Current user's profile, capabilities and managed projects.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserRead"
+                $ref: "#/components/schemas/MeRead"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -1980,6 +2164,44 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /me/sessions:
+    get:
+      operationId: me_sessions_list
+      summary: List the current user's live sessions, one per device (007 N12)
+      tags: [Me]
+      responses:
+        "200":
+          description: Live sessions, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/sessions/{id}:
+    delete:
+      operationId: me_sessions_end
+      summary: End one of the current user's sessions (007 N12)
+      tags: [Me]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUIDv4"
+      responses:
+        "204":
+          description: Session ended; its access token lapses within 15 minutes.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -3453,6 +3675,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SchedulingSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /organisation/contact:
+    get:
+      operationId: organisation_contact_read
+      summary: Read the contact card (every role, 007 FR-012)
+      tags: [Organisation]
+      responses:
+        "200":
+          description: The organisation's phone, e-mail and opening hours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganisationContact"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      operationId: organisation_contact_change
+      summary: Change the contact card (Admin, 007 FR-012)
+      tags: [Organisation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganisationContactUpdate"
+      responses:
+        "200":
+          description: The card as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganisationContact"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":

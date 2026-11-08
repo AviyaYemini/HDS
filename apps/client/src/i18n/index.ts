@@ -5,6 +5,7 @@
  * languages fall back to it key by key. Right-to-left languages turn the layout around through
  * `I18nManager` on phones and the document's `dir` on the web; styles use start and end only.
  */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getLocales } from "expo-localization";
 import { createInstance } from "i18next";
 import { initReactI18next } from "react-i18next";
@@ -14,6 +15,8 @@ import en from "../locales/en.json";
 import he from "../locales/he.json";
 
 const SUPPORTED = ["en", "he"];
+const STORAGE_KEY = "hds.language";
+let remembered: string | null = null;
 const RIGHT_TO_LEFT = new Set(["he", "ar", "fa", "ur"]);
 
 /** The app's strings; `react-i18next` uses it once {@link setupI18n} has run. */
@@ -26,14 +29,49 @@ export function isRtlLanguage(language: string): boolean {
   return RIGHT_TO_LEFT.has(language);
 }
 
-/** The language to show: `?lang=` on the web, else the device's, else English. */
+/**
+ * The language to show: `?lang=` on the web, else the one chosen on the Account screen (kept in
+ * the browser's storage, or read back on phones by {@link loadRememberedLanguage}), else the
+ * device's, else English.
+ */
 export function pickLanguage(): string {
   if (Platform.OS === "web" && typeof window !== "undefined") {
     const asked = new URLSearchParams(window.location.search).get("lang");
     if (asked && SUPPORTED.includes(asked)) return asked;
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored && SUPPORTED.includes(stored)) return stored;
+    } catch {
+      // Blocked storage: the device decides.
+    }
   }
+  if (remembered && SUPPORTED.includes(remembered)) return remembered;
   const device = getLocales()[0]?.languageCode ?? "en";
   return SUPPORTED.includes(device) ? device : "en";
+}
+
+/** On phones, read the chosen language back before the strings are set up. */
+export async function loadRememberedLanguage(): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    remembered = await AsyncStorage.getItem(STORAGE_KEY);
+  } catch {
+    remembered = null;
+  }
+}
+
+/** Keep `language` as the person's choice (FR-059). */
+export async function rememberLanguage(language: string): Promise<void> {
+  remembered = language;
+  try {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, language);
+    } else {
+      await AsyncStorage.setItem(STORAGE_KEY, language);
+    }
+  } catch {
+    // A failed write keeps the choice for this run.
+  }
 }
 
 /** Lay the app out right to left (`true`) or left to right. */

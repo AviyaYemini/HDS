@@ -46,10 +46,55 @@ owner), `/dev/gallery` (previews switch only).
 Persistent on every screen: sign-out (`action-sign-out`), help, contact, the accessibility statement
 (`link-accessibility`).
 
+## Navigation test ids (b-roles.spec.ts)
+
+- **Phone** (`< 768 px` wide): a bottom bar `nav-tabs` whose items are `tab-<key>`. Employee: `home`,
+  `availability`, `my-shifts`, `pay`, `more`. Manager and Admin: `home`, `roster`, `my-work`,
+  `reports`, `more`. Client: `projects`, `contact`, and with previews on also `billing` and
+  `requests` (previews of 009, marked as below).
+- **Desktop**: a side navigation `nav-side` with groups `nav-group-my-work`, `nav-group-manage`,
+  `nav-group-admin` (client: one group `nav-group-client`) whose items are `nav-<key>`:
+  - Employee: `home`, `availability`, `my-shifts`, `pay`.
+  - Manager: the employee's, plus `roster`, `submissions`, `runs`, `work-log`, `hours`, `staff`,
+    `clients`, `sites`, `projects`, `shift-templates`, `staffing-needs`, `pay-settings`.
+  - Admin: the manager's, plus `special-days`.
+  - Client: `client-home`, `contact`, and with previews on also `billing` and `requests`.
+  - A navigation item that opens a preview carries `data-preview="true"` and is left out of these
+    sets; previews are checked by their routes below. With previews off no such item is drawn, so
+    every tab and side item a role is offered opens a screen of its own, never the 404 page.
+- **Every screen**: `action-sign-out`, `link-help`, `link-contact`, `link-accessibility`, and the
+  offline banner `banner-offline` while the network is down.
+- **Pages**: `screen-no-access` with `action-go-home`; `screen-not-found` (an unknown address) with
+  `action-go-home`; `splash` (static markup in the web page, shown until the app has started).
+- **Account**: `screen-account` with the language choice `language-he` and `language-en`
+  (`role="radio"`), and the profile's phone `profile-phone` with `action-save-profile`.
+- **Sign-in** (kept from 001's specs, which still use them): `email`, `password`, `sign-in-btn`,
+  and the refusal `error-message`.
+- **Deep links**: the web keeps no session across a page load (ADR 010), so an address of the
+  signed-in area opened in a fresh page shows sign-in and, once signed in, opens that address
+  (path and query), where the guard then decides as usual (the no-access page for a forbidden one,
+  FR-007). The address to return to is only ever a path of this app, never another site. An
+  unknown address shows `screen-not-found`, signed in or not.
+
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
 Each renders an Option B empty state with `data-testid="preview-<key>"`, the feature that brings it,
-and no live controls.
+and no live controls. Routed previews have their own address; the others sit inside a screen and
+are checked by that screen's group.
+
+| Address | Test id | Roles |
+| --- | --- | --- |
+| `/client/billing` | `preview-billing` | client |
+| `/client/requests` | `preview-requests` | client |
+| `/manage/requests` | `preview-requests` | manager, admin |
+| `/manage/overview` | `preview-overview` | manager, admin |
+| `/manage/approvals` | `preview-approvals` | manager, admin |
+| `/my/requests` | `preview-absence-requests` | employee, manager, admin |
+| `/inbox` | `preview-inbox` | all |
+| `/account/notifications` | `preview-notification-prefs` | all |
+| `/admin/audit-log` | `preview-audit-log` | admin |
+
+In a build with previews off, each of these addresses shows `screen-not-found`.
 
 | Key | Role (capability) | Where | Feature |
 | --- | --- | --- | --- |

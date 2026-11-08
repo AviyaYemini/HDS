@@ -21,7 +21,11 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
     model = RefreshToken
 
     async def create(
-        self, user_id: uuid.UUID, token_hash: str, expires_at: datetime
+        self,
+        user_id: uuid.UUID,
+        token_hash: str,
+        expires_at: datetime,
+        client_kind: str = "web",
     ) -> RefreshToken:
         """Store a new token.
 
@@ -29,6 +33,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             user_id: Owner of the token.
             token_hash: SHA-256 hex digest of the raw token (the raw value is never stored).
             expires_at: Timezone-aware UTC expiry.
+            client_kind: ``web`` or ``native``, the lifetime class (007 FR-010).
 
         Returns:
             The persisted token.
@@ -38,6 +43,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             user_id=user_id,
             token_hash=token_hash,
             expires_at=expires_at,
+            client_kind=client_kind,
         )
         self.session.add(token)
         await self.session.flush()
@@ -84,6 +90,81 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         )
         await self.session.flush()
         return result.scalar_one_or_none() is not None
+
+    async def live_for_user(self, user_id: uuid.UUID, now: datetime) -> list[RefreshToken]:
+        """The user's tokens that still work, newest first: one per signed-in device.
+
+        Rotation revokes a token when it issues the next, so each device's chain has one live
+        token, whose ``created_at`` is that device's last refresh (007 N12).
+
+        Args:
+            user_id: The user whose sessions are listed.
+            now: The moment to judge expiry against.
+        """
+        result = await self.session.execute(
+            select(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > now,
+            )
+            .order_by(RefreshToken.created_at.desc(), RefreshToken.id)
+        )
+        return list(result.scalars())
+
+    async def revoke_for_user(
+        self, token_id: uuid.UUID, user_id: uuid.UUID, reason: RevocationReason
+    ) -> bool:
+        """Revoke one live token, only if it belongs to ``user_id``; say whether it did.
+
+        One conditional statement, like :meth:`revoke_if_live`, so a token of another user, an
+        unknown id and an already revoked token all leave nothing changed and answer ``False``.
+        """
+        result = await self.session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.id == token_id,
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC), revoked_reason=RevocationReason(reason).value)
+            .returning(RefreshToken.id)
+        )
+        await self.session.flush()
+        return result.scalar_one_or_none() is not None
+
+    async def revoke_others_for_user(
+        self, user_id: uuid.UUID, keep_id: uuid.UUID, reason: RevocationReason
+    ) -> int | None:
+        """Revoke every live token of ``user_id`` except ``keep_id``; answer how many.
+
+        Under the user's row lock, which a refresh also takes, ``keep_id`` is checked to be still
+        live first: if a refresh rotated it meanwhile, nothing is revoked and the answer is
+        ``None``, so the caller's new token is never among those revoked.
+        """
+        await lock_user_row(self.session, user_id)
+        kept = await self.session.execute(
+            select(RefreshToken.id).where(
+                RefreshToken.id == keep_id,
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > datetime.now(UTC),
+            )
+        )
+        if kept.scalar_one_or_none() is None:
+            return None
+        result = await self.session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.id != keep_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC), revoked_reason=RevocationReason(reason).value)
+            .returning(RefreshToken.id)
+        )
+        await self.session.flush()
+        return len(result.scalars().all())
 
     async def revoke_all_for_user(self, user_id: uuid.UUID, reason: RevocationReason) -> None:
         """Revoke every still-valid token of a user, ending all their sessions.

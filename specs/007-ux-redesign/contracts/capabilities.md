@@ -11,8 +11,8 @@ rows marked **Proposed** come from 007's spec.
 | `my_work.availability` (submit own) | ✓ | ✓ | ✓ | | |
 | `roster.read` (all projects) | | ✓ | ✓ | | |
 | `roster.edit:project` | | managed projects | all | | **Proposed** (O9) |
-| `roster.publish:project` | | managed projects | all | | publish is manager today; scoped to managed projects (Proposed) |
-| `roster.override` | | managed projects | all | | **Proposed** (S10) |
+| `roster.publish` | | ✓ | ✓ | | every Manager publishes, as in the original; not scoped to projects |
+| `roster.override:project` | | managed projects | all | | **Proposed** (S10) |
 | `schedule.generate` | | ✓ | ✓ | | |
 | `availability.read_others` | | ✓ | ✓ | | submission tracker |
 | `availability.edit_others` | | | ✓ | | original: admin only |
@@ -24,6 +24,7 @@ rows marked **Proposed** come from 007's spec.
 | `staff.delete`, `clients.delete`, `projects.delete` | | | ✓ | | |
 | `special_days.edit` | | | ✓ | | |
 | `organisation.contact.edit` | | | ✓ | | **Proposed** |
+| `projects.read` | | ✓ | ✓ | ✓ | a client's own projects only |
 | `client_portal.read` (own projects) | | | | ✓ | never employee fields |
 | `client_portal.requests` | | | | ✓ | preview until 009 |
 | `client_requests.answer` | | ✓ | ✓ | | preview until 009 |

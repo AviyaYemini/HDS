@@ -196,6 +196,13 @@
       "operation_id": "replace_managers_api_v1_projects__id__managers_put",
       "suites": ["pytest", "cli"],
       "reason": "each id must be an active Manager or Admin of the organisation (005 FR-021), which depends on stored users; any other UUID is answered 422 project_managers.not_staff"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/organisation/contact",
+      "operation_id": "change_contact_api_v1_organisation_contact_patch",
+      "suites": ["pytest", "cli"],
+      "reason": "opening hours name each weekday at most once and close after they open (007 FR-012), which spans items and fields and OpenAPI 3.0 cannot state; answered 422 organisation.opening_hours_invalid"
     }
   ]
 }

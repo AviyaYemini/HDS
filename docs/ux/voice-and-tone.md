@@ -36,8 +36,8 @@ times or phone numbers (FR-056 to FR-058).
 ## Patterns
 
 - **Empty states**: what this place is for, then one action named by a verb or noun.
-  "No shifts this week. Your manager publishes the roster by Thursday." / "אין משמרות השבוע. הסידור
-  מתפרסם עד יום חמישי."
+  "No shifts this week. They show here once the roster is published." / "אין משמרות השבוע. הן
+  יופיעו כאן כשהסידור יפורסם." Promise only what the product does: no deadline the spec doesn't set.
 - **Errors**: what happened, then what to do. Never a code, never "something went wrong" alone.
   "The roster changed while you were editing. Showing the latest version." / "הסידור השתנה בזמן
   העריכה. מוצגת הגרסה העדכנית."

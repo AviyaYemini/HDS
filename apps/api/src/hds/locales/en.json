@@ -119,5 +119,7 @@
   "pay.month_invalid": "Write the month as YYYY-MM, such as 2026-10.",
   "reports.scope_invalid": "Choose exactly one of a project, a site or a group.",
   "reports.start_required": "A report on a site or a group needs a start date.",
-  "reports.range_invalid": "A report covers 1 to 366 days and ends on or after its start."
+  "reports.range_invalid": "A report covers 1 to 366 days and ends on or after its start.",
+  "organisation.opening_hours_invalid": "Opening hours need each weekday once, closing after opening.",
+  "session.current_unknown": "We couldn't tell which device this is. Sign in again, then try once more."
 }

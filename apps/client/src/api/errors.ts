@@ -42,8 +42,15 @@ export async function call<T>(request: Promise<Outcome<T>>): Promise<T> {
   return outcome.data as T;
 }
 
-/** A function from an error code to its text, `errors.unknown` for a code with none. */
+/**
+ * A function from an error code to its text, `errors.unknown` for a code with none. A refusal
+ * (`users.forbidden`) reads as "not available to you" with a way forward, never as a bare "not
+ * allowed" (specs/007-ux-redesign FR-007).
+ */
 export function useErrorText(): (code: string) => string {
   const { t, i18n } = useTranslation();
-  return (code) => (i18n.exists(code) ? t(code) : t("errors.unknown"));
+  return (code) => {
+    if (code === "users.forbidden") return t("access.refused_title");
+    return i18n.exists(code) ? t(code) : t("errors.unknown");
+  };
 }

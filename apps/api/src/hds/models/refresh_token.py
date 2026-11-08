@@ -39,6 +39,10 @@ class RefreshToken(Base):
     ``revoked_at`` instead of deleting the row, so a replayed old token is rejected as revoked
     rather than as unknown. ``revoked_reason`` says why (see `RevocationReason`); it is empty
     for tokens revoked before the column existed, which the service treats as unknown.
+
+    ``client_kind`` is ``web`` or ``native``, as the client declared at sign-in, and decides the
+    token's lifetime class; a rotation copies it to the new token (007 FR-010, ADR 016). It is
+    self-declared, which ADR 016 records as an accepted limit.
     """
 
     __tablename__ = "refresh_tokens"
@@ -53,6 +57,9 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(String(16))
+    client_kind: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="web", server_default="web"
+    )
 
     user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
 
@@ -64,6 +71,7 @@ class RefreshToken(Base):
             + ")",
             name="ck_refresh_tokens_revoked_reason",
         ),
+        CheckConstraint("client_kind IN ('web', 'native')", name="ck_refresh_tokens_client_kind"),
         Index("idx_refresh_tokens_user", "user_id"),
         Index("idx_refresh_tokens_expires_at", "expires_at"),  # the bulk clean-up
     )

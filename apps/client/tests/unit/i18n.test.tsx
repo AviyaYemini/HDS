@@ -86,7 +86,7 @@ test("forced RTL sets the screen's direction, and no style names a left or right
       <SignInScreen />
     </SessionProvider>,
   );
-  expect(StyleSheet.flatten(screen.getByTestId("screen-root").props.style)).toMatchObject({ direction: "rtl" });
+  expect(StyleSheet.flatten(screen.getByTestId("screen-sign-in").props.style)).toMatchObject({ direction: "rtl" });
   const sided = styleKeys().filter((key) => /left|right/i.test(key));
   expect(sided).toEqual([]);
 });
@@ -97,7 +97,7 @@ test("left to right by default", async () => {
       <SignInScreen />
     </SessionProvider>,
   );
-  expect(StyleSheet.flatten(screen.getByTestId("screen-root").props.style)).toMatchObject({ direction: "ltr" });
+  expect(StyleSheet.flatten(screen.getByTestId("screen-sign-in").props.style)).toMatchObject({ direction: "ltr" });
 });
 
 test("Hebrew is right to left and English is not", () => {
@@ -118,7 +118,7 @@ test("setting up Hebrew turns the layout right to left", async () => {
       <SignInScreen />
     </SessionProvider>,
   );
-  expect(StyleSheet.flatten(screen.getByTestId("screen-root").props.style)).toMatchObject({ direction: "rtl" });
+  expect(StyleSheet.flatten(screen.getByTestId("screen-sign-in").props.style)).toMatchObject({ direction: "rtl" });
   expect(screen.getAllByText("כניסה")).toHaveLength(2);
 });
 
@@ -131,7 +131,7 @@ test("English stays left to right on a phone still laid out right to left from a
         <SignInScreen />
       </SessionProvider>,
     );
-    expect(StyleSheet.flatten(screen.getByTestId("screen-root").props.style)).toMatchObject({ direction: "ltr" });
+    expect(StyleSheet.flatten(screen.getByTestId("screen-sign-in").props.style)).toMatchObject({ direction: "ltr" });
   } finally {
     native.restore();
   }

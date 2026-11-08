@@ -24,12 +24,16 @@ import pytest_asyncio
 from sqlalchemy.engine import make_url
 
 from hds.scripts.migrate import LOCK_NAME
-from tests.integration.migration_support import Scratch, alembic, scratch_database
+from tests.integration.migration_support import (
+    Scratch,
+    alembic,
+    head_and_previous,
+    scratch_database,
+)
 from tests.integration.test_migration_020 import run
 
 API_DIR = Path(__file__).resolve().parents[2]
-PREVIOUS = "023_freeze_deleted_projects"
-HEAD = "024_schedule_job_trace_context"
+HEAD, PREVIOUS = head_and_previous()
 WAIT_SECONDS = 120
 
 

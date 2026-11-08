@@ -22,6 +22,8 @@ A JSON REST API under `/api/v1`, documented by the OpenAPI schema FastAPI genera
 | Overview | `GET /overview` | Managers and admins only |
 | Reports | `GET /reports/work-log`, `/reports/hours`, `?format=xlsx` | *(005)* Managers and Admins. The work-log lists who worked at exactly one of a project, a site or a group, once per person and project, with shifts, hours and first and last date; for a project the range starts on its start date by default and then has no length limit, so it covers the whole project, and `to` is today; no pay. The hours report groups hours and shifts by employee or by project; an Admin sees pay for projects with pay on, a Manager only for projects they are assigned to whose pay is open to Managers, and elsewhere there is no pay figure at all. `shifts_missing_rate` counts the shifts shown with pay that have a line missing a rate; a row, group or total whose shown lines all lack a rate has that count and no pay figure, never 0.00. A demotion to Employee removes a Manager from their projects. Ranges given explicitly cover at most 366 days, and only published shifts that have ended count. Excel export (`?format=xlsx`) is v1 |
 | Client portal | `GET /portal/projects`, `/portal/projects/{id}/billing`, `POST /portal/requests` | Scoped to the client's own projects, no employee fields |
+| Me and sessions *(007, Proposed)* | `GET /me`, `GET /me/sessions`, `DELETE /me/sessions/{id}`, `POST /auth/logout-others` | `GET /me` also answers `capabilities` (what the person may do, from one map the API's gates share; specs/007-ux-redesign/contracts/capabilities.md) and `managed_project_ids` (where a Manager's `:project` capabilities apply). Sign-in takes `client_kind` (`web` by default, or `native`): a phone's refresh token lasts 30 days and renews on use, the web's 7 (ADR 016). `/me/sessions` lists the caller's signed-in devices with `current` on the one asking; ending another user's session answers 404. `/auth/logout-others` signs every other device out, and answers 409 `session.current_unknown`, ending nothing, when the asking session is not known |
+| Contact card *(007, Proposed)* | `GET/PATCH /organisation/contact` | The phone, e-mail and opening hours every role reads (a client's contact card); only an Admin changes them |
 | Calendar | `GET /calendar/{token}.ics` | Unguessable token per employee, revocable |
 | Devices | `POST /devices` | Registers a push token |
 
@@ -105,6 +107,8 @@ The full endpoint catalog, with roles and release per endpoint, is on the API re
 | `reports.scope_invalid` | 422 | A work-log without exactly one of `project_id`, `site_id` and `group_id` *(005)* |
 | `reports.start_required` | 422 | A work-log of a site or a group without `from` *(005)* |
 | `reports.range_invalid` | 422 | A report range that ends before it starts, or one given explicitly that covers more than 366 days *(005)* |
+| `session.current_unknown` | 409 | Signing out of other devices with a token that names no live session of the caller, such as one issued before sessions were marked; nothing is ended *(007)* |
+| `organisation.opening_hours_invalid` | 422 | Opening hours that name a weekday twice or close at or before they open *(007)* |
 
 Asking for another organisation's id (path, query or body) is always 404, the same as for an id that does not exist; the employee list refuses a `group_id` or `qualification_id` from another organisation the same way.
 

@@ -25,12 +25,32 @@ jest.mock("expo-secure-store", () => {
 jest.mock("expo-localization", () => ({ getLocales: () => [{ languageCode: "en" }] }));
 
 jest.mock("expo-router", () => {
+  const React = jest.requireActual<typeof import("react")>("react");
+  const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
   const router = { replace: jest.fn(), push: jest.fn(), back: jest.fn() };
+  const location = { pathname: "/", params: {} as Record<string, string>, segments: [] as string[] };
   return {
     __router: router,
+    /** Where the tests say the app is; `usePathname` reads it. */
+    __setPathname: (pathname: string) => {
+      location.pathname = pathname;
+    },
+    /** The search params the tests say the address carries. */
+    __setSearchParams: (params: Record<string, string>) => {
+      location.params = params;
+    },
+    /** The route's segments, as expo-router spells them (`(staff)`, `my`, `shifts`, `[id]`). */
+    __setSegments: (segments: string[]) => {
+      location.segments = segments;
+    },
     useRouter: () => router,
-    usePathname: () => "/",
-    Redirect: () => null,
+    usePathname: () => location.pathname,
+    useLocalSearchParams: () => location.params,
+    // Like expo-router's, the global params carry the dynamic segments' values too.
+    useGlobalSearchParams: () => location.params,
+    useSegments: () => location.segments,
+    // A redirect renders where it points, so a test can read it.
+    Redirect: ({ href }: { href: string }) => React.createElement(Text, { testID: "redirect" }, href),
     Link: ({ children }: { children: unknown }) => children,
     Slot: () => null,
   };
@@ -38,7 +58,11 @@ jest.mock("expo-router", () => {
 
 // The design's primitives (specs/007): fonts count as loaded, safe areas are zero, and SVG draws
 // as plain views, so the tests check roles, names and states rather than pixels.
-jest.mock("@react-native-async-storage/async-storage", () => require("@react-native-async-storage/async-storage/jest/async-storage-mock"));
+// The package's own in-memory mock; a jest.mock factory cannot use import.
+jest.mock("@react-native-async-storage/async-storage", () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
 jest.mock("expo-font", () => ({ useFonts: () => [true, null], loadAsync: jest.fn(async () => undefined), isLoaded: () => true }));
 jest.mock("react-native-safe-area-context", () => {
   const insets = { top: 0, bottom: 0, left: 0, right: 0 };

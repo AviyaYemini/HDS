@@ -14,9 +14,10 @@ from math import ceil
 from typing import Any, NoReturn
 
 from hds.core import passwords
-from hds.core.exceptions import AuthError, RateLimitedError
+from hds.core.exceptions import AuthError, ConflictError, NotFoundError, RateLimitedError
 from hds.core.security import create_access_token, generate_refresh_token, hash_token
 from hds.models.refresh_token import RefreshToken, RevocationReason
+from hds.models.user import User
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -72,7 +73,13 @@ class AuthService:
         self._link_repo = link_repo
         self._throttle = SignInThrottle(throttle_repo, config)
 
-    async def login(self, email: str, password: str, network: str | None = None) -> TokenResponse:
+    async def login(
+        self,
+        email: str,
+        password: str,
+        network: str | None = None,
+        client_kind: str = "web",
+    ) -> TokenResponse:
         """Authenticate by email and password and issue a token pair.
 
         Unknown email, wrong password and an inactive account all return the same
@@ -90,6 +97,11 @@ class AuthService:
             email: Account email, matched without regard to letter case.
             password: Clear-text password.
             network: The client's network address, for the per-network limit.
+            client_kind: ``web`` (default) or ``native``; a native refresh token lasts
+                ``REFRESH_TOKEN_TTL_DAYS_NATIVE`` days, a web one ``REFRESH_TOKEN_TTL_DAYS``. The
+                client declares it, so a browser could claim ``native``; ADR 016 records why that
+                is acceptable (rotation and reuse detection still apply, the web keeps tokens in
+                memory, biometrics are a convenience gate only).
 
         Returns:
             A new access and refresh token.
@@ -149,17 +161,10 @@ class AuthService:
         if locked_until is not None:
             raise _locked(locked_until)
 
-        access_token = create_access_token(
-            sub=user.id,
-            org=user.organization_id,
-            role=user.role,
-            ttl_seconds=self._config.ACCESS_TOKEN_TTL_SECONDS,
-            secret=self._config.JWT_SECRET_KEY.get_secret_value(),
-            algorithm=self._config.JWT_ALGORITHM,
-        )
         raw_refresh, token_hash = generate_refresh_token()
-        expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
-        await self._token_repo.create(user.id, token_hash, expires_at)
+        expires_at = datetime.now(UTC) + self._refresh_lifetime(client_kind)
+        session = await self._token_repo.create(user.id, token_hash, expires_at, client_kind)
+        access_token = self._access_token(user, session.id)
         await self._remove_expired_records(user.id)
 
         return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
@@ -220,20 +225,88 @@ class AuthService:
                 raise AuthError(code="auth.invalid_token", detail="Invalid refresh token")
             await self._refuse_reuse(current)
 
-        access_token = create_access_token(
+        raw_refresh, new_hash = generate_refresh_token()
+        # The new token keeps the session's kind, so a phone stays signed in while it is used.
+        new_expires_at = datetime.now(UTC) + self._refresh_lifetime(stored.client_kind)
+        session = await self._token_repo.create(
+            user.id, new_hash, new_expires_at, stored.client_kind
+        )
+        access_token = self._access_token(user, session.id)
+        await self._remove_expired_records(user.id)
+
+        return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
+
+    def _access_token(self, user: User, session_id: uuid.UUID) -> str:
+        """An access token for ``user`` in the session whose live refresh token is ``session_id``.
+
+        The session id changes on every refresh, as the refresh token rotates; the access token
+        issued with it carries the new one (007 T039).
+        """
+        return create_access_token(
             sub=user.id,
             org=user.organization_id,
             role=user.role,
             ttl_seconds=self._config.ACCESS_TOKEN_TTL_SECONDS,
             secret=self._config.JWT_SECRET_KEY.get_secret_value(),
             algorithm=self._config.JWT_ALGORITHM,
+            sid=session_id,
         )
-        raw_refresh, new_hash = generate_refresh_token()
-        new_expires_at = datetime.now(UTC) + timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
-        await self._token_repo.create(user.id, new_hash, new_expires_at)
-        await self._remove_expired_records(user.id)
 
-        return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
+    def _refresh_lifetime(self, client_kind: str) -> timedelta:
+        """How long a refresh token of this kind lives (007 FR-010)."""
+        if client_kind == "native":
+            return timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS_NATIVE)
+        return timedelta(days=self._config.REFRESH_TOKEN_TTL_DAYS)
+
+    async def sessions(self, user_id: uuid.UUID) -> list[RefreshToken]:
+        """The caller's signed-in sessions: one live refresh token per device (007 N12)."""
+        return await self._token_repo.live_for_user(user_id, datetime.now(UTC))
+
+    async def end_session(self, user_id: uuid.UUID, session_id: uuid.UUID) -> None:
+        """End one of the caller's sessions by revoking its refresh token.
+
+        The access token that device holds stays valid until it expires (at most 15 minutes,
+        Constitution VI), then its next refresh is refused.
+
+        Raises:
+            NotFoundError: ``resource.not_found`` (HTTP 404) when the id is not one of the
+                caller's live sessions, so another user's session ids cannot be probed.
+        """
+        if not await self._token_repo.revoke_for_user(session_id, user_id, RevocationReason.logout):
+            raise NotFoundError(resource="Session", id=session_id)
+
+    async def end_other_sessions(self, user_id: uuid.UUID, current: uuid.UUID | None) -> int:
+        """Sign every other device out, keeping the caller's own session (007 FR-009, T039).
+
+        Fails safe when the caller's session is not known: an access token from before sessions
+        were marked carries no ``sid``, and a session revoked meanwhile is no longer live. Ending
+        every session would sign the caller out too, and ending none would claim a success that did
+        not happen, so both are refused instead.
+
+        Args:
+            user_id: The caller.
+            current: The caller's session, from the access token's ``sid``, or ``None``.
+
+        Returns:
+            How many sessions were ended.
+
+        Raises:
+            ConflictError: ``session.current_unknown`` (HTTP 409) when ``current`` is ``None`` or
+                not one of the caller's live sessions; signing in again gives a marked token.
+        """
+        ended = None
+        if current is not None:
+            # The live check and the revoke happen together under the user's lock, so a refresh
+            # that rotates ``current`` at the same moment cannot get its new token revoked.
+            ended = await self._token_repo.revoke_others_for_user(
+                user_id, current, RevocationReason.logout
+            )
+        if ended is None:
+            raise ConflictError(
+                code="session.current_unknown",
+                detail="This device's session is not known; sign in again, then try once more",
+            )
+        return ended
 
     async def logout(self, raw_token: str, user_id: uuid.UUID) -> None:
         """Revoke the caller's refresh token, ending that session.

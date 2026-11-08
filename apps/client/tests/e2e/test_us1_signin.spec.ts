@@ -1,16 +1,15 @@
 /**
- * US1 — Sign In and Role-Based Access: Playwright smoke tests.
+ * US1 — Sign In: signing out revokes the session on the server, and the locked-account message in
+ * English and Hebrew.
  *
- * Runnable since 003 Part 2: signing out, and the locked-account message in English and Hebrew.
- * Still skipped, each with its reason: the role dashboards and the client portal, which no screen
- * shows yet (they must pass before the screens that make them runnable merge, Constitution IV).
+ * Each role's destinations and the client portal moved to `ux/b-roles.spec.ts` (007 T033), which
+ * checks them for all four roles, both languages and both screen sizes.
  */
 import { expect, request, test } from "@playwright/test";
 
 import { API } from "./support";
 
 const BASE = process.env.APP_URL ?? "http://localhost:3000";
-const PENDING_DASHBOARD = "pending the role dashboards, which no screen shows yet";
 
 // Lock locked@hds.test (no such account: the lock is the same either way, FR-221) with five
 // failed sign-ins through the API, so the specs below see the lock on their own attempt.
@@ -22,53 +21,14 @@ test.beforeAll(async () => {
   await api.dispose();
 });
 
-test("Employee signs in and sees employee dashboard", async ({ page }) => {
-  test.skip(true, PENDING_DASHBOARD);
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', "employee@hds.test");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="sign-in-btn"]');
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.locator('[data-testid="nav-employees"]')).not.toBeVisible();
-});
-
-test("Manager signs in and sees management nav", async ({ page }) => {
-  test.skip(true, PENDING_DASHBOARD);
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', "manager@hds.test");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="sign-in-btn"]');
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.locator('[data-testid="nav-employees"]')).toBeVisible();
-});
-
-test("Admin signs in and sees admin nav", async ({ page }) => {
-  test.skip(true, PENDING_DASHBOARD);
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', "admin@hds.test");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="sign-in-btn"]');
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.locator('[data-testid="nav-admin"]')).toBeVisible();
-});
-
-test("Client signs in and sees only own projects", async ({ page }) => {
-  test.skip(true, PENDING_DASHBOARD);
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', "client@hds.test");
-  await page.fill('[data-testid="password"]', "Dev1234!");
-  await page.click('[data-testid="sign-in-btn"]');
-  await expect(page).toHaveURL(/\/projects/);
-  await expect(page.locator('[data-testid="nav-employees"]')).not.toBeVisible();
-});
-
 test("Sign out invalidates session", async ({ page }) => {
   await page.goto(`${BASE}/sign-in`);
   await page.fill('[data-testid="email"]', "employee@hds.test");
   await page.fill('[data-testid="password"]', "Dev1234!");
   await page.click('[data-testid="sign-in-btn"]');
   const logout = page.waitForRequest((r) => r.url().endsWith("/auth/logout"));
-  await page.click('[data-testid="sign-out-btn"]');
+  // The sign-out every screen carries (007 contracts/ui-routes.md).
+  await page.getByTestId("action-sign-out").first().click();
   await expect(page).toHaveURL(/\/sign-in/);
   // The refresh token the page sent is revoked on the server, not just forgotten in the page.
   const { refresh_token } = (await logout).postDataJSON() as { refresh_token: string };
@@ -76,8 +36,8 @@ test("Sign out invalidates session", async ({ page }) => {
   const refreshed = await api.post("/auth/refresh", { data: { refresh_token } });
   expect(refreshed.status()).toBe(401);
   await api.dispose();
-  // Navigating to protected route should redirect back to sign-in
-  await page.goto(`${BASE}/me`);
+  // A signed-in address now sends the visitor back to sign-in.
+  await page.goto(`${BASE}/account`);
   await expect(page).toHaveURL(/\/sign-in/);
 });
 

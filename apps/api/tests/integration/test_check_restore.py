@@ -13,6 +13,7 @@ Covers: 006 FR-014; research R11.
 
 import asyncio
 import os
+import re
 import subprocess
 import sys
 from collections.abc import AsyncGenerator
@@ -20,12 +21,16 @@ from pathlib import Path
 
 import pytest_asyncio
 
-from tests.integration.migration_support import Scratch, scratch_database
+from tests.integration.migration_support import (
+    Scratch,
+    alembic,
+    head_and_previous,
+    scratch_database,
+)
 from tests.integration.test_migration_020 import run
 
 API_DIR = Path(__file__).resolve().parents[2]
-PREVIOUS = "023_freeze_deleted_projects"
-HEAD = "024_schedule_job_trace_context"
+HEAD, PREVIOUS = head_and_previous()
 SEEDED_PERSONAL = ["admin@hds.test", "employee@hds.test", "HDS Dev", "Seed Client"]
 # Every table the seed fills, fingerprinted to show the check wrote nothing.
 FINGERPRINT = """
@@ -38,17 +43,25 @@ SELECT md5(string_agg(t.dump, '|' ORDER BY t.dump)) FROM (
 """
 
 
+async def seeded(url: str) -> None:
+    status, out = await asyncio.to_thread(command, url, "hds.scripts.seed_dev")
+    assert status == 0, out
+
+
 @pytest_asyncio.fixture
 async def at_head() -> AsyncGenerator[Scratch, None]:
     async with scratch_database("hds_check_restore_test", HEAD) as pair:
-        await asyncio.to_thread(command, pair[0], "hds.scripts.seed_dev")
+        await seeded(pair[0])
         yield pair
 
 
 @pytest_asyncio.fixture
 async def at_previous() -> AsyncGenerator[Scratch, None]:
-    async with scratch_database("hds_check_restore_old_test", PREVIOUS) as pair:
-        await asyncio.to_thread(command, pair[0], "hds.scripts.seed_dev")
+    # A backup taken before the last migration: seeded at head (the seed is today's code), then
+    # taken one revision back, as that backup would have been.
+    async with scratch_database("hds_check_restore_old_test", HEAD) as pair:
+        await seeded(pair[0])
+        await asyncio.to_thread(alembic, pair[0], "downgrade", PREVIOUS)
         yield pair
 
 
@@ -67,6 +80,12 @@ def command(url: str, module: str) -> tuple[int, str]:
     return done.returncode, done.stdout + done.stderr
 
 
+def last_month(out: str) -> int:
+    found = re.search(r"shifts in the last month: (\d+)", out)
+    assert found, out
+    return int(found.group(1))
+
+
 async def check(url: str) -> tuple[int, str]:
     return await asyncio.to_thread(command, url, "hds.scripts.check_restore")
 
@@ -82,7 +101,12 @@ async def test_a_restored_database_at_head_passes_and_shows_counts_only(at_head:
 
 async def test_only_the_last_month_of_shifts_is_counted(at_head: Scratch) -> None:
     # One shift a week ago, one long ago and one next week: only the first is "the last month".
+    # The seed has shifts of its own, on dates that move with the day of the week, so the count is
+    # compared with the one before these three.
     url, engine = at_head
+    status, out = await check(url)
+    assert status == 0, out
+    before = last_month(out)
     await run(
         engine,
         """
@@ -94,11 +118,12 @@ async def test_only_the_last_month_of_shifts_is_counted(at_head: Scratch) -> Non
             now() + d * interval '1 day', now() + d * interval '1 day' + interval '8 hours',
             1, 'draft', now(), now()
         FROM projects p, unnest(ARRAY[-7, -90, 7]) d
+        WHERE p.name = 'Night Watch'
         """,
     )
     status, out = await check(url)
     assert status == 0, out
-    assert "shifts in the last month: 1" in out
+    assert last_month(out) == before + 1
 
 
 async def test_the_check_writes_nothing(at_head: Scratch) -> None:

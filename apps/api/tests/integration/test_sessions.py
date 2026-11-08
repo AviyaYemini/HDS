@@ -1,0 +1,171 @@
+"""Phone sessions, the session list and ending one session.
+
+Covers: 007 FR-009, FR-010, N12 (research R10, ADR 016, task T027). A web sign-in without
+``client_kind`` keeps 7 days; ``native`` gets 30 and keeps them across a refresh.
+"""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from httpx import AsyncClient
+
+from hds.core.config import get_settings
+from hds.core.security import create_access_token
+from hds.models.user import User
+
+PASSWORD = "Dev1234!"
+
+
+async def _sign_in(client: AsyncClient, **extra: str) -> dict[str, str]:
+    response = await client.post(
+        "/auth/login", json={"email": "employee@hds.test", "password": PASSWORD, **extra}
+    )
+    assert response.status_code == 200, response.text
+    return dict(response.json())
+
+
+def _bearer(tokens: dict[str, str]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+async def _sessions(client: AsyncClient, tokens: dict[str, str]) -> list[dict[str, Any]]:
+    response = await client.get("/me/sessions", headers=_bearer(tokens))
+    assert response.status_code == 200, response.text
+    return list(response.json())
+
+
+def _days_left(session: dict[str, str]) -> float:
+    left = datetime.fromisoformat(session["expires_at"]) - datetime.now(UTC)
+    return left / timedelta(days=1)
+
+
+async def test_a_web_sign_in_without_client_kind_gets_seven_days(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    tokens = await _sign_in(async_client)
+    [session] = await _sessions(async_client, tokens)
+    assert session["client_kind"] == "web"
+    assert 6.9 < _days_left(session) <= 7
+
+
+async def test_a_native_sign_in_gets_thirty_days_and_keeps_them_after_a_refresh(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    tokens = await _sign_in(async_client, client_kind="native")
+    refreshed = await async_client.post(
+        "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    [session] = await _sessions(async_client, refreshed.json())
+    assert session["client_kind"] == "native"
+    assert 29.9 < _days_left(session) <= 30
+
+
+async def test_an_unknown_client_kind_is_refused(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    response = await async_client.post(
+        "/auth/login",
+        json={"email": "employee@hds.test", "password": PASSWORD, "client_kind": "kiosk"},
+    )
+    assert response.status_code == 422
+
+
+async def test_ending_one_session_leaves_the_others(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    phone = await _sign_in(async_client, client_kind="native")
+    web = await _sign_in(async_client)
+    listed = await _sessions(async_client, web)
+    assert len(listed) == 2
+    phone_session = next(s for s in listed if s["client_kind"] == "native")
+
+    ended = await async_client.delete(f"/me/sessions/{phone_session['id']}", headers=_bearer(web))
+    assert ended.status_code == 204
+    refused = await async_client.post(
+        "/auth/refresh", json={"refresh_token": phone["refresh_token"]}
+    )
+    assert refused.status_code == 401
+    assert [s["client_kind"] for s in await _sessions(async_client, web)] == ["web"]
+
+
+async def test_another_users_session_cannot_be_ended(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    mine = await _sign_in(async_client)
+    [session] = await _sessions(async_client, mine)
+    other = await async_client.post(
+        "/auth/login", json={"email": "manager@hds.test", "password": PASSWORD}
+    )
+    response = await async_client.delete(
+        f"/me/sessions/{session['id']}", headers=_bearer(other.json())
+    )
+    assert response.status_code == 404
+    assert len(await _sessions(async_client, mine)) == 1
+
+
+async def test_each_device_sees_its_own_session_marked_current_even_after_a_refresh(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """007 T039: "sign out of other devices" needs to know which session is the caller's."""
+    phone = await _sign_in(async_client, client_kind="native")
+    web = await _sign_in(async_client)
+    from_web = await _sessions(async_client, web)
+    assert [s["client_kind"] for s in from_web if s["current"]] == ["web"]
+    from_phone = await _sessions(async_client, phone)
+    assert [s["client_kind"] for s in from_phone if s["current"]] == ["native"]
+
+    # A refresh rotates the token, so the session's id changes; the new access token follows it.
+    renewed = await async_client.post(
+        "/auth/refresh", json={"refresh_token": phone["refresh_token"]}
+    )
+    assert renewed.status_code == 200
+    after = await _sessions(async_client, renewed.json())
+    [current] = [s for s in after if s["current"]]
+    assert current["client_kind"] == "native"
+    assert current["id"] not in {s["id"] for s in from_phone}
+
+
+async def test_signing_out_of_other_devices_keeps_only_this_one(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """007 T039: the other devices' refresh tokens are refused afterwards; this one still works."""
+    phone = await _sign_in(async_client, client_kind="native")
+    other_web = await _sign_in(async_client)
+    web = await _sign_in(async_client)
+    ended = await async_client.post("/auth/logout-others", headers=_bearer(web))
+    assert ended.status_code == 204
+    for gone in (phone, other_web):
+        refused = await async_client.post(
+            "/auth/refresh", json={"refresh_token": gone["refresh_token"]}
+        )
+        assert refused.status_code == 401
+    left = await _sessions(async_client, web)
+    assert [s["current"] for s in left] == [True]
+    kept = await async_client.post("/auth/refresh", json={"refresh_token": web["refresh_token"]})
+    assert kept.status_code == 200
+
+
+async def test_signing_out_of_other_devices_without_a_marked_token_ends_nothing(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """An access token from before the marker has no sid: 409, and every session survives."""
+    phone = await _sign_in(async_client, client_kind="native")
+    web = await _sign_in(async_client)
+    user = seed_users["employee"]
+    settings = get_settings()
+    unmarked = create_access_token(
+        user.id,
+        user.organization_id,
+        user.role,
+        60,
+        settings.JWT_SECRET_KEY.get_secret_value(),
+        settings.JWT_ALGORITHM,
+    )
+    refused = await async_client.post(
+        "/auth/logout-others", headers={"Authorization": f"Bearer {unmarked}"}
+    )
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "session.current_unknown"
+    assert len(await _sessions(async_client, web)) == 2
+    assert len(await _sessions(async_client, phone)) == 2

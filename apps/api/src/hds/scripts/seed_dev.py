@@ -16,9 +16,17 @@ Seeded entities:
     Site:          HQ Site (Tel Aviv)
     Group:         Night Shift
     Qualification: First Aid
-    Project:       Night Watch (security, billing_rate=75.0000, client+site linked)
+    Project:       Night Watch (security, billing_rate=75.0000, client+site linked),
+                   managed by manager@hds.test
+    Project:       Day Patrol (security, same client and site), managed by no one, so the
+                   Manager manages one project only (007 T005)
+    Windows:       last week's availability window (closed) and one four weeks ahead (open)
+    Shifts:        this week published on Night Watch (a morning for two, an overnight shift)
+                   and on Day Patrol; a draft week four weeks ahead on Night Watch
 
-Requires migrations 001–010 to be applied before running against a real DB.
+Weeks run Sunday to Saturday at the site (Asia/Jerusalem); the windows and shifts sit on whole
+weeks, so a run later in the same week finds them and a run in a later week adds that week's own.
+Nobody has submitted availability. Requires every migration to be applied first.
 """
 
 import asyncio
@@ -26,6 +34,7 @@ import datetime
 import decimal
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -36,8 +45,12 @@ from hds.models.client import Client
 from hds.models.group import Group, user_groups
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectType
+from hds.models.project_manager import ProjectManager
 from hds.models.qualification import Qualification
+from hds.models.shift import Assignment, Shift
+from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
+from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 
 
@@ -59,6 +72,116 @@ async def _get_or_create(
     session.add(obj)
     await session.flush()
     return obj, True
+
+
+SITE_ZONE = ZoneInfo("Asia/Jerusalem")
+
+
+def _sunday_of(day: datetime.date) -> datetime.date:
+    """The Sunday that starts ``day``'s week (weeks run Sunday to Saturday)."""
+    return day - datetime.timedelta(days=(day.weekday() + 1) % 7)
+
+
+def _instants(day: datetime.date, kind: ShiftType) -> tuple[datetime.datetime, datetime.datetime]:
+    """The UTC start and end of a ``kind`` shift on the site date ``day``."""
+    starts = datetime.datetime.combine(day, kind.starts_at_local, SITE_ZONE)
+    end_day = day + datetime.timedelta(days=1) if kind.crosses_midnight else day
+    ends = datetime.datetime.combine(end_day, kind.ends_at_local, SITE_ZONE)
+    return starts.astimezone(datetime.UTC), ends.astimezone(datetime.UTC)
+
+
+async def _project(
+    db: AsyncSession, org: Organisation, client: Client, site: Site, name: str
+) -> Project:
+    """The live project ``name``, created when missing (a month back, so recent shifts fit)."""
+    found = await db.execute(
+        select(Project).where(
+            Project.organization_id == org.id,
+            Project.name == name,
+            Project.is_deleted.is_(False),
+        )
+    )
+    project = found.scalar_one_or_none()
+    if project is not None:
+        print(f"Project exists: {name}")
+        return project
+    project = Project(
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        client_id=client.id,
+        site_id=site.id,
+        name=name,
+        type=ProjectType.security,
+        billing_rate=decimal.Decimal("75.0000"),
+        start_date=datetime.date.today() - datetime.timedelta(days=30),
+        is_deleted=False,
+    )
+    db.add(project)
+    await db.flush()
+    print(f"Project created: {name}")
+    return project
+
+
+async def _shift(
+    db: AsyncSession,
+    project: Project,
+    kind: ShiftType,
+    day: datetime.date,
+    headcount: int,
+    people: list[User],
+    *,
+    published: bool,
+) -> None:
+    """One shift of ``kind`` on ``day`` with ``people`` on it, unless it already exists."""
+    starts_at, ends_at = _instants(day, kind)
+    found = await db.execute(
+        select(Shift.id).where(
+            Shift.project_id == project.id,
+            Shift.shift_type_id == kind.id,
+            Shift.starts_at == starts_at,
+        )
+    )
+    if found.first() is not None:
+        return
+    shift = Shift(
+        id=uuid.uuid4(),
+        organization_id=project.organization_id,
+        project_id=project.id,
+        shift_type_id=kind.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        headcount=headcount,
+        status="published" if published else "draft",
+        published_at=datetime.datetime.now(datetime.UTC) if published else None,
+    )
+    db.add(shift)
+    await db.flush()
+    for person in people:
+        db.add(
+            Assignment(
+                id=uuid.uuid4(),
+                organization_id=project.organization_id,
+                shift_id=shift.id,
+                user_id=person.id,
+                source="manual",
+            )
+        )
+    await db.flush()
+    state = "published" if published else "draft"
+    print(f"Shift created: {project.name} {kind.name} {day} ({state})")
+
+
+async def _window(
+    db: AsyncSession, org: Organisation, first: datetime.date, deadline: datetime.datetime
+) -> None:
+    """The availability window for the week starting on Sunday ``first``, created when missing."""
+    window, created = await _get_or_create(
+        db,
+        SubmissionWindow,
+        {"organization_id": org.id, "starts_on": first, "ends_on": first + datetime.timedelta(6)},
+        {"deadline": deadline},
+    )
+    print(f"Window {'created' if created else 'exists'}: {window.starts_on} to {window.ends_on}")
 
 
 async def seed() -> None:
@@ -179,33 +302,79 @@ async def seed() -> None:
         )
         print(f"Qualification {'created' if created else 'exists'}: {qual.id}")
 
-        # ── Project ───────────────────────────────────────────────────────────
-        result = await db.execute(
-            select(Project).where(
-                Project.organization_id == org.id,
-                Project.name == "Night Watch",
-                Project.is_deleted.is_(False),
+        # ── Projects: the Manager manages Night Watch only (007 T005) ────────
+        project = await _project(db, org, client_rec, site, "Night Watch")
+        other = await _project(db, org, client_rec, site, "Day Patrol")
+        manager = user_map["manager@hds.test"]
+        managing = await db.execute(
+            select(ProjectManager).where(
+                ProjectManager.project_id == project.id, ProjectManager.user_id == manager.id
             )
         )
-        project = result.scalar_one_or_none()
-        if project is None:
-            project = Project(
-                id=uuid.uuid4(),
-                organization_id=org.id,
-                client_id=client_rec.id,
-                site_id=site.id,
-                name="Night Watch",
-                type=ProjectType.security,
-                billing_rate=decimal.Decimal("75.0000"),
-                # A month back, so shifts that ended earlier today or yesterday fall inside it.
-                start_date=datetime.date.today() - datetime.timedelta(days=30),
-                is_deleted=False,
+        if managing.scalar_one_or_none() is None:
+            # The key is the pair, so no id (the generic helper would add one).
+            db.add(
+                ProjectManager(organization_id=org.id, project_id=project.id, user_id=manager.id)
             )
-            db.add(project)
             await db.flush()
-            print(f"Project created: {project.id}")
+            print(f"Manager on project: {manager.email} on {project.name}")
+
+        # The organisation's shift types come from the database trigger (migration 020).
+        kinds = {
+            k.name: k
+            for k in (
+                await db.execute(
+                    select(ShiftType).where(
+                        ShiftType.organization_id == org.id, ShiftType.is_active.is_(True)
+                    )
+                )
+            ).scalars()
+        }
+        for linked in (project, other):
+            have = {
+                row.shift_type_id
+                for row in await db.execute(
+                    select(project_shift_types.c.shift_type_id).where(
+                        project_shift_types.c.project_id == linked.id
+                    )
+                )
+            }
+            for kind in kinds.values():
+                if kind.id not in have:
+                    await db.execute(
+                        project_shift_types.insert().values(
+                            project_id=linked.id, shift_type_id=kind.id
+                        )
+                    )
+
+        # ── Availability windows: last week closed, four weeks ahead open ────
+        this_week = _sunday_of(datetime.datetime.now(SITE_ZONE).date())
+        last_week = this_week - datetime.timedelta(days=7)
+        ahead = this_week + datetime.timedelta(days=28)
+        await _window(
+            db, org, last_week, datetime.datetime.combine(last_week, datetime.time(), SITE_ZONE)
+        )
+        # Its deadline is the day before it starts, so it is always still open.
+        eve = ahead - datetime.timedelta(days=1)
+        await _window(db, org, ahead, datetime.datetime.combine(eve, datetime.time(), SITE_ZONE))
+
+        # ── Shifts: this week published, a draft week four weeks ahead ───────
+        employee, extra = user_map["employee@hds.test"], user_map["extra@hds.test"]
+        if {"morning", "afternoon", "night"} <= kinds.keys():
+
+            def day(offset: int) -> datetime.date:
+                """The site date ``offset`` days after this week's Sunday."""
+                return this_week + datetime.timedelta(days=offset)
+
+            await _shift(
+                db, project, kinds["morning"], day(1), 2, [employee, extra], published=True
+            )
+            await _shift(db, project, kinds["night"], day(2), 1, [employee], published=True)
+            await _shift(db, other, kinds["afternoon"], day(4), 1, [extra], published=True)
+            await _shift(db, project, kinds["morning"], day(29), 2, [], published=False)
+            await _shift(db, project, kinds["night"], day(31), 1, [extra], published=False)
         else:
-            print(f"Project exists: {project.id}")
+            print("Shift types missing: no shifts seeded")
 
         await db.commit()
         print("\nSeed complete.")

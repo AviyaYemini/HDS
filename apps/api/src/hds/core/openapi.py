@@ -64,6 +64,7 @@ _HASHING = {
 # a blanket rule promised conflicts on writes where nothing raises one.
 _CONFLICTS = {
     ("/auth/invite", "post"),
+    ("/auth/logout-others", "post"),
     ("/api/v1/employees", "post"),
     ("/api/v1/employees/{id}", "patch"),
     ("/api/v1/employees/{id}", "delete"),
@@ -95,6 +96,10 @@ _NEVER_FORBIDDEN = {
     ("/auth/logout", "post"),
     ("/auth/logout-all", "post"),
     ("/me", "get"),
+    ("/me/sessions", "get"),
+    ("/me/sessions/{id}", "delete"),
+    ("/auth/logout-others", "post"),
+    ("/api/v1/organisation/contact", "get"),
 }
 
 

@@ -8,8 +8,9 @@
  * corner is the top right one; the triangle uses logical borders, so it follows the direction.
  */
 import { createContext, useContext, type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { Animated, StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 
+import { isRtl } from "../../i18n";
 import { useTheme } from "../theme/ThemeProvider";
 
 /** The colour of the surface the children sit on; surfaces provide it for the clipped corners. */
@@ -32,6 +33,8 @@ export interface ClippedBoxProps extends Omit<ViewProps, "style"> {
   corner?: "leading-top" | "trailing-bottom";
   /** The colour behind the box, when it is not the surrounding surface's. */
   cutColor?: string;
+  /** Extra style for the cut itself, which may animate (it scales about its own corner). */
+  cutStyle?: Animated.WithAnimatedValue<StyleProp<ViewStyle>>;
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }
@@ -57,9 +60,11 @@ export function clippedPoints(width: number, height: number, clip: number, rtl: 
 }
 
 /** A box with one clipped corner. */
-export function ClippedBox({ clip, color, borderColor, corner = "leading-top", cutColor, style, children, ...rest }: ClippedBoxProps) {
+export function ClippedBox({ clip, color, borderColor, corner = "leading-top", cutColor, cutStyle, style, children, ...rest }: ClippedBoxProps) {
   const behind = useBackgroundColor();
   const cut = cutColor ?? behind;
+  const rtl = isRtl();
+  const transformOrigin = corner === "leading-top" ? (rtl ? "top right" : "top left") : rtl ? "bottom left" : "bottom right";
   const triangle: ViewStyle =
     corner === "leading-top"
       ? { top: 0, start: 0, borderTopWidth: clip, borderTopColor: cut, borderEndWidth: clip, borderEndColor: "transparent" }
@@ -70,7 +75,7 @@ export function ClippedBox({ clip, color, borderColor, corner = "leading-top", c
       style={[styles.box, { backgroundColor: color }, borderColor ? { borderWidth: 1, borderColor } : null, style]}
     >
       <BackgroundContext.Provider value={color}>{children}</BackgroundContext.Provider>
-      <View pointerEvents="none" style={[styles.triangle, triangle]} />
+      <Animated.View pointerEvents="none" style={[styles.triangle, triangle, { transformOrigin }, cutStyle]} />
     </View>
   );
 }

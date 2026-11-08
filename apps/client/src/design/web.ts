@@ -28,6 +28,8 @@ export interface WebOnlyProps {
   dir?: "ltr" | "rtl";
   /** A WAI-ARIA role React Native's `Role` type lacks (`gridcell`). */
   role?: string;
+  /** The language of this element's text, when it differs from the page's. */
+  lang?: string;
   /** `tabIndex` for an element React Native does not make focusable on its own. */
   tabIndex?: 0 | -1;
   onKeyDown?: (event: WebKeyEvent) => void;

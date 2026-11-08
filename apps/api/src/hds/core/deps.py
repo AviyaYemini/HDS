@@ -6,23 +6,27 @@ with ``hds.core.authz.ensure_role`` so the matrix holds without the HTTP layer.
 """
 
 import uuid
+from collections.abc import Callable, Coroutine, Mapping
+from typing import Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.authz import ensure_self_or_manager
+from hds.core.capabilities import Capability, has
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.exceptions import AuthError, ForbiddenError
 from hds.core.security import decode_access_token
-from hds.models.user import User, UserRole
+from hds.models.user import User
 from hds.repositories.user import UserRepository
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 async def get_current_user(
+    request: Request,
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
@@ -31,7 +35,11 @@ async def get_current_user(
     The user row is reloaded on every request, so deactivation, role changes and deletion
     apply immediately even though the access token is still unexpired.
 
+    Records the token's session on ``request.state.session_id`` (see :func:`current_session_id`),
+    so the token is decoded once per request.
+
     Args:
+        request: The request, which carries the session id onward.
         token: Bearer token from the ``Authorization`` header, if any.
         db: Request-scoped database session.
 
@@ -72,6 +80,7 @@ async def get_current_user(
     if not user.is_active:
         raise AuthError(code="auth.account_inactive", detail="Account inactive")
 
+    request.state.session_id = session_id_from_claims(payload)
     return user
 
 
@@ -89,7 +98,8 @@ async def require_manager(
     Raises:
         ForbiddenError: ``users.manager_required`` (HTTP 403).
     """
-    if user.role not in {UserRole.manager, UserRole.admin}:
+    # roster.read: Manager and Admin.
+    if not has(user.role, Capability.ROSTER_READ):
         raise ForbiddenError(
             code="users.manager_required",
             detail="Manager or Admin role required",
@@ -114,7 +124,8 @@ async def require_manager_or_client(
     Raises:
         ForbiddenError: ``users.manager_required`` (HTTP 403) for an Employee.
     """
-    if user.role not in {UserRole.manager, UserRole.admin, UserRole.client}:
+    # projects.read: Manager, Admin and Client.
+    if not has(user.role, Capability.PROJECTS_READ):
         raise ForbiddenError(
             code="users.manager_required",
             detail="Manager or Admin role required",
@@ -139,7 +150,8 @@ async def require_staff(
     Raises:
         ForbiddenError: ``users.forbidden`` (HTTP 403) for a Client account.
     """
-    if user.role == UserRole.client:
+    # my_work.read: Employee, Manager and Admin.
+    if not has(user.role, Capability.MY_WORK_READ):
         raise ForbiddenError(
             code="users.forbidden", detail="Access to this resource is not allowed"
         )
@@ -160,12 +172,69 @@ async def require_admin(
     Raises:
         ForbiddenError: ``users.admin_required`` (HTTP 403).
     """
-    if user.role != UserRole.admin:
+    # staff.delete: Admin only.
+    if not has(user.role, Capability.STAFF_DELETE):
         raise ForbiddenError(
             code="users.admin_required",
             detail="Admin role required",
         )
     return user
+
+
+def require_capability(
+    capability: Capability, code: str = "users.forbidden"
+) -> Callable[..., Coroutine[Any, Any, User]]:
+    """A route gate for one capability of the map (007 FR-001, research R4).
+
+    The 007 routes gate on the capability they mean, so granting it to a role opens the route and
+    its navigation together. The older routes keep ``require_manager`` and ``require_admin``.
+
+    Args:
+        capability: The capability the route needs.
+        code: The refusal's code, ``users.admin_required`` where an admin-only answer is kept.
+
+    Returns:
+        A dependency that answers the caller, or refuses with 403 and ``code``.
+    """
+
+    async def gate(user: User = Depends(get_current_user)) -> User:
+        """Answer the caller when their role holds ``capability``; refuse with 403 otherwise."""
+        if not has(user.role, capability):
+            raise ForbiddenError(code=code, detail=f"Needs {capability.value}")
+        return user
+
+    return gate
+
+
+def session_id_from_claims(claims: Mapping[str, Any]) -> uuid.UUID | None:
+    """The session an access token belongs to, from its ``sid`` claim (007 T039).
+
+    Args:
+        claims: The token's verified claims.
+
+    Returns:
+        The id of the refresh token issued with the access token, or ``None`` for a token issued
+        before sessions were marked, or one whose ``sid`` is not a UUID.
+    """
+    try:
+        return uuid.UUID(str(claims["sid"]))
+    except (KeyError, ValueError):
+        return None
+
+
+def current_session_id(request: Request, _: User = Depends(get_current_user)) -> uuid.UUID | None:
+    """The caller's session, as :func:`get_current_user` read it from the token.
+
+    FastAPI runs ``get_current_user`` once per request, so the token is not decoded again here.
+
+    Args:
+        request: The request; ``get_current_user`` left the session id on its state.
+
+    Returns:
+        The session's id, or ``None`` when the token carries none.
+    """
+    found: uuid.UUID | None = getattr(request.state, "session_id", None)
+    return found
 
 
 async def get_current_user_or_self(

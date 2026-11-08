@@ -402,6 +402,30 @@ export interface paths {
         patch: operations["rename_group_api_v1_groups__id__patch"];
         trace?: never;
     };
+    "/api/v1/organisation/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the contact card
+         * @description Every role, a client included. The organisation's phone, e-mail and opening hours, shown on the contact card and on every no-access page.
+         */
+        get: operations["read_contact_api_v1_organisation_contact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the contact card
+         * @description Admin. Change the phone, e-mail or opening hours; `null` clears a field. Opening hours are up to seven days, each weekday once, closing after opening (`organisation.opening_hours_invalid`, 422).
+         */
+        patch: operations["change_contact_api_v1_organisation_contact_patch"];
+        trace?: never;
+    };
     "/api/v1/organisation/pay-settings": {
         parameters: {
             query?: never;
@@ -1073,7 +1097,7 @@ export interface paths {
         put?: never;
         /**
          * Sign in
-         * @description Exchange an email and password for an access token and a refresh token. The email is matched without regard to letter case. Unknown email, wrong password and inactive account all return the same 401 (`auth.invalid_credentials`), after the same amount of work. Any address, registered or not, locks after exactly the configured number of consecutive failures (default 5) and the call then returns 423 (`auth.account_locked`) until the cooldown ends, even with the right password; the count restarts at zero when it does, and a successful sign-in also clears it. Too many failures from one network address inside the window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not clear that count. Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full; nothing is changed.
+         * @description Exchange an email and password for an access token and a refresh token. The email is matched without regard to letter case. Unknown email, wrong password and inactive account all return the same 401 (`auth.invalid_credentials`), after the same amount of work. Any address, registered or not, locks after exactly the configured number of consecutive failures (default 5) and the call then returns 423 (`auth.account_locked`) until the cooldown ends, even with the right password; the count restarts at zero when it does, and a successful sign-in also clears it. Too many failures from one network address inside the window return 429 (`auth.rate_limited`) with `Retry-After`, for every address; a successful sign-in does not clear that count. Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full; nothing is changed. `client_kind` `native` (the phone app) gets a refresh token that lasts `REFRESH_TOKEN_TTL_DAYS_NATIVE` days (30) and renews on every refresh; `web`, the default, keeps `REFRESH_TOKEN_TTL_DAYS` (7).
          */
         post: operations["login_auth_login_post"];
         delete?: never;
@@ -1116,6 +1140,26 @@ export interface paths {
          * @description Revoke every refresh token of the signed-in user. Access tokens already issued remain valid until they expire.
          */
         post: operations["logout_all_auth_logout_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out of my other devices
+         * @description Revoke every refresh token of the signed-in user except the one of the session this request was made in (007 FR-009). Answers 409 (`session.current_unknown`) when that session is not known, for an access token issued before sessions were marked: nothing is revoked, and signing in again fixes it.
+         */
+        post: operations["logout_others_auth_logout_others_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1191,7 +1235,7 @@ export interface paths {
         };
         /**
          * Get my profile
-         * @description Return the signed-in user's own profile, including their default hourly rate (view only). Available to every role.
+         * @description Return the signed-in user's own profile, including their default hourly rate (view only), the capabilities they hold now and, for a Manager, the projects they manage. The client draws its navigation from `capabilities` only. Available to every role.
          */
         get: operations["get_me_me_get"];
         put?: never;
@@ -1221,6 +1265,46 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my sessions
+         * @description The signed-in user's live sessions, one per device, newest first, with `current` set on the one this request was made in. Available to every role. `POST /auth/logout-all` ends them all.
+         */
+        get: operations["list_sessions_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End one of my sessions
+         * @description Sign one device out by revoking its refresh token; its access token lapses within 15 minutes. Answers 404 (`resource.not_found`) for an id that is not one of the caller's live sessions. Available to every role.
+         */
+        delete: operations["end_session_me_sessions__id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1315,6 +1399,12 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * Capability
+         * @description One thing a signed-in person may do.
+         * @enum {string}
+         */
+        Capability: "my_work.read" | "my_work.availability" | "roster.read" | "roster.edit:project" | "roster.publish" | "roster.override:project" | "schedule.generate" | "availability.read_others" | "availability.edit_others" | "reports.read" | "pay.read_others" | "pay.edit_shift" | "pay_settings.edit" | "staff.manage" | "clients.manage" | "sites.manage" | "projects.manage" | "projects.read" | "staff.delete" | "clients.delete" | "projects.delete" | "special_days.edit" | "organisation.contact.edit" | "client_portal.read" | "client_portal.requests" | "client_requests.answer" | "account.self";
         /**
          * Change
          * @description A person on a slot, added or removed against the current drafts.
@@ -1955,8 +2045,17 @@ export interface components {
         /**
          * LoginRequest
          * @description Credentials for ``POST /auth/login``.
+         *
+         *     ``client_kind`` says what is signing in: ``web`` (the default) or ``native`` (the phone
+         *     app), whose refresh token lasts longer (007 FR-010, ADR 016).
          */
         LoginRequest: {
+            /**
+             * Client Kind
+             * @default web
+             * @enum {string}
+             */
+            client_kind: "web" | "native";
             /**
              * Email
              * Format: email
@@ -1993,6 +2092,54 @@ export interface components {
         ManagersResponse: {
             /** Items */
             items: components["schemas"]["ManagerRead"][];
+        };
+        /**
+         * MeRead
+         * @description The signed-in user's profile, with what they may do.
+         *
+         *     ``capabilities`` are the names in ``hds.core.capabilities``, sorted. ``managed_project_ids``
+         *     are the projects a Manager manages, where their ``:project`` capabilities apply; it is empty
+         *     for every other role (an Admin's scoped capabilities cover every project).
+         */
+        MeRead: {
+            /** Capabilities */
+            capabilities: components["schemas"]["Capability"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Hourly Rate */
+            default_hourly_rate?: string | null;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Managed Project Ids */
+            managed_project_ids: string[];
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Phone */
+            phone?: string | null;
+            role: components["schemas"]["UserRole"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * MyShift
@@ -2075,6 +2222,45 @@ export interface components {
         NeedsResponse: {
             /** Items */
             items: components["schemas"]["NeedItem"][];
+        };
+        /**
+         * OpeningHours
+         * @description One day's opening hours in the organisation's local time (0 is Sunday).
+         */
+        OpeningHours: {
+            /** Closes */
+            closes: string;
+            /** Opens */
+            opens: string;
+            /** Weekday */
+            weekday: number;
+        };
+        /**
+         * OrganisationContact
+         * @description The contact card: phone, e-mail and opening hours, each optional.
+         */
+        OrganisationContact: {
+            /** Email */
+            email?: string | null;
+            /**
+             * Opening Hours
+             * @default []
+             */
+            opening_hours: components["schemas"]["OpeningHours"][];
+            /** Phone */
+            phone?: string | null;
+        };
+        /**
+         * OrganisationContactUpdate
+         * @description Any of the card's fields; ``null`` clears one, an omitted one stays.
+         */
+        OrganisationContactUpdate: {
+            /** Email */
+            email?: string | null;
+            /** Opening Hours */
+            opening_hours?: components["schemas"]["OpeningHours"][] | null;
+            /** Phone */
+            phone?: string | null;
         };
         /**
          * PartRead
@@ -2672,6 +2858,38 @@ export interface components {
             max_weekly_hours?: number;
             /** Min Rest Hours */
             min_rest_hours?: number;
+        };
+        /**
+         * SessionRead
+         * @description One signed-in device: its live refresh token, never the token itself.
+         *
+         *     ``last_refreshed_at`` is when the device last signed in or refreshed; ``expires_at`` when the
+         *     session ends unless it refreshes again. ``current`` marks the session of the request itself,
+         *     so "sign out of other devices" can end every other one.
+         */
+        SessionRead: {
+            /**
+             * Client Kind
+             * @enum {string}
+             */
+            client_kind: "web" | "native";
+            /** Current */
+            current: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Refreshed At
+             * Format: date-time
+             */
+            last_refreshed_at: string;
         };
         /**
          * ShiftAnswer
@@ -5460,6 +5678,95 @@ export interface operations {
             };
             /** @description The request conflicts with the current state (duplicate, last admin, in use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    read_contact_api_v1_organisation_contact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationContact"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    change_contact_api_v1_organisation_contact_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganisationContactUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationContact"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8700,6 +9007,42 @@ export interface operations {
             };
         };
     };
+    logout_others_auth_logout_others_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     confirm_password_reset_auth_password_reset_confirm_post: {
         parameters: {
             query?: never;
@@ -8866,7 +9209,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserRead"];
+                    "application/json": components["schemas"]["MeRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
@@ -8971,6 +9314,82 @@ export interface operations {
             };
             /** @description Authenticated but the role or data scope does not allow this. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_sessions_me_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"][];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    end_session_me_sessions__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
