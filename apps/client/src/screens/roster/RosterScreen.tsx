@@ -21,6 +21,7 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
 import { useLoad } from "../useLoad";
+import { ProjectChooser } from "./ProjectChooser";
 import { barGeometry, cellOf, coverage, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
 
 type Person = { id: string; full_name: string };
@@ -70,7 +71,13 @@ export function RosterScreen() {
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
 
-  const nameOf = useCallback((id: string | null) => people.data?.find((p) => p.id === id)?.full_name ?? "", [people.data]);
+  // Names from the roster read itself (deactivated people included); the active list fills the rest.
+  const names = useMemo(() => {
+    const known = new Map((people.data ?? []).map((p) => [p.id, p.full_name]));
+    for (const shift of shifts.data ?? []) for (const a of shift.assignments) if (a.full_name) known.set(a.user_id, a.full_name);
+    return known;
+  }, [people.data, shifts.data]);
+  const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? "") : ""), [names]);
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
 
   /** Run one roster change; a stale read (412) shows the banner and the latest version. */
@@ -145,7 +152,7 @@ export function RosterScreen() {
     return (
       <Screen testID="screen-roster">
         <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")} />
-        <EmptyState icon="calendar" title={t("roster.choose_project")} body={t("roster.choose_project_body")} />
+        <ProjectChooser week={params.week} />
       </Screen>
     );
   }

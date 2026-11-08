@@ -56,6 +56,14 @@ class AssignmentRead(BaseModel):
     ends_at: datetime
     own_times: bool
     overrides: list[OverrideRead] = []
+    full_name: str | None = Field(
+        default=None,
+        description="The person's name, deactivated people included, so an existing assignment "
+        "always names who it is (CodeRabbit, PR 18).",
+    )
+    active: bool | None = Field(
+        default=None, description="Whether the person is still active; false for a deactivated one."
+    )
 
 
 class ShiftRead(BaseModel):
@@ -169,7 +177,12 @@ IfMatch = Header(
 )
 
 
-def _assignment(a: Any, shift: Any, overrides: list[Any] | None = None) -> AssignmentRead:
+def _assignment(
+    a: Any,
+    shift: Any,
+    overrides: list[Any] | None = None,
+    person: tuple[str, bool] | None = None,
+) -> AssignmentRead:
     own = a.starts_at is not None and a.ends_at is not None
     return AssignmentRead(
         id=a.id,
@@ -187,6 +200,8 @@ def _assignment(a: Any, shift: Any, overrides: list[Any] | None = None) -> Assig
             )
             for o in overrides or []
         ],
+        full_name=person[0] if person else None,
+        active=person[1] if person else None,
     )
 
 
@@ -203,7 +218,10 @@ def _shift(view: ShiftView, overrides: dict[uuid.UUID, list[Any]] | None = None)
         pay_rate=s.pay_rate if view.rate_shown else None,
         status=s.status,  # type: ignore[arg-type]
         published_at=s.published_at,
-        assignments=[_assignment(a, s, (overrides or {}).get(a.id)) for a in view.assignments],
+        assignments=[
+            _assignment(a, s, (overrides or {}).get(a.id), view.people.get(a.user_id))
+            for a in view.assignments
+        ],
         etag=etag(s),
     )
 

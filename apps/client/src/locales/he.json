@@ -500,7 +500,6 @@
   "display.dark_mode": "מצב כהה",
   "display.light_mode": "מצב בהיר",
   "roster.choose_project": "בחירת פרויקט",
-  "roster.choose_project_body": "אפשר לפתוח את הסידור של פרויקט מתוך 'פרויקטים'.",
   "roster.undo": "ביטול פעולה",
   "roster.publish": "פרסום",
   "roster.no_shifts": "אין משמרות ביום הזה.",
@@ -529,8 +528,6 @@
   "preview.cost_strip_body": "עלות השכר של השבוע ליד הסידור.",
   "preview.qualification_expiry_title": "הסמכות",
   "preview.qualification_expiry_body": "מי מוסמך, ולמי ההסמכה עומדת לפוג.",
-  "submissions.choose_window": "בחירת חלון הגשה",
-  "submissions.choose_window_body": "אפשר לפתוח חלון הגשה כדי לראות מי הגיש.",
   "submissions.counted_unavailable": "נספר כלא זמין לשיבוץ",
   "submissions.changed_by_admin": "שונה על ידי מנהל מערכת ב-{{date}}",
   "roster.warning.rest": "מנוחה של {{rest_hours}} שעות בין המשמרות האלה; המינימום הוא {{minimum_hours}} שעות.",
@@ -598,5 +595,10 @@
   "runs.reasons.no_active_employee": "אין אנשי צוות פעילים לשיבוץ",
   "runs.reasons.other": "כלל אחר",
   "runs.poll_failed": "לא ניתן היה לקרוא את מצב ההרצה; מנסים שוב.",
-  "runs.more": "הצגת הרצות קודמות"
+  "runs.more": "הצגת הרצות קודמות",
+  "roster.read_only": "לצפייה בלבד",
+  "roster.no_projects": "אין עדיין פרויקטים",
+  "roster.no_projects_body": "הסידור של פרויקט יופיע כאן אחרי שייווצר.",
+  "submissions.no_window": "אין חלון זמינות פתוח",
+  "submissions.no_window_body": "פתחו חלון לשבועות הקרובים, ומי שהגיש יופיע כאן."
 }

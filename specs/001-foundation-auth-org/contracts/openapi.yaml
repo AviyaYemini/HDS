@@ -683,19 +683,20 @@ components:
         full_name:
           type: string
         phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
         role:
           $ref: "#/components/schemas/UserRole"
         is_active:
           type: boolean
         default_hourly_rate:
-          $ref: "#/components/schemas/MoneyAmount"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/MoneyAmount"
+            - type: "null"
           description: Visible to Managers/Admins and the user themselves (read-only for employees).
         client_id:
-          $ref: "#/components/schemas/UUIDv4"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
           description: Non-null only for role=client.
         created_at:
           $ref: "#/components/schemas/ISODateTime"
@@ -712,16 +713,16 @@ components:
         organization_id:
           $ref: "#/components/schemas/UUIDv4"
         client_id:
-          $ref: "#/components/schemas/UUIDv4"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
         email:
           type: string
           format: email
         full_name:
           type: string
         phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
         is_active:
           type: boolean
         created_at:
@@ -746,11 +747,13 @@ components:
         role:
           $ref: "#/components/schemas/UserRole"
         default_hourly_rate:
-          $ref: "#/components/schemas/MoneyAmount"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/MoneyAmount"
+            - type: "null"
         client_id:
-          $ref: "#/components/schemas/UUIDv4"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
           description: Required when role=client.
         initial_password:
           type: string
@@ -798,8 +801,7 @@ components:
           items:
             $ref: "#/components/schemas/UserRead"
         next_cursor:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Opaque cursor for the next page; null when exhausted.
         total:
           type: integer
@@ -919,20 +921,18 @@ components:
         name:
           type: string
         contact_name:
-          type: string
-          nullable: true
+          type: [string, "null"]
         contact_email:
-          type: string
+          type: [string, "null"]
           format: email
-          nullable: true
         contact_phone:
-          type: string
-          nullable: true
+          type: [string, "null"]
         contract_start:
           $ref: "#/components/schemas/ISODate"
         contract_end:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
         is_active:
           type: boolean
         created_at:
@@ -959,8 +959,9 @@ components:
         contract_start:
           $ref: "#/components/schemas/ISODate"
         contract_end:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
 
     ClientUpdateRequest:
       type: object
@@ -1001,8 +1002,7 @@ components:
           items:
             $ref: "#/components/schemas/ClientRead"
         next_cursor:
-          type: string
-          nullable: true
+          type: [string, "null"]
         total:
           type: integer
 
@@ -1085,8 +1085,9 @@ components:
         start_date:
           $ref: "#/components/schemas/ISODate"
         end_date:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
         status:
           $ref: "#/components/schemas/ProjectStatus"
         created_at:
@@ -1113,8 +1114,9 @@ components:
         start_date:
           $ref: "#/components/schemas/ISODate"
         end_date:
-          $ref: "#/components/schemas/ISODate"
-          nullable: true
+          anyOf:
+            - $ref: "#/components/schemas/ISODate"
+            - type: "null"
         pay_settings:
           description: >
             Admin only (403 projects.pay_settings_admin_only): the project's pay switches and its
@@ -1149,21 +1151,11 @@ components:
           items:
             $ref: "#/components/schemas/ProjectRead"
         next_cursor:
-          type: string
-          nullable: true
+          type: [string, "null"]
         total:
           type: integer
 
   # ── Reusable parameters ───────────────────────────────────────────────────
-  parameters:
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: false
-      schema:
-        type: string
-        format: uuid
-      description: Optional UUID for safe retries on POST endpoints.
 
     # ── Availability (003 Part 2) ─────────────────────────────────────────────
 
@@ -1531,30 +1523,24 @@ components:
           type: string
           format: date-time
         started_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         finished_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         error_code:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: jobs.solver_failed or jobs.worker_lost when failed.
         optimal:
-          type: boolean
-          nullable: true
+          type: [boolean, "null"]
         proposal_state:
-          type: string
-          nullable: true
-          enum: [open, accepted, discarded, expired]
+          type: [string, "null"]
+          enum: [open, accepted, discarded, expired, null]
         time_limit_seconds:
           type: integer
           description: How long the solver may search, the progress bar's whole (007 FR-074).
         elapsed_seconds:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Whole seconds the job has searched by the server's clock, to now while it runs and to finished_at once done; null before it starts (007 FR-074).
 
     JobRead:
@@ -1563,9 +1549,9 @@ components:
         - type: object
           properties:
             proposal:
-              nullable: true
-              allOf:
+              anyOf:
                 - $ref: "#/components/schemas/Proposal"
+                - type: "null"
 
     JobPage:
       type: object
@@ -1576,8 +1562,7 @@ components:
           items:
             $ref: "#/components/schemas/JobSummary"
         next_cursor:
-          type: string
-          nullable: true
+          type: [string, "null"]
 
     Proposal:
       type: object
@@ -1591,7 +1576,7 @@ components:
             required: [key, project_id, shift_type_id, date, starts_at, ends_at, headcount, assigned, kept]
             properties:
               key: {type: string}
-              shift_id: {type: string, format: uuid, nullable: true}
+              shift_id: {type: [string, "null"], format: uuid}
               project_id: {$ref: "#/components/schemas/UUIDv4"}
               shift_type_id: {$ref: "#/components/schemas/UUIDv4"}
               date: {$ref: "#/components/schemas/ISODate"}
@@ -1679,6 +1664,12 @@ components:
           $ref: "#/components/schemas/ISODateTime"
         own_times:
           type: boolean
+        full_name:
+          type: [string, "null"]
+          description: The person's name, deactivated people included, so an existing assignment always names who it is.
+        active:
+          type: [boolean, "null"]
+          description: Whether the person is still active; false for a deactivated one.
         overrides:
           type: array
           description: Recorded reasons for keeping this assignment despite a warning (007 FR-034).
@@ -2314,6 +2305,25 @@ components:
         shifts: {type: integer}
         shifts_missing_rate: {type: integer}
         pay: {$ref: "#/components/schemas/Amount"}
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional UUID for safe retries on POST endpoints.
+
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 64
+      description: The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`, 007 FR-041).
 
   responses:
     Unauthorized:
@@ -4529,6 +4539,8 @@ paths:
       operationId: shifts_update
       summary: Change a shift (Admin)
       tags: [Shifts]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -4559,6 +4571,8 @@ paths:
       operationId: shifts_delete
       summary: Delete a shift and its assignments (Admin)
       tags: [Shifts]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       responses:
         "204":
           description: Deleted.
@@ -4585,6 +4599,7 @@ paths:
       summary: Assign an employee (Admin)
       tags: [Shifts]
       parameters:
+        - $ref: "#/components/parameters/IfMatch"
         - name: Idempotency-Key
           in: header
           required: false
@@ -4632,6 +4647,8 @@ paths:
       operationId: assignments_change_times
       summary: Change a person's own times in a shift (a Manager of the project, or an Admin; 007 FR-027)
       tags: [Shifts]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -4662,6 +4679,8 @@ paths:
       operationId: assignments_delete
       summary: Remove an assignment (a Manager of the project, or an Admin)
       tags: [Shifts]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       responses:
         "200":
           description: The warnings the shift has left.

@@ -75,13 +75,13 @@ export async function rememberLanguage(language: string): Promise<void> {
 }
 
 /** Lay the app out right to left (`true`) or left to right. */
-export function applyDirection(rightToLeft: boolean): void {
+export function applyDirection(rightToLeft: boolean, language: string = i18n.language ?? "en"): void {
   rtl = rightToLeft;
   I18nManager.allowRTL(rightToLeft);
   I18nManager.forceRTL(rightToLeft);
   if (Platform.OS === "web" && typeof document !== "undefined") {
     document.documentElement.dir = rightToLeft ? "rtl" : "ltr";
-    document.documentElement.lang = i18n.language ?? "en";
+    document.documentElement.lang = language;
   }
 }
 
@@ -104,10 +104,12 @@ export async function setupI18n(language: string = pickLanguage()): Promise<type
       nsSeparator: false,
       interpolation: { escapeValue: false },
     });
+    applyDirection(isRtlLanguage(language), language);
   } else {
+    // The direction first, so the screens that re-render for the new language read it (R122).
+    applyDirection(isRtlLanguage(language), language);
     await i18n.changeLanguage(language);
   }
-  applyDirection(isRtlLanguage(language));
   return i18n;
 }
 

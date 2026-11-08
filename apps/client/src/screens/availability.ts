@@ -32,3 +32,8 @@ export function canChange(entry: Pick<Entry, "kind" | "starts_on" | "ends_on">, 
 export function kindsOffered(windows: Window[]): Kind[] {
   return windows.some((w) => w.is_open) ? KINDS : ["absence"];
 }
+
+/** The window whose deadline comes next after `now` (ms), or null: the one managers follow. */
+export function nearestOpenWindow<W extends Pick<Window, "deadline">>(windows: readonly W[], now: number): W | null {
+  return [...windows].filter((w) => new Date(w.deadline).getTime() > now).sort((a, b) => a.deadline.localeCompare(b.deadline))[0] ?? null;
+}
