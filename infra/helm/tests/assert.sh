@@ -25,7 +25,9 @@ FLUX_SCHEMAS_SHA256="380b713bd28a2c27cfc7710219aae79e1c9ceff9bee50197c0230471905
 # strict JSON schemas, so hds-secrets is checked like the rest (review R140).
 VAULT_CHART="https://helm.releases.hashicorp.com/vault-0.34.1.tgz"
 VAULT_CHART_SHA256="df4c37fac32496892ff1e1d6fd7954d3a402cc7b1b2b4c2226af11b8a57564c4"
-KPS_CHART="https://github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-92.11.0/kube-prometheus-stack-92.11.0.tgz"
+# From the project's OCI registry, not its GitHub release: the release download answered 504 for
+# hours on 2026-11-08; the registry serves the same archive, byte for byte (the same SHA-256).
+KPS_CHART="oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack:92.11.0"
 KPS_CHART_SHA256="c357a259965187edcbed86591461bfbd56997591afba09be3a49a09b2bec8a2c"
 VSO_CHART="https://helm.releases.hashicorp.com/vault-secrets-operator-1.6.0.tgz"
 VSO_CHART_SHA256="de3e0a520918fc7281b94fa060fe8d1858c5db5b8fb6b1463024268e7c4541c0"
@@ -56,15 +58,25 @@ helm_with() {
 }
 helm() { helm_with "$ROOT/infra/helm:/charts:ro" -- "$@"; }
 
-# chart URL SHA256: a pinned chart's archive, downloaded once into a cache keyed by its SHA-256 and
-# checked against it; prints the path. A new version is a new file, not a stale one (review R152).
+# chart SOURCE SHA256: a pinned chart's archive, downloaded once into a cache keyed by its SHA-256
+# and checked against it; prints the path. A new version is a new file, not a stale one (review
+# R152). SOURCE is an https URL, or oci://REGISTRY/PATH/NAME:VERSION, which the pinned helm pulls.
 charts_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hds/charts"
 chart() {
-    local file="$charts_cache/$2.tgz"
+    local file="$charts_cache/$2.tgz" pulled
     mkdir -p "$charts_cache"
     if [ ! -f "$file" ]; then
-        curl -fsSL -o "$file.part" "$1" && mv "$file.part" "$file"
+        case "$1" in
+            oci://*)
+                pulled=$(mktemp -d "$charts_cache/pull.XXXXXX")
+                helm_with "$pulled:/pull" -- pull "${1%:*}" --version "${1##*:}" -d /pull > /dev/null \
+                    && mv "$pulled"/*.tgz "$file"
+                rm -rf "$pulled"
+                ;;
+            *) curl -fsSL -o "$file.part" "$1" && mv "$file.part" "$file" ;;
+        esac
     fi
+    [ -f "$file" ] || { echo "$1 could not be downloaded" >&2; exit 1; }
     echo "$2  $file" | sha256sum -c - > /dev/null \
         || { echo "$1 does not match its SHA-256" >&2; rm -f "$file"; exit 1; }
     printf '%s' "$file"
