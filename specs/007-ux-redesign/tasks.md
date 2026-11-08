@@ -196,8 +196,8 @@ agenda and the submission tracker.
 - [x] T099 [US1] [CORE] Owner's decision of 2026-11-08, web sign-in per tab: the web token store keeps the tokens in sessionStorage, read and removed on load and written back only on `pagehide`, so a reload or a deep link in the same tab stays signed in and a duplicated tab signs in again without a refresh-token reuse; ADR 019 amending ADR 010 (a Content-Security-Policy as Proposed or a follow-up); a unit test of the store and e2e for the reload, the deep link and the duplicated tab
 - [x] T100 [US4] [UI] My work on each person's own times (carried from PR 3's review): My shifts, the shift detail, the period minutes, the countdown, the Upcoming and Past split and the calendar event use the caller's effective span from `/me/shifts`
 - [x] T101 [US3] [CORE] The submission tracker shows an Admin's hand change beside the submission (`changed_by`, `changed_at` from migration 030)
-- [ ] T068 [US3] [CORE] Regenerate the client; locale keys; update or retire `apps/client/tests/e2e/test_us6_roster.spec.ts` and `test_us8_shift_types.spec.ts` where the roster replaces them
-- [ ] T069 [CORE] Commit group D's [CORE] tasks (`feat(api): give assignments their own times and open roster edits to project managers`, `test(client): add group d's failing roster spec`)
+- [x] T068 [US3] [CORE] Regenerate the client; locale keys; update or retire `apps/client/tests/e2e/test_us6_roster.spec.ts` and `test_us8_shift_types.spec.ts` where the roster replaces them
+- [x] T069 [CORE] Commit group D's [CORE] tasks (`feat(api): give assignments their own times and open roster edits to project managers`, `test(client): add group d's failing roster spec`)
 
 ### [UI] then
 
