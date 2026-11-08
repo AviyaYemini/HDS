@@ -19,7 +19,7 @@ import { session } from "../src/api/default";
 import { SessionProvider } from "../src/api/SessionContext";
 import { storeFor } from "../src/api/tokens";
 import { unlock } from "../src/auth/biometric";
-import { clearSessionEnded, markSessionEnded } from "../src/auth/sessionEnded";
+import { markSessionEnded, noteRestore } from "../src/auth/sessionEnded";
 import { LoadingBar, ToastHost } from "../src/design/components";
 import { useDirectionProps } from "../src/design/components/Screen";
 import { startLoading } from "../src/design/loading/loadingStore";
@@ -77,12 +77,7 @@ function Starter() {
   const restore = useCallback(async (): Promise<void> => {
     const hadTokens = (await storeFor(Platform.OS).load()) !== null;
     const restored = await session.restore();
-    if (hadTokens && !restored && session.endedUnexpectedly !== false) markSessionEnded();
-    if (hadTokens && !restored && !session.endedUnexpectedly) {
-      // Kept tokens no longer worked and the server could be reached: the session ended.
-      markSessionEnded();
-    }
-    if (restored) clearSessionEnded();
+    noteRestore(hadTokens, restored, session.endedUnexpectedly);
   }, []);
 
   const tryUnlock = useCallback(async (): Promise<void> => {

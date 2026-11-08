@@ -19,6 +19,20 @@ export function markSessionEnded(): void {
   set(true);
 }
 
+/**
+ * After the start-up restore: the notice shows only when kept tokens were refused by the server
+ * (the session really ended), never when the server was out of reach and the tokens were kept.
+ */
+export function noteRestore(hadTokens: boolean, restored: boolean, endedUnexpectedly: boolean): void {
+  if (restored) clearSessionEnded();
+  else if (hadTokens && endedUnexpectedly) markSessionEnded();
+}
+
+/** The flag as it stands, for code outside a component (tests, the starter). */
+export function isSessionEnded(): boolean {
+  return ended;
+}
+
 /** The person has seen the notice, or signed in again. */
 export function clearSessionEnded(): void {
   set(false);

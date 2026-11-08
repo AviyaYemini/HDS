@@ -29,9 +29,11 @@ export function SetPasswordScreen() {
 
   const mismatch = again.length > 0 && again !== password;
   const tooShort = password.length > 0 && password.length < MIN_LENGTH;
+  // Both fields filled, long enough and the same: only then can the password be set.
+  const ready = Boolean(token) && password.length >= MIN_LENGTH && again === password;
 
   const submit = async (): Promise<void> => {
-    if (!token || tooShort || mismatch || password.length === 0) return;
+    if (!ready || busy || !token) return;
     setBusy(true);
     setError(null);
     try {
@@ -90,7 +92,7 @@ export function SetPasswordScreen() {
           label={t("set_password.submit")}
           onPress={() => void submit()}
           busy={busy}
-          disabled={!token}
+          disabled={!ready}
           block
         />
       </View>

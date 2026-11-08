@@ -3,9 +3,11 @@
  * links"): back to the address of this app they were sent from, or home.
  *
  * The value arrives in the address (`/sign-in?next=…`), so it is treated as hostile until proven
- * harmless: decoded once, accepted only as a relative path of this app, refused for anything that
- * could leave the app (a second leading slash, a backslash, a scheme) or smuggle a header (a
- * control character), and checked against the app's own routes. A refused value goes home, quietly.
+ * harmless: taken as the router hands it over (already decoded once, so it is not decoded again and
+ * a literal `%25` in a query survives), accepted only as a relative path of this app, refused for
+ * anything that could leave the app (a second leading slash, a backslash, a scheme) or smuggle a
+ * header (a control character), and checked against the app's own routes. A refused value goes
+ * home, quietly.
  */
 
 /** The first path segments of every signed-in address this app has. */
@@ -34,12 +36,7 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 export function safeReturnPath(raw: string | string[] | null | undefined): string | null {
   const text = Array.isArray(raw) ? raw[0] : raw;
   if (typeof text !== "string" || text === "") return null;
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(text);
-  } catch {
-    return null;
-  }
+  const decoded = text;
   if (decoded.length > 2048) return null;
   if (CONTROL.test(decoded) || decoded.includes("\\")) return null;
   if (!decoded.startsWith("/")) return null;

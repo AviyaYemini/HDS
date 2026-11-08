@@ -28,16 +28,20 @@ jest.mock("expo-router", () => {
   const React = jest.requireActual<typeof import("react")>("react");
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
   const router = { replace: jest.fn(), push: jest.fn(), back: jest.fn() };
-  const location = { pathname: "/" };
+  const location = { pathname: "/", params: {} as Record<string, string> };
   return {
     __router: router,
     /** Where the tests say the app is; `usePathname` reads it. */
     __setPathname: (pathname: string) => {
       location.pathname = pathname;
     },
+    /** The search params the tests say the address carries. */
+    __setSearchParams: (params: Record<string, string>) => {
+      location.params = params;
+    },
     useRouter: () => router,
     usePathname: () => location.pathname,
-    useLocalSearchParams: () => ({}),
+    useLocalSearchParams: () => location.params,
     useGlobalSearchParams: () => ({}),
     // A redirect renders where it points, so a test can read it.
     Redirect: ({ href }: { href: string }) => React.createElement(Text, { testID: "redirect" }, href),

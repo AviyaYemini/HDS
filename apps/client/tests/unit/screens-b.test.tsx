@@ -5,17 +5,20 @@
  * other sessions (none at all when the server does not mark the current one), and the contact
  * card shows what the API holds.
  */
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { Session, type Me } from "../../src/api/session";
 import { memoryStore } from "../../src/api/tokens";
 import { SignInRedirect } from "../../src/auth/SignInRedirect";
+import { clearSessionEnded, isSessionEnded, markSessionEnded, noteRestore } from "../../src/auth/sessionEnded";
+import { SetPasswordScreen } from "../../src/screens/misc/SetPasswordScreen";
+import { SignInScreen } from "../../src/screens/SignInScreen";
 import { AccountScreen } from "../../src/screens/account/AccountScreen";
 import { ContactCard } from "../../src/screens/client/ClientScreens";
 import { HomeScreen } from "../../src/screens/home/HomeScreen";
 import { NotFoundScreen } from "../../src/screens/misc/NotFoundScreen";
 import { NoAccessScreen } from "../../src/screens/no-access/NoAccessScreen";
-import { BASE, FakeApi, ME, json, problem, renderWith, signedIn } from "./fakeApi";
+import { BASE, FakeApi, ME, TOKENS, json, problem, renderWith, signedIn } from "./fakeApi";
 import * as Router from "expo-router";
 
 const router = (Router as unknown as { __router: { replace: jest.Mock; push: jest.Mock } }).__router;
@@ -74,6 +77,9 @@ describe("HomeScreen (FR-006)", () => {
     expect(screen.getByText("Night Watch · Night")).toBeTruthy();
     expect(screen.getByText(/22:00–06:00 \+1/)).toBeTruthy();
     expect(await screen.findByTestId("home-deadline")).toHaveTextContent(/12\/11\/2026/);
+    // "Open availability" goes to the availability screen (R27).
+    await fireEvent.press(screen.getByTestId("home-deadline-open"));
+    expect(router.push).toHaveBeenCalledWith("/my/availability");
   });
 
   it("shows placeholders, never numbers, on the manager's cards", async () => {
@@ -83,6 +89,8 @@ describe("HomeScreen (FR-006)", () => {
     for (const id of ["home-card-coverage", "home-card-unfilled", "home-card-not-submitted"]) expect(screen.getByTestId(id)).toBeTruthy();
     expect(screen.queryByTestId("home-setup")).toBeNull();
     expect(await screen.findByTestId("home-next-shift-none")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("home-open-availability"));
+    expect(router.push).toHaveBeenCalledWith("/my/availability");
   });
 });
 
@@ -163,5 +171,72 @@ describe("SignInRedirect without previews (FR-068)", () => {
     await renderWith(new Session(BASE, memoryStore(), new FakeApi().fetch), <SignInRedirect />);
     expect(screen.queryByTestId("screen-not-found")).toBeNull();
     expect(screen.getByTestId("redirect")).toHaveTextContent("/sign-in?next=%2Fmy%2Fshifts");
+  });
+});
+
+describe("the session-ended notice after a restore (R25)", () => {
+  afterEach(() => clearSessionEnded());
+
+  it.each([
+    [true, false, true, true, "kept tokens the server refused"],
+    [true, false, false, false, "kept tokens with the server out of reach"],
+    [false, false, false, false, "no kept tokens"],
+    [true, true, false, false, "a restored session"],
+  ])("hadTokens=%s restored=%s endedUnexpectedly=%s → notice %s (%s)", (hadTokens, restored, endedUnexpectedly, shown) => {
+    noteRestore(hadTokens, restored, endedUnexpectedly);
+    expect(isSessionEnded()).toBe(shown);
+  });
+
+  it("clears an older notice when the session is restored", () => {
+    markSessionEnded();
+    noteRestore(true, true, false);
+    expect(isSessionEnded()).toBe(false);
+  });
+});
+
+describe("SetPasswordScreen (FR-011, R26)", () => {
+  const setSearchParams = (Router as unknown as { __setSearchParams: (params: Record<string, string>) => void }).__setSearchParams;
+  afterEach(() => setSearchParams({}));
+
+  it("needs the confirmation to match before the password can be set", async () => {
+    setSearchParams({ token: "inv-1" });
+    const api = new FakeApi().on("POST", "/auth/invite/accept", new Response(null, { status: 204 }));
+    await renderWith(new Session(BASE, memoryStore(), api.fetch), <SetPasswordScreen />);
+    const button = () => screen.getByTestId("action-set-password");
+    expect(button()).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId("new-password"), "Abcdefgh1");
+    expect(button()).toBeDisabled();
+    await fireEvent(screen.getByTestId("new-password-again"), "submitEditing");
+    expect(api.calls("POST", "/auth/invite/accept")).toHaveLength(0);
+    await fireEvent.changeText(screen.getByTestId("new-password-again"), "Abcdefgh2");
+    expect(screen.getByText("The two passwords differ.")).toBeTruthy();
+    expect(button()).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId("new-password-again"), "Abcdefgh1");
+    expect(button()).not.toBeDisabled();
+    await fireEvent.press(button());
+    await waitFor(() => expect(api.calls("POST", "/auth/invite/accept")).toHaveLength(1));
+    expect(api.calls("POST", "/auth/invite/accept")[0]?.body).toEqual({ token: "inv-1", password: "Abcdefgh1" });
+    expect(router.replace).toHaveBeenCalledWith("/sign-in");
+  });
+});
+
+describe("SignInScreen submits once (R29)", () => {
+  it("ignores a second Enter while the first sign-in is in flight", async () => {
+    // The server answers only when the test lets it, so the second Enter lands while the first is in flight.
+    let answer: (() => void) | null = null;
+    const api = new FakeApi()
+      .on("POST", "/auth/login", () => new Promise<Response>((resolve) => (answer = () => resolve(json(200, TOKENS)))))
+      .on("GET", "/me", json(200, EMPLOYEE_ME));
+    await renderWith(new Session(BASE, memoryStore(), api.fetch), <SignInScreen />);
+    await fireEvent.changeText(screen.getByTestId("email"), "employee@hds.test");
+    await fireEvent.changeText(screen.getByTestId("password"), "Dev1234!");
+    await fireEvent(screen.getByTestId("password"), "submitEditing");
+    await fireEvent(screen.getByTestId("password"), "submitEditing");
+    await fireEvent.press(screen.getByTestId("sign-in-btn"));
+    expect(api.calls("POST", "/auth/login")).toHaveLength(1);
+    await waitFor(() => expect(answer).not.toBeNull());
+    answer!();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home"));
+    expect(api.calls("POST", "/auth/login")).toHaveLength(1);
   });
 });

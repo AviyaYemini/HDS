@@ -4,7 +4,7 @@
  * translated, a session that ended says so, and a good sign-in opens the role's home.
  */
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -30,11 +30,16 @@ export function SignInScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // One sign-in at a time: a second Enter while the first is in flight would open a second session.
+  const inFlight = useRef(false);
 
   async function submit(): Promise<void> {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     const refused = await session.signIn(email.trim(), password);
+    inFlight.current = false;
     setBusy(false);
     if (refused === null) {
       clearSessionEnded();

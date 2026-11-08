@@ -1,7 +1,8 @@
 /**
  * The sign-in return path (specs/007-ux-redesign contracts/ui-routes.md "Deep links"; the reviewer's
  * ruling): only a relative address of this app is kept; anything that could leave the app, smuggle
- * a header or point at an unknown route goes home.
+ * a header or point at an unknown route goes home. The router decodes `next` once before it gets
+ * here, so the check does not decode again (R31).
  */
 import { encodeReturnPath, safeReturnPath } from "../../src/auth/returnPath";
 
@@ -12,12 +13,13 @@ describe("safeReturnPath", () => {
     "/roster?project=p1&week=2026-11-01",
     "/client/projects/abc",
     "/home",
+    "/reports/hours?q=50%25",
   ])("keeps %s", (path) => {
     expect(safeReturnPath(path)).toBe(path);
   });
 
-  it("decodes once and keeps a decoded app address", () => {
-    expect(safeReturnPath(encodeURIComponent("/account?lang=he"))).toBe("/account?lang=he");
+  it("does not decode again, and takes the first of several values", () => {
+    expect(safeReturnPath(encodeURIComponent("/account?lang=he"))).toBeNull();
     expect(safeReturnPath(["/my/pay", "/evil"])).toBe("/my/pay");
   });
 
@@ -33,7 +35,8 @@ describe("safeReturnPath", () => {
     ["", "nothing"],
     ["/nowhere/at/all", "an unknown route"],
     ["/homework", "a prefix that only looks known"],
-    ["%E0%A4%A", "malformed encoding"],
+    ["%E0%A4%A", "malformed encoding (must not throw)"],
+    ["%E0", "a lone escape"],
     ["/account:8080", "a colon in the path"],
   ])("refuses %s (%s)", (path) => {
     expect(safeReturnPath(path)).toBeNull();
@@ -49,6 +52,7 @@ describe("encodeReturnPath", () => {
   it("carries the path with its query, encoded once", () => {
     expect(encodeReturnPath("/account", { lang: "he" })).toBe(encodeURIComponent("/account?lang=he"));
     expect(encodeReturnPath("/home", {})).toBe("%2Fhome");
-    expect(safeReturnPath(encodeReturnPath("/roster", { project: "p 1", week: "2026-11-01" }))).toBe("/roster?project=p+1&week=2026-11-01");
+    // The router decodes the address once on the way in.
+    expect(safeReturnPath(decodeURIComponent(encodeReturnPath("/roster", { project: "p 1", week: "2026-11-01" })))).toBe("/roster?project=p+1&week=2026-11-01");
   });
 });

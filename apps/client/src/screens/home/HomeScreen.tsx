@@ -4,7 +4,7 @@
  * which stay placeholders until groups C and D serve that data (never invented numbers); an admin
  * also sees the way into the setup checklist. The chooser asks for capabilities, not roles.
  */
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -38,6 +38,7 @@ import { useLoad } from "../useLoad";
 
 /** The next published shift, as a feature panel (FR-022's first form; group C finishes it). */
 export function NextShiftPanel() {
+  const router = useRouter();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const { api } = useSession();
@@ -64,7 +65,7 @@ export function NextShiftPanel() {
         icon="calendar"
         title={t("home.no_upcoming_title")}
         body={t("home.no_upcoming_body")}
-        action={{ label: t("nav.availability"), onPress: () => undefined, testID: "home-open-availability" }}
+        action={{ label: t("nav.availability"), onPress: () => router.push("/my/availability"), testID: "home-open-availability" }}
       />
     );
   }
@@ -95,6 +96,7 @@ export function NextShiftPanel() {
 
 /** The open window's deadline, when there is one (FR-006, E2). */
 export function AvailabilityDeadline() {
+  const router = useRouter();
   const { t } = useTranslation();
   const { api } = useSession();
   const windows = useLoad(() => call(api.GET("/api/v1/availability-windows")));
@@ -105,7 +107,7 @@ export function AvailabilityDeadline() {
     <InlineBanner
       tone="info"
       title={t("home.deadline_title", { date: formatNumericDate(deadline) })}
-      action={{ label: t("home.open_availability"), onPress: () => undefined, testID: "home-deadline-open" }}
+      action={{ label: t("home.open_availability"), onPress: () => router.push("/my/availability"), testID: "home-deadline-open" }}
       testID="home-deadline"
     >
       {t("home.deadline_body", { range: formatNumericRange(open.starts_on, open.ends_on) })}
