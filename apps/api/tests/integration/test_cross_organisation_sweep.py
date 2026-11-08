@@ -827,6 +827,9 @@ CASES: dict[str, list[Case]] = {
 
 # Operations that take an id or an address but are not refused by organisation, with the reason.
 EXEMPT: dict[str, str] = {
+    "DELETE /me/saved-views/{id}": "the id is one of the caller's own saved views: any other "
+    "user's, in this or another organisation, is answered 404, the delete keyed on the id and the "
+    "caller (test_saved_views.py::test_a_user_keeps_their_own_views)",
     "DELETE /me/sessions/{id}": "the id is one of the caller's own sessions: any other id, another "
     "user's in this or another organisation, is answered 404 by one conditional update on the id "
     "and the caller (test_sessions.py::test_another_users_session_cannot_be_ended)",
