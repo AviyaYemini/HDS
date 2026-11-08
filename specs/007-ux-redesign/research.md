@@ -109,13 +109,13 @@ stay open until group A's spike; the spike's result is written into them and int
   derived: no row and no entries in the window → Not submitted; entries changed after the snapshot
   or no row → Draft; snapshot equals the live entries → Submitted; now past the deadline → Locked
   (whatever the rest). After the deadline the live entries for the window are frozen
-  (`availability.window_locked`, 409), except absences, which stay editable as in 003.
+  (`availability.window_closed`, 409, the code 003 already uses), except absences, which stay editable; an Admin's change there refreshes an existing snapshot but never creates one (reviewer note): an Admin counts a non-submitter only by submitting on their behalf, which records who did it and when. Windows already closed when 026 runs keep the old rule (`requires_submission` false).
 - **Scheduling**: `schedule_inputs` reads the snapshot for dates inside a window whose deadline has
   passed, not the live entries. An employee with no submission for such a window gets one synthetic
   blocked entry per date of the window with reason `not_submitted`, so the solver never assigns
   them there. For a window still open, the solver reads the last snapshot (or, with none, treats the
   employee as not submitted); the manager sees this in the run's inputs. `validate` turns a
-  `not_submitted` block into the warning `availability.not_submitted` for manual assignments, so a
+  `not_submitted` block into the warning `warnings.not_submitted` for manual assignments, so a
   manager may still assign by hand, with a warning (ADR 009: manual changes only warn).
 - **Rationale**: the owner's answer to Q4 ("count them as unavailable") and FR-014.
 - **Alternatives**: a status column flipped by a job at the deadline (needs a scheduler and races

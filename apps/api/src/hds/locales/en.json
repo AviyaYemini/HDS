@@ -121,5 +121,6 @@
   "reports.start_required": "A report on a site or a group needs a start date.",
   "reports.range_invalid": "A report covers 1 to 366 days and ends on or after its start.",
   "organisation.opening_hours_invalid": "Opening hours need each weekday once, closing after opening.",
-  "session.current_unknown": "We couldn't tell which device this is. Sign in again, then try once more."
+  "session.current_unknown": "We couldn't tell which device this is. Sign in again, then try once more.",
+  "warnings.not_submitted": "The employee did not submit availability for this week by the deadline, so they count as unavailable."
 }

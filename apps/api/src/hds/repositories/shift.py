@@ -50,6 +50,13 @@ class OwnShift:
     site_name: str
 
 
+@dataclass(frozen=True)
+class OwnShiftDetail(OwnShift):
+    """One of an employee's published shifts with its site's address (007 FR-023, E11)."""
+
+    site_address: str | None
+
+
 class ShiftRepository(OrgScopedRepository[Shift]):
     """An organisation's shifts."""
 
@@ -251,6 +258,41 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             stmt = stmt.where(Shift.starts_at < starts_before)
         rows = await self.session.execute(stmt.order_by(Shift.starts_at, Shift.id))
         return [OwnShift(*row) for row in rows.all()]
+
+    async def own_published_one(
+        self, org_id: uuid.UUID, user_id: uuid.UUID, shift_id: uuid.UUID
+    ) -> OwnShiftDetail | None:
+        """One published shift the employee is on, with its site's address, or ``None``."""
+        stmt = (
+            select(
+                Shift.id,
+                Shift.starts_at,
+                Shift.ends_at,
+                Site.timezone,
+                ShiftType.name,
+                Project.id,
+                Project.name,
+                Site.id,
+                Site.name,
+                Site.address,
+            )
+            .join(Assignment, Assignment.shift_id == Shift.id)
+            .join(Project, Project.id == Shift.project_id)
+            .join(Site, Site.id == Project.site_id)
+            .join(ShiftType, ShiftType.id == Shift.shift_type_id)
+            .where(
+                Shift.organization_id == org_id,
+                Shift.id == shift_id,
+                Shift.status == "published",
+                Assignment.user_id == user_id,
+                Project.is_deleted.is_(False),
+            )
+        )
+        row = (await self.session.execute(stmt)).one_or_none()
+        if row is None:
+            return None
+        base = OwnShift(*row[:9])
+        return OwnShiftDetail(**vars(base), site_address=row[9])
 
     async def of_employees(
         self,

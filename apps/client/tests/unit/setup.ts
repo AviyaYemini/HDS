@@ -63,6 +63,19 @@ jest.mock("@react-native-async-storage/async-storage", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
 );
+jest.mock("expo-haptics", () => ({
+  impactAsync: jest.fn(async () => undefined),
+  notificationAsync: jest.fn(async () => undefined),
+  ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
+  NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
+}));
+jest.mock("expo-calendar", () => ({
+  requestCalendarPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  getCalendarsAsync: jest.fn(async () => [{ id: "cal", allowsModifications: true, source: { name: "Default" } }]),
+  getDefaultCalendarAsync: jest.fn(async () => ({ id: "cal" })),
+  createEventAsync: jest.fn(async () => "event-1"),
+  EntityTypes: { EVENT: "event" },
+}));
 jest.mock("expo-font", () => ({ useFonts: () => [true, null], loadAsync: jest.fn(async () => undefined), isLoaded: () => true }));
 jest.mock("react-native-safe-area-context", () => {
   const insets = { top: 0, bottom: 0, left: 0, right: 0 };

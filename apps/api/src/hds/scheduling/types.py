@@ -49,6 +49,11 @@ class Entry:
     ``kind`` is ``blocked``, ``open``, ``close`` or ``absence``. It covers the local dates from
     ``starts_on`` to ``ends_on`` inclusive, limited to one shift type and one weekday (0 Sunday to 6
     Saturday) when those are set.
+
+    ``reason`` is ``None`` for an entry the employee made. ``not_submitted`` marks the block that
+    stands for an availability window whose deadline passed without a submission: the employee
+    counts as unavailable for every date of it (007 FR-014), and a manual assignment there warns
+    ``warnings.not_submitted`` instead of ``warnings.blocked``.
     """
 
     employee_id: uuid.UUID
@@ -57,6 +62,7 @@ class Entry:
     ends_on: date
     shift_type_id: uuid.UUID | None
     weekday: int | None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)

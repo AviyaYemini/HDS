@@ -379,6 +379,44 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/sites/{w.theirs.site.id}", json={"name": "Renamed"}),
         ),
     ],
+    # 007 group C: a submission names a window, and an Admin's names an employee too.
+    "GET /me/availability-submissions": [
+        Case(
+            "foreign window id",
+            lambda w: req(
+                "/me/availability-submissions",
+                params={"window_id": str(w.theirs.window.id)},  # type: ignore[union-attr]
+            ),
+        ),
+    ],
+    "POST /me/availability-submissions": [
+        Case(
+            "foreign window id",
+            lambda w: req(
+                "/me/availability-submissions",
+                json={"window_id": str(w.theirs.window.id)},  # type: ignore[union-attr]
+            ),
+        ),
+    ],
+    "POST /api/v1/employees/{id}/availability-submissions": [
+        Case(
+            "foreign employee id",
+            lambda w: req(
+                f"/api/v1/employees/{w.theirs.user.id}/availability-submissions",
+                json={"window_id": str(w.theirs.window.id)},  # type: ignore[union-attr]
+            ),
+        ),
+        Case(
+            "own employee, foreign window id",
+            lambda w: req(
+                f"/api/v1/employees/{w.mine.user.id}/availability-submissions",
+                json={"window_id": str(w.theirs.window.id)},  # type: ignore[union-attr]
+            ),
+        ),
+    ],
+    "GET /me/shifts/{id}": [
+        Case("foreign shift id", lambda w: req(f"/me/shifts/{w.theirs.shift.id}")),  # type: ignore[union-attr]
+    ],
     "PATCH /api/v1/availability-windows/{id}": [
         Case(
             "foreign window id",
@@ -821,6 +859,7 @@ ADMIN_ONLY = {
     "DELETE /api/v1/employees/{id}": "users.admin_required",
     "DELETE /api/v1/clients/{id}": "users.admin_required",
     "DELETE /api/v1/projects/{id}": "users.admin_required",
+    "POST /api/v1/employees/{id}/availability-submissions": "users.admin_required",
 }
 
 # The two project reads that a Client user (the customer's portal account) may use for the
@@ -842,6 +881,10 @@ EMPLOYEE_OPEN = {
     "POST /api/v1/employees/{id}/constraints",
     "PATCH /api/v1/constraints/{id}",
     "DELETE /api/v1/constraints/{id}",
+    # 007: one's own submission and one's own shift.
+    "GET /me/availability-submissions",
+    "POST /me/availability-submissions",
+    "GET /me/shifts/{id}",
 }
 
 

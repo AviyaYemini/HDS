@@ -197,7 +197,15 @@ def test_price_agrees_with_the_minute_by_minute_reading(
     assert all(p.rate_pct >= 100 for p in line.parts)
     if rate is None:
         assert line.pay is None and line.rate_missing
+        assert all(p.pay is None for p in line.parts)
     else:
         exact = sum(Decimal(m) * r for r, m in expected.items()) * rate / Decimal(6000)
         assert line.pay == exact.quantize(CENT, rounding=ROUND_HALF_UP)
         assert not line.rate_missing
+        # Each rate's share is to the agora, within one of its exact amount, and the shares add
+        # up to the line exactly, so a breakdown never needs pay arithmetic of its own (PR 3).
+        assert sum(p.pay for p in line.parts if p.pay is not None) == line.pay
+        for part in line.parts:
+            assert part.pay is not None and part.pay == part.pay.quantize(CENT)
+            share = Decimal(part.seconds // 60) * part.rate_pct * rate / Decimal(6000)
+            assert abs(part.pay - share) < CENT

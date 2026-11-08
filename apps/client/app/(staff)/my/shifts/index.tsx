@@ -1,12 +1,6 @@
-/** My shifts; today's screen until group C rebuilds it. */
-import { RequireCapability } from "../../../../src/capabilities";
-import { MyShiftsScreen } from "../../../../src/screens/MyShiftsScreen";
-import { NoAccessScreen } from "../../../../src/screens/no-access/NoAccessScreen";
+/** My shifts (specs/007-ux-redesign FR-021, FR-022): upcoming by week, past by pay period. */
+import { MyShiftsScreen } from "../../../../src/screens/my-work/shifts/MyShiftsScreen";
 
 export default function Route() {
-  return (
-    <RequireCapability need="my_work.read" denied={<NoAccessScreen />}>
-      <MyShiftsScreen />
-    </RequireCapability>
-  );
+  return <MyShiftsScreen />;
 }

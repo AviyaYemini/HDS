@@ -18,7 +18,7 @@ later": a time the clocks skip (spring forward) starts at the jump, and a time t
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, localcontext
 from itertools import pairwise
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -36,10 +36,15 @@ _WEEK = timedelta(days=7)
 
 @dataclass(frozen=True)
 class PayPart:
-    """Time of the shift paid at one rate, in percent of the base rate."""
+    """Time of the shift paid at one rate, in percent of the base rate.
+
+    ``pay`` is the part's share of the line's pay, to the agora: the parts of a line add up to its
+    pay exactly (see :func:`split_pay`). ``None`` when the line has no pay.
+    """
 
     rate_pct: Decimal
     microseconds: int
+    pay: Decimal | None = None
 
     @property
     def seconds(self) -> int:
@@ -158,12 +163,47 @@ def price(
     if base_rate is not None:
         with localcontext() as ctx:
             ctx.prec = 60
+            # The line's pay is one division of the weighted sum, as in 005, so it is unchanged
+            # by construction; the parts' own amounts only decide how it is split.
             weighted = sum((Decimal(p.microseconds) * p.rate_pct for p in parts), Decimal(0))
             exact = weighted * base_rate / (MICROS_PER_HOUR * HUNDRED)
             pay = exact.quantize(CENT, rounding=ROUND_HALF_UP)
+            exacts = [
+                Decimal(p.microseconds) * p.rate_pct * base_rate / (MICROS_PER_HOUR * HUNDRED)
+                for p in parts
+            ]
+            shares = split_pay(exacts, pay)
+        parts = tuple(
+            PayPart(p.rate_pct, p.microseconds, share)
+            for p, share in zip(parts, shares, strict=True)
+        )
     return PayLine(
         microseconds=sum(p.microseconds for p in parts), parts=parts, pay=pay, night=night
     )
+
+
+def split_pay(exacts: list[Decimal], pay: Decimal) -> list[Decimal]:
+    """Each part's share of ``pay``, to the agora, adding up to ``pay`` exactly (FR-014, FR-024).
+
+    ``pay`` is the line's pay: the exact sum of ``exacts`` rounded half up to the agora, once, as
+    before. Each part is cut down to the agora and the agorot left over go, one each, to the parts
+    that lost the most, the first of them on a tie (largest remainder). So no part moves by more
+    than an agora from its exact amount, and the rows a screen or an export shows always add up to
+    the line, with no pay arithmetic of its own.
+
+    Args:
+        exacts: Each part's exact pay, not rounded, in the parts' order.
+        pay: The line's pay.
+
+    Returns:
+        The parts' shares, in the same order.
+    """
+    floors = [e.quantize(CENT, rounding=ROUND_DOWN) for e in exacts]
+    left = int((pay - sum(floors, Decimal(0))) / CENT)
+    order = sorted(range(len(exacts)), key=lambda i: floors[i] - exacts[i])
+    for i in order[: max(left, 0)]:
+        floors[i] += CENT
+    return floors
 
 
 def _days(first: date, last: date) -> list[date]:

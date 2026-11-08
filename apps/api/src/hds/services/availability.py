@@ -15,7 +15,7 @@ shift on the same date (FR-104).
 import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hds.core.authz import MANAGER_ROLES, STAFF_ROLES, ensure_role
 from hds.core.exceptions import (
@@ -32,6 +32,9 @@ from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling.rules import sunday_index
+
+if TYPE_CHECKING:
+    from hds.services.availability_submission import AvailabilitySubmissionService
 
 _ENTRY_FIELDS = ("kind", "absence_kind", "starts_on", "ends_on", "shift_type_id", "weekday")
 
@@ -83,6 +86,7 @@ class AvailabilityService:
         user_repo: UserRepository,
         shift_type_repo: ShiftTypeRepository,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        submissions: "AvailabilitySubmissionService | None" = None,
     ) -> None:
         """Wire the service to its repositories.
 
@@ -92,12 +96,15 @@ class AvailabilityService:
             user_repo: Employees, for the target of an entry and its row lock.
             shift_type_repo: Shift types an entry may be limited to.
             now: The current UTC time; a window is open while it is before the deadline.
+            submissions: When given, an Admin's change inside a closed window refreshes the
+                employee's submitted snapshot, so scheduling sees it (007 FR-014, FR-107).
         """
         self._windows = window_repo
         self._entries = entry_repo
         self._users = user_repo
         self._shift_types = shift_type_repo
         self._now = now
+        self._submissions = submissions
 
     # ---------------------------------------------------------------- windows
 
@@ -231,7 +238,9 @@ class AvailabilityService:
         await self._users.lock_user(user_id)
         await self._require_window(actor, entry)
         await self._refuse_clash(actor, user_id, entry)
-        return await self._entries.create(actor.organization_id, {**entry, "user_id": user_id})
+        created = await self._entries.create(actor.organization_id, {**entry, "user_id": user_id})
+        await self._after_admin_change(actor, user_id, None, entry)
+        return created
 
     async def _entry(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
         ensure_role(actor, *STAFF_ROLES)
@@ -260,7 +269,9 @@ class AvailabilityService:
         await self._require_window(actor, old)
         await self._require_window(actor, new)
         await self._refuse_clash(actor, existing.user_id, new, exclude=id)
-        return await self._entries.update(id, actor.organization_id, **data)
+        updated = await self._entries.update(id, actor.organization_id, **data)
+        await self._after_admin_change(actor, existing.user_id, old, new)
+        return updated
 
     async def remove_entry(self, actor: User, id: uuid.UUID) -> None:
         """Remove an entry; the window rule applies to its dates.
@@ -272,10 +283,25 @@ class AvailabilityService:
         await self._target(actor, existing.user_id, write=True)
         await self._users.lock_user(existing.user_id)
         existing = await self._fresh(actor, id)
-        await self._require_window(
-            actor, {field: getattr(existing, field) for field in _ENTRY_FIELDS}
-        )
+        removed = {field: getattr(existing, field) for field in _ENTRY_FIELDS}
+        await self._require_window(actor, removed)
         await self._entries.delete(id, actor.organization_id)
+        await self._after_admin_change(actor, existing.user_id, removed, None)
+
+    async def _after_admin_change(
+        self,
+        actor: User,
+        user_id: uuid.UUID,
+        removed: dict[str, Any] | None,
+        added: dict[str, Any] | None,
+    ) -> None:
+        """Apply an Admin's change to the employee's submitted snapshots (007 review).
+
+        An employee's own edits wait until they submit again; an Admin's hand edit counts at once.
+        """
+        if self._submissions is None or actor.role != UserRole.admin:
+            return
+        await self._submissions.apply_admin_edit(actor, user_id, removed, added)
 
     async def _fresh(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
         """Re-read an entry after its employee's row lock, or 404 if it went in the meantime."""

@@ -49,6 +49,11 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("POST", "/auth/logout-others"): ANY,
     ("GET", "/api/v1/organisation/contact"): ANY,
     ("PATCH", "/api/v1/organisation/contact"): ADMIN,
+    # availability submissions and one's own shift (007 FR-013 to FR-024)
+    ("GET", "/me/availability-submissions"): STAFF,
+    ("POST", "/me/availability-submissions"): STAFF,
+    ("POST", "/api/v1/employees/{id}/availability-submissions"): ADMIN,
+    ("GET", "/me/shifts/{id}"): STAFF,
     # employees (FR-008, FR-009, FR-016)
     ("GET", "/api/v1/employees"): MGR,
     ("POST", "/api/v1/employees"): MGR,

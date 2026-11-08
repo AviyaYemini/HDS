@@ -9,7 +9,7 @@ import { I18nManager, StyleSheet } from "react-native";
 
 import { applyDirection, i18n, isRtlLanguage, pickLanguage, setupI18n } from "../../src/i18n";
 import { SignInScreen } from "../../src/screens/SignInScreen";
-import { MyShiftsScreen } from "../../src/screens/MyShiftsScreen";
+import { MyShiftsScreen } from "../../src/screens/my-work/shifts/MyShiftsScreen";
 import { FakeApi, json, renderWith, signedIn } from "./fakeApi";
 import { Session } from "../../src/api/session";
 import { memoryStore } from "../../src/api/tokens";
@@ -69,8 +69,9 @@ test("the shifts screen shows only translated text around the API's data", async
     await i18n.changeLanguage("cimode");
   });
   await renderWith(session, <MyShiftsScreen />);
-  await screen.findByText("shifts.empty");
-  expect(texts().filter((text) => !(text in en))).toEqual([]);
+  await screen.findByText("shifts.none_upcoming_title");
+  // The page title's eyebrow joins keys with a separator; each part must still be a key.
+  expect(texts().filter((text) => !text.split(" / ").every((part) => part in en))).toEqual([]);
 });
 
 function styleKeys(): string[] {

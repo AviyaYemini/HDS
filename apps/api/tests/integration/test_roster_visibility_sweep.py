@@ -35,6 +35,7 @@ PART2_READS = {
     "GET /api/v1/projects/{id}/shift-types",
     "GET /api/v1/shifts",
     "GET /me/shifts",
+    "GET /me/shifts/{id}",
     "GET /api/v1/projects/{id}/requirements",
     "GET /api/v1/organisation/scheduling",
     "GET /api/v1/schedule-jobs",
@@ -114,6 +115,8 @@ def paths(w: dict[str, Any], me: Any) -> dict[str, str]:
         ),
         "GET /api/v1/shifts": "/api/v1/shifts",
         "GET /me/shifts": "/me/shifts",
+        # The manager's own shift, which Ann is not on: no more hers than another organisation's.
+        "GET /me/shifts/{id}": f"/me/shifts/{w['theirs']}",
         "GET /api/v1/projects/{id}/requirements": (
             f"/api/v1/projects/{w['project']['id']}/requirements"
         ),
@@ -131,6 +134,7 @@ EMPLOYEE = {
     "GET /api/v1/projects/{id}/shift-types": 403,
     "GET /api/v1/shifts": 403,
     "GET /me/shifts": 200,
+    "GET /me/shifts/{id}": 404,
     "GET /api/v1/projects/{id}/requirements": 403,
     "GET /api/v1/organisation/scheduling": 403,
     "GET /api/v1/schedule-jobs": 403,

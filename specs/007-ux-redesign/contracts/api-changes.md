@@ -23,10 +23,11 @@ Schemathesis.
 | Method and path | Change | Who | Notes |
 | --- | --- | --- | --- |
 | `GET /me/availability-submissions?window_id=` | new: status (`not_submitted`, `draft`, `submitted`, `locked`), `submitted_at`, `deadline`, `counted_unavailable` | staff (self) | status derived (data-model 026) |
-| `POST /me/availability-submissions` | new: `{window_id}` submits the caller's entries for the window | staff (self) | 409 `availability.window_locked` after the deadline |
-| `POST/PATCH/DELETE` constraint endpoints | after a window's deadline, blocked/open/close in it → 409 `availability.window_locked` | staff, admin | absences unaffected |
-| `GET /me/shifts` | adds `from`/`to` going back in time (Past) and each shift's effective `starts_at`/`ends_at` for the caller | staff | Past by pay period |
-| `GET /me/shifts/{id}` | new: one published shift's details (site address, post instructions where present, shift leader contact) | staff (self, assigned) | E11 |
+| `POST /me/availability-submissions` | new: `{window_id}` submits the caller's entries for the window | staff (self) | 409 `availability.window_closed` after the deadline (the code 003 already uses) |
+| `POST/PATCH/DELETE` constraint endpoints | unchanged: after a deadline employees already get 409 `availability.window_closed` (003); an Admin's change inside a closed window refreshes that employee's existing snapshot, and creates none | staff, admin | absences unaffected |
+| `POST /api/v1/employees/{id}/availability-submissions` | new: `{window_id}`; an Admin submits the employee's current entries on their behalf, at any time; `submitted_by` records the Admin | admin | the explicit way to count someone who missed the deadline; a hand edit alone never creates a submission |
+| `GET /me/shifts` | unchanged in C: `from`/`to` already reach back in time for Past; group D makes `starts_at`/`ends_at` the caller's own times | staff | Past by pay period |
+| `GET /me/shifts/{id}` | new: one published shift with the site's address and the project's managers as contacts (standing in for a shift leader) | staff (self, assigned) | E11; 404 for a draft or someone else's |
 
 ## Group D
 
@@ -45,7 +46,7 @@ Schemathesis.
 | `GET/POST/DELETE /projects/{id}/week-templates`, `POST /projects/{id}/week-templates/{tid}/apply` | new | `roster.edit:project` | apply takes `{week, on_conflict, dry_run}` |
 | `POST /projects/{id}/roster/bulk` | new: one change set over a stated scope, with `dry_run` | `roster.edit:project` | S15 |
 | `GET /availability-windows/{id}/submissions` | new: per employee status and `submitted_at`; after the deadline `counted_unavailable` | manager, admin | S21 |
-| rule checks | new warning code `availability.not_submitted` | — | from `validate` |
+| rule checks | new warning code `warnings.not_submitted` (the `warnings.*` family) | — | from `validate` |
 
 ## Group E
 
@@ -64,5 +65,5 @@ Schemathesis.
 ## Error codes added
 
 `assignment.times_out_of_range`, `shift.pay_rate_admin_only`, `roster.changed`,
-`availability.window_locked`, `override.warning_not_found`; warning `availability.not_submitted`.
+`organisation.opening_hours_invalid`, `override.warning_not_found`; warning `warnings.not_submitted`.
 Each has an `en` and `he` locale key in the client and the API's locales.

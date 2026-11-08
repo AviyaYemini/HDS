@@ -1,12 +1,6 @@
-/** My pay; today's screen until group C rebuilds it. */
-import { RequireCapability } from "../../../src/capabilities";
-import { MyPayScreen } from "../../../src/screens/MyPayScreen";
-import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
+/** My pay (specs/007-ux-redesign FR-024): the period's hours and estimated pay. */
+import { MyPayScreen } from "../../../src/screens/my-work/pay/MyPayScreen";
 
 export default function Route() {
-  return (
-    <RequireCapability need="my_work.read" denied={<NoAccessScreen />}>
-      <MyPayScreen />
-    </RequireCapability>
-  );
+  return <MyPayScreen />;
 }
