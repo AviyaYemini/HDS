@@ -283,3 +283,37 @@ async def test_flags_and_counts_take_their_own_type_only(
         await async_client.get(SHIFTS, params={"project_id": project["id"]}, headers=admin)
     ).json()["items"]
     assert [(s["status"], s["headcount"]) for s in shifts] == [("draft", 1)]
+
+
+async def test_weeks_at_the_ends_of_the_calendar_are_refused_not_a_crash(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R112: a week at either end of the calendar is a 422, never a 500.
+
+    Asking whether 0001-01-01 starts a week stepped back past the first date, and a week starting on
+    the last Sunday ran past the last one (pull request 18's contract suite).
+    """
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin)
+    base = f"/api/v1/projects/{project['id']}"
+    template = await async_client.post(
+        base + "/week-templates",
+        json={"name": "Plain week", "week": FIRST.isoformat()},
+        headers=admin,
+    )
+    assert template.status_code == 201, template.text
+    apply = f"{base}/week-templates/{template.json()['id']}/apply"
+    last_sunday = date.max - timedelta(days=(date.max.weekday() + 1) % 7)
+    for week, code in [
+        (date.min, "roster.week_not_sunday"),
+        (last_sunday, "shifts.date_range_invalid"),
+    ]:
+        for path, body in [
+            (base + "/week-templates", {"name": f"Edge {week}", "week": week.isoformat()}),
+            (apply, {"week": week.isoformat(), "dry_run": True}),
+            (base + "/copy-week", {"from_week": week.isoformat(), "to_week": FIRST.isoformat()}),
+            (base + "/copy-week", {"from_week": FIRST.isoformat(), "to_week": week.isoformat()}),
+        ]:
+            answer = await async_client.post(path, json=body, headers=admin)
+            assert answer.status_code == 422, (path, body, answer.text)
+            assert answer.json()["code"] == code, (path, body, answer.text)
