@@ -38,6 +38,7 @@ const review = (version: number, people: string[]) => ({
       people: people.map((p) => ({ user_id: p, by: "solver", locked: false, override: null })),
       places: Math.max(0, 1 - people.length),
       marks: people.map((p) => ({ mark: "added", user_id: p, replaces: null, accepted: false })),
+      part_accepted: false,
     },
   ],
   unfilled: [],

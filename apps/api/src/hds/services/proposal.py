@@ -164,11 +164,7 @@ class ProposalService:
         """
         job = await self._jobs.open_for(actor, id)
         check_version(job, if_match)
-        events = await self._events.for_job(job.organization_id, job.id)
-        undone = {e.body.get("edit") for e in events if e.kind == "undone"}
-        last = next(
-            (e for e in reversed(events) if e.kind == "edited" and str(e.id) not in undone), None
-        )
+        last = await self._events.last_edit_not_undone(job.organization_id, job.id)
         if last is None:
             raise ConflictError(code="schedule.nothing_to_undo", detail="There is no edit to undo.")
         work = proposal_copy.of(job.current, job.result)
@@ -195,7 +191,8 @@ class ProposalService:
             NotFoundError: Someone not a staff member of the organisation.
         """
         users = await self._users.get_many(ids, org_id) if ids else []
-        found = {u.id: u for u in users if u.role in STAFF}
+        # A deleted account is not staff any more, whatever its active flag says (R3).
+        found = {u.id: u for u in users if u.role in STAFF and not u.is_deleted}
         for person in ids:
             if person not in found:
                 raise NotFoundError(resource="User", id=person)
@@ -212,12 +209,14 @@ class ProposalService:
         org = await self._orgs.get_by_id(job.organization_id)
         if org is None:
             raise NotFoundError(resource="Organisation", id=job.organization_id)
+        # Today's limits, as accepting judges them, so an edit and its accept never disagree (R6);
+        # and the people placed, candidates or not, with all their shifts and entries (R4).
         built = await self._inputs.build(
             job.organization_id,
             job.first_day,
             job.last_day,
             [uuid.UUID(p) for p in job.project_ids],
-            limits=job.settings,
+            also=set(known),
         )
         ours = proposal_copy.shifts(work, org.timezone)
         extra = proposal_copy.unlisted(built.problem, work, {s.id for s in ours})
@@ -366,6 +365,8 @@ def view(work: Mapping[str, Any]) -> dict[str, Any]:
                 **{k: slot[k] for k in slot if k not in ("run_before", "stored")},
                 "places": empty,
                 "marks": proposal_copy.marks(slot),
+                # A part of it is on the roster now: edit it there, not here (R8).
+                "part_accepted": set(slot["stored"]) != set(slot["run_before"]),
             }
         )
     return {

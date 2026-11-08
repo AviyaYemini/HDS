@@ -71,9 +71,9 @@ export function partOfPairs(pairs: readonly Pair[]): AcceptPart {
   return { assignments: pairs.map((p) => ({ key: p.key, user_id: p.userId })) };
 }
 
-/** Whether a slot has a part accepted (its pairs differ from the run's, and agree with the roster). */
+/** Whether a slot has a part accepted: then it is a draft, edited on the roster (the server says). */
 export function partAccepted(slot: ReviewSlot): boolean {
-  return slot.marks.some((m) => m.mark !== "unchanged" && m.accepted);
+  return slot.part_accepted;
 }
 
 /** People on the slot now, in the order the proposal lists them. */

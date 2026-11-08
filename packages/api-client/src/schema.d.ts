@@ -3671,6 +3671,8 @@ export interface components {
             key: string;
             /** Marks */
             marks: components["schemas"]["Mark"][];
+            /** Part Accepted */
+            part_accepted: boolean;
             /** People */
             people: components["schemas"]["Placed"][];
             /** Places */

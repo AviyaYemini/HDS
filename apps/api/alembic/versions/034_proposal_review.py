@@ -113,7 +113,7 @@ def upgrade() -> None:
             name="ck_schedule_job_events_kind",
         ),
     )
-    op.create_index("idx_schedule_job_events_job_at", "schedule_job_events", ["job_id", "at"])
+    op.create_index("idx_schedule_job_events_job_seq", "schedule_job_events", ["job_id", "seq"])
     if op.get_bind().dialect.name == "postgresql":
         op.execute(_APPEND_ONLY)
         op.execute(
@@ -128,7 +128,7 @@ def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         op.execute("DROP TRIGGER schedule_job_events_append_only ON schedule_job_events")
         op.execute("DROP FUNCTION schedule_job_events_append_only()")
-    op.drop_index("idx_schedule_job_events_job_at", table_name="schedule_job_events")
+    op.drop_index("idx_schedule_job_events_job_seq", table_name="schedule_job_events")
     op.drop_table("schedule_job_events")
 
     with op.batch_alter_table("assignments") as batch:

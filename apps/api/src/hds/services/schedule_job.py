@@ -38,7 +38,7 @@ from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
-from hds.scheduling import Result, generate, validate
+from hds.scheduling import Employee, Result, generate, validate
 from hds.services import proposal_copy
 from hds.services.schedule_inputs import Built, ScheduleInputService, surroundings
 
@@ -443,13 +443,18 @@ class ScheduleJobService:
         await self._users.lock_staff(org_id)
         built = await self._inputs.build(org_id, job.first_day, job.last_day, run_ids)
         if built.fingerprint != job.fingerprint:
-            if job.version == 0 and not proposal_copy.any_accepted(work) and not part:
+            named = any(part.get(k) for k in ("days", "project_ids", "assignments"))
+            if job.version == 0 and not proposal_copy.any_accepted(work) and not named:
                 # The whole of an untouched proposal, as before 008: any change refuses it.
                 raise ConflictError(
                     code="schedule.proposal_out_of_date",
                     detail="Something the proposal was made from has changed; generate it again.",
                 )
-            await self._check_part(org.timezone, built, work, chosen)
+            placed = await self._people(org_id, {p for who in chosen.values() for p in who})
+            judged = await self._inputs.build(
+                org_id, job.first_day, job.last_day, run_ids, also=set(placed)
+            )
+            await self._check_part(org.timezone, judged, work, chosen, placed)
 
         counts: dict[str, Any] = dict.fromkeys(
             ("shifts_created", "shifts_updated", "assignments_added", "assignments_removed"), 0
@@ -488,7 +493,8 @@ class ScheduleJobService:
                         "ends_at": known.ends_at
                         if known
                         else datetime.fromisoformat(slot["ends_at"]),
-                        "headcount": slot["headcount"],
+                        # Today's need: the part check refuses one whose headcount changed (R5).
+                        "headcount": known.headcount if known else slot["headcount"],
                     }
                 )
                 slot["shift_id"] = str(shift_id)
@@ -539,12 +545,18 @@ class ScheduleJobService:
         )
         return {**counts, "version": job.version, "state": state}
 
+    async def _people(self, org_id: uuid.UUID, ids: set[str]) -> dict[uuid.UUID, Employee]:
+        """The people a part places, as the rules see them: deleted or inactive is inactive (R2)."""
+        users = await self._users.get_many({uuid.UUID(p) for p in ids}, org_id) if ids else []
+        return {u.id: Employee(u.id, u.is_active and not u.is_deleted) for u in users}
+
     async def _check_part(
         self,
         zone: str,
         built: Built,
         work: Mapping[str, Any],
         chosen: Mapping[str, set[str]],
+        known: Mapping[uuid.UUID, Employee],
     ) -> None:
         """Refuse a part whose drafts changed, or that breaks a rule not overridden (research P9).
 
@@ -557,8 +569,10 @@ class ScheduleJobService:
             if slot["key"] not in chosen:
                 continue
             if slot["shift_id"] is None:
-                # A new slot: its need must still be one, with no draft made in its place.
-                if slot["key"] not in rebuilt:
+                # A new slot: its need must still be one, of the same headcount, with no draft
+                # made in its place (R5).
+                need = rebuilt.get(slot["key"])
+                if need is None or need.headcount != slot["headcount"]:
                     causes.append({"key": slot["key"], "date": slot["date"], "cause": "changed"})
                 continue
             key = f"draft:{slot['shift_id']}"
@@ -570,7 +584,7 @@ class ScheduleJobService:
             if on_now != {*slot["stored"], *slot.get("kept", [])}:
                 causes.append({"key": slot["key"], "date": slot["date"], "cause": "changed"})
         if not causes:
-            for warning in self._part_breaks(zone, built, work, chosen):
+            for warning in self._part_breaks(zone, built, work, chosen, known):
                 causes.append(warning)
         if causes:
             raise ConflictError(
@@ -585,6 +599,7 @@ class ScheduleJobService:
         built: Built,
         work: Mapping[str, Any],
         chosen: Mapping[str, set[str]],
+        known: Mapping[uuid.UUID, Employee],
     ) -> list[dict[str, Any]]:
         """The rules the part would break on today's roster that the copy does not override."""
         layout: dict[str, list[str]] = {}
@@ -602,7 +617,7 @@ class ScheduleJobService:
             shifts=[*built.problem.fixed, *extra, *shifts],
             entries=built.problem.entries,
             employees=proposal_copy.everyone(
-                built.problem, [*built.problem.fixed, *extra, *shifts]
+                built.problem, [*built.problem.fixed, *extra, *shifts], known
             ),
             settings=built.problem.settings,
         )

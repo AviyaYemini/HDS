@@ -322,6 +322,8 @@ async def test_a_shift_with_its_part_accepted_is_edited_on_the_roster(
     )
 
     assert answer.status_code == 409 and answer.json()["code"] == "schedule.part_accepted"
+    shown = slot_on((await review(async_client, admin, job)).json(), SUNDAY)
+    assert shown["part_accepted"] is True  # the client reads this, never guesses it (R8)
 
 
 async def test_an_edit_that_does_not_fit_the_proposal_is_refused(
@@ -472,3 +474,111 @@ async def test_an_edit_checks_the_persons_shifts_in_projects_outside_the_run(
 
     assert answer.status_code == 422, answer.text
     assert "warnings.overlap" in [e["code"] for e in answer.json()["errors"]]
+
+
+async def test_an_empty_body_is_the_whole_proposal_and_still_refused_out_of_date(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R1: ``{}`` names nothing, as no body does, so an untouched stale proposal is refused."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    await async_client.post(
+        constraints(seed_users["employee"].id),
+        json=body("absence", SUNDAY + timedelta(days=2), absence_kind="sick"),
+        headers=admin,
+    )
+
+    answer = await async_client.post(f"{JOBS}/{job['id']}/accept", json={}, headers=admin)
+
+    assert answer.status_code == 409 and answer.json()["code"] == "schedule.proposal_out_of_date"
+
+
+async def test_someone_deactivated_since_the_run_never_reaches_the_roster(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R2: a part placing a person deactivated since is refused, naming why."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    await async_client.post(
+        f"/api/v1/employees/{seed_users['employee'].id}/deactivate", headers=admin
+    )
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/accept", json={"days": [SUNDAY.isoformat()]}, headers=admin
+    )
+
+    assert answer.status_code == 409, answer.text
+    assert "warnings.employee_inactive" in [e.get("code") for e in answer.json()["errors"]]
+    assert await roster_count(test_db) == 0
+
+
+async def test_a_deleted_account_cannot_be_placed(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R3: a soft-deleted employee is not staff any more."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    dana = await employee(async_client, admin, "Dana Levi")
+    assert (
+        await async_client.delete(f"/api/v1/employees/{dana}", headers=admin)
+    ).status_code == 204
+    key = (await review(async_client, admin, job)).json()["slots"][0]["key"]
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "assign", "key": key, "user_id": dana, "override_reason": "anyway"},
+        headers=admin,
+    )
+
+    assert answer.status_code == 404, answer.text
+
+
+async def test_a_manager_placed_by_hand_is_judged_by_all_their_shifts(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R4: a Manager with no open entry is no candidate, yet their other shifts still count."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    other = await add_project(async_client, admin, "Elsewhere")
+    made = (await add_shift(async_client, admin, other, WEDNESDAY))["shift"]
+    manager = str(seed_users["manager"].id)
+    assert (await assign(async_client, admin, made["id"], manager)).status_code == 201
+    key = slot_on((await review(async_client, admin, job)).json(), WEDNESDAY)["key"]
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "assign", "key": key, "user_id": manager},
+        headers=admin,
+    )
+
+    assert answer.status_code == 422, answer.text
+    assert "warnings.overlap" in [e["code"] for e in answer.json()["errors"]]
+
+
+async def test_a_need_whose_headcount_changed_is_out_of_date(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R5: the run's headcount is never written over a need changed since."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    items = [
+        {"shift_type_id": project["types"]["morning"], "weekday": d, "headcount": 2}
+        for d in range(7)
+    ]
+    changed = await async_client.put(
+        f"/api/v1/projects/{project['id']}/requirements", json={"items": items}, headers=admin
+    )
+    assert changed.status_code == 200, changed.text
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/accept", json={"days": [SUNDAY.isoformat()]}, headers=admin
+    )
+
+    assert answer.status_code == 409, answer.text
+    assert [e["cause"] for e in answer.json()["errors"]] == ["changed"]
+    assert await roster_count(test_db) == 0

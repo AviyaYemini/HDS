@@ -72,5 +72,5 @@ class ScheduleJobEvent(TimestampedBase):
             "kind IN (" + ", ".join(f"'{k}'" for k in EVENT_KINDS) + ")",
             name="ck_schedule_job_events_kind",
         ),
-        Index("idx_schedule_job_events_job_at", "job_id", "at"),
+        Index("idx_schedule_job_events_job_seq", "job_id", "seq"),
     )

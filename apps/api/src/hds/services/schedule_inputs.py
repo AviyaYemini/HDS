@@ -104,6 +104,7 @@ class ScheduleInputService:
         last: date,
         project_ids: Sequence[uuid.UUID],
         limits: Mapping[str, int] | None = None,
+        also: Collection[uuid.UUID] = (),
     ) -> Built:
         """The problem for ``first`` to ``last`` over ``project_ids`` (every active one if empty).
 
@@ -115,6 +116,11 @@ class ScheduleInputService:
             limits: ``min_rest_hours`` and ``max_weekly_hours`` to solve with, as recorded on a
                 job; the organisation's current ones when ``None`` (accepting compares with these,
                 so a change of limits makes a proposal out of date).
+            also: People who are not candidates but are being placed by hand (008: a Manager or
+                Admin without an open entry); their shifts in every project and their entries
+                are read too, so the rules judge them like anyone else. They never become
+                candidates, but the fingerprint then covers their shifts and entries too, so
+                compare a job's fingerprint only with a build made without them.
 
         Raises:
             LookupError: The organisation does not exist.
@@ -226,7 +232,7 @@ class ScheduleInputService:
                     if s.status == "draft" and s.id not in used_drafts:
                         draft_slot(s)
 
-        relevant = candidates | {p for s in slots for p in s.kept}
+        relevant = candidates | {p for s in slots for p in s.kept} | set(also)
         fixed = tuple(
             ShiftSlot(
                 id=s.id,
@@ -245,11 +251,11 @@ class ScheduleInputService:
         entry_first, entry_last = first_week - timedelta(days=1), last_week
         if self._availability is not None:
             loaded = await self._availability.scheduling_entries(
-                org_id, candidates, entry_first, entry_last
+                org_id, candidates | set(also), entry_first, entry_last
             )
         else:
             stored_entries = await self._entries.for_users(
-                org_id, candidates, entry_first, entry_last
+                org_id, candidates | set(also), entry_first, entry_last
             )
             loaded = [
                 Entry(

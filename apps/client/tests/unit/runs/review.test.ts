@@ -22,6 +22,7 @@ function slot(key: string, date: string, project: string, marks: ReviewSlot["mar
     people: marks.filter((m) => m.mark !== "removed").map((m) => ({ user_id: m.user_id, by: "solver", locked: false, override: null })),
     places: 0,
     marks,
+    part_accepted: marks.some((m) => m.mark !== "unchanged" && m.accepted),
   };
 }
 

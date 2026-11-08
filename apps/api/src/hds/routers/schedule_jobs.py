@@ -13,12 +13,13 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from hds.core.config import get_settings
+from hds.core.deps import ProposalIfMatch as IfMatch
+from hds.core.deps import proposal_version as version_of
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
 from hds.core.types import StrictDate, text
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
-from hds.routers.proposals import version_of
 from hds.services.idempotency import IdempotencyService
 from hds.services.schedule_job import ScheduleJobService
 from hds.wiring import idempotency, schedule_jobs
@@ -340,17 +341,6 @@ class AcceptRequest(BaseModel):
     assignments: list[PartPair] = Field(default_factory=list, max_length=2000)
 
     model_config = ConfigDict(extra="forbid")
-
-
-IfMatch = Header(
-    default=None,
-    alias="If-Match",
-    max_length=16,
-    description=(
-        "The proposal's `version` as read; a stale one is refused with 412 "
-        "(`schedule.version_stale`)."
-    ),
-)
 
 
 @router.post(

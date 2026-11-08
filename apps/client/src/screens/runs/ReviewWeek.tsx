@@ -143,11 +143,20 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const send = async (edit: Edit) => {
     setBusy("edit");
     setProblem(null);
-    const outcome = await session.api.POST("/api/v1/schedule-jobs/{id}/edits", {
-      params: { path: { id: job.id }, header: { "If-Match": version } },
-      body: edit,
-    });
-    setBusy(null);
+    let outcome;
+    try {
+      outcome = await session.api.POST("/api/v1/schedule-jobs/{id}/edits", {
+        params: { path: { id: job.id }, header: { "If-Match": version } },
+        body: edit,
+      });
+    } catch {
+      // No answer at all (the network): say so, and leave every button usable (R7).
+      closePanels();
+      setProblem("errors.network");
+      return;
+    } finally {
+      setBusy(null);
+    }
     if (outcome.response.ok && outcome.data) {
       setReview(outcome.data.proposal);
       closePanels();

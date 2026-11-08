@@ -76,6 +76,27 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
         result = await self.session.execute(query)
         return list(result.scalars())
 
+    async def last_edit_not_undone(
+        self, org_id: uuid.UUID, job_id: uuid.UUID
+    ) -> ScheduleJobEvent | None:
+        """The run's newest ``edited`` step that no ``undone`` step names, or ``None``.
+
+        Reads the ``undone`` steps (few), then only as many of the newest edits as can hold the
+        answer: one more than there are undos.
+        """
+        scope = (ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id)
+        undos = await self.session.execute(
+            select(ScheduleJobEvent.body).where(*scope, ScheduleJobEvent.kind == "undone")
+        )
+        undone = {body.get("edit") for (body,) in undos}
+        edits = await self.session.execute(
+            select(ScheduleJobEvent)
+            .where(*scope, ScheduleJobEvent.kind == "edited")
+            .order_by(ScheduleJobEvent.seq.desc())
+            .limit(len(undone) + 1)
+        )
+        return next((e for e in edits.scalars() if str(e.id) not in undone), None)
+
     async def count_for_job(self, org_id: uuid.UUID, job_id: uuid.UUID) -> int:
         """How many steps the run's record holds."""
         result = await self.session.execute(

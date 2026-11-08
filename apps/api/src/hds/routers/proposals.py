@@ -8,12 +8,13 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 
+from hds.core.deps import ProposalIfMatch as IfMatch
+from hds.core.deps import proposal_version as version_of
 from hds.core.deps import require_manager
-from hds.core.exceptions import PreconditionFailedError
 from hds.core.types import text
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
@@ -21,33 +22,6 @@ from hds.services.proposal import ProposalService
 from hds.wiring import proposals
 
 router = APIRouter(prefix="/api/v1", tags=["proposals"])
-
-IfMatch = Header(
-    default=None,
-    alias="If-Match",
-    max_length=16,
-    description=(
-        "The proposal's `version` as read; a stale one is refused with 412 "
-        "(`schedule.version_stale`)."
-    ),
-)
-
-
-def version_of(header: str | None) -> int | None:
-    """The version an ``If-Match`` names; one that is not a version is stale by definition.
-
-    Raises:
-        PreconditionFailedError: ``schedule.version_stale`` for a value that is not a version.
-    """
-    if header is None:
-        return None
-    value = header.strip().strip('"')
-    if not value.isdigit():
-        raise PreconditionFailedError(
-            code="schedule.version_stale",
-            detail="The proposal changed since you read it; read it again.",
-        )
-    return int(value)
 
 
 class Override(BaseModel):
@@ -90,6 +64,7 @@ class ReviewSlot(BaseModel):
     people: list[Placed]
     places: int
     marks: list[Mark]
+    part_accepted: bool
 
 
 class Counts(BaseModel):
