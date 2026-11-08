@@ -32,7 +32,7 @@ test("the work log asks for the whole company this pay period, up to today, and 
   // data-value is web only, checked by g-reports.
   expect(screen.getByTestId("figure-hours")).toHaveTextContent(/41\.50/);
   expect(screen.getByTestId("figure-people")).toHaveTextContent(/People\s*3$/);
-  expect(screen.getByTestId("figure-shifts")).toHaveTextContent(/Shifts\s*5$/);
+  expect(screen.getByTestId("figure-shifts")).toHaveTextContent(/Person-shifts\s*5$/);
   await fireEvent.press(screen.getByTestId("report-bar"));
   expect(await screen.findByTestId("report-rows")).toBeTruthy();
   expect(screen.getAllByText(/Dana Levi/).length).toBeGreaterThan(0);

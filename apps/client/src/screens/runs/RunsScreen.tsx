@@ -74,7 +74,7 @@ interface Offered {
  * The projects a run may cover, for the reader (FR-081): a Manager's own active projects, an
  * Admin's every active one, as the API scopes a run (T108); and every project's name, for the rows.
  */
-function useRunProjects(): { offered: Offered[] | null; names: Map<string, string> } {
+function useRunProjects(): { offered: Offered[] | null; names: Map<string, string>; error: string | null; reload: () => Promise<void> } {
   const session = useSession();
   const capabilities = useCapabilities();
   const projects = useLoad(async () => (await call(session.api.GET("/api/v1/projects"))).items, []);
@@ -84,7 +84,7 @@ function useRunProjects(): { offered: Offered[] | null; names: Map<string, strin
         .filter((p) => p.status === "active" && capabilities.hasOnProject("roster.edit:project", p.id))
         .map((p) => ({ id: p.id, name: p.name, type: p.type }))
     : null;
-  return { offered, names: new Map(all.map((p) => [p.id, p.name])) };
+  return { offered, names: new Map(all.map((p) => [p.id, p.name])), error: projects.error, reload: projects.reload };
 }
 
 function GenerateForm({ onCancel, offered }: { onCancel: () => void; offered: Offered[] }) {
@@ -247,7 +247,10 @@ export function RunsScreen() {
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>
         {creating ? null : <Button variant="primary" icon="plus" label={t("runs.new")} onPress={() => setCreating(true)} testID="action-new-run" />}
       </PageTitle>
-      {!creating ? null : projects.offered === null ? (
+      {!creating ? null : projects.error ? (
+        // A failed read of the projects says so, with a way to try again (CodeRabbit, PR 20).
+        <InlineBanner tone="warning" title={errorText(projects.error)} action={{ label: t("common.retry"), onPress: () => void projects.reload() }} />
+      ) : projects.offered === null ? (
         <SkeletonRows rows={2} />
       ) : projects.offered.length === 0 ? (
         <EmptyState icon="briefcase" title={t("runs.no_projects_title")} body={t("runs.no_projects_body")} testID="run-no-projects" />

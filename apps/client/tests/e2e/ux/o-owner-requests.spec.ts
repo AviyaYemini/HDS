@@ -228,3 +228,14 @@ test.describe("runs for chosen projects", () => {
     await admin.dispose();
   });
 });
+
+// Unsaved changes ask before the language restart leaves the screen (FR-045; CodeRabbit, PR 20).
+test("switching the language with unsaved changes asks first", async ({ page }) => {
+  await openAs(page, "admin", "en", "/admin/clients", { open: "new" });
+  await page.getByTestId("field-name").fill("Half typed");
+  await page.getByTestId("action-switch-language").first().click();
+  await expect(page.getByTestId("confirm-leave")).toBeVisible();
+  await expect(page.getByTestId("language-switching")).toHaveCount(0);
+  await page.getByTestId("action-stay").click();
+  await expect(page.getByTestId("field-name")).toHaveValue("Half typed");
+});

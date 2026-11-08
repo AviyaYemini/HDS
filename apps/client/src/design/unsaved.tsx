@@ -49,6 +49,9 @@ export function useUnsavedChanges(isDirty: boolean): void {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined" || !isDirty) return undefined;
     const ask = (event: BeforeUnloadEvent) => {
+      // Already answered "leave anyway" in the app (a language restart reloads then): no second
+      // question from the browser (CodeRabbit, PR 20).
+      if (!hasUnsaved()) return;
       event.preventDefault();
       // Older browsers need a value; every browser shows its own words.
       event.returnValue = "";

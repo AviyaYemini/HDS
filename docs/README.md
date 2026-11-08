@@ -43,11 +43,6 @@
 | [016](adr/016-phone-sessions.md) | Phone sessions last 30 days and renew on use; the client declares its kind |
 | [017](adr/017-availability-submissions.md) | Availability is submitted as a snapshot, and a missed deadline counts as unavailable |
 | [018](adr/018-assignment-times.md) | Each assignment may carry its own times, and every rule reads the person's span |
-| [019](adr/019-web-sessions-per-tab.md) | The web keeps its session per tab |
-| [015](adr/015-capability-map.md) | One capability map serves the API's role checks and the client's navigation |
-| [016](adr/016-phone-sessions.md) | Phone sessions last 30 days and renew on use; the client declares its kind |
-| [017](adr/017-availability-submissions.md) | Availability is submitted as a snapshot, and a missed deadline counts as unavailable |
-| [018](adr/018-assignment-times.md) | Each assignment may carry its own times, and every rule reads the person's span |
 | [019](adr/019-web-sessions-per-tab.md) | The web keeps its session per tab (amends 010) |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.

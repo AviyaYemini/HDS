@@ -279,3 +279,14 @@ describe("the bulk-action bar (FR-043; the owner, PR 5)", () => {
     expect(api.calls("PATCH", "/api/v1/clients/c1")[0]!.body).toEqual({ is_active: false });
   });
 });
+
+test("a manager's edit of a person leaves the rate they cannot see out of the change", async () => {
+  const hidden = { ...PERSON, default_hourly_rate: null };
+  const { api, session } = await open(MANAGER, { open: "u1" });
+  api.on("GET", "/api/v1/employees", json(200, { items: [hidden] })).on("PATCH", "/api/v1/employees/u1", json(200, hidden));
+  await renderWith(session, <StaffScreen />);
+  await fireEvent.changeText(await screen.findByTestId("field-phone", {}, { timeout: 5000 }), "050-1234567");
+  await fireEvent.press(screen.getByTestId("action-save"));
+  await waitFor(() => expect(api.calls("PATCH", "/api/v1/employees/u1")).toHaveLength(1));
+  expect(api.calls("PATCH", "/api/v1/employees/u1")[0]!.body).not.toHaveProperty("default_hourly_rate");
+});

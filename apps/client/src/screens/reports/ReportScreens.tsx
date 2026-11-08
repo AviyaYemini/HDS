@@ -54,7 +54,8 @@ export function WorkLogScreen() {
   const figures: Figure[] = log.data
     ? [
         { key: "people", label: t("reports.figure.people"), shown: String(log.data.people), value: String(log.data.people) },
-        { key: "shifts", label: t("reports.figure.shifts"), shown: String(log.data.shifts), value: String(log.data.shifts) },
+        // Each person on each shift once, unlike the hours report's distinct shifts (CodeRabbit, PR 20).
+        { key: "shifts", label: t("reports.figure.person_shifts"), shown: String(log.data.shifts), value: String(log.data.shifts) },
         { key: "hours", label: t("reports.figure.hours"), shown: t("pay.hours", { hours: log.data.hours }), value: log.data.hours },
       ]
     : [];

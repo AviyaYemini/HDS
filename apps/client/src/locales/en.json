@@ -772,5 +772,7 @@
   "admin.bulk_remove_body": "Remove {{count}} from {{title}}? You can undo it for a few seconds.",
   "admin.bulk_remove_confirm_one": "Remove 1",
   "admin.bulk_remove_confirm_other": "Remove {{count}}",
-  "admin.bulk_remove_confirm": "Remove {{count}}"
+  "admin.bulk_remove_confirm": "Remove {{count}}",
+  "views.duplicate_name": "You already have a view with that name on this screen.",
+  "reports.figure.person_shifts": "Person-shifts"
 }

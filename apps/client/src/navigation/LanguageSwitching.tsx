@@ -10,6 +10,7 @@ import { StyleSheet, View } from "react-native";
 
 import { Txt, showToast } from "../design/components";
 import { startLoading } from "../design/loading/loadingStore";
+import { mayLeaveFor } from "../design/unsaved";
 import { useTheme } from "../design/theme/ThemeProvider";
 import { webProps } from "../design/web";
 import { i18n, isRtlLanguage } from "../i18n";
@@ -24,9 +25,13 @@ export function useLanguageSwitch(): (language: string) => void {
   const segments = useSegments() as string[];
   return (language: string) => {
     if (i18n.language.startsWith(language)) return;
-    void restartInLanguage(language, resumePath(pathname, queryOnly(params, segments)), {
-      onRestartNeeded: () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }),
-    });
+    const restart = () =>
+      void restartInLanguage(language, resumePath(pathname, queryOnly(params, segments)), {
+        onRestartNeeded: () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }),
+      });
+    // The restart leaves the screen: unsaved changes ask first, as any other way out (FR-045;
+    // CodeRabbit, PR 20).
+    if (mayLeaveFor(restart)) restart();
   };
 }
 

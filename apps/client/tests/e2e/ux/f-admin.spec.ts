@@ -149,7 +149,11 @@ test("several records are chosen, counted and removed together, and one undo kee
   const admin = await apiAs("admin");
   const stamp = Date.now();
   const made = await Promise.all(
-    [1, 2].map((n) => ok<{ id: string }>(admin.post("/api/v1/special-days", { data: { name: `Bulk ${stamp} ${n}`, day: `2032-0${n}-0${1 + (stamp % 8)}` } }), 201)),
+    // A date no other run of this test (either viewport, any day) has taken: one day each.
+    [1, 2].map((n) => {
+      const day = new Date(Date.UTC(2040, 0, 1) + ((stamp + n * 7919) % 36_500) * 86_400_000).toISOString().slice(0, 10);
+      return ok<{ id: string }>(admin.post("/api/v1/special-days", { data: { name: `Bulk ${stamp} ${n}`, day } }), 201);
+    }),
   );
   await signIn(page, "admin", "en");
   await page.goto(at("/admin/special-days", "en", { q: `Bulk ${stamp}` }));

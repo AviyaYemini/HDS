@@ -772,5 +772,7 @@
   "admin.bulk_remove_body": "להסיר {{count}} מ{{title}}? אפשר לבטל בשניות הקרובות.",
   "admin.bulk_remove_confirm_one": "הסרת אחת",
   "admin.bulk_remove_confirm_other": "הסרת {{count}}",
-  "admin.bulk_remove_confirm": "הסרת {{count}}"
+  "admin.bulk_remove_confirm": "הסרת {{count}}",
+  "views.duplicate_name": "כבר יש לך תצוגה בשם הזה במסך הזה.",
+  "reports.figure.person_shifts": "משמרות לאדם"
 }

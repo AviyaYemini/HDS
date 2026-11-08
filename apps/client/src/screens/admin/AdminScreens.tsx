@@ -88,11 +88,15 @@ export function StaffScreen() {
           }}
           onSave={async (v) => {
             const role = v.role as (typeof roles)[number];
+            // The rate only when it changed: a Manager is not shown another person's rate, and sending
+            // its empty field would refuse the whole edit (users.rate_admin_only; CodeRabbit, PR 20).
+            const before = row?.default_hourly_rate ? moneyText(row.default_hourly_rate) : "";
+            const rate = (v.default_hourly_rate ?? "") !== before ? { default_hourly_rate: orNull(v.default_hourly_rate) } : {};
             if (row) {
-              await call(api.PATCH("/api/v1/employees/{id}", { params: { path: { id: row.id } }, body: { full_name: v.full_name!.trim(), role, phone: orNull(v.phone), default_hourly_rate: orNull(v.default_hourly_rate) } }));
+              await call(api.PATCH("/api/v1/employees/{id}", { params: { path: { id: row.id } }, body: { full_name: v.full_name!.trim(), role, phone: orNull(v.phone), ...rate } }));
               await saved(row.id);
             } else {
-              const made = await call(api.POST("/api/v1/employees", { body: { full_name: v.full_name!.trim(), email: v.email!.trim(), role, phone: orNull(v.phone), default_hourly_rate: orNull(v.default_hourly_rate), initial_password: v.initial_password ?? "" } }));
+              const made = await call(api.POST("/api/v1/employees", { body: { full_name: v.full_name!.trim(), email: v.email!.trim(), role, phone: orNull(v.phone), ...rate, initial_password: v.initial_password ?? "" } }));
               await saved(made.id);
             }
           }}
@@ -327,6 +331,7 @@ function ManagersEditor({ projectId }: { projectId: string }) {
 export function ProjectsScreen() {
   const { t, i18n } = useTranslation();
   const { api } = useSession();
+  const errorText = useErrorText();
   const capabilities = useCapabilities();
   const lists = useLoad(async () => {
     const [clients, sites] = await Promise.all([call(api.GET("/api/v1/clients")), call(api.GET("/api/v1/sites"))]);
@@ -379,7 +384,9 @@ export function ProjectsScreen() {
       emptyBody={t("admin.empty.projects_body")}
       onDelete={capabilities.has("projects.delete") ? async (p, urgent) => void (await call(api.DELETE("/api/v1/projects/{id}", { params: { path: { id: p.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) =>
-        lists.data === null ? (
+        lists.error ? (
+          <InlineBanner tone="warning" title={errorText(lists.error)} action={{ label: t("common.retry"), onPress: () => void lists.reload() }} />
+        ) : lists.data === null ? (
           <SkeletonRows rows={4} />
         ) : (
           <RecordForm
@@ -596,6 +603,7 @@ const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 /** One project's needs: people per shift template and weekday, saved together (004 FR-001). */
 function NeedsForm({ projectId, saved }: { projectId: string; saved: (id: string) => Promise<void> }) {
   const { t, i18n } = useTranslation();
+  const errorText = useErrorText();
   const days = weekdayNames(i18n.language, "long");
   const { api } = useSession();
   const loaded = useLoad(async () => {
@@ -605,6 +613,8 @@ function NeedsForm({ projectId, saved }: { projectId: string; saved: (id: string
     ]);
     return { types: types.items, needs: needs.items };
   }, [projectId]);
+  // A failed read says so, with a way to try again, rather than loading for good (CodeRabbit, PR 20).
+  if (loaded.error) return <InlineBanner tone="warning" title={errorText(loaded.error)} action={{ label: t("common.retry"), onPress: () => void loaded.reload() }} />;
   if (loaded.data === null) return <SkeletonRows rows={3} />;
   const { types, needs } = loaded.data;
   if (types.length === 0) return <Txt role="body" tone="secondary">{t("needs.no_types")}</Txt>;
