@@ -2,9 +2,14 @@
 
 Signs in once, then sends 20 requests a second until it is stopped (SIGTERM or SIGINT): of every
 five, a write (``POST /api/v1/sites``), two reads (``GET /api/v1/sites``) with the access token in
-hand, and two of the web build (``GET /`` and one of its scripts, found in that page), so the web's
-pods are under load too (review R201); and a refresh every 30 seconds, which rotates the refresh
-token, as a client would.
+hand, and two of the web build (``GET /`` and the deep link ``GET /sign-in``, which the web's
+fallback answers with the same page), so the web's pods are under load too (review R201); and a
+refresh every 30 seconds, which rotates the refresh token, as a client would.
+
+The web requests name only addresses every build has. A script's file name carries its build's
+hash, so a script read from the base's page is gone once the head serves: asking for it after the
+switch measured the build's file names, not the rollout (007 PR 2, whose web build no longer has
+the base's runtime script).
 Any status other than the expected one, any connection error or timeout, and any refresh that fails
 is counted. On stop it prints the totals and each failure, and exits 1 if there was any.
 
@@ -22,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import re
 import signal
 import sys
 import time
@@ -73,21 +77,8 @@ async def sign_in(client: httpx.AsyncClient, email: str, password: str) -> Sessi
     return Session(access=body["access_token"], refresh=body["refresh_token"])
 
 
-async def web_asset(client: httpx.AsyncClient) -> str:
-    """The path of a script the web build's page loads, to fetch it as a browser would.
-
-    Raises:
-        SystemExit: when the page cannot be read or names no script.
-    """
-    response = await client.get("/")
-    found = re.search(r'src="(/[^"]+\.js)"', response.text) if response.status_code == 200 else None
-    if found is None:
-        raise SystemExit(f"the web build's page names no script (HTTP {response.status_code})")
-    return found[1]
-
-
 async def web_request(client: httpx.AsyncClient, path: str, tally: Tally) -> None:
-    """Fetch a page or a script of the web build, and count its outcome."""
+    """Fetch a page of the web build, and count its outcome."""
     try:
         response = await client.get(path)
     except httpx.HTTPError as error:
@@ -99,12 +90,10 @@ async def web_request(client: httpx.AsyncClient, path: str, tally: Tally) -> Non
     tally.pages += 1
 
 
-async def one_request(
-    client: httpx.AsyncClient, session: Session, n: int, tally: Tally, asset: str
-) -> None:
+async def one_request(client: httpx.AsyncClient, session: Session, n: int, tally: Tally) -> None:
     """Send the n-th request, a write, a read or a web fetch, and count its outcome."""
     if n % WRITE_EVERY in (1, 2):
-        await web_request(client, "/" if n % WRITE_EVERY == 1 else asset, tally)
+        await web_request(client, "/" if n % WRITE_EVERY == 1 else "/sign-in", tally)
         return
     headers = {"Authorization": f"Bearer {session.access}"}
     write = n % WRITE_EVERY == 0
@@ -163,7 +152,6 @@ async def run(args: argparse.Namespace, password: str) -> Tally:
         base_url=args.url, headers={"Host": args.host}, timeout=TIMEOUT
     ) as client:
         session = await sign_in(client, args.email, password)
-        asset = await web_asset(client)
         print(f"signed in; {RATE:.0f} requests a second until stopped", flush=True)
         pending: set[asyncio.Task[None]] = set()
         start = time.monotonic()
@@ -176,7 +164,7 @@ async def run(args: argparse.Namespace, password: str) -> Tally:
                 await refresh(client, session, tally)
                 next_refresh = now + REFRESH_EVERY
             n += 1
-            task = asyncio.create_task(one_request(client, session, n, tally, asset))
+            task = asyncio.create_task(one_request(client, session, n, tally))
             pending.add(task)
             task.add_done_callback(pending.discard)
             delay = start + n / RATE - time.monotonic()
