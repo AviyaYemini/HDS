@@ -34,11 +34,18 @@ class WorkLogRowRead(BaseModel):
 
 
 class WorkLogRead(BaseModel):
-    """Who worked in the range, once per person and project, by name; never any pay."""
+    """Who worked in the range, once per person and project, by name; never any pay.
+
+    ``people``, ``shifts`` (person-shifts) and ``hours`` (person-hours) are the key figures the
+    report opens with, summed by the server so the client never adds them up (007 FR-050).
+    """
 
     first: date = Field(serialization_alias="from")
     last: date = Field(serialization_alias="to")
     rows: list[WorkLogRowRead]
+    people: int
+    shifts: int
+    hours: HoursOut
 
 
 class HoursRowRead(BaseModel):
@@ -125,6 +132,9 @@ def read_log(log: WorkLog) -> WorkLogRead:
         first=log.first,
         last=log.last,
         rows=[WorkLogRowRead.model_validate(row, from_attributes=True) for row in log.rows],
+        people=log.people,
+        shifts=log.shifts,
+        hours=log.hours,
     )
 
 

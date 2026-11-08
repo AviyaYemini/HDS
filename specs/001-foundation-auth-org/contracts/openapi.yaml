@@ -669,6 +669,73 @@ components:
       title: TrackedRead
       type: object
 
+    SavedViewList:
+      description: The caller's views of one screen, by name.
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/SavedViewRead'
+          title: Items
+          type: array
+      required:
+      - items
+      title: SavedViewList
+      type: object
+
+    SavedViewRead:
+      description: One of the caller's saved views.
+      properties:
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        id:
+          format: uuid
+          title: Id
+          type: string
+        name:
+          title: Name
+          type: string
+        query:
+          title: Query
+          type: string
+        screen:
+          title: Screen
+          type: string
+      required:
+      - id
+      - screen
+      - name
+      - query
+      - created_at
+      title: SavedViewRead
+      type: object
+
+    SavedViewCreate:
+      description: 'A view to save: the screen, a name, and the web address''s query it restores.'
+      properties:
+        name:
+          maxLength: 60
+          minLength: 1
+          title: Name
+          type: string
+        query:
+          maxLength: 2000
+          title: Query
+          type: string
+        screen:
+          maxLength: 48
+          minLength: 1
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Screen
+          type: string
+      required:
+      - screen
+      - name
+      - query
+      title: SavedViewCreate
+      type: object
+
     UserRead:
       type: object
       required: [id, organization_id, email, full_name, role, is_active, created_at, updated_at]
@@ -2246,7 +2313,7 @@ components:
     WorkLog:
       type: object
       description: Who worked in the range, once per person and project, by name; never any pay.
-      required: [from, to, rows]
+      required: [from, to, rows, people, shifts, hours]
       properties:
         from: {$ref: "#/components/schemas/ISODate"}
         to: {$ref: "#/components/schemas/ISODate"}
@@ -2265,6 +2332,16 @@ components:
               hours: {$ref: "#/components/schemas/Hours"}
               first_date: {$ref: "#/components/schemas/ISODate"}
               last_date: {$ref: "#/components/schemas/ISODate"}
+        people:
+          type: integer
+          description: How many different people worked in the range (007 FR-050).
+        shifts:
+          type: integer
+          description: Person-shifts, as the rows count them.
+        hours:
+          type: string
+          pattern: "^[0-9]{1,7}\\.[0-9]{2}$"
+          description: Person-hours, the exact decimal sum of the rows.
 
     HoursRow:
       type: object
@@ -5452,6 +5529,150 @@ paths:
       summary: Track who has submitted availability
       tags:
       - roster tools
+
+
+  # ── Saved views (007 FR-043), from the implementation ───────
+  /me/saved-views:
+    get:
+      description: Employee, Manager or Admin. The caller's own views of `screen`, by name.
+      operationId: list_views_me_saved_views_get
+      parameters:
+      - in: query
+        name: screen
+        required: true
+        schema:
+          maxLength: 48
+          minLength: 1
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Screen
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedViewList'
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: List my saved views of a table
+      tags:
+      - saved views
+    post:
+      description: Employee, Manager or Admin. Save the filters and sorting of a table, as the web address's
+        query, under a name unique per screen (409 `views.duplicate_name`).
+      operationId: save_view_me_saved_views_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedViewCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedViewRead'
+          description: Successful Response
+        '400':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request body could not be parsed.
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '409':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request conflicts with the current state (duplicate, last admin, in use).
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Save a view of a table
+      tags:
+      - saved views
+
+  /me/saved-views/{id}:
+    delete:
+      description: Employee, Manager or Admin. Another user's view answers 404.
+      operationId: remove_view_me_saved_views__id__delete
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          title: Id
+          type: string
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Missing, invalid or expired credentials.
+        '403':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: Authenticated but the role or data scope does not allow this.
+        '404':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The referenced resource does not exist in the caller's organisation.
+        '422':
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+          description: The request is invalid.
+      security:
+      - OAuth2PasswordBearer: []
+      summary: Remove one of my saved views
+      tags:
+      - saved views
 
 
   # ── Pay settings, special days and managers on projects (005) ──────────────

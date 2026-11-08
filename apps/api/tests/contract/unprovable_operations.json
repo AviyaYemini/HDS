@@ -266,6 +266,13 @@
       "operation_id": "discard_job_api_v1_schedule_jobs__id__discard_post",
       "suites": ["pytest", "cli"],
       "reason": "discarding depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108)"
+    },
+    {
+      "method": "POST",
+      "path": "/me/saved-views",
+      "operation_id": "save_view_me_saved_views_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a name is unique per user and screen (007 FR-043), which depends on stored views; a second view of the same name is answered 409 views.duplicate_name"
     }
   ]
 }

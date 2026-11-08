@@ -1482,6 +1482,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/saved-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my saved views of a table
+         * @description Employee, Manager or Admin. The caller's own views of `screen`, by name.
+         */
+        get: operations["list_views_me_saved_views_get"];
+        put?: never;
+        /**
+         * Save a view of a table
+         * @description Employee, Manager or Admin. Save the filters and sorting of a table, as the web address's query, under a name unique per screen (409 `views.duplicate_name`).
+         */
+        post: operations["save_view_me_saved_views_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/saved-views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove one of my saved views
+         * @description Employee, Manager or Admin. Another user's view answers 404.
+         */
+        delete: operations["remove_view_me_saved_views__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/sessions": {
         parameters: {
             query?: never;
@@ -3360,6 +3404,48 @@ export interface components {
             start_weekday: number;
         };
         /**
+         * SavedViewCreate
+         * @description A view to save: the screen, a name, and the web address's query it restores.
+         */
+        SavedViewCreate: {
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+            /** Screen */
+            screen: string;
+        };
+        /**
+         * SavedViewList
+         * @description The caller's views of one screen, by name.
+         */
+        SavedViewList: {
+            /** Items */
+            items: components["schemas"]["SavedViewRead"][];
+        };
+        /**
+         * SavedViewRead
+         * @description One of the caller's saved views.
+         */
+        SavedViewRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+            /** Screen */
+            screen: string;
+        };
+        /**
          * SchedulingSettings
          * @description The limits the roster is generated and checked against, in whole hours.
          */
@@ -4189,6 +4275,9 @@ export interface components {
         /**
          * WorkLogRead
          * @description Who worked in the range, once per person and project, by name; never any pay.
+         *
+         *     ``people``, ``shifts`` (person-shifts) and ``hours`` (person-hours) are the key figures the
+         *     report opens with, summed by the server so the client never adds them up (007 FR-050).
          */
         WorkLogRead: {
             /**
@@ -4196,8 +4285,17 @@ export interface components {
              * Format: date
              */
             from: string;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** People */
+            people: number;
             /** Rows */
             rows: components["schemas"]["WorkLogRowRead"][];
+            /** Shifts */
+            shifts: number;
             /**
              * To
              * Format: date
@@ -10970,6 +11068,180 @@ export interface operations {
             };
             /** @description Authenticated but the role or data scope does not allow this. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_views_me_saved_views_get: {
+        parameters: {
+            query: {
+                screen: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewList"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    save_view_me_saved_views_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    remove_view_me_saved_views__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

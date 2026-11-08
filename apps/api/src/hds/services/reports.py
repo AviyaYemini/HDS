@@ -150,11 +150,26 @@ class WorkLogRow:
 
 @dataclass(frozen=True)
 class WorkLog:
-    """Who worked where in the range."""
+    """Who worked where in the range, with the key figures the report opens with (007 FR-050)."""
 
     first: date
     last: date
     rows: list[WorkLogRow]
+
+    @property
+    def people(self) -> int:
+        """How many different people worked in the range."""
+        return len({row.user_id for row in self.rows})
+
+    @property
+    def shifts(self) -> int:
+        """Person-shifts: each person on each shift counted once, as the rows count them."""
+        return sum(row.shifts for row in self.rows)
+
+    @property
+    def hours(self) -> Decimal:
+        """Person-hours, the exact sum of the rows' hours."""
+        return sum((row.hours for row in self.rows), Decimal(0))
 
 
 def aggregate(lines: Iterable[ReportLine], group_by: GroupBy) -> HoursReport:

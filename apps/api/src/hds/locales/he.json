@@ -133,5 +133,6 @@
   "override.duplicate": "לאזהרה הזו כבר נרשמה סיבה.",
   "templates.duplicate_name": "לפרויקט כבר יש תבנית בשם הזה.",
   "roster.week_not_sunday": "שבוע מתחיל ביום ראשון.",
-  "roster.bulk_change_invalid": "יש לבחור תקן חדש או הסרה."
+  "roster.bulk_change_invalid": "יש לבחור תקן חדש או הסרה.",
+  "views.duplicate_name": "כבר קיימת כאן תצוגה בשם הזה."
 }
