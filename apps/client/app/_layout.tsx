@@ -19,7 +19,9 @@ import { session } from "../src/api/default";
 import { SessionProvider } from "../src/api/SessionContext";
 import { storeFor } from "../src/api/tokens";
 import { unlock } from "../src/auth/biometric";
+import { useRetryOnReturn } from "../src/auth/retryOnReturn";
 import { markSessionEnded, noteRestore } from "../src/auth/sessionEnded";
+import { startAfterRestore, type StartState } from "../src/auth/startState";
 import { LoadingBar, ToastHost } from "../src/design/components";
 import { useDirectionProps } from "../src/design/components/Screen";
 import { startLoading } from "../src/design/loading/loadingStore";
@@ -28,6 +30,7 @@ import { ThemeProvider, useTheme } from "../src/design/theme/ThemeProvider";
 import { i18n, loadRememberedLanguage, setupI18n } from "../src/i18n";
 import { OfflineBanner } from "../src/navigation/OfflineBanner";
 import { LockScreen } from "../src/screens/misc/LockScreen";
+import { UnreachableScreen } from "../src/screens/misc/UnreachableScreen";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -50,7 +53,7 @@ function hideWebSplash(): void {
   document.getElementById("splash")?.remove();
 }
 
-type Start = "starting" | "locked" | "ready";
+type Start = "starting" | "locked" | StartState;
 
 function Shell({ locked, onUnlock, onForget, unlocking }: { locked: boolean; onUnlock: () => void; onForget: () => void; unlocking: boolean }) {
   const { colors } = useTheme();
@@ -74,11 +77,25 @@ function Starter() {
   const [start, setStart] = useState<Start>("starting");
   const [unlocking, setUnlocking] = useState(false);
 
-  const restore = useCallback(async (): Promise<void> => {
+  const [retrying, setRetrying] = useState(false);
+
+  /** Take up the kept session, and say what to show: the routes, or the "can't reach HDS" state. */
+  const restore = useCallback(async (): Promise<StartState> => {
     const hadTokens = (await storeFor(Platform.OS).load()) !== null;
     const restored = await session.restore();
     noteRestore(hadTokens, restored, session.endedUnexpectedly);
+    return startAfterRestore(restored, session.unreachable);
   }, []);
+
+  const retry = useCallback(async (): Promise<void> => {
+    setRetrying(true);
+    try {
+      setStart(await restore());
+    } finally {
+      setRetrying(false);
+    }
+  }, [restore]);
+  useRetryOnReturn(start === "unreachable", () => void retry());
 
   const tryUnlock = useCallback(async (): Promise<void> => {
     setUnlocking(true);
@@ -88,8 +105,7 @@ function Starter() {
         setStart("locked");
         return;
       }
-      await restore();
-      setStart("ready");
+      setStart(await restore());
     } finally {
       setUnlocking(false);
     }
@@ -102,8 +118,7 @@ function Starter() {
         if (hadTokens && Platform.OS !== "web") {
           await tryUnlock();
         } else {
-          await restore();
-          setStart("ready");
+          setStart(await restore());
         }
       } catch {
         setStart("ready");
@@ -125,6 +140,10 @@ function Starter() {
   }, []);
 
   if (start === "starting") return null;
+  if (start === "unreachable") {
+    // Kept tokens, no server: offer a retry rather than the sign-in form (PR 2 review).
+    return <UnreachableScreen onRetry={() => void retry()} onSignIn={() => setStart("ready")} busy={retrying} />;
+  }
   return (
     <Shell
       locked={start === "locked"}

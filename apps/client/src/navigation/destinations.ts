@@ -59,13 +59,13 @@ export const STAFF_DESTINATIONS: readonly Destination[] = [
 /** The client shell's destinations (FR-004). */
 export const CLIENT_DESTINATIONS: readonly Destination[] = [
   { key: "client-home", href: "/client", labelKey: "nav.projects", icon: "layers", group: "client", need: ["client_portal.read"], also: ["/client/projects/"] },
-  { key: "billing", href: "/client/billing", labelKey: "nav.billing", icon: "wallet", group: "client", need: ["client_portal.read"] },
-  { key: "requests", href: "/client/requests", labelKey: "nav.requests", icon: "mail", group: "client", need: ["client_portal.read"] },
+  { key: "billing", href: "/client/billing", labelKey: "nav.billing", icon: "wallet", group: "client", need: ["client_portal.read"], preview: true },
+  { key: "requests", href: "/client/requests", labelKey: "nav.requests", icon: "mail", group: "client", need: ["client_portal.read"], preview: true },
   { key: "contact", href: "/client/contact", labelKey: "nav.contact", icon: "phone", group: "client", need: ["client_portal.read"] },
 ];
 
-/** Whether `destination` is offered to someone with `capabilities`. */
-export function offered(destination: Destination, capabilities: Capabilities): boolean {
+/** Whether `destination` (or a tab) is offered to someone with `capabilities`. */
+export function offered(destination: Pick<Destination, "need" | "preview">, capabilities: Capabilities): boolean {
   if (destination.preview && !previewsEnabled) return false;
   return destination.need.some((capability) => capabilities.has(capability));
 }
@@ -97,45 +97,53 @@ export function groupsFor(capabilities: Capabilities): { group: NavGroup; items:
     .filter((entry) => entry.items.length > 0);
 }
 
-/** A bottom tab (FR-005): at most five per shell, with labels short enough for a fifth of a phone. */
+/**
+ * A bottom tab (FR-005): at most five per shell, with labels short enough for a fifth of a phone.
+ * A tab is offered by the same rule as a destination: held capability, and previews only while
+ * previews are on (FR-068), so a production build never offers a tab that opens the 404 page.
+ */
 export interface Tab {
   key: string;
   href: string;
   labelKey: string;
   icon: IconName;
+  /** Held when any one of these is held. */
+  need: readonly Capability[];
+  /** A preview of a later feature (FR-068). */
+  preview?: boolean;
   /** Addresses that light this tab. */
   matches: readonly string[];
 }
 
 const EMPLOYEE_TABS: readonly Tab[] = [
-  { key: "home", href: "/home", labelKey: "nav.home", icon: "home", matches: ["/home"] },
-  { key: "availability", href: "/my/availability", labelKey: "nav.availability", icon: "calendar", matches: ["/my/availability"] },
-  { key: "my-shifts", href: "/my/shifts", labelKey: "nav.shifts_short", icon: "clock", matches: ["/my/shifts"] },
-  { key: "pay", href: "/my/pay", labelKey: "nav.pay_short", icon: "wallet", matches: ["/my/pay"] },
-  { key: "more", href: "/more", labelKey: "nav.more", icon: "more", matches: ["/more", "/account", "/admin", "/help", "/contact", "/accessibility", "/my/requests", "/inbox"] },
+  { key: "home", href: "/home", labelKey: "nav.home", icon: "home", need: ["my_work.read"], matches: ["/home"] },
+  { key: "availability", href: "/my/availability", labelKey: "nav.availability", icon: "calendar", need: ["my_work.availability"], matches: ["/my/availability"] },
+  { key: "my-shifts", href: "/my/shifts", labelKey: "nav.shifts_short", icon: "clock", need: ["my_work.read"], matches: ["/my/shifts"] },
+  { key: "pay", href: "/my/pay", labelKey: "nav.pay_short", icon: "wallet", need: ["my_work.read"], matches: ["/my/pay"] },
+  { key: "more", href: "/more", labelKey: "nav.more", icon: "more", need: ["my_work.read"], matches: ["/more", "/account", "/admin", "/help", "/contact", "/accessibility", "/my/requests", "/inbox"] },
 ];
 
 const MANAGER_TABS: readonly Tab[] = [
-  { key: "home", href: "/home", labelKey: "nav.home", icon: "home", matches: ["/home"] },
-  { key: "roster", href: "/roster", labelKey: "nav.roster", icon: "grid", matches: ["/roster", "/runs"] },
-  { key: "my-work", href: "/my", labelKey: "nav.my_work", icon: "user", matches: ["/my"] },
-  { key: "reports", href: "/reports", labelKey: "nav.reports", icon: "chart", matches: ["/reports"] },
-  { key: "more", href: "/more", labelKey: "nav.more", icon: "more", matches: ["/more", "/account", "/admin", "/manage", "/help", "/contact", "/accessibility", "/inbox"] },
+  { key: "home", href: "/home", labelKey: "nav.home", icon: "home", need: ["my_work.read"], matches: ["/home"] },
+  { key: "roster", href: "/roster", labelKey: "nav.roster", icon: "grid", need: ["roster.read"], matches: ["/roster", "/runs"] },
+  { key: "my-work", href: "/my", labelKey: "nav.my_work", icon: "user", need: ["my_work.read"], matches: ["/my"] },
+  { key: "reports", href: "/reports", labelKey: "nav.reports", icon: "chart", need: ["reports.read"], matches: ["/reports"] },
+  { key: "more", href: "/more", labelKey: "nav.more", icon: "more", need: ["my_work.read"], matches: ["/more", "/account", "/admin", "/manage", "/help", "/contact", "/accessibility", "/inbox"] },
 ];
 
 const CLIENT_TABS: readonly Tab[] = [
-  { key: "projects", href: "/client", labelKey: "nav.projects", icon: "layers", matches: ["/client", "/client/projects"] },
-  { key: "billing", href: "/client/billing", labelKey: "nav.billing", icon: "wallet", matches: ["/client/billing"] },
-  { key: "requests", href: "/client/requests", labelKey: "nav.requests", icon: "mail", matches: ["/client/requests"] },
-  { key: "contact", href: "/client/contact", labelKey: "nav.contact", icon: "phone", matches: ["/client/contact"] },
+  { key: "projects", href: "/client", labelKey: "nav.projects", icon: "layers", need: ["client_portal.read"], matches: ["/client", "/client/projects"] },
+  { key: "billing", href: "/client/billing", labelKey: "nav.billing", icon: "wallet", need: ["client_portal.read"], preview: true, matches: ["/client/billing"] },
+  { key: "requests", href: "/client/requests", labelKey: "nav.requests", icon: "mail", need: ["client_portal.read"], preview: true, matches: ["/client/requests"] },
+  { key: "contact", href: "/client/contact", labelKey: "nav.contact", icon: "phone", need: ["client_portal.read"], matches: ["/client/contact"] },
 ];
 
-/** The bottom tabs for a person: the client's four, a manager's or admin's five, an employee's five. */
+/** The bottom tabs a person is offered: the shell's set, each through the same rule as a destination. */
 export function tabsFor(capabilities: Capabilities): readonly Tab[] {
   const shell = shellFor(capabilities);
-  if (shell === "client") return CLIENT_TABS;
   if (shell === "none") return [];
-  return capabilities.has("roster.read") ? MANAGER_TABS : EMPLOYEE_TABS;
+  const set = shell === "client" ? CLIENT_TABS : capabilities.has("roster.read") ? MANAGER_TABS : EMPLOYEE_TABS;
+  return set.filter((tab) => offered(tab, capabilities));
 }
 
 /** Whether `pathname` lies at or under `href`. */

@@ -81,7 +81,9 @@ describe("destinations by capability (FR-001)", () => {
     expect(keys(destinationsFor(capabilitiesOf(me("admin", ADMIN))))).toEqual(
       ["availability", "home", "my-shifts", "pay", "roster", "submissions", "runs", "work-log", "hours", "staff", "clients", "sites", "projects", "shift-templates", "staffing-needs", "pay-settings", "special-days"].sort(),
     );
-    expect(keys(destinationsFor(capabilitiesOf(me("client", CLIENT))))).toEqual(["billing", "client-home", "contact", "requests"]);
+    // The client's Billing and Requests are previews of 009 (PR 2 review): marked, and gone without previews.
+    expect(keys(destinationsFor(capabilitiesOf(me("client", CLIENT))))).toEqual(["client-home", "contact"]);
+    expect(destinationsFor(capabilitiesOf(me("client", CLIENT))).filter((item) => item.preview).map((item) => item.key)).toEqual(["billing", "requests"]);
   });
 
   it("gives each role the contract's bottom tabs, never more than five", () => {
@@ -89,6 +91,7 @@ describe("destinations by capability (FR-001)", () => {
     expect(tabsFor(capabilitiesOf(me("manager", MANAGER))).map((tab) => tab.key)).toEqual(["home", "roster", "my-work", "reports", "more"]);
     expect(tabsFor(capabilitiesOf(me("admin", ADMIN))).map((tab) => tab.key)).toEqual(["home", "roster", "my-work", "reports", "more"]);
     expect(tabsFor(capabilitiesOf(me("client", CLIENT))).map((tab) => tab.key)).toEqual(["projects", "billing", "requests", "contact"]);
+    expect(tabsFor(capabilitiesOf(me("client", CLIENT))).filter((tab) => tab.preview).map((tab) => tab.key)).toEqual(["billing", "requests"]);
     for (const list of [EMPLOYEE, MANAGER, ADMIN, CLIENT]) expect(tabsFor(capabilitiesOf(me("employee", list))).length).toBeLessThanOrEqual(5);
   });
 

@@ -26,7 +26,7 @@ const PHONE_TABS: Record<Role, string[]> = {
   employee: ["home", "availability", "my-shifts", "pay", "more"],
   manager: ["home", "roster", "my-work", "reports", "more"],
   admin: ["home", "roster", "my-work", "reports", "more"],
-  client: ["projects", "billing", "requests", "contact"],
+  client: ["projects", "contact"],
 };
 
 const EMPLOYEE_NAV = ["home", "availability", "my-shifts", "pay"];
@@ -49,7 +49,7 @@ const DESKTOP_NAV: Record<Role, string[]> = {
   employee: EMPLOYEE_NAV,
   manager: MANAGER_NAV,
   admin: [...MANAGER_NAV, "special-days"],
-  client: ["client-home", "billing", "requests", "contact"],
+  client: ["client-home", "contact"],
 };
 
 /** Addresses a role must never reach, with the role's own home to compare. */
@@ -224,6 +224,26 @@ test.describe("with previews on", () => {
 
 test.describe("with previews off @previews-off", () => {
   test.skip(PREVIEWS_ON, "needs a build made without previews");
+
+  // PR 2 review: with previews off (production) no role is offered a preview, and every tab and
+  // side item it is offered opens a real screen, never the 404 page.
+  for (const role of ["employee", "manager", "admin", "client"] as const) {
+    test(`${role}: offered only real screens`, async ({ page }, testInfo) => {
+      const phone = isPhone(testInfo);
+      await signIn(page, role, "en");
+      const container = page.getByTestId(phone ? "nav-tabs" : "nav-side");
+      await expect(container).toBeVisible();
+      await expect(container.locator('[data-preview="true"]')).toHaveCount(0);
+      const keys = await navKeys(page, phone);
+      expect(keys.sort()).toEqual([...(phone ? PHONE_TABS[role] : DESKTOP_NAV[role])].sort());
+      const previews = new Set(ROUTED_PREVIEWS.map((p) => p.path));
+      for (const key of keys) {
+        await container.getByTestId(`${phone ? "tab" : "nav"}-${key}`).click();
+        await expect(page.getByTestId("screen-not-found"), key).toHaveCount(0);
+        expect(previews.has(new URL(page.url()).pathname), key).toBe(false);
+      }
+    });
+  }
 
   // Without previews the addresses are not registered at all, so they are unknown addresses: the
   // 404 page, signed in or not, for every role alike.
