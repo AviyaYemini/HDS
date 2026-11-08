@@ -228,6 +228,25 @@ unchanged; 008's previews in place.
 
 ---
 
+## Phase 6b: Group O — the owner's requests of 2026-11-08 (PR 5, first) — US6, US7
+
+**Goal**: the owner's four requests of 2026-11-08 (spec FR-078 to FR-081, Proposed), before F–H.
+Each starts with its failing spec. The alignment and language items come first.
+
+**Independent Test**: `ux/o-owner-requests.spec.ts` and `expectNothingOverflows` across the ux specs.
+
+- [ ] T102 [US6] [CORE] (Owner, 2026-11-08) Add `expectNothingOverflows(page)` to `apps/client/tests/e2e/ux/support.ts`: for every element with a visible border or panel background, every visible descendant's box lies inside the element's box, within 1 px. Call it on each screen the ux specs already visit, at 390 px, in he and en. It must fail on today's Admin `/home` (the "Set up HDS" card's second row of buttons crosses its border). Commit failing (`test(client): check that nothing overflows its card`) (FR-079)
+- [ ] T103 [US6] [UI] (Owner, 2026-11-08) The setup card gets its own style: `styles.card`'s `flexBasis: 220` was written for ManagerCards in a row, and in a column it becomes a height. Then audit the app for the same pattern (`flexBasis` or `flexGrow` on an item whose parent is a column; fixed heights on boxes whose content wraps: cards, FeaturePanel, EmptyState and InlineBanner actions, ClippedBox users) until T102 passes (FR-079)
+- [ ] T104 [US6] [CORE] (Owner, 2026-11-08) Write the failing spec in `ux/o-owner-requests.spec.ts`: switch he→en and en→he from the top bar; `dir` and the layout direction flip with no manual reload, and the user stays signed in; the same from Account and sign-in (FR-078)
+- [ ] T105 [US6] [UI] (Owner, 2026-11-08) On the web, reload the page once the switch is stored (`location.reload()`; the per-tab session survives it), from all three switches. Until the reload, no Txt may run in a different direction from its container; check that Txt's default direction (R76) reads i18n's current language, not a value fixed at start-up. Phones: keep the restart notice until the owner decides on an in-app restart (it needs a native module and an app rebuild) (FR-078)
+- [ ] T106 [US7] [CORE] (Owner, 2026-11-08) Write the failing spec: open the demo's accepted run and see a named assignment for a known shift, the places left empty and the people without availability by name, and "Open in roster" for its range; a discarded run shows the same view, labelled. Extend `GET /schedule-jobs/{id}` in the 001 contract if the proposal lacks the names or slots the view needs, with tests; regenerate (FR-080)
+- [ ] T107 [US7] [UI] (Owner, 2026-11-08) The run's proposal as D's roster week, read-only, with the run's changes marked added or removed against the drafts; names for the empty places and for the people without availability; "Open in roster" for an accepted run (FR-080)
+- [ ] T108 [US7] [CORE] (Owner, 2026-11-08) Write the failing spec: generate for one project, and the proposal holds only that project's slots; a Manager is offered only the projects they manage (FR-081)
+- [ ] T109 [US7] [UI] (Owner, 2026-11-08) A multi-select SearchablePicker of projects in the generate form, all by default, each with its type (the owner's note: training and security projects don't mix); a Manager sees only the projects they manage, matching publish per project (T098), and an Admin sees all; the chosen projects show on the run's row and page (FR-081)
+- [ ] T110 [CORE] Close group O as the template says. Mutants (≤ 3): the generate form offering a Manager a project they don't manage, and the language switch reloading before the choice is stored. Commit `feat(client): the owner's requests of 2026-11-08 (…)`
+
+---
+
 ## Phase 7: Group F — admin screens (PR 5) — US7
 
 **Goal**: one table pattern and one form pattern across the admin screens, money confirmations,

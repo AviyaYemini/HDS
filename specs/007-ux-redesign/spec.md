@@ -665,6 +665,27 @@ value rise; open the splash, 404 and offline banner in both languages; compare b
 - **FR-077**: The app MUST have an Option B splash screen, app icon and favicon, and a branded sign-in,
   404 page, offline banner and toasts, with visible focus rings and every theme finished.
 
+**The owner's requests of 2026-11-08 (Proposed, PR 5, first)**
+
+- **FR-078**: Switching the language anywhere (the top bar, Account, sign-in) MUST take effect at once,
+  direction and layout included, without the user reloading by hand and without signing them out;
+  until it has, no screen may show text running in one direction inside a container laid out in the
+  other. On the phone apps, until a restart can be done from inside the app, the restart notice
+  stays. [Owner: "After switching languge - reload the page to the RTL/LTR will take effect
+  immedeitly"]
+- **FR-079**: Everything on a screen MUST stay inside the card, panel or banner it sits in, at phone
+  and desktop sizes and in both languages; a box whose content wraps grows to hold it. [Owner: "fix
+  this alignment issue over the app"]
+- **FR-080**: A schedule run's page MUST show its proposal itself, read-only as a roster week: who
+  goes to which shift, by project and day, with the run's changes marked as added or removed against
+  the drafts; the places left empty and the people without availability, by name; for an accepted
+  run, a way to open that range in the roster; a discarded run shows the same, labelled discarded.
+  [Owner: "clicking on the run allow the user to view it's output, now there's none"]
+- **FR-081**: The generate form MUST let the user choose which projects a run covers, all by default,
+  each shown with its type; a Manager is offered only the projects they manage and an Admin all; the
+  chosen projects show on the run's row and page. [Owner's question, 2026-11-08: "is there an option
+  to run Schedule only over a specific project?"]
+
 ### Key Entities *(include if feature involves data)*
 
 - **Capability map**: for a signed-in person, the set of things they may do (see, change, approve),
