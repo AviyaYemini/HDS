@@ -2,8 +2,8 @@
 
 Fake repositories; the clock is passed in. Covers the status table (Not submitted, Draft,
 Submitted, Locked), "counted as unavailable" after a missed deadline only for windows that require
-submission, the refusal to submit after the deadline, and that an Admin's hand edit after the
-deadline refreshes the snapshot.
+submission, the refusal to submit after the deadline, and that an Admin's hand edit patches exactly
+its own change into an existing snapshot.
 """
 
 import uuid
@@ -145,14 +145,64 @@ async def test_a_client_cannot_submit() -> None:
         await service.submit(_user(UserRole.client), window.id)
 
 
+def _entry(kind: str, day: int) -> dict[str, Any]:
+    """An Admin's change as the availability service reports it."""
+    d = date(2026, 11, day)
+    return {
+        "kind": kind,
+        "absence_kind": None,
+        "starts_on": d,
+        "ends_on": d,
+        "shift_type_id": None,
+        "weekday": None,
+    }
+
+
+def _items_of(submissions: AsyncMock) -> list[dict[str, Any]]:
+    return list(submissions.put.await_args.kwargs["snapshot"])
+
+
 @pytest.mark.asyncio
-async def test_an_admin_edit_refreshes_an_existing_snapshot_in_a_closed_window() -> None:
+@pytest.mark.parametrize("deadline", [NOW - timedelta(hours=1), NOW + timedelta(days=1)])
+async def test_an_admin_edit_patches_exactly_its_own_change_into_the_snapshot(
+    deadline: datetime,
+) -> None:
+    """An Admin's change reaches the snapshot, whatever the deadline (007 review).
+
+    The employee's own edits since they submitted are not swept in (clarification Q4).
+    """
     admin, employee = _user(UserRole.admin), _user()
-    closed = _window(NOW - timedelta(hours=1))
-    live = [_stored(employee.id)]
-    service, submissions = _service(closed, live, _submitted(closed, employee, live))
-    await service.refresh_after_admin_edit(admin, employee.id, date(2026, 11, 9), date(2026, 11, 9))
+    window = _window(deadline)
+    submitted = [_stored(employee.id, "open", 9), _stored(employee.id, "open", 11)]
+    row = _submitted(window, employee, submitted)
+    # Since submitting, the employee blocked the 10th and never submitted again.
+    live = [*submitted, _stored(employee.id, "blocked", 10)]
+    service, submissions = _service(window, live, row)
+    # The Admin turns the 11th from open to close.
+    await service.apply_admin_edit(admin, employee.id, _entry("open", 11), _entry("close", 11))
+    items = _items_of(submissions)
+    assert {(i["starts_on"], i["kind"]) for i in items} == {
+        ("2026-11-09", "open"),
+        ("2026-11-11", "close"),
+    }
+    assert submissions.put.await_args.kwargs["snapshot_hash"] == snapshot_hash(items)
     assert submissions.put.await_args.kwargs["submitted_by"] == admin.id
+
+
+@pytest.mark.asyncio
+async def test_an_admin_adding_or_removing_an_entry_patches_the_snapshot() -> None:
+    admin, employee = _user(UserRole.admin), _user()
+    window = _window(NOW - timedelta(hours=1))
+    row = _submitted(window, employee, [_stored(employee.id, "open", 9)])
+    service, submissions = _service(window, [], row)
+    await service.apply_admin_edit(admin, employee.id, None, _entry("blocked", 12))
+    assert {(i["starts_on"], i["kind"]) for i in _items_of(submissions)} == {
+        ("2026-11-09", "open"),
+        ("2026-11-12", "blocked"),
+    }
+    service, submissions = _service(window, [], row)
+    await service.apply_admin_edit(admin, employee.id, _entry("open", 9), None)
+    assert _items_of(submissions) == []
 
 
 @pytest.mark.asyncio
@@ -161,17 +211,21 @@ async def test_an_admin_edit_never_creates_a_submission_for_someone_who_did_not_
     admin, employee = _user(UserRole.admin), uuid.uuid4()
     closed = _window(NOW - timedelta(hours=1))
     service, submissions = _service(closed, [_stored(employee)])
-    await service.refresh_after_admin_edit(admin, employee, date(2026, 11, 9), date(2026, 11, 9))
+    await service.apply_admin_edit(admin, employee, None, _entry("open", 9))
     submissions.put.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_an_admin_edit_in_an_open_window_changes_no_snapshot() -> None:
+async def test_an_absence_or_a_window_without_submission_leaves_snapshots_alone() -> None:
     admin, employee = _user(UserRole.admin), _user()
-    open_ = _window(NOW + timedelta(days=1))
-    live = [_stored(employee.id)]
-    service, submissions = _service(open_, live, _submitted(open_, employee, live))
-    await service.refresh_after_admin_edit(admin, employee.id, date(2026, 11, 9), date(2026, 11, 9))
+    window = _window(NOW - timedelta(hours=1))
+    row = _submitted(window, employee, [_stored(employee.id)])
+    service, submissions = _service(window, [], row)
+    await service.apply_admin_edit(admin, employee.id, None, _entry("absence", 9))
+    submissions.put.assert_not_awaited()
+    old = _window(NOW - timedelta(hours=1), requires=False)
+    service, submissions = _service(old, [], _submitted(old, employee, [_stored(employee.id)]))
+    await service.apply_admin_edit(admin, employee.id, None, _entry("blocked", 9))
     submissions.put.assert_not_awaited()
 
 

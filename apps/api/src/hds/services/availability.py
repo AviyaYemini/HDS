@@ -239,7 +239,7 @@ class AvailabilityService:
         await self._require_window(actor, entry)
         await self._refuse_clash(actor, user_id, entry)
         created = await self._entries.create(actor.organization_id, {**entry, "user_id": user_id})
-        await self._after_admin_change(actor, user_id, entry)
+        await self._after_admin_change(actor, user_id, None, entry)
         return created
 
     async def _entry(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
@@ -286,24 +286,22 @@ class AvailabilityService:
         removed = {field: getattr(existing, field) for field in _ENTRY_FIELDS}
         await self._require_window(actor, removed)
         await self._entries.delete(id, actor.organization_id)
-        await self._after_admin_change(actor, existing.user_id, removed)
+        await self._after_admin_change(actor, existing.user_id, removed, None)
 
     async def _after_admin_change(
-        self, actor: User, user_id: uuid.UUID, *entries: dict[str, Any]
+        self,
+        actor: User,
+        user_id: uuid.UUID,
+        removed: dict[str, Any] | None,
+        added: dict[str, Any] | None,
     ) -> None:
-        """Refresh the employee's snapshots in the closed windows an Admin's change touched.
+        """Apply an Admin's change to the employee's submitted snapshots (007 review).
 
-        Only an Admin changes entries after a deadline, and absences are never in a snapshot, so
-        nothing else needs it.
+        An employee's own edits wait until they submit again; an Admin's hand edit counts at once.
         """
         if self._submissions is None or actor.role != UserRole.admin:
             return
-        touched = [e for e in entries if e["kind"] != "absence"]
-        if not touched:
-            return
-        first = min(e["starts_on"] for e in touched)
-        last = max(e["ends_on"] for e in touched)
-        await self._submissions.refresh_after_admin_edit(actor, user_id, first, last)
+        await self._submissions.apply_admin_edit(actor, user_id, removed, added)
 
     async def _fresh(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
         """Re-read an entry after its employee's row lock, or 404 if it went in the meantime."""

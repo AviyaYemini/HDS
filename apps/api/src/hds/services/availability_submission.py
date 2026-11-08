@@ -19,10 +19,10 @@ Rules (research R6, clarification Q4):
 """
 
 import uuid
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from hds.core.authz import STAFF_ROLES, ensure_role
 from hds.core.exceptions import ConflictError, NotFoundError
@@ -37,6 +37,7 @@ from hds.scheduling.types import Entry
 from hds.services.availability_effective import (
     ClosedWindow,
     effective_entries,
+    patched,
     snapshot,
     snapshot_hash,
 )
@@ -53,6 +54,18 @@ class SubmissionStatus:
     submitted_at: datetime | None
     counted_unavailable: bool
     submitted_by: uuid.UUID | None = None
+
+
+def _as_entry(user_id: uuid.UUID, fields: Mapping[str, Any]) -> Entry:
+    """The scheduling entry for an entry's fields as the availability service reports them."""
+    return Entry(
+        user_id,
+        fields["kind"],
+        fields["starts_on"],
+        fields["ends_on"],
+        fields["shift_type_id"],
+        fields["weekday"],
+    )
 
 
 def as_entry(stored: AvailabilityEntry) -> Entry:
@@ -156,23 +169,52 @@ class AvailabilitySubmissionService:
         await self._store(actor, actor.id, window)
         return await self._status_of(actor.organization_id, actor.id, window)
 
-    async def refresh_after_admin_edit(
-        self, admin: User, user_id: uuid.UUID, first: date, last: date
+    async def apply_admin_edit(
+        self,
+        admin: User,
+        user_id: uuid.UUID,
+        removed: Mapping[str, Any] | None,
+        added: Mapping[str, Any] | None,
     ) -> None:
-        """Re-snapshot ``user_id``'s existing submissions in the closed windows an edit touched.
+        """Apply an Admin's hand edit of one entry to the employee's existing submissions.
 
-        After the deadline only an Admin changes an employee's entries (003 FR-107); without this,
-        the change would not reach scheduling, which reads snapshots there. A window the employee
-        never submitted for is left alone: they stay counted as unavailable until an Admin submits
-        on their behalf (:meth:`submit_on_behalf`).
+        An Admin edits anyone's availability by hand (003 FR-107), before the deadline or after,
+        and that edit must count: the submitted snapshot of every window the entry touches gets
+        exactly that change (``removed`` out, ``added`` in), whatever its deadline. Nothing else
+        moves into the snapshot, so an employee's own edits since they submitted still count only
+        once they submit again (clarification Q4). A window the employee never submitted for is
+        left alone: they stay counted as unavailable until an Admin submits on their behalf
+        (:meth:`submit_on_behalf`). Absences are never in a snapshot.
+
+        Args:
+            admin: The Admin who made the change; recorded as ``submitted_by``.
+            user_id: The employee whose entry changed.
+            removed: The entry as it was, for a change or a delete, else ``None``.
+            added: The entry as it is now, for a create or a change, else ``None``.
         """
-        now = self._now()
+        changes = [e for e in (removed, added) if e is not None and e["kind"] != "absence"]
+        if not changes:
+            return
+        before = _as_entry(user_id, removed) if removed and removed["kind"] != "absence" else None
+        after = _as_entry(user_id, added) if added and added["kind"] != "absence" else None
+        first = min(e["starts_on"] for e in changes)
+        last = max(e["ends_on"] for e in changes)
         for window in await self._windows.covering(admin.organization_id, first, last):
-            if not window.requires_submission or now < window.deadline:
+            if not window.requires_submission:
                 continue
-            if await self._submissions.get(admin.organization_id, window.id, user_id) is None:
+            stored = await self._submissions.get(admin.organization_id, window.id, user_id)
+            if stored is None:
                 continue
-            await self._store(admin, user_id, window)
+            items = patched(stored.snapshot, before, after, window.starts_on, window.ends_on)
+            await self._submissions.put(
+                admin.organization_id,
+                window.id,
+                user_id,
+                submitted_at=self._now(),
+                submitted_by=admin.id,
+                snapshot=items,
+                snapshot_hash=snapshot_hash(items),
+            )
 
     async def submit_on_behalf(
         self, admin: User, user_id: uuid.UUID, window_id: uuid.UUID

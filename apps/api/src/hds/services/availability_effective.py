@@ -106,7 +106,37 @@ def snapshot(entries: Iterable[Entry], first: date, last: date) -> list[dict[str
         clipped = clip(entry, first, last)
         if clipped is not None:
             items.append(to_json(clipped))
-    return sorted(items, key=lambda i: json.dumps(i, sort_keys=True))
+    return canonical(items)
+
+
+def canonical(items: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Snapshot items in the one order the hash is taken over."""
+    return sorted((dict(i) for i in items), key=lambda i: json.dumps(i, sort_keys=True))
+
+
+def patched(
+    items: Sequence[Mapping[str, Any]],
+    removed: Entry | None,
+    added: Entry | None,
+    first: date,
+    last: date,
+) -> list[dict[str, Any]]:
+    """A snapshot with exactly one change applied: ``removed`` taken out, ``added`` put in.
+
+    Both are clipped to the window's dates ``first`` to ``last``, as the snapshot's items are. An
+    item that is not in the snapshot (the employee changed it after submitting) is not removed;
+    nothing else in the snapshot is touched (007 clarification Q4).
+    """
+    result = [dict(i) for i in items]
+    if removed is not None:
+        gone = clip(removed, first, last)
+        if gone is not None and to_json(gone) in result:
+            result.remove(to_json(gone))
+    if added is not None:
+        new = clip(added, first, last)
+        if new is not None:
+            result.append(to_json(new))
+    return canonical(result)
 
 
 def snapshot_hash(items: Sequence[Mapping[str, Any]]) -> str:
