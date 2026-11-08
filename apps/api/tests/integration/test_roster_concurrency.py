@@ -52,7 +52,7 @@ async def test_an_assignment_change_makes_the_shifts_etag_stale(
     assert assigned.json()["shift_etag"] != shift["etag"]
     stale = await async_client.post(
         f"{SHIFTS}/{shift['id']}/assignments",
-        json={"user_id": str(seed_users["extra"].id)},
+        json={"user_id": str(seed_users["manager"].id)},
         headers={**admin, "If-Match": shift["etag"]},
     )
     assert stale.status_code == 412

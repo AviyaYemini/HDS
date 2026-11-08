@@ -10,6 +10,7 @@ import pytest
 from httpx import AsyncClient
 
 from hds.models.user import User
+from tests.pay_support import project_managers
 from tests.roster_support import SHIFTS, add_project, add_shift, headers_for
 
 
@@ -35,8 +36,19 @@ async def statuses(client: AsyncClient, headers: dict[str, str]) -> dict[str, st
 
 @pytest.mark.parametrize("role", ["manager", "admin"])
 async def test_a_manager_or_admin_publishes_a_projects_drafts_in_a_date_range(
-    role: str, async_client: AsyncClient, admin: dict[str, str], project: dict[str, Any]
+    role: str,
+    async_client: AsyncClient,
+    admin: dict[str, str],
+    project: dict[str, Any],
+    seed_users: dict[str, User],
 ) -> None:
+    # A Manager publishes the projects they manage (the owner's decision of 2026-11-08, FR-036).
+    managers = await async_client.put(
+        project_managers(project["id"]),
+        json={"user_ids": [str(seed_users["manager"].id)]},
+        headers=admin,
+    )
+    assert managers.status_code == 200, managers.text
     for day in (7, 8, 9):
         await add_shift(async_client, admin, project, date(2027, 6, day))
     other = await add_project(async_client, admin, "Day Watch")

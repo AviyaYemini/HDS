@@ -39,7 +39,7 @@ async def test_a_half_shift_and_extra_hours_are_stored_and_read_back(
     extra = await async_client.post(
         f"{SHIFTS}/{shift['id']}/assignments",
         json={
-            "user_id": str(seed_users["extra"].id),
+            "user_id": str(seed_users["manager"].id),
             "starts_at": _iso(start),
             "ends_at": _iso(end + timedelta(hours=2)),
         },
@@ -54,7 +54,8 @@ async def test_a_half_shift_and_extra_hours_are_stored_and_read_back(
     assert datetime.fromisoformat(spans[str(seed_users["employee"].id)][1]) == start + timedelta(
         hours=4
     )
-    assert datetime.fromisoformat(spans[str(seed_users["extra"].id)][1]) == end + timedelta(hours=2)
+    extra_end = datetime.fromisoformat(spans[str(seed_users["manager"].id)][1])
+    assert extra_end == end + timedelta(hours=2)
 
     cleared = await async_client.patch(
         f"/api/v1/assignments/{half.json()['assignment']['id']}",

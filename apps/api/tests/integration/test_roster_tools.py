@@ -75,7 +75,7 @@ async def test_publish_records_one_event_per_person_and_matches_the_review(
     project = await add_project(async_client, admin)
     await staffed(async_client, admin, project, seed_users["employee"], FIRST)
     await staffed(async_client, admin, project, seed_users["employee"], FIRST + timedelta(days=1))
-    await staffed(async_client, admin, project, seed_users["extra"], FIRST + timedelta(days=2))
+    await staffed(async_client, admin, project, seed_users["manager"], FIRST + timedelta(days=2))
     params = {"from": FIRST.isoformat(), "to": (FIRST + timedelta(days=6)).isoformat()}
     review = (
         await async_client.get(
@@ -186,7 +186,7 @@ async def test_the_tracker_lists_everyones_status(
     assert listed.status_code == 200, listed.text
     status = {i["user_id"]: i["status"] for i in listed.json()["items"]}
     assert status[str(seed_users["employee"].id)] == "submitted"
-    assert status[str(seed_users["extra"].id)] == "not_submitted"
+    assert status[str(seed_users["manager"].id)] == "not_submitted"
     assert str(seed_users["client"].id) not in status
     refused = await async_client.get(
         f"/api/v1/availability-windows/{window['id']}/submissions", headers=employee
