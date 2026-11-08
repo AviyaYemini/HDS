@@ -210,7 +210,7 @@ agenda and the submission tracker.
 
 ### Close
 
-- [ ] T076 [CORE] Close group D as the template says. Mutants (≤ 3): the +4 h bound turned into +5 h, pay priced on the shift's span instead of the assignment's, and the project check in `roster.edit:project` dropped. Commit `feat(client): add the weekly roster (…)`
+- [x] T076 [CORE] Close group D as the template says. Mutants (≤ 3): the +4 h bound turned into +5 h, pay priced on the shift's span instead of the assignment's, and the project check in `roster.edit:project` dropped. Commit `feat(client): add the weekly roster (…)`
 
 ---
 
