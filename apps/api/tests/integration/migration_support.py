@@ -16,6 +16,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -27,6 +29,20 @@ API_DIR = Path(__file__).resolve().parents[2]
 BASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://hds:hds_dev@localhost:5432/hds_test"
 )
+
+
+def head_and_previous() -> tuple[str, str]:
+    """The migration chain's head and the revision before it, read from the scripts.
+
+    Tests that need "the latest" and "one before it" ask here rather than naming revisions, so a
+    new migration does not break them.
+    """
+    script = ScriptDirectory.from_config(Config(str(API_DIR / "alembic.ini")))
+    head = script.get_current_head()
+    assert head is not None, "no single head revision"
+    previous = script.get_revision(head).down_revision
+    assert isinstance(previous, str), "the head has no single previous revision"
+    return head, previous
 
 
 def alembic_run(url: str, *args: str) -> subprocess.CompletedProcess[str]:
