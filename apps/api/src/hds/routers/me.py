@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.capabilities import Capability
-from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
 from hds.core.deps import current_session_id, get_current_user
 from hds.core.types import Name, Phone, omittable
@@ -22,7 +21,6 @@ from hds.models.user import User
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
-from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
@@ -31,6 +29,7 @@ from hds.routers.user_schemas import UserRead
 from hds.services.auth import AuthService
 from hds.services.capabilities import CapabilityService
 from hds.services.employee import EmployeeService
+from hds.wiring import auth_service_for
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -108,13 +107,7 @@ async def get_me(
 
 
 def _auth(db: AsyncSession) -> AuthService:
-    return AuthService(
-        user_repo=UserRepository(db),
-        token_repo=RefreshTokenRepository(db),
-        config=get_settings(),
-        link_repo=InvitationTokenRepository(db),
-        throttle_repo=LoginThrottleRepository(db),
-    )
+    return auth_service_for(db)
 
 
 @router.get(

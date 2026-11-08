@@ -21,10 +21,13 @@ from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.health import HealthRepository
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
+from hds.repositories.invitation_token import InvitationTokenRepository
+from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.pay_reports import PayReportRepository, ReportShiftRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.schedule_job import ScheduleJobRepository
 from hds.repositories.scheduling_inputs import SchedulingInputRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
@@ -33,6 +36,7 @@ from hds.repositories.site import SiteRepository
 from hds.repositories.special_day import SpecialDayRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.repositories.user import UserRepository
+from hds.services.auth import AuthService
 from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
 from hds.services.organisation_contact import OrganisationContactService
@@ -103,6 +107,17 @@ def scheduling_settings(
 ) -> SchedulingSettingsService:
     """FastAPI dependency: the organisation's scheduling limits, in the request's unit of work."""
     return SchedulingSettingsService(organisation_repo=OrganisationRepository(db))
+
+
+def auth_service_for(db: AsyncSession) -> AuthService:
+    """The sign-in and session service over ``db``: the one place it is wired."""
+    return AuthService(
+        user_repo=UserRepository(db),
+        token_repo=RefreshTokenRepository(db),
+        config=get_settings(),
+        link_repo=InvitationTokenRepository(db),
+        throttle_repo=LoginThrottleRepository(db),
+    )
 
 
 def organisation_contact(

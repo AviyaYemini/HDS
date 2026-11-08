@@ -19,6 +19,7 @@ from hds.core.capabilities import (
     has,
     has_on_project,
 )
+from hds.core.deps import require_capability
 from hds.core.exceptions import ForbiddenError
 from hds.models.user import User, UserRole
 
@@ -123,3 +124,17 @@ async def test_each_route_gate_admits_the_same_roles_as_before(
             with pytest.raises(ForbiddenError) as refused:
                 await gate(user)  # type: ignore[operator]
             assert refused.value.code == code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", list(UserRole))
+async def test_a_capability_gate_admits_exactly_the_roles_that_hold_it(role: UserRole) -> None:
+    """007 review: the contact card's route asks for organisation.contact.edit itself."""
+    gate = require_capability(Capability.ORGANISATION_CONTACT_EDIT, code="users.admin_required")
+    user = MagicMock(role=role)
+    if has(role, Capability.ORGANISATION_CONTACT_EDIT):
+        assert await gate(user) is user
+    else:
+        with pytest.raises(ForbiddenError) as refused:
+            await gate(user)
+        assert refused.value.code == "users.admin_required"

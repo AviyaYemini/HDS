@@ -9,7 +9,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from hds.core.deps import get_current_user, require_admin
+from hds.core.capabilities import Capability
+from hds.core.deps import get_current_user, require_capability
 from hds.core.types import ChangeRequest, Email, Phone, omittable
 from hds.models.user import User
 from hds.services.organisation_contact import OrganisationContactService
@@ -84,7 +85,9 @@ async def read_contact(
 )
 async def change_contact(
     body: OrganisationContactUpdate,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(
+        require_capability(Capability.ORGANISATION_CONTACT_EDIT, code="users.admin_required")
+    ),
     svc: OrganisationContactService = Depends(organisation_contact),
 ) -> OrganisationContact:
     """Change the contact card.

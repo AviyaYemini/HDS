@@ -150,6 +150,8 @@ test("a stored session whose tokens no longer work is forgotten on restore", asy
   const session = new Session(BASE, store, api.fetch);
   expect(await session.restore()).toBe(false);
   expect(await store.load()).toBeNull();
+  // The server refused the kept tokens: that is a session that ended (R25).
+  expect(session.endedUnexpectedly).toBe(true);
 });
 
 test("an unreachable server on restore keeps the stored tokens for the next try", async () => {
@@ -160,6 +162,8 @@ test("an unreachable server on restore keeps the stored tokens for the next try"
   });
   expect(await offline.restore()).toBe(false);
   expect(await store.load()).toEqual({ access: "a1", refresh: "r1" });
+  // Out of reach is not ended: no "session expired" notice for an offline start (R25).
+  expect(offline.endedUnexpectedly).toBe(false);
 });
 
 test("signing out with an expired access token revokes the refresh token it was rotated to", async () => {
@@ -174,4 +178,18 @@ test("signing out with an expired access token revokes the refresh token it was 
   ]);
   expect(api.calls("POST", "/auth/logout")[1]!.auth).toBe("Bearer a2");
   expect(session.signedIn).toBe(false);
+});
+
+test("signing out before the kept tokens were taken up still revokes them on the server", async () => {
+  // A phone locked behind biometrics signs out without ever restoring (007 review).
+  const api = new FakeApi();
+  const store = memoryStore();
+  await store.save({ access: "a-kept", refresh: "r-kept" });
+  api.on("POST", "/auth/logout", new Response(null, { status: 204 }));
+  const session = new Session(BASE, store, api.fetch);
+  await session.signOut();
+  const [sent] = api.calls("POST", "/auth/logout");
+  expect(sent?.body).toEqual({ refresh_token: "r-kept" });
+  expect(sent?.auth).toBe("Bearer a-kept");
+  expect(await store.load()).toBeNull();
 });

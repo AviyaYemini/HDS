@@ -10,10 +10,10 @@ Every role reads the card, a client included, because it is the way out of every
 from collections.abc import Mapping
 from typing import Any
 
-from hds.core.authz import ensure_role
-from hds.core.exceptions import DomainValidationError, NotFoundError
+from hds.core.capabilities import Capability, has
+from hds.core.exceptions import DomainValidationError, ForbiddenError, NotFoundError
 from hds.models.organisation import Organisation
-from hds.models.user import User, UserRole
+from hds.models.user import User
 from hds.repositories.organisation import OrganisationRepository
 
 
@@ -62,7 +62,8 @@ class OrganisationContactService:
             ForbiddenError: ``users.admin_required`` (HTTP 403).
             ValidationError: ``organisation.opening_hours_invalid`` (HTTP 422).
         """
-        ensure_role(actor, UserRole.admin)
+        if not has(actor.role, Capability.ORGANISATION_CONTACT_EDIT):
+            raise ForbiddenError(code="users.admin_required", detail="Admin role required")
         if "opening_hours" in data:
             check_opening_hours(data["opening_hours"])
         org = await self._orgs.update_contact(actor.organization_id, data)

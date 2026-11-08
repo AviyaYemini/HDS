@@ -98,6 +98,9 @@ export class Session {
    * to, so the session the server still holds is the one revoked.
    */
   async signOut(): Promise<void> {
+    // Signed out from a lock screen, the kept tokens were never taken up: take them now, so the
+    // server revokes the session rather than only this device forgetting it.
+    if (this.tokens === null) this.tokens = await this.store.load();
     try {
       let status = await this.logout();
       if (status === 401 && (await this.refresh())) status = await this.logout();
@@ -129,9 +132,10 @@ export class Session {
   reloadMe(): Promise<void> {
     this.reloading ??= (async () => {
       try {
-        const before = this.user;
+        const before = JSON.stringify(this.user);
         await this.loadMe();
-        if (this.user !== before) this.notify();
+        // Compared by value: only a real change (role, capabilities, projects) redraws.
+        if (JSON.stringify(this.user) !== before) this.notify();
       } catch {
         // Unreachable or refused: the next refusal tries again.
       } finally {

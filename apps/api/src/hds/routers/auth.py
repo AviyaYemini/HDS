@@ -17,11 +17,8 @@ from hds.core.database import get_unit_of_work
 from hds.core.deps import current_session_id, get_current_user
 from hds.core.types import Email, Password, Token
 from hds.models.user import User
-from hds.repositories.invitation_token import InvitationTokenRepository
-from hds.repositories.login_throttle import LoginThrottleRepository
-from hds.repositories.refresh_token import RefreshTokenRepository
-from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
+from hds.wiring import auth_service_for
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,14 +54,7 @@ class RefreshRequest(BaseModel):
 
 
 def _make_service(db: AsyncSession) -> AuthService:
-    settings = get_settings()
-    return AuthService(
-        user_repo=UserRepository(db),
-        token_repo=RefreshTokenRepository(db),
-        config=settings,
-        link_repo=InvitationTokenRepository(db),
-        throttle_repo=LoginThrottleRepository(db),
-    )
+    return auth_service_for(db)
 
 
 @router.post(

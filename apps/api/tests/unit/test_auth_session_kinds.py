@@ -11,10 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hds.core import passwords
-from hds.core.deps import current_session_id
+from hds.core.deps import session_id_from_claims
 from hds.core.exceptions import ConflictError, NotFoundError
-from hds.core.security import create_access_token, decode_access_token
-from hds.models.user import UserRole
+from hds.core.security import decode_access_token
 from hds.services.auth import AuthService
 from tests.unit.test_auth_service import _make_config, _make_user, _no_counts
 
@@ -117,31 +116,18 @@ async def test_the_access_token_names_the_session_it_was_issued_with() -> None:
     assert _sid(answer.access_token) == str(row.id)
 
 
-def test_the_session_id_is_read_from_the_token_and_absent_without_one() -> None:
-    secret = _config().JWT_SECRET_KEY.get_secret_value()
+def test_the_session_id_is_read_from_the_claims_and_absent_without_one() -> None:
     sid = uuid.uuid4()
-    with patch("hds.core.deps.get_settings") as settings:
-        settings.return_value.JWT_SECRET_KEY.get_secret_value.return_value = secret
-        settings.return_value.JWT_ALGORITHM = "HS256"
-        user, org = uuid.uuid4(), uuid.uuid4()
-        marked = create_access_token(user, org, UserRole.employee, 60, secret, sid=sid)
-        unmarked = create_access_token(user, org, UserRole.employee, 60, secret)
-        assert current_session_id(marked) == sid
-        assert current_session_id(unmarked) is None
-        assert current_session_id(None) is None
-        assert current_session_id("not a token") is None
-
-
-def _live(*ids: uuid.UUID) -> list[MagicMock]:
-    return [MagicMock(id=i) for i in ids]
+    assert session_id_from_claims({"sub": "x", "sid": str(sid)}) == sid
+    assert session_id_from_claims({"sub": "x"}) is None
+    assert session_id_from_claims({"sub": "x", "sid": "not a uuid"}) is None
 
 
 @pytest.mark.asyncio
 async def test_signing_out_of_other_devices_keeps_the_callers_session() -> None:
     """007 T039: every other live session ends; the caller's own stays."""
     service, tokens = _signed_in_service()
-    mine, other = uuid.uuid4(), uuid.uuid4()
-    tokens.live_for_user.return_value = _live(mine, other)
+    mine = uuid.uuid4()
     tokens.revoke_others_for_user.return_value = 1
     assert await service.end_other_sessions(uuid.uuid4(), mine) == 1
     args = tokens.revoke_others_for_user.await_args.args
@@ -153,12 +139,17 @@ async def test_signing_out_of_other_devices_keeps_the_callers_session() -> None:
 async def test_signing_out_of_other_devices_ends_nothing_when_the_session_is_unknown(
     current: str | None,
 ) -> None:
-    """No sid (a token from before the marker), or a session no longer live: 409, nothing ends."""
+    """No sid (a token from before the marker), or a session no longer live: 409, nothing ends.
+
+    The repository checks liveness under the user's lock and answers ``None`` when the kept
+    session was rotated or revoked meanwhile, revoking nothing.
+    """
     service, tokens = _signed_in_service()
-    tokens.live_for_user.return_value = _live(uuid.uuid4(), uuid.uuid4())
+    tokens.revoke_others_for_user.return_value = None
     sid = None if current is None else uuid.uuid4()
     with pytest.raises(ConflictError) as refused:
         await service.end_other_sessions(uuid.uuid4(), sid)
     assert refused.value.code == "session.current_unknown"
-    tokens.revoke_others_for_user.assert_not_called()
+    if current is None:
+        tokens.revoke_others_for_user.assert_not_called()
     tokens.revoke_all_for_user.assert_not_called()

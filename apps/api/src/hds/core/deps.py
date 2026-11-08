@@ -6,8 +6,10 @@ with ``hds.core.authz.ensure_role`` so the matrix holds without the HTTP layer.
 """
 
 import uuid
+from collections.abc import Callable, Coroutine, Mapping
+from typing import Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +26,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 async def get_current_user(
+    request: Request,
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> User:
@@ -32,7 +35,11 @@ async def get_current_user(
     The user row is reloaded on every request, so deactivation, role changes and deletion
     apply immediately even though the access token is still unexpired.
 
+    Records the token's session on ``request.state.session_id`` (see :func:`current_session_id`),
+    so the token is decoded once per request.
+
     Args:
+        request: The request, which carries the session id onward.
         token: Bearer token from the ``Authorization`` header, if any.
         db: Request-scoped database session.
 
@@ -73,6 +80,7 @@ async def get_current_user(
     if not user.is_active:
         raise AuthError(code="auth.account_inactive", detail="Account inactive")
 
+    request.state.session_id = session_id_from_claims(payload)
     return user
 
 
@@ -173,30 +181,60 @@ async def require_admin(
     return user
 
 
-def current_session_id(token: str | None = Depends(oauth2_scheme)) -> uuid.UUID | None:
-    """The session the caller's access token belongs to, from its ``sid`` claim (007 T039).
+def require_capability(
+    capability: Capability, code: str = "users.forbidden"
+) -> Callable[..., Coroutine[Any, Any, User]]:
+    """A route gate for one capability of the map (007 FR-001, research R4).
 
-    Used beside :func:`get_current_user`, which has already refused a bad token; this only reads
-    the claim. A token issued before sessions were marked carries none, and answers ``None``.
+    The 007 routes gate on the capability they mean, so granting it to a role opens the route and
+    its navigation together. The older routes keep ``require_manager`` and ``require_admin``.
 
     Args:
-        token: Bearer token from the ``Authorization`` header, if any.
+        capability: The capability the route needs.
+        code: The refusal's code, ``users.admin_required`` where an admin-only answer is kept.
 
     Returns:
-        The id of the live refresh token issued with the access token, or ``None``.
+        A dependency that answers the caller, or refuses with 403 and ``code``.
     """
-    if token is None:
-        return None
-    settings = get_settings()
+
+    async def gate(user: User = Depends(get_current_user)) -> User:
+        """Answer the caller when their role holds ``capability``; refuse with 403 otherwise."""
+        if not has(user.role, capability):
+            raise ForbiddenError(code=code, detail=f"Needs {capability.value}")
+        return user
+
+    return gate
+
+
+def session_id_from_claims(claims: Mapping[str, Any]) -> uuid.UUID | None:
+    """The session an access token belongs to, from its ``sid`` claim (007 T039).
+
+    Args:
+        claims: The token's verified claims.
+
+    Returns:
+        The id of the refresh token issued with the access token, or ``None`` for a token issued
+        before sessions were marked, or one whose ``sid`` is not a UUID.
+    """
     try:
-        payload = decode_access_token(
-            token,
-            secret=settings.JWT_SECRET_KEY.get_secret_value(),
-            algorithm=settings.JWT_ALGORITHM,
-        )
-        return uuid.UUID(str(payload["sid"]))
-    except (ValueError, KeyError):
+        return uuid.UUID(str(claims["sid"]))
+    except (KeyError, ValueError):
         return None
+
+
+def current_session_id(request: Request, _: User = Depends(get_current_user)) -> uuid.UUID | None:
+    """The caller's session, as :func:`get_current_user` read it from the token.
+
+    FastAPI runs ``get_current_user`` once per request, so the token is not decoded again here.
+
+    Args:
+        request: The request; ``get_current_user`` left the session id on its state.
+
+    Returns:
+        The session's id, or ``None`` when the token carries none.
+    """
+    found: uuid.UUID | None = getattr(request.state, "session_id", None)
+    return found
 
 
 async def get_current_user_or_self(

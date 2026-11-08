@@ -135,13 +135,24 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
 
     async def revoke_others_for_user(
         self, user_id: uuid.UUID, keep_id: uuid.UUID, reason: RevocationReason
-    ) -> int:
+    ) -> int | None:
         """Revoke every live token of ``user_id`` except ``keep_id``; answer how many.
 
-        One statement, under the user's row lock like :meth:`revoke_all_for_user`, so a refresh
-        racing it either rotates first (and its new token is revoked here) or is refused after.
+        Under the user's row lock, which a refresh also takes, ``keep_id`` is checked to be still
+        live first: if a refresh rotated it meanwhile, nothing is revoked and the answer is
+        ``None``, so the caller's new token is never among those revoked.
         """
         await lock_user_row(self.session, user_id)
+        kept = await self.session.execute(
+            select(RefreshToken.id).where(
+                RefreshToken.id == keep_id,
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > datetime.now(UTC),
+            )
+        )
+        if kept.scalar_one_or_none() is None:
+            return None
         result = await self.session.execute(
             update(RefreshToken)
             .where(

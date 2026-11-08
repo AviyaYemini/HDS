@@ -294,15 +294,19 @@ class AuthService:
             ConflictError: ``session.current_unknown`` (HTTP 409) when ``current`` is ``None`` or
                 not one of the caller's live sessions; signing in again gives a marked token.
         """
-        live = await self._token_repo.live_for_user(user_id, datetime.now(UTC))
-        if current is None or current not in {t.id for t in live}:
+        ended = None
+        if current is not None:
+            # The live check and the revoke happen together under the user's lock, so a refresh
+            # that rotates ``current`` at the same moment cannot get its new token revoked.
+            ended = await self._token_repo.revoke_others_for_user(
+                user_id, current, RevocationReason.logout
+            )
+        if ended is None:
             raise ConflictError(
                 code="session.current_unknown",
                 detail="This device's session is not known; sign in again, then try once more",
             )
-        return await self._token_repo.revoke_others_for_user(
-            user_id, current, RevocationReason.logout
-        )
+        return ended
 
     async def logout(self, raw_token: str, user_id: uuid.UUID) -> None:
         """Revoke the caller's refresh token, ending that session.

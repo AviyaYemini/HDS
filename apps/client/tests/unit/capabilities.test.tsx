@@ -109,6 +109,16 @@ describe("after a 403", () => {
     expect(api.calls("GET", "/me")).toHaveLength(2);
   });
 
+  it("tells no one when the account read again is unchanged", async () => {
+    const api = new FakeApi().on("GET", "/me", json(200, me("manager", ["roster.read"])));
+    const session = await signedIn(api);
+    const heard = jest.fn();
+    session.subscribe(heard);
+    await session.reloadMe();
+    expect(api.calls("GET", "/me")).toHaveLength(2);
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it("does not read the account again when /me itself was refused", async () => {
     const api = new FakeApi().on("GET", "/me", json(200, me("employee", ["my_work.read"])));
     const session = await signedIn(api);
