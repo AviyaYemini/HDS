@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
@@ -66,7 +66,7 @@ class ShiftTypeUpdateRequest(ChangeRequest):
     name: Name = omittable()
     starts_at_local: IsoTime = omittable()
     ends_at_local: IsoTime = omittable()
-    is_active: bool = omittable()
+    is_active: StrictBool = omittable()
 
 
 class ShiftTypeIdsRequest(BaseModel):

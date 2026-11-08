@@ -7,7 +7,7 @@ window and their absences any time; an Admin changes anyone's; Managers read eve
 
 import uuid
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager, require_staff
-from hds.core.types import ChangeRequest, IsoDate, IsoDateTime, StrictDate, omittable
+from hds.core.types import WHOLE_NUMBER, ChangeRequest, IsoDate, IsoDateTime, StrictDate, omittable
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User
 from hds.repositories.availability import AvailabilityRepository
@@ -29,7 +29,8 @@ router = APIRouter(prefix="/api/v1", tags=["availability"])
 
 Kind = Literal["blocked", "open", "close", "absence"]
 AbsenceKind = Literal["leave", "reserve_duty", "sick"]
-Weekday = Field(default=None, ge=0, le=6, description="0 Sunday to 6 Saturday.")
+# A JSON whole number only: never true or "3" (R165).
+WeekdayNumber = Annotated[int, Field(ge=0, le=6), WHOLE_NUMBER]
 
 
 def _svc(db: AsyncSession) -> AvailabilityService:
@@ -107,7 +108,7 @@ class EntryCreateRequest(BaseModel):
     starts_on: StrictDate
     ends_on: StrictDate
     shift_type_id: uuid.UUID | None = None
-    weekday: int | None = Weekday
+    weekday: WeekdayNumber | None = Field(default=None, description="0 Sunday to 6 Saturday.")
 
 
 class EntryUpdateRequest(ChangeRequest):
@@ -118,7 +119,7 @@ class EntryUpdateRequest(ChangeRequest):
     starts_on: StrictDate = omittable()
     ends_on: StrictDate = omittable()
     shift_type_id: uuid.UUID | None = None
-    weekday: int | None = Weekday
+    weekday: WeekdayNumber | None = Field(default=None, description="0 Sunday to 6 Saturday.")
 
 
 def _window(svc: AvailabilityService, window: SubmissionWindow) -> WindowRead:

@@ -20,7 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hds.core.database import get_unit_of_work
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
-from hds.core.types import ChangeRequest, IsoDate, IsoDateTime, Money, StrictDate, omittable
+from hds.core.types import (
+    WHOLE_NUMBER,
+    ChangeRequest,
+    IsoDate,
+    IsoDateTime,
+    Money,
+    StrictDate,
+    omittable,
+)
 from hds.models.user import User
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.shift import ShiftView
@@ -31,6 +39,8 @@ from hds.services.roster import etag
 router = APIRouter(prefix="/api/v1", tags=["shifts"])
 
 Headcount = Field(ge=1, le=1000, description="How many employees the shift needs.")
+# A JSON whole number only: never true or "2" (R165).
+HeadcountNumber = Annotated[int, Field(ge=1, le=1000), WHOLE_NUMBER]
 
 
 class OverrideRead(BaseModel):
@@ -139,7 +149,7 @@ class ShiftCreateRequest(BaseModel):
     project_id: uuid.UUID
     shift_type_id: uuid.UUID
     date: StrictDate
-    headcount: int = Headcount
+    headcount: Annotated[int, Headcount, WHOLE_NUMBER]
     pay_rate: Money | None = None
     starts_at: IsoDateTime | None = None
     ends_at: IsoDateTime | None = None
@@ -150,7 +160,7 @@ class ShiftUpdateRequest(ChangeRequest):
 
     starts_at: IsoDateTime = omittable()
     ends_at: IsoDateTime = omittable()
-    headcount: Annotated[int, Field(ge=1, le=1000)] = omittable()
+    headcount: HeadcountNumber = omittable()
     pay_rate: Money | None = None
 
 
