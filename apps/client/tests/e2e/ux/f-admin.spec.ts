@@ -112,3 +112,22 @@ for (const language of LANGUAGES) {
     });
   });
 }
+
+// A removal held for its undo is sent as the page goes away, never lost (R163).
+test("a removal followed at once by a reload is still made", async ({ page }) => {
+  const admin = await apiAs("admin");
+  const name = `Held ${Date.now()}`;
+  const day = `2031-0${1 + (Date.now() % 9)}-1${Date.now() % 10}`;
+  const made = await ok<{ id: string }>(admin.post("/api/v1/special-days", { data: { name, day } }), 201);
+  await signIn(page, "admin", "en");
+  await page.goto(at("/admin/special-days", "en", { open: made.id }));
+  await page.getByTestId("action-delete").click();
+  await page.getByTestId("action-confirm-delete").click();
+  await expect(page.getByTestId("toast-deleted")).toBeVisible();
+  // Well inside the 6-second undo: the page goes, and the delete must go with it.
+  await page.reload();
+  await expect
+    .poll(async () => (await ok<{ items: { id: string }[] }>(admin.get("/api/v1/special-days"))).items.some((d) => d.id === made.id), { timeout: 5000 })
+    .toBe(false);
+  await admin.dispose();
+});

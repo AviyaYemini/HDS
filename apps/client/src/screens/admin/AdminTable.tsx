@@ -28,6 +28,7 @@ import {
 import { Screen } from "../../design/components/Screen";
 import type { IconName } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
+import { hold } from "../../design/heldActions";
 import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
 import { fromViewQuery, readState, searched, sorted, toParams, viewQuery, type TableState } from "./tableState";
@@ -58,7 +59,8 @@ export interface AdminTableProps<Row> {
   panel: (args: PanelArgs<Row>) => ReactNode;
   canCreate?: boolean;
   /** Shown only to whoever may delete (an Admin); the record is removed after a confirmation. */
-  onDelete?: ((row: Row) => Promise<void>) | null;
+  /** `urgent` when the page or app is going away: the request must outlive it (keepalive). */
+  onDelete?: ((row: Row, urgent: boolean) => Promise<void>) | null;
   emptyTitle: string;
   emptyBody: string;
 }
@@ -291,8 +293,10 @@ export function AdminTable<Row>({
               if (!row || !onDelete) return;
               // Gone from the list at once, deleted when the toast's undo has passed: the API's
               // delete is final, so the undo is the wait before it (FR-046).
+              // Held in one place for every screen: sent when the undo time is up, or at once as the
+              // page hides, the app leaves the foreground, before sign-out and before a language
+              // restart; dropped if the session ends first (R163).
               const key = keyOf(row);
-              let undone = false;
               go({ open: null });
               setRemoving((held) => new Set(held).add(key));
               const restore = () => setRemoving((held) => {
@@ -300,29 +304,28 @@ export function AdminTable<Row>({
                 next.delete(key);
                 return next;
               });
+              const undo = hold(
+                async (urgent) => {
+                  await onDelete(row, urgent);
+                  await rows.reload();
+                  restore();
+                },
+                UNDO_MS,
+                (failure) => {
+                  restore();
+                  showToast(errorText(codeOf(failure)), { tone: "warning" });
+                },
+              );
               showToast(t("admin.deleted", { name: nameOf(row) }), {
                 duration: UNDO_MS,
                 action: {
                   label: t("common.undo"),
                   onPress: () => {
-                    undone = true;
-                    restore();
+                    if (undo()) restore();
                   },
                 },
                 testID: "toast-deleted",
               });
-              setTimeout(() => {
-                if (undone) return;
-                void onDelete(row)
-                  .then(async () => {
-                    await rows.reload();
-                    restore();
-                  })
-                  .catch((failure: unknown) => {
-                    restore();
-                    showToast(errorText(codeOf(failure)), { tone: "warning" });
-                  });
-              }, UNDO_MS);
             }}
             testID="action-confirm-delete"
           />

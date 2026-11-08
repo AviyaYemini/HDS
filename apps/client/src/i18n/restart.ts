@@ -14,6 +14,7 @@ import { useSyncExternalStore } from "react";
 import { Platform } from "react-native";
 
 import { storeFor } from "../api/tokens";
+import { flushHeld } from "../design/heldActions";
 import { safeReturnPath } from "../auth/returnPath";
 import { applyDirection, isRtlLanguage, rememberLanguage, setupI18n } from "./index";
 
@@ -187,6 +188,8 @@ export async function restartInLanguage(language: string, path: string, deps: Re
   const platform = deps.platform ?? Platform.OS;
   setSwitching(language);
   await painted();
+  // A delete held for its undo is sent before the restart, so the reload never loses it (R163).
+  await flushHeld(true);
   await rememberLanguage(language);
   // A phone takes its layout direction from the native setting at launch: set it before the
   // reload, so the restarted app starts laid out in the new language (group O review).

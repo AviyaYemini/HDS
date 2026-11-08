@@ -29,6 +29,7 @@ import { startLoading } from "../src/design/loading/loadingStore";
 import { useAppFonts } from "../src/design/theme/fonts";
 import { ThemeProvider, useTheme } from "../src/design/theme/ThemeProvider";
 import { i18n, loadRememberedLanguage, setupI18n } from "../src/i18n";
+import { dropHeld, flushHeld, installHeldFlush } from "../src/design/heldActions";
 import { clearResume, skipsUnlock, takeResume } from "../src/i18n/restart";
 import { LanguageSwitching } from "../src/navigation/LanguageSwitching";
 import { OfflineBanner } from "../src/navigation/OfflineBanner";
@@ -178,6 +179,17 @@ function Starter() {
     void SplashScreen.hideAsync().catch(() => undefined);
   }, [start, resumeTo]);
 
+  // Held deletes go out as the page hides, the app leaves the foreground or someone signs out
+  // (while the session is good); once the session has ended they are dropped unsent (R163).
+  useEffect(() => {
+    const uninstall = installHeldFlush();
+    const removeTask = session.beforeSignOut(() => flushHeld());
+    return () => {
+      uninstall();
+      removeTask();
+    };
+  }, []);
+
   useEffect(() => {
     // A refresh the server refused while the app was open: say so on the sign-in screen.
     return session.subscribe(() => {
@@ -185,6 +197,7 @@ function Starter() {
       // Signing out forgets a pending resume, kept and in hand: it belongs to the session that
       // switched (group O review).
       if (!session.signedIn) {
+        dropHeld();
         void clearResume();
         setResumeTo(null);
       }

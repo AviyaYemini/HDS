@@ -66,7 +66,7 @@ export function StaffScreen() {
       sortValue={(u, key) => (key === "rate" ? (u.default_hourly_rate ? Number(u.default_hourly_rate) : null) : key === "email" ? u.email : key === "role" ? u.role : key === "active" ? (u.is_active ? 1 : 0) : u.full_name)}
       emptyTitle={t("admin.empty.staff_title")}
       emptyBody={t("admin.empty.staff_body")}
-      onDelete={capabilities.has("staff.delete") ? async (u) => void (await call(api.DELETE("/api/v1/employees/{id}", { params: { path: { id: u.id } } }))) : null}
+      onDelete={capabilities.has("staff.delete") ? async (u, urgent) => void (await call(api.DELETE("/api/v1/employees/{id}", { params: { path: { id: u.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) => (
         <RecordForm
           key={row?.id ?? "new"}
@@ -139,7 +139,7 @@ export function ClientsScreen() {
       sortValue={(c, key) => (key === "contact" ? (c.contact_name ?? null) : key === "start" ? c.contract_start : key === "end" ? (c.contract_end ?? null) : c.name)}
       emptyTitle={t("admin.empty.clients_title")}
       emptyBody={t("admin.empty.clients_body")}
-      onDelete={capabilities.has("clients.delete") ? async (c) => void (await call(api.DELETE("/api/v1/clients/{id}", { params: { path: { id: c.id } } }))) : null}
+      onDelete={capabilities.has("clients.delete") ? async (c, urgent) => void (await call(api.DELETE("/api/v1/clients/{id}", { params: { path: { id: c.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) => (
         <RecordForm
           key={row?.id ?? "new"}
@@ -366,7 +366,7 @@ export function ProjectsScreen() {
       }
       emptyTitle={t("admin.empty.projects_title")}
       emptyBody={t("admin.empty.projects_body")}
-      onDelete={capabilities.has("projects.delete") ? async (p) => void (await call(api.DELETE("/api/v1/projects/{id}", { params: { path: { id: p.id } } }))) : null}
+      onDelete={capabilities.has("projects.delete") ? async (p, urgent) => void (await call(api.DELETE("/api/v1/projects/{id}", { params: { path: { id: p.id } }, keepalive: urgent }))) : null}
       panel={({ row, saved }) =>
         lists.data === null ? (
           <SkeletonRows rows={4} />
@@ -505,7 +505,7 @@ export function SpecialDaysScreen() {
       sortValue={(d, key) => (key === "name" ? d.name : key === "rate" ? Number(d.rate_pct) : d.day)}
       emptyTitle={t("admin.empty.special_days_title")}
       emptyBody={t("admin.empty.special_days_body")}
-      onDelete={async (d) => void (await call(api.DELETE("/api/v1/special-days/{id}", { params: { path: { id: d.id } } })))}
+      onDelete={async (d, urgent) => void (await call(api.DELETE("/api/v1/special-days/{id}", { params: { path: { id: d.id } }, keepalive: urgent })))}
       panel={({ row, saved }) => (
         <RecordForm
           key={row?.id ?? "new"}

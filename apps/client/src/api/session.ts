@@ -49,6 +49,7 @@ export class Session {
   private refreshing: Promise<boolean> | null = null;
   private reloading: Promise<void> | null = null;
   private readonly listeners = new Set<() => void>();
+  private readonly signOutTasks = new Set<() => Promise<void>>();
 
   constructor(
     baseUrl: string,
@@ -122,7 +123,25 @@ export class Session {
    * access token is refreshed first and the logout sent again with the refresh token it was rotated
    * to, so the session the server still holds is the one revoked.
    */
+  /**
+   * Run `task` before every sign-out, while the session is still good (held deletes are sent then,
+   * R163); returns the removal.
+   */
+  beforeSignOut(task: () => Promise<void>): () => void {
+    this.signOutTasks.add(task);
+    return () => {
+      this.signOutTasks.delete(task);
+    };
+  }
+
   async signOut(): Promise<void> {
+    for (const task of [...this.signOutTasks]) {
+      try {
+        await task();
+      } catch {
+        // A task that fails never keeps someone signed in.
+      }
+    }
     // Signed out from a lock screen, the kept tokens were never taken up: take them now, so the
     // server revokes the session rather than only this device forgetting it.
     if (this.tokens === null) this.tokens = await this.store.load();
