@@ -69,11 +69,16 @@ function Section({ title, children, testID }: { title: string; children: React.R
   );
 }
 
+export interface GalleryScreenProps {
+  /** Today in the site's zone; the clock's by default, fixed by the unit tests. */
+  today?: string;
+}
+
 /** The gallery. */
-export function GalleryScreen() {
+export function GalleryScreen({ today: givenToday }: GalleryScreenProps = {}) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
-  const today = todayIn(DEFAULT_TIME_ZONE);
+  const today = givenToday ?? todayIn(DEFAULT_TIME_ZONE);
   const [name, setName] = useState("");
   const [view, setView] = useState<"hours" | "pay" | "both">("hours");
   const [sheet, setSheet] = useState(false);

@@ -11,6 +11,9 @@ import { ThemeProvider } from "../../../src/design/theme/ThemeProvider";
 import { resetThemeStore } from "../../../src/design/theme/themeStore";
 import { GalleryScreen } from "../../../src/screens/gallery/GalleryScreen";
 
+/** Saturday 7 November 2026, the fixed today every date test uses (review finding R18). */
+const TODAY = "2026-11-07";
+
 beforeEach(() => {
   resetLoading();
   resetThemeStore();
@@ -19,7 +22,7 @@ beforeEach(() => {
 async function open() {
   return render(
     <ThemeProvider>
-      <GalleryScreen />
+      <GalleryScreen today={TODAY} />
       <ToastHost />
     </ThemeProvider>,
   );
@@ -54,6 +57,7 @@ describe("GalleryScreen (FR-067)", () => {
   it("drives the pickers and opens the sheet", async () => {
     await open();
     await fireEvent.press(screen.getByTestId("preset-last-week"));
+    // Weeks start on Sunday: the week before Sunday 1 November 2026.
     expect(screen.getByTestId("date-range-summary")).toHaveTextContent(/25\/10\/2026 – 31\/10\/2026/);
     const field = screen.getByTestId("date-field");
     await fireEvent.changeText(field, "7/11/2026");
