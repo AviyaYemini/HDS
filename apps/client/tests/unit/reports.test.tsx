@@ -16,7 +16,7 @@ beforeEach(async () => {
   await setupI18n("en");
 });
 
-test("the work log asks for this pay period up to today and shows the API's figures", async () => {
+test("the work log asks for the whole company this pay period, up to today, and shows the API's figures", async () => {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const api = new FakeApi()
     .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Gate" }] }))
@@ -26,7 +26,8 @@ test("the work log asks for this pay period up to today and shows the API's figu
   const asked = new URLSearchParams(api.calls("GET", "/api/v1/reports/work-log")[0]!.query);
   expect(asked.get("from")).toBe(`${today.slice(0, 8)}01`);
   expect(asked.get("to")).toBe(today);
-  expect(asked.get("project_id")).toBe("p1");
+  // The whole company by default: no project, site or group (the owner, PR 5).
+  expect(asked.has("project_id") || asked.has("site_id") || asked.has("group_id")).toBe(false);
   // The API's own totals, shown as they came, never the rows added up (16.00 h, 1 person here):
   // data-value is web only, checked by g-reports.
   expect(screen.getByTestId("figure-hours")).toHaveTextContent(/41\.50/);

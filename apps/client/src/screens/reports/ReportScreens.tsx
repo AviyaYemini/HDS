@@ -1,8 +1,8 @@
 /**
  * The work log and the hours report in the new design (specs/007-ux-redesign FR-050, FR-025, T088).
  *
- * Work log ("Work log" / "יומן עבודה"): who worked at one project, site or group (the API asks for
- * exactly one), opening on the first project; the hours report: hours, shifts and (where shown) pay by employee or by
+ * Work log ("Work log" / "יומן עבודה"): who worked across the whole company (the default) or at one
+ * project, site or group; the hours report: hours, shifts and (where shown) pay by employee or by
  * project. Each opens on this pay period, never past today; its key figures are the API's own
  * totals; each bar opens its rows; and the rows come a page at a time.
  */
@@ -18,16 +18,18 @@ import { formatMoney, formatNumericRange } from "../../locale";
 import { useLoad } from "../useLoad";
 import { Bars, Figures, PagedRows, ReportRange, usePage, useReportRange, type Bar, type Figure } from "./parts";
 
-type Scope = "project" | "site" | "group";
+/** Who the log covers: the whole company (the default), or one project, site or group. */
+type Scope = "company" | "project" | "site" | "group";
 
 export function WorkLogScreen() {
   const { t } = useTranslation();
   const { api } = useSession();
   const errorText = useErrorText();
   const { range, setRange, asked, today } = useReportRange();
-  const [scope, setScope] = useState<Scope>("project");
+  const [scope, setScope] = useState<Scope>("company");
   const [picked, setPicked] = useState<string | null>(null);
   const choices = useLoad(async () => {
+    if (scope === "company") return { scope, items: [] };
     const items =
       scope === "project"
         ? (await call(api.GET("/api/v1/projects"))).items.map((p) => ({ id: p.id, label: p.name }))
@@ -38,11 +40,12 @@ export function WorkLogScreen() {
   }, [scope]);
   // Only this scope's list counts: the previous scope's, until the new one loads, is not it.
   const listed = choices.data?.scope === scope ? choices.data.items : null;
-  // The first project at first, so the log opens with figures; a site or group waits for a choice.
-  const chosen = picked ?? (scope === "project" ? (listed?.[0]?.id ?? null) : null);
+  // The whole company needs no choice; a project, site or group waits for one.
+  const chosen = scope === "company" ? "company" : picked;
   const log = useLoad(async () => {
     if (chosen === null) return null;
-    const query: { from: string; to: string; project_id?: string; site_id?: string; group_id?: string } = { ...asked, [`${scope}_id`]: chosen };
+    const query: { from: string; to: string; project_id?: string; site_id?: string; group_id?: string } =
+      scope === "company" ? { ...asked } : { ...asked, [`${scope}_id`]: chosen };
     return call(api.GET("/api/v1/reports/work-log", { params: { query } }));
   }, [scope, chosen, asked.from, asked.to]);
 
@@ -87,14 +90,16 @@ export function WorkLogScreen() {
       <ReportRange range={range} setRange={setRange} today={today} />
       <SegmentedControl<Scope>
         label={t("reports.scope")}
-        options={(["project", "site", "group"] as const).map((s) => ({ value: s, label: t(`reports.kind.${s}`), testID: `scope-${s}` }))}
+        options={(["company", "project", "site", "group"] as const).map((s) => ({ value: s, label: t(`reports.kind.${s}`), testID: `scope-${s}` }))}
         value={scope}
         onChange={(next) => {
           setScope(next);
           setPicked(null);
         }}
       />
-      <SearchablePicker label={t(`reports.kind.${scope}`)} items={listed ?? []} value={chosen} onChange={setPicked} testID="report-scope-picker" />
+      {scope !== "company" ? (
+        <SearchablePicker label={t(`reports.kind.${scope}`)} items={listed ?? []} value={picked} onChange={setPicked} testID="report-scope-picker" />
+      ) : null}
       {choices.error ? (
         <InlineBanner tone="warning" title={errorText(choices.error)} action={{ label: t("common.retry"), onPress: () => void choices.reload() }} />
       ) : log.error ? (
@@ -118,7 +123,7 @@ export function WorkLogScreen() {
   );
 }
 
-type GroupBy = "employee" | "project";
+type GroupBy = "employee" | "project" | "client";
 
 export function HoursReportScreen() {
   const { t, i18n } = useTranslation();
@@ -160,7 +165,7 @@ export function HoursReportScreen() {
       <ReportRange range={range} setRange={setRange} today={today} />
       <SegmentedControl<GroupBy>
         label={t("reports.group_by")}
-        options={(["employee", "project"] as const).map((g) => ({ value: g, label: t(`reports.by_${g}`), testID: `group-${g}` }))}
+        options={(["employee", "project", "client"] as const).map((g) => ({ value: g, label: t(`reports.by_${g}`), testID: `group-${g}` }))}
         value={groupBy}
         onChange={setGroupBy}
       />

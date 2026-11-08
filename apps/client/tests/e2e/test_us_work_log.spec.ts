@@ -16,6 +16,7 @@ test("a Manager sees who worked at a project", async ({ page }) => {
   await expect(page).toHaveURL(/\/reports\/work-log$/);
   // The report opens on this pay period; the shift may have been in the last one.
   if (inEarlierMonth(startsAt)) await page.getByTestId("preset-last-pay-period").click();
+  await page.getByTestId("scope-project").click();
   await page.getByTestId("report-scope-picker").click();
   await page.getByTestId("report-scope-picker-sheet").getByText("Night Watch").first().click();
   await expect(page.getByTestId("figure-shifts")).toBeVisible();

@@ -19,9 +19,8 @@ for (const language of LANGUAGES) {
   test(`${language}: the work log is named as decided and its figures match the API`, async ({ page }) => {
     const manager = await apiAs("manager");
     const range = thisMonth();
-    // The log opens on the first project (the API asks for exactly one scope).
-    const projects = await ok<{ items: { id: string }[] }>(manager.get("/api/v1/projects"));
-    const api = await ok<{ people: number; shifts: number; hours: string }>(manager.get("/api/v1/reports/work-log", { params: { ...range, project_id: projects.items[0]!.id } }));
+    // The log opens on the whole company (the owner, PR 5).
+    const api = await ok<{ people: number; shifts: number; hours: string }>(manager.get("/api/v1/reports/work-log", { params: range }));
     await manager.dispose();
 
     await signIn(page, "manager", language);
@@ -56,3 +55,19 @@ for (const language of LANGUAGES) {
     await checkA11y(page, `hours report (${language})`);
   });
 }
+
+// The owner's PR 5 additions: the whole company is the work log's default, and hours go by client.
+test("the work log opens on the whole company, and the hours report groups by client", async ({ page }) => {
+  const manager = await apiAs("manager");
+  const range = thisMonth();
+  const byClient = await ok<{ hours: string; shifts: number }>(manager.get("/api/v1/reports/hours", { params: { ...range, group_by: "client" } }));
+  await manager.dispose();
+  await signIn(page, "manager", "en");
+  await page.goto(at("/reports/work-log", "en"));
+  await expect(page.getByTestId("scope-company")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("report-scope-picker")).toHaveCount(0);
+  await page.goto(at("/reports/hours", "en"));
+  await page.getByTestId("group-client").click();
+  await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", byClient.hours);
+  await expect(page.getByTestId("figure-shifts")).toHaveAttribute("data-value", String(byClient.shifts));
+});

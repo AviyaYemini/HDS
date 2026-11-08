@@ -258,7 +258,7 @@ Each starts with its failing spec. The alignment and language items come first.
 - [x] T114 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the hours report by client: `group_by=client` in the 001 contract, each client's rows per employee, pay under the same visibility rules; integration tests; regenerate the client (FR-050)
 - [x] T115 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the whole company's work log: no project, site or group id; the same read rule as a project's log, stated in the 001 contract; the server's key figures; integration tests; regenerate the client (FR-050)
 - [x] T116 [US7] [CORE] (Owner, 2026-11-08, PR 5) Build both in `services/reports.py` and the reports router (FR-050)
-- [ ] T117 [US7] [UI] (Owner, 2026-11-08, PR 5) Client in the hours report's grouping, and "Whole company" as the work log's first scope and its default (FR-050)
+- [x] T117 [US7] [UI] (Owner, 2026-11-08, PR 5) Client in the hours report's grouping, and "Whole company" as the work log's first scope and its default (FR-050)
 
 ---
 
