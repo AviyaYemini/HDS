@@ -146,14 +146,10 @@ async def test_people_and_projects_that_have_since_gone_still_appear(
 
 @pytest.mark.parametrize(
     "params",
-    [
-        {},
-        {"from": "2026-10-01"},
-        {"project_id": "P", "site_id": "S", "from": "2026-10-01"},
-    ],
-    ids=["no-scope", "no-scope-with-dates", "two-scopes"],
+    [{"project_id": "P", "site_id": "S", "from": "2026-10-01"}],
+    ids=["two-scopes"],
 )
-async def test_exactly_one_scope_is_needed(
+async def test_at_most_one_scope_is_given(
     async_client: AsyncClient, seed_users: dict[str, User], params: dict[str, Any]
 ) -> None:
     admin = await headers_for(async_client, "admin")
@@ -287,3 +283,39 @@ async def test_an_old_projects_explicit_range_over_366_days_is_still_refused(
 
     assert answer.status_code == 422
     assert answer.json()["code"] == "reports.range_invalid"
+
+
+async def test_the_whole_companys_work_log_covers_every_project(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """No project, site or group: the whole organisation (the owner, 2026-11-08, PR 5)."""
+    admin = await headers_for(async_client, "admin")
+    gate = await add_project(async_client, admin, "Gate", start_date="2026-10-01")
+    tower = await add_project(async_client, admin, "Tower", start_date="2026-10-01")
+    dana = await employee(async_client, admin, "Dana Levi")
+    await worked(async_client, admin, gate, 5, dana)
+    await worked(async_client, admin, tower, 6, dana)
+    manager = await headers_for(async_client, "manager")
+
+    answer = await async_client.get(
+        WORK_LOG, params={"from": "2026-10-01", "to": "2026-10-31"}, headers=manager
+    )
+
+    assert answer.status_code == 200, answer.text
+    assert rows(answer) == [
+        ("Dana Levi", "Gate", 1, "8.00", "2026-10-05", "2026-10-05"),
+        ("Dana Levi", "Tower", 1, "8.00", "2026-10-06", "2026-10-06"),
+    ]
+    body = answer.json()
+    assert (body["people"], body["shifts"], body["hours"]) == (1, 2, "16.00")
+
+
+async def test_the_whole_companys_work_log_needs_a_start(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    admin = await headers_for(async_client, "admin")
+
+    answer = await async_client.get(WORK_LOG, headers=admin)
+
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "reports.start_required"

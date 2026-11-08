@@ -41,6 +41,8 @@ export interface DateFieldProps {
   helper?: string;
   /** An error from the owner (a range's end before its start, say); typing errors are the field's own. */
   error?: string | null;
+  /** The error text's test id (see TextField). */
+  errorTestID?: string;
   disabled?: boolean;
   /** Today in the site's zone; read from the clock by default. */
   today?: string;
@@ -58,6 +60,7 @@ export function DateField({
   maxDate = null,
   helper,
   error = null,
+  errorTestID,
   disabled = false,
   today: givenToday,
   testID = "date-field",
@@ -169,6 +172,7 @@ export function DateField({
         placeholder={t("date.placeholder")}
         helper={helper}
         error={error ?? typingError}
+        errorTestID={errorTestID}
         disabled={disabled}
         direction="ltr"
         inputMode="numeric"

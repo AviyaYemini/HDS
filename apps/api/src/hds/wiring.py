@@ -34,6 +34,7 @@ from hds.repositories.roster_extras import (
     RuleOverrideRepository,
     WeekTemplateRepository,
 )
+from hds.repositories.saved_view import SavedViewRepository
 from hds.repositories.schedule_job import ScheduleJobRepository
 from hds.repositories.scheduling_inputs import SchedulingInputRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
@@ -55,6 +56,7 @@ from hds.services.project_manager import ProjectManagerService
 from hds.services.reports import ReportsService
 from hds.services.roster import RosterService
 from hds.services.roster_tools import RosterToolsService
+from hds.services.saved_view import SavedViewService
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService
 from hds.services.scheduling_settings import SchedulingSettingsService
@@ -115,6 +117,13 @@ def roster_tools_service(
     return roster_tools_for(db)
 
 
+def saved_views(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> SavedViewService:
+    """FastAPI dependency: the caller's saved views (007 FR-043), in the unit of work."""
+    return SavedViewService(SavedViewRepository(db))
+
+
 def input_service(db: AsyncSession) -> ScheduleInputService:
     """The roster problem builder on ``db``."""
     return ScheduleInputService(
@@ -138,6 +147,7 @@ def job_service(db: AsyncSession) -> ScheduleJobService:
         assignment_repo=AssignmentRepository(db),
         user_repo=UserRepository(db),
         shift_type_repo=ShiftTypeRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
     )
 
 
@@ -262,6 +272,7 @@ def reports(
         project_repo=ProjectRepository(db),
         site_repo=SiteRepository(db),
         group_repo=GroupRepository(db),
+        client_repo=ClientRepository(db),
     )
 
 

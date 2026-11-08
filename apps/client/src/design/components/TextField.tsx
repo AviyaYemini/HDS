@@ -25,6 +25,8 @@ export interface TextFieldProps extends Omit<TextInputProps, "style" | "editable
   helper?: string;
   /** The field's error; shown, announced and linked to the input. */
   error?: string | null;
+  /** The error text's test id, when not `<testID>-error` (the admin forms' `field-error-<name>`). */
+  errorTestID?: string;
   disabled?: boolean;
   disabledReason?: string;
   readOnly?: boolean;
@@ -47,6 +49,7 @@ export const TextField = forwardRef<TextFieldHandle, TextFieldProps>(function Te
     label,
     helper,
     error,
+    errorTestID,
     disabled = false,
     disabledReason,
     readOnly = false,
@@ -144,7 +147,7 @@ export const TextField = forwardRef<TextFieldHandle, TextFieldProps>(function Te
           nativeID={noteId}
           a11yRole={hasError ? "alert" : undefined}
           {...noteWebProps}
-          testID={testID ? `${testID}-${hasError ? "error" : "helper"}` : undefined}
+          testID={hasError && errorTestID ? errorTestID : testID ? `${testID}-${hasError ? "error" : "helper"}` : undefined}
         >
           {note}
         </Txt>
@@ -157,7 +160,8 @@ const styles = StyleSheet.create({
   root: { gap: 6, alignSelf: "stretch" },
   frame: { flexDirection: "row", alignItems: "center", borderWidth: 1, backgroundColor: "transparent" },
   readOnly: { borderColor: "transparent", borderWidth: 1 },
-  input: { flex: 1, paddingHorizontal: 12, paddingVertical: 0 },
+  // minWidth 0: a web input otherwise keeps its default width and pushes the trailing button out (FR-079).
+  input: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 0 },
   trailing: { paddingEnd: 4, alignSelf: "stretch", justifyContent: "center" },
   hidden: { position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 },
 });

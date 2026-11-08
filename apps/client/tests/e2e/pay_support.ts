@@ -51,7 +51,6 @@ export async function workedShift(): Promise<{ shiftId: string; startsAt: Date }
 
 /** Whether a shift starting at `startsAt` belongs to an earlier month than the device's current one. */
 export function inEarlierMonth(startsAt: Date): boolean {
-  const now = new Date();
-  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  return siteDate(startsAt).slice(0, 7) < current;
+  // Today as the report reads it, in the site's zone, not the runner's (group G review).
+  return siteDate(startsAt).slice(0, 7) < siteDate(new Date()).slice(0, 7);
 }

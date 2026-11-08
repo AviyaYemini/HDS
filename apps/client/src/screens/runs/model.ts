@@ -5,6 +5,8 @@
  */
 import type { components } from "@hds/api-client";
 
+import { addDays, startOfWeek } from "../../locale";
+
 export type Job = components["schemas"]["JobRead"];
 export type JobSummary = components["schemas"]["JobSummary"];
 
@@ -71,4 +73,71 @@ export function filled(proposal: Pick<NonNullable<Job["proposal"]>, "slots">): {
     done += Math.min(slot.headcount, slot.assigned.length);
   }
   return { filled: done, required };
+}
+
+export type Proposal = NonNullable<Job["proposal"]>;
+export type Slot = Proposal["slots"][number];
+
+/** One person on a slot, and what the run does to them against the drafts (FR-080). */
+export interface SlotPerson {
+  userId: string;
+  change: "kept" | "added" | "removed";
+}
+
+/** Every Sunday-started week from `first` to `last`, as their seven dates. */
+export function weeksOf(first: string, last: string): string[][] {
+  const weeks: string[][] = [];
+  for (let start = startOfWeek(first); start <= last; start = addDays(start, 7)) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(start, i)));
+  }
+  return weeks;
+}
+
+/** The slots of each date, by start time. */
+export function slotsByDay(proposal: Pick<Proposal, "slots">): Map<string, Slot[]> {
+  const byDay = new Map<string, Slot[]>();
+  for (const slot of [...proposal.slots].sort((a, b) => a.starts_at.localeCompare(b.starts_at))) {
+    byDay.set(slot.date, [...(byDay.get(slot.date) ?? []), slot]);
+  }
+  return byDay;
+}
+
+/**
+ * A slot's people: those the proposal assigns (added when the run puts them there, kept when they
+ * were on the draft already), then those it takes off.
+ */
+export function peopleOf(slot: Pick<Slot, "key" | "assigned">, changes: Proposal["changes"]): SlotPerson[] {
+  const added = new Set(changes.added.filter((c) => c.key === slot.key).map((c) => c.user_id));
+  const removed = changes.removed.filter((c) => c.key === slot.key).map((c) => c.user_id);
+  return [
+    ...slot.assigned.map((userId): SlotPerson => ({ userId, change: added.has(userId) ? "added" : "kept" })),
+    ...removed.filter((userId) => !slot.assigned.includes(userId)).map((userId): SlotPerson => ({ userId, change: "removed" })),
+  ];
+}
+
+/** The projects a run covers: its stored list, or (an older run) those its slots name. */
+export function projectsOf(job: Pick<Job, "project_ids" | "proposal">): string[] {
+  if (job.project_ids.length > 0) return job.project_ids;
+  return [...new Set((job.proposal?.slots ?? []).map((slot) => slot.project_id))];
+}
+
+/** The projects a run covers, by name; an older run without a list covered every active one. */
+export function coveredText(projectIds: readonly string[], names: Map<string, string>, everyProject: string): string {
+  if (projectIds.length === 0) return everyProject;
+  return projectIds.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
+}
+
+/** A short, stable digest of `text` (FNV-1a), for an idempotency key that follows the request. */
+export function digest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+/** The project types among `projects`, in a fixed order (security, then training). */
+export function typesOf(projects: readonly { type: string }[]): string[] {
+  return [...new Set(projects.map((p) => p.type))].sort();
 }

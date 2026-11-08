@@ -27,8 +27,18 @@ jest.mock("expo-localization", () => ({ getLocales: () => [{ languageCode: "en" 
 jest.mock("expo-router", () => {
   const React = jest.requireActual<typeof import("react")>("react");
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
-  const router = { replace: jest.fn(), push: jest.fn(), back: jest.fn() };
   const location = { pathname: "/", params: {} as Record<string, string>, segments: [] as string[] };
+  // setParams merges into the address as expo-router's does (an undefined value leaves it); a
+  // test re-renders to see the screen read it.
+  const setParams = jest.fn((next: Record<string, string | undefined>) => {
+    const merged: Record<string, string> = { ...location.params };
+    for (const [key, value] of Object.entries(next)) {
+      if (value === undefined) delete merged[key];
+      else merged[key] = value;
+    }
+    location.params = merged;
+  });
+  const router = { replace: jest.fn(), push: jest.fn(), back: jest.fn(), setParams };
   return {
     __router: router,
     /** Where the tests say the app is; `usePathname` reads it. */
@@ -43,6 +53,7 @@ jest.mock("expo-router", () => {
     __setSegments: (segments: string[]) => {
       location.segments = segments;
     },
+    router,
     useRouter: () => router,
     usePathname: () => location.pathname,
     useLocalSearchParams: () => location.params,

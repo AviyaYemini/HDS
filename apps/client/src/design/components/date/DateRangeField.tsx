@@ -84,7 +84,9 @@ export function DateRangeField({
     : payPeriods
       ? [...RANGE_PRESETS, ...PAY_PERIOD_PRESETS]
       : RANGE_PRESETS;
-  const current: PresetKey = presetFor(value, today, presets);
+  // Where a pay period and a plain range cover the same dates (this month), a report's range reads
+  // as the pay period: matched first, shown in its usual place.
+  const current: PresetKey = presetFor(value, today, payPeriods ? [...PAY_PERIOD_PRESETS, ...presets] : presets);
   const months = isDesktop ? 2 : 1;
   const [anchor, setAnchor] = useState(startOfMonth(value.start));
   const [pendingStart, setPendingStart] = useState<string | null>(null);
@@ -319,7 +321,8 @@ const styles = StyleSheet.create({
   presetChip: { paddingHorizontal: 14, borderWidth: 1, justifyContent: "center" },
   calendar: { gap: 8, flexShrink: 1 },
   fields: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
-  field: { flex: 1, minWidth: 160 },
+  // The width is the basis, so the row wraps on a narrow screen (flex: 1 would set it to 0, FR-079).
+  field: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
   monthHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   months: { flexDirection: "row", gap: 24, flexWrap: "wrap" },
 });

@@ -17,7 +17,7 @@ from hds.models.project import ProjectStatus
 from hds.models.user import UserRole
 from hds.repositories.pay_reports import ReportShift
 from hds.services.pay_settings import COLUMNS
-from hds.services.reports import ReportsService
+from hds.services.reports import ReportLine, ReportsService, aggregate
 from tests.unit.test_pay_settings_service import organisation
 
 ORG = uuid.uuid4()
@@ -37,6 +37,7 @@ def project(
     return SimpleNamespace(
         id=uuid.uuid4(),
         name="Alpha",
+        client_id=uuid.uuid4(),
         status=ProjectStatus.active,
         is_deleted=False,
         start_date=start,
@@ -63,7 +64,9 @@ def shift_of(proj: Any, day: int, rate: str | None = "50.0000") -> ReportShift:
 def service(
     projects: list[Any], shifts: list[ReportShift], managed: set[uuid.UUID] | None = None
 ) -> tuple[ReportsService, Any]:
-    reports, orgs, days, managers, project_repo, sites, groups = (AsyncMock() for _ in range(7))
+    reports, orgs, days, managers, project_repo, sites, groups, clients = (
+        AsyncMock() for _ in range(8)
+    )
     reports.worked_in_range.return_value = shifts
     project_repo.get_many.return_value = projects
     orgs.get_by_id.return_value = SimpleNamespace(**vars(organisation()), timezone=ZONE)
@@ -71,7 +74,8 @@ def service(
     managers.manages.return_value = managed or set()
     project_repo.get_by_id.return_value = projects[0] if projects else None
     groups.member_ids.return_value = []
-    svc = ReportsService(reports, orgs, days, managers, project_repo, sites, groups)
+    clients.list_by_org.return_value = []
+    svc = ReportsService(reports, orgs, days, managers, project_repo, sites, groups, clients)
     return svc, reports
 
 
@@ -133,8 +137,9 @@ async def test_a_shift_of_two_people_counts_once_in_a_projects_total() -> None:
 @pytest.mark.parametrize(
     ("scope", "first", "code"),
     [
-        ({}, date(2026, 10, 1), "reports.scope_invalid"),
         ({"site_id": uuid.uuid4(), "group_id": uuid.uuid4()}, None, "reports.scope_invalid"),
+        # The whole organisation needs a start, as a site or a group does (007, PR 5).
+        ({}, None, "reports.start_required"),
         ({"site_id": uuid.uuid4()}, None, "reports.start_required"),
         ({"group_id": uuid.uuid4()}, None, "reports.start_required"),
     ],
@@ -194,3 +199,36 @@ async def test_employees_and_clients_are_refused(role: UserRole) -> None:
     with pytest.raises(ForbiddenError):
         await svc.hours(person(role), date(2026, 10, 1), date(2026, 10, 31), "employee", now=NOW)
     reports.worked_in_range.assert_not_awaited()
+
+
+def test_by_client_each_client_holds_its_employees_across_its_projects() -> None:
+    """The owner's PR 5 addition: a client's hours, one row a person, across its projects."""
+    acme, dana, omer = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    def line(user: uuid.UUID, name: str, hours: str) -> ReportLine:
+        return ReportLine(
+            shift_id=uuid.uuid4(),
+            user_id=user,
+            user_name=name,
+            project_id=uuid.uuid4(),
+            project_name="a project",
+            date=date(2026, 10, 5),
+            hours=Decimal(hours),
+            pay_shown=False,
+            pay=None,
+            rate_missing=False,
+            client_id=acme,
+            client_name="Acme",
+        )
+
+    report = aggregate(
+        [line(dana, "Dana", "8.00"), line(dana, "Dana", "4.00"), line(omer, "Omer", "8.00")],
+        "client",
+    )
+
+    (group,) = report.groups
+    assert (group.name, group.hours) == ("Acme", Decimal("20.00"))
+    assert [(r.name, r.hours) for r in group.rows] == [
+        ("Dana", Decimal("12.00")),
+        ("Omer", Decimal("8.00")),
+    ]

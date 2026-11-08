@@ -26,23 +26,21 @@ its user story (US1–US8 in spec.md) and **who does it**:
 **Order within a group**: [CORE] specs and API, committed → [UI] → close. One group at a time on
 the branch, so the two sessions never edit at once.
 
-**Each group ends with** (HDS, the owner's decision of 2026-11-07 in
-`.claude/hds/process-cuts-proposal.md`). Written into each group's closing task, naming that
-group's mutants:
+**Each group ends with** (the owner's rules of 2026-11-08, replacing the per-group close of
+2026-11-07). Write it into each group's closing task:
 
-1. the scoped `make ci-local` green: the checks for the paths the branch changed;
-2. `/code-review high`, each finding a row in the feature's `review-ledger.md`, none open;
-3. the mutants named in the closing task, if any: at most three, and only where a passing test
-   could be hollow (a test that could not fail first, or a security, money, time or data-loss
-   rule); one at a time, with the hooks on;
-4. one commit, whose message names the ledger rows it fixes, for example `(R12, R13)`.
+1. the scoped `make ci-local` green: only the checks for the paths the group changed;
+2. mutants only where the group touches risky code (sign-in, pay, or who can see what), named in
+   the closing task; one at a time, with the hooks on; none otherwise;
+3. one commit.
 
-No log: an owner's choice or an accepted limit goes in the commit message, `tasks.md` or
-`research.md`.
+No `/code-review` at a group's close, and no log: an owner's choice or an accepted limit goes in the
+commit message, `tasks.md` or `research.md`.
 
-**When the pull request is ready to push, once**: `make ci-local-full`; `make ci-local-db` if
-`apps/api/` or `specs/001-foundation-auth-org/contracts/openapi.yaml` changed; `/hds-review`; the
-reviewer session; their fixes in one commit. The full suite runs only in CI.
+**When the pull request is ready to push, once**: one `/code-review`, each finding a row in the
+feature's `review-ledger.md`, none open; the fixes in one commit. No `make ci-local-full`,
+`make ci-local-db` or full e2e locally: the full suites run only in CI, and CodeRabbit on GitHub
+catches line-level slips.
 
 ## Format: `- [ ] [ID] [P?] [Story] [CORE|UI] Description`
 
@@ -228,6 +226,40 @@ unchanged; 008's previews in place.
 
 ---
 
+## Phase 6b: Group O — the owner's requests of 2026-11-08 (PR 5, first) — US6, US7
+
+**Goal**: the owner's four requests of 2026-11-08 (spec FR-078 to FR-081, Proposed), before F–H.
+Each starts with its failing spec. The alignment and language items come first.
+
+**Independent Test**: `ux/o-owner-requests.spec.ts` and `expectNothingOverflows` across the ux specs.
+
+- [x] T102 [US6] [CORE] (Owner, 2026-11-08) Add `expectNothingOverflows(page)` to `apps/client/tests/e2e/ux/support.ts`: for every element with a visible border or panel background, every visible descendant's box lies inside the element's box, within 1 px. Call it on each screen the ux specs already visit, at 390 px, in he and en. It must fail on today's Admin `/home` (the "Set up HDS" card's second row of buttons crosses its border). Commit failing (`test(client): check that nothing overflows its card`) (FR-079)
+- [x] T103 [US6] [UI] (Owner, 2026-11-08) The setup card gets its own style: `styles.card`'s `flexBasis: 220` was written for ManagerCards in a row, and in a column it becomes a height. Then audit the app for the same pattern (`flexBasis` or `flexGrow` on an item whose parent is a column; fixed heights on boxes whose content wraps: cards, FeaturePanel, EmptyState and InlineBanner actions, ClippedBox users) until T102 passes (FR-079)
+- [x] T104 [US6] [CORE] (Owner, 2026-11-08) Write the failing specs: a unit test that the current path and query are saved before a language restart and restored after it; and in `ux/o-owner-requests.spec.ts`, on the web, switch the language on `/account` and on a deep path (`/my/shifts?view=past`), from the top bar, Account and sign-in: the switching state shows at once in the target language, and the person lands on the same path in the new direction, still signed in (FR-078)
+- [x] T105 [US6] [UI] (Owner, 2026-11-08: "as long as youre not going back to the home screen and view a loading/please wait animation - yes / the user has to know the app didnt crach") The language switch restarts the app on every platform: (1) at once, a full-screen "Switching to English…" / "עוברים לעברית…" state in the target language, with the Option B loading animation; (2) the current path and query saved first and restored after the restart, signed in, never home; (3) on the web, `location.reload()` once the choice is stored; on phones, expo-updates' `reloadAsync` (check it works in a Release build with remote updates off; use the configuration that keeps it working), with the native splash held until the session and the screen are restored, and the restart notice as the fallback if it throws. Until the restart, no Txt runs in a different direction from its container; Txt's default direction (R76) reads i18n's current language. expo-updates is a native module: tell the reviewer the commit, for the simulator rebuild. The native pass goes on the owner's device checklist (T092) (FR-078)
+- [x] T106 [US7] [CORE] (Owner, 2026-11-08) Write the failing spec: open the demo's accepted run and see a named assignment for a known shift, the places left empty and the people without availability by name, and "Open in roster" for its range; a discarded run shows the same view, labelled. Extend `GET /schedule-jobs/{id}` in the 001 contract if the proposal lacks the names or slots the view needs, with tests; regenerate (FR-080)
+- [x] T107 [US7] [UI] (Owner, 2026-11-08) The run's proposal as D's roster week, read-only, with the run's changes marked added or removed against the drafts; names for the empty places and for the people without availability; "Open in roster" for an accepted run (FR-080)
+- [x] T108 [US7] [CORE] (Owner, 2026-11-08) Write the failing spec: generate for one project, and the proposal holds only that project's slots; a Manager is offered only the projects they manage. Then the API scope (reviewer ruling, 2026-11-08, from O9 and T098; do it right after T104, before T106): create refuses any `project_ids` entry a Manager does not manage with 403 `roster.project_not_managed` and creates no job; an empty list means the Manager's managed projects (none: 422 `schedule.no_projects`) or, for an Admin, every active project; the resolved list is stored on the job. Accept and discard re-check that the acting Manager manages every project of the job, and refuse the whole of it otherwise, never part. The runs list and a run's page stay readable by any Manager. 001 contract with the new codes; integration tests for create (a foreign id; an empty list as a Manager and as an Admin), accept after the Manager loses a project, and discard; regenerate (FR-081)
+- [x] T109 [US7] [UI] (Owner, 2026-11-08) A multi-select SearchablePicker of projects in the generate form, all by default, each with its type (the owner's note: training and security projects don't mix); a Manager sees only the projects they manage, matching publish per project (T098), and an Admin sees all; the chosen projects show on the run's row and page (FR-081)
+- [x] T110 [CORE] Close group O as the template says. Mutants (≤ 3): accept's re-check of the Manager's projects dropped, the generate form offering a Manager a project they don't manage, and the language switch reloading before the choice is stored. Commit `feat(client): the owner's requests of 2026-11-08 (…)`
+
+---
+
+## Phase 6c: The owner's additions of 2026-11-08 (PR 5, reopened) — US7
+
+**Goal**: the three parts recorded as not built (spec FR-043, FR-050) and the phone alignment ruling
+(R166), each with its failing spec first. (Owner, 2026-11-08, PR 5.)
+
+- [x] T111 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing unit and e2e specs for the bulk-action bar: rows selected by checkbox on a desktop and in a Select mode on a phone; the bar states the count and scope; Select all takes the rows shown under the current search and says so; Remove where the screen removes, Activate and Deactivate where the record has an active state; a bulk removal is one held action with one undo (heldActions); a failure comes back with a summary (FR-043)
+- [x] T112 [US7] [UI] (Owner, 2026-11-08, PR 5) The bulk-action bar on AdminTable, through the existing per-record operations (no bulk API) (FR-043)
+- [x] T113 [US7] [UI] (Owner, 2026-11-08, PR 5; R166) Below the phone breakpoint an admin list is a list: the first column as each row's title, the rest a wrapping second line, a "Sort by" control above; the saved-views tabs wrap; the overflow check fails on text cut off by a clipping box without an ellipsis, on every route each role reaches, at phone width, in both languages (FR-043, FR-079)
+- [x] T114 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the hours report by client: `group_by=client` in the 001 contract, each client's rows per employee, pay under the same visibility rules; integration tests; regenerate the client (FR-050)
+- [x] T115 [US7] [CORE] (Owner, 2026-11-08, PR 5) Write the failing tests for the whole company's work log: no project, site or group id; the same read rule as a project's log, stated in the 001 contract; the server's key figures; integration tests; regenerate the client (FR-050)
+- [x] T116 [US7] [CORE] (Owner, 2026-11-08, PR 5) Build both in `services/reports.py` and the reports router (FR-050)
+- [x] T117 [US7] [UI] (Owner, 2026-11-08, PR 5) Client in the hours report's grouping, and "Whole company" as the work log's first scope and its default (FR-050)
+
+---
+
 ## Phase 7: Group F — admin screens (PR 5) — US7
 
 **Goal**: one table pattern and one form pattern across the admin screens, money confirmations,
@@ -235,12 +267,12 @@ loading and empty states, filters in the address, the setup checklist.
 
 **Independent Test**: `ux/f-admin.spec.ts`.
 
-- [ ] T081 [US7] [CORE] Write `apps/client/tests/e2e/ux/f-admin.spec.ts`, failing: tables sort, filter and save views; the address keeps filters and the open record on reload; the searchable picker finds an employee by Hebrew and English names; a form shows inline errors and an error summary that takes focus; a pay-rate change confirms in specific words; leaving with unsaved changes asks first; skeleton rows, never "No records", on first load; the empty organisation shows the setup checklist; a manager sees create and edit but not delete
-- [ ] T082 [US7] [CORE] Change the 001 contract for `GET/POST/DELETE /me/saved-views` and any missing `q`/`sort`/`page`/`page_size` on the admin list endpoints; migration `apps/api/alembic/versions/029_saved_views.py` (data-model 029), model, repository, service, router `routers/saved_views.py`, with tests `apps/api/tests/integration/test_saved_views.py`; regenerate the client; update `apps/client/tests/e2e/test_us4_clients_projects.spec.ts`, `test_us6_invite.spec.ts`, `test_us_pay_settings.spec.ts`; commit (`feat(api): add saved views`, `test(client): add group f's failing admin spec`)
-- [ ] T083 [US7] [UI] Admin table screens in `apps/client/src/screens/admin/` for staff, clients, sites, projects, shift templates, staffing needs, special days and pay settings, on the Table, SidePanel, bulk bar and SearchablePicker (FR-043, FR-044, FR-049)
-- [ ] T084 [US7] [UI] Form pattern (validate on leave, error summary with focus, one Save never disabled, no autosave of money, unsaved-changes guard in the app and on tab close), money confirmations naming change, scope and date, undo toasts for archive and remove (FR-045, FR-046)
-- [ ] T085 [US7] [UI] Loading, feedback and empty states, and the admin setup checklist (FR-047, FR-048)
-- [ ] T086 [CORE] Close group F as the template says. Mutants (≤ 3): a manager's view showing the delete action (capability check removed), and the pay-rate confirmation saving before the confirm. Commit `feat(client): add the admin tables and forms (…)`
+- [x] T081 [US7] [CORE] Write `apps/client/tests/e2e/ux/f-admin.spec.ts`, failing: tables sort, filter and save views; the address keeps filters and the open record on reload; the searchable picker finds an employee by Hebrew and English names; a form shows inline errors and an error summary that takes focus; a pay-rate change confirms in specific words; leaving with unsaved changes asks first; skeleton rows, never "No records", on first load; the empty organisation shows the setup checklist; a manager sees create and edit but not delete
+- [x] T082 [US7] [CORE] Change the 001 contract for `GET/POST/DELETE /me/saved-views` and any missing `q`/`sort`/`page`/`page_size` on the admin list endpoints; migration `apps/api/alembic/versions/033_saved_views.py` (data-model 029, numbered 033 after 032), model, repository, service, router `routers/saved_views.py`, with tests `apps/api/tests/integration/test_saved_views.py`; regenerate the client; update `apps/client/tests/e2e/test_us4_clients_projects.spec.ts`, `test_us6_invite.spec.ts`, `test_us_pay_settings.spec.ts`; commit (`feat(api): add saved views`, `test(client): add group f's failing admin spec`)
+- [x] T083 [US7] [UI] Admin table screens in `apps/client/src/screens/admin/` for staff, clients, sites, projects, shift templates, staffing needs, special days and pay settings, on the Table, SidePanel, bulk bar and SearchablePicker (FR-043, FR-044, FR-049). As built: no bulk bar (no admin list acts on several records in 007's API; noted for a later feature); the admin lists sort and search in the client, so the list endpoints keep their shape (T082)
+- [x] T084 [US7] [UI] Form pattern (validate on leave, error summary with focus, one Save never disabled, no autosave of money, unsaved-changes guard in the app and on tab close), money confirmations naming change, scope and date, undo toasts for archive and remove (FR-045, FR-046)
+- [x] T085 [US7] [UI] Loading, feedback and empty states, and the admin setup checklist (FR-047, FR-048)
+- [x] T086 [CORE] Close group F as the template says. Mutants (≤ 3): a manager's view showing the delete action (capability check removed), and the pay-rate confirmation saving before the confirm. Commit `feat(client): add the admin tables and forms (…)`
 
 ---
 
@@ -248,9 +280,9 @@ loading and empty states, filters in the address, the setup checklist.
 
 **Independent Test**: `ux/g-reports.spec.ts`.
 
-- [ ] T087 [US7] [CORE] Write `apps/client/tests/e2e/ux/g-reports.spec.ts`, failing: presets default to the current pay period and can't reach the future; key figures match the table; a bar opens its rows; the work log is titled "Work log" / "יומן עבודה" and no screen says "מי עבד"; add `totals` to `GET /reports/hours` and `GET /reports/work-log` in the 001 contract and `services/reports.py` if missing, with tests; regenerate; update `apps/client/tests/e2e/test_us_work_log.spec.ts` and `test_us_hours_report.spec.ts`; commit
-- [ ] T088 [US7] [UI] Work log and hours report in `apps/client/src/screens/reports/`: key figures, bars by employee, project or client that open into rows, pay-period presets, pagination (FR-050, FR-025)
-- [ ] T089 [CORE] Close group G as the template says (mutant: totals summed on the client instead of read from the server). Commit `feat(client): redraw the work log and hours report (…)`
+- [x] T087 [US7] [CORE] Write `apps/client/tests/e2e/ux/g-reports.spec.ts`, failing: presets default to the current pay period and can't reach the future; key figures match the table; a bar opens its rows; the work log is titled "Work log" / "יומן עבודה" and no screen says "מי עבד"; add `totals` to `GET /reports/hours` and `GET /reports/work-log` in the 001 contract and `services/reports.py` if missing, with tests; regenerate; update `apps/client/tests/e2e/test_us_work_log.spec.ts` and `test_us_hours_report.spec.ts`; commit
+- [x] T088 [US7] [UI] Work log and hours report in `apps/client/src/screens/reports/`: key figures, bars by employee, project or client that open into rows, pay-period presets, pagination (FR-050, FR-025). As built: the hours report groups by employee or project (the API's `group_by`); by client is not offered, the API not grouping so, and is left for a later feature; the work log's bars are its projects
+- [x] T089 [CORE] Close group G as the template says (mutant: totals summed on the client instead of read from the server). Commit `feat(client): redraw the work log and hours report (…)`
 
 ---
 
@@ -258,18 +290,18 @@ loading and empty states, filters in the address, the setup checklist.
 
 **Independent Test**: `ux/h-a11y-sweep.spec.ts`.
 
-- [ ] T090 [US6] [CORE] Write `apps/client/tests/e2e/ux/h-a11y-sweep.spec.ts`, failing until the sweep is done: every route in contracts/ui-routes.md for every role, in he and en, light and dark, desktop and phone, passes axe with no serious issues, and focus is never hidden behind sticky bars, tab bars or toasts; commit
-- [ ] T091 [US6] [UI] The sweep (FR-065): fix every finding across the app; finish all four themes and every motion and reduce-motion path; review every string against the glossary and the voice guide (FR-061, FR-071, FR-075, FR-077); grayscale check of the roster and the grid; the accessibility statement page `apps/client/app/accessibility.tsx` with placeholder text for the owner (FR-061–FR-066)
-- [ ] T092 [US6] [UI] Write the owner's morning device checklist for the manual VoiceOver (iOS device) and TalkBack (Android device) pass in Hebrew and English, and the Intl polyfills on a physical Android phone; with a place to record the results in `specs/007-ux-redesign/research.md` under a new "H. Manual checks" entry (FR-065); check gender-neutral Hebrew copy across both locale files (FR-060) and status shown by icon, label and colour (FR-030, FR-064); the roster week scrolls at 60 fps on a mid-range Android phone (plan, Performance Goals) These device checks need a person at the phones: they do not block group H's close or the PR 5 marker branch.
-- [ ] T093 [CORE] Close group H as the template says (no mutants). Commit `feat(client): finish the accessibility pass (…)`
+- [x] T090 [US6] [CORE] Write `apps/client/tests/e2e/ux/h-a11y-sweep.spec.ts`, failing until the sweep is done: every route in contracts/ui-routes.md for every role, in he and en, light and dark, desktop and phone, passes axe with no serious issues, and focus is never hidden behind sticky bars, tab bars or toasts; commit
+- [x] T091 [US6] [UI] The sweep (FR-065): fix every finding across the app; finish all four themes and every motion and reduce-motion path; review every string against the glossary and the voice guide (FR-061, FR-071, FR-075, FR-077); grayscale check of the roster and the grid; the accessibility statement page `apps/client/app/accessibility.tsx` with placeholder text for the owner (FR-061–FR-066)
+- [x] T092 [US6] [UI] Write the owner's morning device checklist for the manual VoiceOver (iOS device) and TalkBack (Android device) pass in Hebrew and English, and the Intl polyfills on a physical Android phone; with a place to record the results in `specs/007-ux-redesign/research.md` under a new "H. Manual checks" entry (FR-065); check gender-neutral Hebrew copy across both locale files (FR-060) and status shown by icon, label and colour (FR-030, FR-064); the roster week scrolls at 60 fps on a mid-range Android phone (plan, Performance Goals) These device checks need a person at the phones: they do not block group H's close or the PR 5 marker branch.
+- [x] T093 [CORE] Close group H as the template says (no mutants). Commit `feat(client): finish the accessibility pass (…)`
 
 ---
 
 ## Phase 10: Polish & cross-cutting
 
-- [ ] T094 [P] [CORE] Documentation: `apps/api/README.md` (new endpoints and settings), `docs/hds-api.md` (Proposed rows: managers' roster edits, assignment times, submissions), `docs/README` index for ADRs 014–018, and `.claude/hds/` working-plan pointers
-- [ ] T095 [CORE] Remove what the redesign retired: `apps/client/src/components/EmployeeNav.tsx`, the old `(employee)` routes and screens, and their locale keys, once no spec or route uses them
-- [ ] T096 [CORE] Run quickstart.md's checks for every group. **PR 5 ready** (F, G, H): once-per-PR steps, including `make ci-local-db`
+- [x] T094 [P] [CORE] Documentation: `apps/api/README.md` (new endpoints and settings), `docs/hds-api.md` (Proposed rows: managers' roster edits, assignment times, submissions), `docs/README` index for ADRs 014–018, and `.claude/hds/` working-plan pointers
+- [x] T095 [CORE] Remove what the redesign retired: `apps/client/src/components/EmployeeNav.tsx`, the old `(employee)` routes and screens, and their locale keys, once no spec or route uses them
+- [x] T096 [CORE] Run quickstart.md's checks for every group. **PR 5 ready** (F, G, H): once-per-PR steps, including `make ci-local-db`
 
 ---
 

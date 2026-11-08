@@ -76,6 +76,9 @@ export async function openAs(
 
 /** Run axe-core on the page (WCAG 2.2 A and AA rules) and fail on serious or critical issues. */
 export async function checkA11y(page: Page, context: string): Promise<void> {
+  // A side panel or dialog slides in for the surface motion (320 ms): axe reads colours, so it
+  // waits for the surface to be fully drawn rather than judging a half-faded one.
+  if ((await page.locator('[data-testid="side-panel"], [role="dialog"]').count()) > 0) await page.waitForTimeout(SURFACE_MS);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -87,6 +90,110 @@ export async function checkA11y(page: Page, context: string): Promise<void> {
     return `${v.id}: ${v.help} (${v.nodes.length} node(s): ${targets.join(" | ")}${more})`;
   });
   expect(described, `axe on ${context}`).toEqual([]);
+  // At phone width, every screen axe checks is also checked for content spilling out of its box.
+  if ((page.viewportSize()?.width ?? 1280) <= PHONE_WIDTH) await expectNothingOverflows(page, context);
+}
+
+/** The design's surface motion, plus a frame (theme tokens: motion.surface.duration 320 ms). */
+const SURFACE_MS = 360;
+
+/** The phone viewport's width (playwright.config.ts, ux-phone). */
+export const PHONE_WIDTH = 390;
+
+/**
+ * What spills out of its box (specs/007-ux-redesign FR-079, T102): for every element with a visible
+ * border or a panel background, each visible element inside it whose box crosses the element's box
+ * by more than 1 px, and any text cut off by a box that clips it (or by its own) without an ellipsis
+ * to say so (R166). A box that scrolls or clips ends the search (what passes its edge is hidden,
+ * like a skeleton's sweep, or meant to move past it); anything fixed to the window, kept only for
+ * screen readers, or marked `data-overflow="intended"` (a designed overhang) is left out.
+ */
+export async function overflowing(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const TOLERANCE = 1;
+    const name = (el: Element) => {
+      const id = el.getAttribute("data-testid");
+      const text = (el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+      return `${id ? `[data-testid="${id}"]` : el.tagName.toLowerCase()}${text ? ` "${text}"` : ""}`;
+    };
+    const transparent = (colour: string) => colour === "transparent" || /rgba\(.*,\s*0\)$/.test(colour);
+    const isPanel = (el: Element, style: CSSStyleDeclaration) => {
+      if (el === document.documentElement || el === document.body) return false;
+      const bordered = ["Top", "Right", "Bottom", "Left"].some(
+        (side) =>
+          Number.parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+          style.getPropertyValue(`border-${side.toLowerCase()}-style`) !== "none" &&
+          !transparent(style.getPropertyValue(`border-${side.toLowerCase()}-color`)),
+      );
+      return bordered || !transparent(style.backgroundColor);
+    };
+    // A box that scrolls or clips hides what passes its edge: nothing past it can be seen spilling.
+    const clips = (style: CSSStyleDeclaration) => /(auto|scroll|hidden|clip)/.test(style.overflowX + style.overflowY);
+    const visible = (el: Element, style: CSSStyleDeclaration, box: DOMRect) =>
+      box.width > 1 && box.height > 1 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
+
+    const found: string[] = [];
+    for (const el of Array.from(document.body.querySelectorAll("*"))) {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      if (!visible(el, style, box) || style.position === "fixed") continue;
+      // A designed overhang (a person's extra hours past the roster block) says so.
+      if (el.closest('[data-overflow="intended"]')) continue;
+      // Text cut off where it is drawn, without an ellipsis to say so (R166): its own text runs
+      // past a box that clips (hidden, not a scroll area), or past its own clipped box.
+      const ownText = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "");
+      const marked = (node: Element) => {
+        const st = getComputedStyle(node);
+        return st.textOverflow === "ellipsis" || (st.getPropertyValue("-webkit-line-clamp") !== "" && st.getPropertyValue("-webkit-line-clamp") !== "none");
+      };
+      if (ownText && !marked(el)) {
+        const selfClips = /(hidden|clip)/.test(style.overflowX + style.overflowY);
+        if (selfClips && (el.scrollWidth > el.clientWidth + TOLERANCE || el.scrollHeight > el.clientHeight + TOLERANCE)) {
+          found.push(`${name(el)} is cut off in its own box`);
+          if (found.length >= 10) break;
+          continue;
+        }
+        for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+          const upStyle = getComputedStyle(up);
+          if (/(auto|scroll)/.test(upStyle.overflowX + upStyle.overflowY) || upStyle.position === "fixed") break;
+          if (marked(up)) break;
+          if (/(hidden|clip)/.test(upStyle.overflowX + upStyle.overflowY)) {
+            const outer = up.getBoundingClientRect();
+            if (box.right > outer.right + TOLERANCE || box.left < outer.left - TOLERANCE) {
+              found.push(`${name(el)} is cut off by ${name(up)}`);
+            }
+            break;
+          }
+        }
+        if (found.length >= 10) break;
+      }
+      // Walk up: each panel above must hold this box, until one that scrolls or clips.
+      for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+        const upStyle = getComputedStyle(up);
+        if (upStyle.position === "fixed" || clips(upStyle)) break;
+        if (isPanel(up, upStyle)) {
+          const outer = up.getBoundingClientRect();
+          const out =
+            box.left < outer.left - TOLERANCE ||
+            box.right > outer.right + TOLERANCE ||
+            box.top < outer.top - TOLERANCE ||
+            box.bottom > outer.bottom + TOLERANCE;
+          if (out && visible(up, upStyle, outer)) {
+            const at = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}`;
+            found.push(`${name(el)} (${at(box)}) crosses ${name(up)} (${at(outer)})`);
+            break;
+          }
+        }
+      }
+      if (found.length >= 10) break;
+    }
+    return found;
+  });
+}
+
+/** Fails, naming what spills, when anything crosses the box it sits in (FR-079). */
+export async function expectNothingOverflows(page: Page, context: string): Promise<void> {
+  expect(await overflowing(page), `overflow on ${context}`).toEqual([]);
 }
 
 /** A colour as the browser reports it, from `#RRGGBB`. */

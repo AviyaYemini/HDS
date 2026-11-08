@@ -11,6 +11,7 @@ import { Link } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 
+import { mayLeaveFor } from "../unsaved";
 import type { PressState } from "./Button";
 
 export interface LinkPressableProps extends Omit<PressableProps, "style" | "children"> {
@@ -19,7 +20,7 @@ export interface LinkPressableProps extends Omit<PressableProps, "style" | "chil
   children?: ReactNode;
 }
 
-export function LinkPressable({ href, style, children, onHoverIn, onHoverOut, onPressIn, onPressOut, onFocus, onBlur, ...rest }: LinkPressableProps) {
+export function LinkPressable({ href, style, children, onHoverIn, onHoverOut, onPressIn, onPressOut, onFocus, onBlur, onPress, ...rest }: LinkPressableProps) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -30,6 +31,11 @@ export function LinkPressable({ href, style, children, onHoverIn, onHoverOut, on
       <Pressable
         {...rest}
         style={resolved}
+        onPress={(event) => {
+          onPress?.(event);
+          // Unsaved changes on screen: ask first, and stay (FR-045).
+          if (!mayLeaveFor(href)) event.preventDefault();
+        }}
         onHoverIn={(event) => {
           setHovered(true);
           onHoverIn?.(event);

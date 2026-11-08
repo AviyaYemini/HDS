@@ -9,7 +9,7 @@ import { StyleSheet, View } from "react-native";
 
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { Button, EmptyState, LinkPressable, PageTitle, Txt, focusRing } from "../../design/components";
+import { Button, LinkPressable, PageTitle, Txt, focusRing } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useKeyboardMode } from "../../design/focus";
 import { Icon } from "../../design/icons/Icon";
@@ -88,17 +88,6 @@ export function MoreScreen() {
         <Button variant="secondary" label={t("auth.sign_out")} icon="sign-out" onPress={() => void signOut()} testID="action-sign-out-more" />
       </View>
     </HubScreen>
-  );
-}
-
-/** Where a later group of 007 builds the screen: its name, and what it will hold. */
-export function PlaceholderScreen({ titleKey, bodyKey, testID, eyebrowKey }: { titleKey: string; bodyKey: string; testID: string; eyebrowKey: string }) {
-  const { t } = useTranslation();
-  return (
-    <Screen testID={testID}>
-      <PageTitle eyebrow={[t("app.name"), t(eyebrowKey)]} title={t(titleKey)} />
-      <EmptyState title={t("placeholder.title")} body={t(bodyKey)} icon="layers" />
-    </Screen>
   );
 }
 

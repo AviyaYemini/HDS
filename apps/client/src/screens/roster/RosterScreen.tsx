@@ -15,7 +15,7 @@ import { ApiError, call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { previewsEnabled } from "../../config/previews";
-import { Button, EmptyState, InlineBanner, PageTitle, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
@@ -28,7 +28,7 @@ type Person = { id: string; full_name: string };
 
 export function RosterScreen() {
   const { t, i18n } = useTranslation();
-  const params = useLocalSearchParams<{ project?: string; week?: string; day?: string }>();
+  const params = useLocalSearchParams<{ project?: string; week?: string; day?: string; all?: string }>();
   const session = useSession();
   const capabilities = useCapabilities();
   const errorText = useErrorText();
@@ -152,7 +152,7 @@ export function RosterScreen() {
     return (
       <Screen testID="screen-roster">
         <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")} />
-        <ProjectChooser week={params.week} />
+        <ProjectChooser week={params.week} stay={params.all === "1"} />
       </Screen>
     );
   }
@@ -175,6 +175,10 @@ export function RosterScreen() {
   return (
     <Screen testID="screen-roster" fixed={isDesktop}>
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")}>
+        {/* Every project, the read-only ones included, even for the manager of one (group O review). */}
+        <LinkPressable href="/roster?all=1" testID="action-all-projects" style={styles.allProjects}>
+          <Txt role="label">{t("roster.all_projects")}</Txt>
+        </LinkPressable>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
         {publishable ? <Button variant="primary" icon="check" label={t("roster.publish")} onPress={() => setPublishing(true)} testID="action-publish" /> : null}
       </PageTitle>
@@ -256,6 +260,10 @@ export function RosterScreen() {
   );
 }
 
+
+/** Extra hours draw past the block's edge by design (US3); the overflow check (FR-079) allows it. */
+const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
+
 function Block({
   shift,
   editable,
@@ -314,7 +322,10 @@ function Block({
               {nameOf(a.user_id)}
             </Txt>
             <View style={styles.track}>
-              <View testID="person-bar" style={[styles.bar, { backgroundColor: colors.accent.default, marginStart: `${bar.offset}%`, width: `${bar.width}%` }]} />
+              <View
+                testID="person-bar"
+                {...OVERHANG}
+                style={[styles.bar, { backgroundColor: colors.accent.default, marginStart: `${bar.offset}%`, width: `${bar.width}%` }]} />
             </View>
           </Pressable>
         );
@@ -464,6 +475,7 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   week: { flexDirection: "row", gap: 8 },
   day: { width: 168, borderWidth: 1, padding: 6, gap: 6 },
   dayHead: { paddingBottom: 4 },

@@ -1,49 +1,54 @@
 /**
- * US4 — Clients, Sites, Projects: Playwright smoke tests.
- *
- * NOTE: SKIPPED pending apps/client implementation.
+ * US4 — Clients, sites and projects, on 007's admin screens (T082, T083): a Manager adds a client
+ * and a project for it, a billing rate of zero is refused at the field, and a project is ended and
+ * made active again.
  */
-import { test, expect } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-const BASE = process.env.APP_URL ?? "http://localhost:3000";
+import { signIn } from "./support";
 
-async function signIn(page: any, email: string, password = "Dev1234!") {
-  await page.goto(`${BASE}/sign-in`);
-  await page.fill('[data-testid="email"]', email);
-  await page.fill('[data-testid="password"]', password);
-  await page.click('[data-testid="sign-in-btn"]');
+async function openNew(page: Page, path: string): Promise<void> {
+  await page.goto(`${path}?open=new`);
+  await expect(page.getByTestId("record-form")).toBeVisible();
 }
 
-test.skip("Manager can create a client, site, and project", async ({ page }) => {
-  await signIn(page, "manager@hds.test");
-  // Create client
-  await page.click('[data-testid="nav-clients"]');
-  await page.click('[data-testid="create-client-btn"]');
-  await page.fill('[data-testid="client-name"]', "Test Client");
-  await page.fill('[data-testid="contract-start"]', "2026-01-01");
-  await page.click('[data-testid="submit-btn"]');
-  // Create project
-  await page.click('[data-testid="nav-projects"]');
-  await page.click('[data-testid="create-project-btn"]');
-  await page.fill('[data-testid="billing-rate"]', "75");
-  await page.click('[data-testid="submit-btn"]');
-  await expect(page.locator('[data-testid="project-list"]')).toContainText("Night Watch");
+test("a Manager adds a client and a project for it", async ({ page }) => {
+  const stamp = Date.now();
+  await signIn(page, "manager");
+  await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+  await openNew(page, "/admin/clients");
+  await page.getByTestId("field-name").fill(`Test Client ${stamp}`);
+  await page.getByTestId("field-contract_start").fill("1.1.2026");
+  await page.getByTestId("field-contract_start").blur();
+  await page.getByTestId("action-save").click();
+  await expect(page.getByTestId("table-row").filter({ hasText: `Test Client ${stamp}` })).toBeVisible();
+
+  await openNew(page, "/admin/projects");
+  await page.getByTestId("field-name").fill(`Test Project ${stamp}`);
+  await page.getByTestId("field-start_date").fill("1.1.2026");
+  await page.getByTestId("field-start_date").blur();
+  await page.getByTestId("field-billing_rate").fill("75");
+  await page.getByTestId("action-save").click();
+  await expect(page.getByTestId("table-row").filter({ hasText: `Test Project ${stamp}` })).toBeVisible();
 });
 
-test.skip("Zero billing rate is rejected", async ({ page }) => {
-  await signIn(page, "manager@hds.test");
-  await page.click('[data-testid="nav-projects"]');
-  await page.click('[data-testid="create-project-btn"]');
-  await page.fill('[data-testid="billing-rate"]', "0");
-  await page.click('[data-testid="submit-btn"]');
-  await expect(page.locator('[data-testid="error-billing-rate"]')).toBeVisible();
+test("a billing rate of zero is refused at the field", async ({ page }) => {
+  await signIn(page, "manager");
+  await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+  await openNew(page, "/admin/projects");
+  await page.getByTestId("field-billing_rate").fill("0");
+  await page.getByTestId("field-billing_rate").blur();
+  await expect(page.getByTestId("field-error-billing_rate")).toBeVisible();
 });
 
-test.skip("Project status can be toggled active/ended", async ({ page }) => {
-  await signIn(page, "manager@hds.test");
-  await page.click('[data-testid="nav-projects"]');
-  await page.click('[data-testid="project-row-0"] [data-testid="end-project-btn"]');
-  await expect(page.locator('[data-testid="project-row-0"] [data-testid="status"]')).toHaveText("Ended");
-  await page.click('[data-testid="project-row-0"] [data-testid="reactivate-project-btn"]');
-  await expect(page.locator('[data-testid="project-row-0"] [data-testid="status"]')).toHaveText("Active");
+test("a project is ended and made active again", async ({ page }) => {
+  await signIn(page, "admin");
+  await expect(page.getByTestId("nav-tabs").or(page.getByTestId("nav-side")).first()).toBeVisible();
+  await page.goto("/admin/projects?q=Day%20Patrol");
+  await page.getByTestId("table-row").first().click();
+  for (const [status, label] of [["ended", "Ended"], ["active", "Active"]] as const) {
+    await page.getByTestId(`field-status-${status}`).click();
+    await page.getByTestId("action-save").click();
+    await expect(page.getByTestId("table-row").first()).toContainText(label);
+  }
 });

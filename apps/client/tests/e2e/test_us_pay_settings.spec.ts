@@ -1,14 +1,14 @@
 /**
  * 005 US2 and US3 — An Admin sets a default rate, a project's pay settings and a special day.
  *
- * SKIPPED pending the admin screens: written against the planned screens (Constitution IV, one smoke
- * test per journey); remove the skip when they are built. The API is covered by the API tests.
+ * SKIPPED: 007's admin screens edit the organisation's pay settings and special days, not a
+ * project's own yet; remove the skip when those are built. The API is covered by the API tests.
  */
 import { expect, test } from "@playwright/test";
 
 import { signIn } from "./support";
 
-test.skip(true, "pending the admin screens");
+test.skip(true, "a project's own pay settings and special days are not in 007's admin screens (the organisation's are)");
 
 test("an Admin opens a project's pay to its Managers and adds a special day", async ({ page }) => {
   await signIn(page, "admin");

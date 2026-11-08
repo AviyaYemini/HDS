@@ -5,6 +5,7 @@ import services or routers.
 """
 
 import uuid
+from collections.abc import Collection
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -38,6 +39,13 @@ class ClientRepository(OrgScopedRepository[Client]):
             stmt = stmt.where(Client.is_active == is_active)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_many(self, org_id: uuid.UUID, ids: Collection[uuid.UUID]) -> list[Client]:
+        """The organisation's clients with these ids, deleted ones too (a report's past work)."""
+        if not ids:
+            return []
+        query = select(Client).where(Client.organization_id == org_id, Client.id.in_(list(ids)))
+        return list((await self.session.execute(query)).scalars())
 
     async def get_by_id(
         self, id: uuid.UUID, org_id: uuid.UUID, *, for_update: bool = False

@@ -13,7 +13,7 @@ import { Icon } from "../icons/Icon";
 import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
 import { webProps } from "../web";
-import { focusRing, type PressState } from "./Button";
+import { Button, focusRing, type PressState } from "./Button";
 import { Sheet } from "./Sheet";
 import { Txt } from "./Text";
 import { TextField, type TextFieldHandle } from "./TextField";
@@ -34,6 +34,11 @@ export interface SearchablePickerProps {
   items: readonly PickerItem[];
   value: string | null;
   onChange: (id: string) => void;
+  /**
+   * Choose several: each choice toggles an id in `values`, the sheet stays open until Done, and
+   * the options are checkboxes. `summary` is what the closed field shows then.
+   */
+  multiple?: { values: readonly string[]; onChange: (ids: string[]) => void; summary: string };
   /** Ids chosen lately, listed first. */
   recentIds?: readonly string[];
   placeholder?: string;
@@ -78,6 +83,7 @@ export function SearchablePicker({
   items,
   value,
   onChange,
+  multiple,
   recentIds = NO_RECENT,
   placeholder,
   disabled = false,
@@ -98,12 +104,22 @@ export function SearchablePicker({
     const handle = setTimeout(() => (searchRef.current as unknown as { focus?: () => void } | null)?.focus?.(), 60);
     return () => clearTimeout(handle);
   }, [open]);
-  const chosen = items.find((item) => item.id === value) ?? null;
+  const chosen = multiple ? null : (items.find((item) => item.id === value) ?? null);
+  const shownChoice = multiple ? multiple.summary : (chosen?.label ?? placeholder ?? t("picker.choose"));
+  const isSelected = (id: string): boolean => (multiple ? multiple.values.includes(id) : id === value);
   const shown = useMemo(() => order(items, recentIds, query), [items, recentIds, query]);
   const height = density === "compact" && isDesktop ? 36 : component.target.phone;
   const triggerWebProps = webProps({ "aria-haspopup": "dialog" });
 
   const choose = (item: PickerItem): void => {
+    if (multiple) {
+      const values = multiple.values.includes(item.id)
+        ? multiple.values.filter((id) => id !== item.id)
+        : [...multiple.values, item.id];
+      // In the items' own order, so the summary reads the same whatever was tapped first.
+      multiple.onChange(items.map((i) => i.id).filter((id) => values.includes(id)));
+      return;
+    }
     onChange(item.id);
     setOpen(false);
     setQuery("");
@@ -133,7 +149,7 @@ export function SearchablePicker({
       <Pressable
         testID={testID}
         role="button"
-        accessibilityLabel={`${label}: ${chosen?.label ?? placeholder ?? t("picker.choose")}`}
+        accessibilityLabel={`${label}: ${shownChoice}`}
         accessibilityState={{ disabled, expanded: open }}
         aria-expanded={open}
         aria-disabled={disabled}
@@ -150,8 +166,8 @@ export function SearchablePicker({
         ]}
       >
         <View style={styles.triggerText}>
-          <Txt role="body" tone={chosen ? "primary" : "secondary"} numberOfLines={1}>
-            {chosen?.label ?? placeholder ?? t("picker.choose")}
+          <Txt role="body" tone={chosen || multiple ? "primary" : "secondary"} numberOfLines={1}>
+            {shownChoice}
           </Txt>
           {chosen?.secondary ? (
             <Txt role="meta" tone="secondary" numberOfLines={1}>
@@ -166,7 +182,17 @@ export function SearchablePicker({
           {error}
         </Txt>
       ) : null}
-      <Sheet open={open} onClose={() => setOpen(false)} title={label} testID={testID ? `${testID}-sheet` : undefined}>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={label}
+        testID={testID ? `${testID}-sheet` : undefined}
+        footer={
+          multiple ? (
+            <Button variant="primary" label={t("picker.done")} onPress={() => setOpen(false)} testID={testID ? `${testID}-done` : undefined} />
+          ) : undefined
+        }
+      >
         <TextField
           ref={searchRef}
           label={t("picker.search")}
@@ -185,23 +211,23 @@ export function SearchablePicker({
           testID={testID ? `${testID}-search` : undefined}
           trailing={<Icon name="search" size={18} color={colors.text.secondary} style={styles.searchIcon} />}
         />
-        <View role="list" accessibilityLabel={label} style={styles.list}>
+        <View role={multiple ? "group" : "list"} accessibilityLabel={label} style={styles.list}>
           {shown.length === 0 ? (
             <Txt role="body" tone="secondary" style={styles.nothing}>
               {t("picker.nothing")}
             </Txt>
           ) : null}
           {shown.map((item, index) => {
-            const selected = item.id === value;
+            const selected = isSelected(item.id);
             const recent = recentIds.includes(item.id);
             return (
               <Pressable
                 key={item.id}
-                role="listitem"
+                role={multiple ? "checkbox" : "listitem"}
                 testID={testID ? `${testID}-option-${item.id}` : undefined}
                 accessibilityLabel={item.secondary ? `${item.label}, ${item.secondary}` : item.label}
-                accessibilityState={{ selected }}
-                aria-selected={selected}
+                accessibilityState={multiple ? { checked: selected } : { selected }}
+                {...(multiple ? { "aria-checked": selected } : { "aria-selected": selected })}
                 onPress={() => choose(item)}
                 onHoverIn={() => setHighlight(index)}
                 style={(state) => [

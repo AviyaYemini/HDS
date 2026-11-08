@@ -65,7 +65,7 @@ export function SkeletonRows({ rows = 5, rowHeight, testID }: SkeletonRowsProps)
   return (
     <View testID={testID} accessibilityLabel={t("common.loading")} aria-busy accessibilityRole="progressbar" style={styles.rows}>
       {Array.from({ length: rows }, (_, i) => (
-        <View key={i} style={[styles.row, { height }]}>
+        <View key={i} testID="skeleton-row" style={[styles.row, { height }]}>
           <Skeleton width="38%" height={12} />
           <Skeleton width="22%" height={12} />
           <Skeleton width="16%" height={12} />

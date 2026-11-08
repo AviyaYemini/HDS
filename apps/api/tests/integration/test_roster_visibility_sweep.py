@@ -26,7 +26,7 @@ from tests.roster_support import (
     headers_for,
     open_window,
 )
-from tests.schedule_support import ask, work
+from tests.schedule_support import ask, manage, work
 
 PART2_READS = {
     "GET /api/v1/availability-windows",
@@ -84,6 +84,7 @@ async def world(
     await open_window(async_client, manager)
     boss_entry = await async_client.post(constraints(boss), json=body(), headers=manager)
     assert boss_entry.status_code == 201, boss_entry.text
+    await manage(async_client, project)  # a Manager runs only their projects (007 T108)
     job = await ask(async_client, manager)  # its proposal names Ann and her manager
     assert job.status_code == 202, job.text
     await work()

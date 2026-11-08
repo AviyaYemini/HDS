@@ -231,3 +231,21 @@ uv run alembic check                 # needs DATABASE_URL pointing at a migrated
 
 Errors are `application/problem+json` with a stable `code`; the codes and their Hebrew and
 English texts are in `src/hds/locales`.
+
+### Added for the redesign (feature 007, Proposed)
+
+Each is in the contract and in [`docs/hds-api.md`](../../docs/hds-api.md):
+
+- `GET /me` answers `capabilities` and `managed_project_ids` (ADR 015); sign-in takes
+  `client_kind` (ADR 016); `/me/sessions` and `/auth/logout-others`.
+- Availability submissions (`/me/availability-submissions`, migrations 026 and 030; ADR 017).
+- Roster editing by a project's managers, assignments' own times (migration 031; ADR 018),
+  `If-Match` on shift and assignment changes, and assignments named by their person.
+- Roster tools: overrides, the publish review, copy week, week templates, bulk edit, the
+  submission tracker (migration 032).
+- Schedule runs scoped to a Manager's projects, with `elapsed_seconds` for the progress bar.
+- Saved views (`/me/saved-views`, migration 033) and the work log's key figures.
+- The organisation's contact card (`/organisation/contact`).
+
+The e2e runs start the schedule worker beside the API with `SCHEDULE_TIME_LIMIT_SECONDS=5`, so a
+queued run is solved within a test (`apps/client/playwright.config.ts`, `scripts/ops/e2e_ux.sh`).

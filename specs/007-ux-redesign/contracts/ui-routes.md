@@ -141,6 +141,31 @@ Persistent on every screen: sign-out (`action-sign-out`), help, contact, the acc
   `run-honesty-label` ("Optimal" or "Best found in N s"), `run-filled` (filled over required),
   `action-accept` and `action-discard`; `preview-proposal-diff` while previews are on.
 
+## Admin test ids (f-admin.spec.ts)
+
+- **Tables** (`/admin/<name>`): `screen-admin-<name>`; `data-table` whose sortable headers are
+  `sort-<column>` buttons with `aria-sort`; rows `table-row` with `data-id`; `table-search`;
+  `filters-on` while any filter is set; `action-save-view` asks for `save-view-name` and
+  `action-confirm-save-view`; saved views as `view-tab` tabs. Filters, sort, view and the open
+  record live in the address (`?q=`, `?sort=`, `?view=`, `?open=<id>`).
+- **Details**: a row opens `side-panel` (`?open=<id>`); `action-delete` there only for Admins.
+- **Forms**: `record-form` with `field-<name>` inputs and `field-error-<name>` messages;
+  `action-save` (never disabled); on a failed save `error-summary` takes focus. Leaving with
+  unsaved changes opens `confirm-leave`. A pay change opens `confirm-dialog`, whose text names the
+  old and new value and the date.
+- **Picker**: `searchable-picker` (a text input) lists `picker-option` items, each with a
+  `picker-option-detail` second line; Hebrew and English names both match.
+- **Loading**: `skeleton-row` items while a list's first load is pending; never "No records" then.
+
+## Report test ids (g-reports.spec.ts)
+
+- `/reports/work-log` (`screen-work-log`) and `/reports/hours` (`screen-hours`): the screen's
+  `page-title`; `date-range` with the pay-period presets `preset-this-pay-period` and
+  `preset-last-pay-period` (a pay period is a calendar month, as in My pay), defaulting to this
+  one; key figures `figure-people`, `figure-shifts`, `figure-hours` (and `figure-pay` where pay
+  is shown), each with `data-value` exactly as the API answers it; `report-bar` items, each
+  opening its `report-rows`; `pagination` below the table.
+
 ## Preview stubs (only with `EXPO_PUBLIC_PREVIEWS`)
 
 Each renders an Option B empty state with `data-testid="preview-<key>"`, the feature that brings it,

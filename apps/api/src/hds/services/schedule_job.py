@@ -18,12 +18,14 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from hds.core.authz import MANAGER_ROLES, ensure_role
-from hds.core.exceptions import ConflictError, DomainValidationError, NotFoundError
+from hds.core.capabilities import Capability, has_on_project
+from hds.core.exceptions import ConflictError, DomainValidationError, ForbiddenError, NotFoundError
 from hds.core.trace_context import current_traceparent
 from hds.models.schedule_job import ScheduleJob
-from hds.models.user import User
+from hds.models.user import User, UserRole
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.schedule_job import ScheduleJobRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
@@ -138,6 +140,7 @@ class ScheduleJobService:
         assignment_repo: AssignmentRepository,
         user_repo: UserRepository,
         shift_type_repo: ShiftTypeRepository,
+        project_manager_repo: ProjectManagerRepository,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         """Wire the service.
@@ -151,6 +154,7 @@ class ScheduleJobService:
             assignment_repo: Assignments, likewise.
             user_repo: Users, locked while a proposal is accepted.
             shift_type_repo: Shift types, share-locked while a proposal is accepted.
+            project_manager_repo: Who manages which project: a run's scope (007 T108).
             now: The current UTC time.
         """
         self._jobs = job_repo
@@ -161,6 +165,7 @@ class ScheduleJobService:
         self._assignments = assignment_repo
         self._users = user_repo
         self._types = shift_type_repo
+        self._managers = project_manager_repo
         self._now = now
 
     async def create(self, actor: User, data: dict[str, Any]) -> ScheduleJob:
@@ -173,10 +178,17 @@ class ScheduleJobService:
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
+            ForbiddenError: ``roster.project_not_managed`` for a Manager naming a project they
+                do not manage (HTTP 403); no job is created.
             DomainValidationError: ``schedule.range_invalid`` for a range that ends before it
                 starts, covers more than 31 days, or lies within 14 days of either end of the
                 calendar; ``schedule.project_not_active`` for a project
-                that is not an active one of the organisation (HTTP 422).
+                that is not an active one of the organisation; ``schedule.no_projects`` when
+                no project is named and the caller has none to schedule (HTTP 422).
+
+        No project named means the caller's: a Manager's managed active projects, an Admin's
+        every active one. The resolved list is stored on the job, so its page shows what it
+        covered (reviewer's ruling, 2026-11-08, from O9 and T098).
         """
         ensure_role(actor, *MANAGER_ROLES)
         first, last = data["first_day"], data["last_day"]
@@ -193,6 +205,15 @@ class ScheduleJobService:
                 raise DomainValidationError(
                     code="schedule.project_not_active",
                     detail="Every project must be an active project of the organisation.",
+                )
+            await self._require_scope(actor, ids)
+        else:
+            active = [p.id for p in await self._inputs.active_projects(actor.organization_id, None)]
+            ids = await self._in_scope(actor, active)
+            if not ids:
+                raise DomainValidationError(
+                    code="schedule.no_projects",
+                    detail="There is no active project of yours to schedule.",
                 )
         org = await self._orgs.get_by_id(actor.organization_id)
         if org is None:
@@ -257,12 +278,40 @@ class ScheduleJobService:
         end = job.finished_at or self._now()
         return max(0, (end - job.started_at) // timedelta(seconds=1))
 
+    async def _in_scope(self, actor: User, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Those of ``ids`` the actor may schedule: every one for an Admin, a Manager's own."""
+        if actor.role == UserRole.admin:
+            return list(ids)
+        managed = await self._managers.manages(actor.id, ids)
+        return [
+            i for i in ids if has_on_project(actor.role, Capability.ROSTER_EDIT_PROJECT, i, managed)
+        ]
+
+    async def _require_scope(self, actor: User, ids: list[uuid.UUID]) -> None:
+        """Refuse unless the actor may schedule every one of ``ids`` (007 T108)."""
+        if len(await self._in_scope(actor, ids)) != len(ids):
+            raise ForbiddenError(
+                code="roster.project_not_managed",
+                detail="A Manager schedules only the projects they manage.",
+            )
+
     async def _open(self, actor: User, id: uuid.UUID) -> ScheduleJob:
-        """The job, locked, if its proposal can still be decided."""
+        """The job, locked, if its proposal can still be decided by ``actor``.
+
+        Deciding takes the same scope as asking, checked again now: management may have changed
+        since the run was asked for, and a refusal is of the whole proposal, never part of it. A
+        job stored without projects (before 007 T108) covers every active one.
+        """
         ensure_role(actor, *MANAGER_ROLES)
         job = await self._jobs.get_locked(id, actor.organization_id)
         if job is None:
             raise NotFoundError(resource="ScheduleJob", id=id)
+        if actor.role != UserRole.admin:
+            # An Admin may decide on every run; a Manager's is checked against what it covers.
+            covered = [uuid.UUID(p) for p in job.project_ids] or [
+                p.id for p in await self._inputs.active_projects(actor.organization_id, None)
+            ]
+            await self._require_scope(actor, covered)
         if job.status != "succeeded":
             raise ConflictError(
                 code="schedule.not_ready", detail="The job has no proposal to decide on."

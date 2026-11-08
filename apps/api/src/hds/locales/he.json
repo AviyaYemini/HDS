@@ -95,6 +95,7 @@
   "requirements.shift_type_retired": "לסוג משמרת שהוצא משימוש אי אפשר להגדיר צורכי איוש.",
   "schedule.range_invalid": "הטווח לא יכול להסתיים לפני שהוא מתחיל, והוא מכסה 31 ימים לכל היותר.",
   "schedule.project_not_active": "כל פרויקט חייב להיות פרויקט פעיל של הארגון.",
+  "schedule.no_projects": "אין פרויקט פעיל שלך לשיבוץ.",
   "schedule.cursor_invalid": "הסמן אינו אחד שה-API החזיר.",
   "schedule.unavailable": "חסום או נעדר באותו יום.",
   "schedule.overlap": "כבר משובץ למשמרת באותה שעה.",
@@ -132,5 +133,6 @@
   "override.duplicate": "לאזהרה הזו כבר נרשמה סיבה.",
   "templates.duplicate_name": "לפרויקט כבר יש תבנית בשם הזה.",
   "roster.week_not_sunday": "שבוע מתחיל ביום ראשון.",
-  "roster.bulk_change_invalid": "יש לבחור תקן חדש או הסרה."
+  "roster.bulk_change_invalid": "יש לבחור תקן חדש או הסרה.",
+  "views.duplicate_name": "כבר קיימת כאן תצוגה בשם הזה."
 }

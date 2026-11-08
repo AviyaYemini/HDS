@@ -1,5 +1,5 @@
 /** Schedule runs' model (specs/007-ux-redesign FR-042, FR-074): the bar, the label, the count. */
-import { elapsedNow, filled, honesty, runProgress } from "../../../src/screens/runs/model";
+import { coveredText, digest, elapsedNow, filled, honesty, peopleOf, projectsOf, runProgress, slotsByDay, typesOf, weeksOf } from "../../../src/screens/runs/model";
 
 const START = "2026-11-08T10:00:00Z";
 const running = { status: "running" as const, solver: "cpsat", time_limit_seconds: 20 };
@@ -40,4 +40,43 @@ test("a proposal is labelled optimal, or the best found in the seconds it search
 test("filled counts each slot's people up to its headcount", () => {
   const slot = (headcount: number, assigned: number) => ({ headcount, assigned: Array.from({ length: assigned }, (_, i) => `u${i}`) });
   expect(filled({ slots: [slot(2, 1), slot(1, 1), slot(1, 3)] as never })).toEqual({ filled: 3, required: 4 });
+});
+
+test("a run's weeks start on Sundays and cover its whole range", () => {
+  const weeks = weeksOf("2026-11-10", "2026-11-17");
+  expect(weeks.map((w) => w[0])).toEqual(["2026-11-08", "2026-11-15"]);
+  expect(weeks[0]).toHaveLength(7);
+});
+
+test("a slot's people say what the run does to each against the drafts", () => {
+  const changes = { added: [{ key: "k1", user_id: "new" }], removed: [{ key: "k1", user_id: "gone" }, { key: "k2", user_id: "x" }] };
+  expect(peopleOf({ key: "k1", assigned: ["kept", "new"] }, changes)).toEqual([
+    { userId: "kept", change: "kept" },
+    { userId: "new", change: "added" },
+    { userId: "gone", change: "removed" },
+  ]);
+});
+
+test("slots sort by start within their day, and an older run's projects come from its slots", () => {
+  const slot = (key: string, date: string, starts_at: string, project_id = "p") => ({ key, date, starts_at, project_id }) as never;
+  const byDay = slotsByDay({ slots: [slot("b", "2026-11-08", "2026-11-08T12:00:00Z"), slot("a", "2026-11-08", "2026-11-08T05:00:00Z")] });
+  expect(byDay.get("2026-11-08")!.map((s: { key: string }) => s.key)).toEqual(["a", "b"]);
+  expect(projectsOf({ project_ids: [], proposal: { slots: [slot("a", "d", "t", "p1"), slot("b", "d", "t", "p1")] } as never })).toEqual(["p1"]);
+  expect(projectsOf({ project_ids: ["p2"], proposal: null })).toEqual(["p2"]);
+});
+
+test("a run names the projects it covers; an older one without a list covered every active one", () => {
+  const names = new Map([["p1", "Night Watch"], ["p2", "Day Patrol"]]);
+  expect(coveredText(["p1", "p2"], names, "every")).toBe("Night Watch, Day Patrol");
+  expect(coveredText([], names, "every")).toBe("every");
+});
+
+test("the generate form's key follows the request: the same request, the same key", () => {
+  expect(digest("2026-11-08|2026-11-14|p1")).toBe(digest("2026-11-08|2026-11-14|p1"));
+  expect(digest("2026-11-08|2026-11-14|p1")).not.toBe(digest("2026-11-08|2026-11-14|p1,p2"));
+});
+
+test("the types offered, so the default never mixes training and security", () => {
+  expect(typesOf([{ type: "security" }, { type: "security" }])).toEqual(["security"]);
+  expect(typesOf([{ type: "training" }, { type: "security" }])).toEqual(["security", "training"]);
 });

@@ -6,14 +6,14 @@
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet } from "react-native";
 
-import { Txt, focusRing, showToast, type PressState } from "../design/components";
+import { Txt, focusRing, type PressState } from "../design/components";
 import { useKeyboardMode } from "../design/focus";
 import { Icon, type IconName } from "../design/icons/Icon";
 import { useTheme } from "../design/theme/ThemeProvider";
 import type { ThemeName } from "../design/theme/theme.generated";
 import { component } from "../design/theme/theme.generated";
 import { webProps } from "../design/web";
-import { switchLanguage } from "../i18n";
+import { useLanguageSwitch } from "./LanguageSwitching";
 
 /** The theme the toggle switches to from `current`: light ↔ dark, high contrast kept. */
 export function toggledTheme(current: ThemeName): ThemeName {
@@ -77,6 +77,7 @@ function ControlButton({
 /** Switch to the other language, named in itself ("English" from Hebrew, "עברית" from English). */
 export function LanguageToggle() {
   const { t, i18n } = useTranslation();
+  const switchTo = useLanguageSwitch();
   const target = otherLanguage(i18n.language);
   const name = t(`language.${target}`);
   return (
@@ -86,9 +87,7 @@ export function LanguageToggle() {
       accessibilityLabel={t("display.language_to", { language: name })}
       lang={target}
       testID="action-switch-language"
-      onPress={() =>
-        void switchLanguage(target, () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }))
-      }
+      onPress={() => switchTo(target)}
     />
   );
 }

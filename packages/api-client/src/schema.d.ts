@@ -910,8 +910,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Hours and pay per employee or project
-         * @description Manager or Admin. Hours and shift counts from `from` to `to` (at most 366 days, 422 `reports.range_invalid`), grouped by employee or by project, with the grand totals. An Admin sees pay for every project with pay on; a Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere there is no pay figure at all, and pay totals cover only the lines shown with pay.
+         * Hours and pay per employee, project or client
+         * @description Manager or Admin. Hours and shift counts from `from` to `to` (at most 366 days, 422 `reports.range_invalid`), grouped by employee, by project or by client (a client's rows are its employees), with the grand totals. An Admin sees pay for every project with pay on; a Manager only for projects they are assigned to whose pay is open to Managers. Elsewhere there is no pay figure at all, and pay totals cover only the lines shown with pay.
          */
         get: operations["hours_api_v1_reports_hours_get"];
         put?: never;
@@ -930,8 +930,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Who worked at a project, site or group
-         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for exactly one of a project, a site or a group (422 `reports.scope_invalid`). For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site or a group needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
+         * Who worked at a project, site, group or the whole organisation
+         * @description Manager or Admin. Each person once per project with their shift count, hours and first and last date in the range, for at most one of a project, a site or a group (two or more 422 `reports.scope_invalid`); none means the whole organisation, which any Manager or Admin may read, as they may any project's log. For a project the range starts on its start date unless `from` is given, and then covers the whole project with no length limit; a site, a group or the whole organisation needs `from` (422 `reports.start_required`). `to` is today by default. A range with `from` covers at most 366 days (422 `reports.range_invalid`). Only published shifts that have ended count; no pay is shown.
          */
         get: operations["work_log_api_v1_reports_work_log_get"];
         put?: never;
@@ -957,7 +957,7 @@ export interface paths {
         put?: never;
         /**
          * Ask for a roster
-         * @description Manager or Admin. Queue a run that proposes a roster for `from` to `to` (at most 31 days) over every active project, or the `project_ids` given. A worker solves it; follow it with `GET /schedule-jobs/{id}`. Nothing in the roster changes until the proposal is accepted. A backwards or too long range is refused with 422 (`schedule.range_invalid`), a project that is not active with 422 (`schedule.project_not_active`). With an `Idempotency-Key`, a repeat of the same request answers the first job, and the same key with another request is refused with 422 (`idempotency.key_reused`).
+         * @description Manager or Admin. Queue a run that proposes a roster for `from` to `to` (at most 31 days) over the `project_ids` given, or, when none are, the caller's: a Manager's managed active projects, an Admin's every active one; the job keeps the list it covers. A worker solves it; follow it with `GET /schedule-jobs/{id}`. Nothing in the roster changes until the proposal is accepted. A Manager naming a project they do not manage is refused with 403 (`roster.project_not_managed`) and no job is made (007 T108). A backwards or too long range is refused with 422 (`schedule.range_invalid`), a project that is not active with 422 (`schedule.project_not_active`), and no project to schedule with 422 (`schedule.no_projects`). With an `Idempotency-Key`, a repeat of the same request answers the first job, and the same key with another request is refused with 422 (`idempotency.key_reused`).
          */
         post: operations["create_job_api_v1_schedule_jobs_post"];
         delete?: never;
@@ -997,7 +997,7 @@ export interface paths {
         put?: never;
         /**
          * Accept a proposal
-         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then.
+         * @description Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; nothing is published. An existing draft keeps its id and headcount. Refused with 409 when the job has no proposal (`schedule.not_ready`), the proposal was accepted, discarded or has expired (`schedule.proposal_closed`), or anything it was made from has changed since (`schedule.proposal_out_of_date`); nothing changes then. A Manager who does not manage every project of the run, now, is refused the whole of it with 403 (`roster.project_not_managed`, 007 T108).
          */
         post: operations["accept_job_api_v1_schedule_jobs__id__accept_post"];
         delete?: never;
@@ -1017,7 +1017,7 @@ export interface paths {
         put?: never;
         /**
          * Discard a proposal
-         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`).
+         * @description Manager or Admin. Close the proposal without storing it. Refused with 409 when the job has no proposal (`schedule.not_ready`) or it is already closed (`schedule.proposal_closed`); with 403 (`roster.project_not_managed`) for a Manager who does not manage every project of the run (007 T108).
          */
         post: operations["discard_job_api_v1_schedule_jobs__id__discard_post"];
         delete?: never;
@@ -1477,6 +1477,50 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/saved-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my saved views of a table
+         * @description Employee, Manager or Admin. The caller's own views of `screen`, by name.
+         */
+        get: operations["list_views_me_saved_views_get"];
+        put?: never;
+        /**
+         * Save a view of a table
+         * @description Employee, Manager or Admin. Save the filters and sorting of a table, as the web address's query, under a name unique per screen (409 `views.duplicate_name`).
+         */
+        post: operations["save_view_me_saved_views_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/saved-views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove one of my saved views
+         * @description Employee, Manager or Admin. Another user's view answers 404.
+         */
+        delete: operations["remove_view_me_saved_views__id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2154,7 +2198,7 @@ export interface components {
              * Group By
              * @enum {string}
              */
-            group_by: "employee" | "project";
+            group_by: "employee" | "project" | "client";
             /** Groups */
             groups: components["schemas"]["HoursGroupRead"][];
             /**
@@ -3360,6 +3404,48 @@ export interface components {
             start_weekday: number;
         };
         /**
+         * SavedViewCreate
+         * @description A view to save: the screen, a name, and the web address's query it restores.
+         */
+        SavedViewCreate: {
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+            /** Screen */
+            screen: string;
+        };
+        /**
+         * SavedViewList
+         * @description The caller's views of one screen, by name.
+         */
+        SavedViewList: {
+            /** Items */
+            items: components["schemas"]["SavedViewRead"][];
+        };
+        /**
+         * SavedViewRead
+         * @description One of the caller's saved views.
+         */
+        SavedViewRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+            /** Screen */
+            screen: string;
+        };
+        /**
          * SchedulingSettings
          * @description The limits the roster is generated and checked against, in whole hours.
          */
@@ -4189,6 +4275,9 @@ export interface components {
         /**
          * WorkLogRead
          * @description Who worked in the range, once per person and project, by name; never any pay.
+         *
+         *     ``people``, ``shifts`` (person-shifts) and ``hours`` (person-hours) are the key figures the
+         *     report opens with, summed by the server so the client never adds them up (007 FR-050).
          */
         WorkLogRead: {
             /**
@@ -4196,8 +4285,17 @@ export interface components {
              * Format: date
              */
             from: string;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** People */
+            people: number;
             /** Rows */
             rows: components["schemas"]["WorkLogRowRead"][];
+            /** Shifts */
+            shifts: number;
             /**
              * To
              * Format: date
@@ -8764,7 +8862,7 @@ export interface operations {
             query: {
                 from: string;
                 to: string;
-                group_by: "employee" | "project";
+                group_by: "employee" | "project" | "client";
             };
             header?: never;
             path?: never;
@@ -10970,6 +11068,180 @@ export interface operations {
             };
             /** @description Authenticated but the role or data scope does not allow this. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_views_me_saved_views_get: {
+        parameters: {
+            query: {
+                screen: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewList"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    save_view_me_saved_views_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewRead"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    remove_view_me_saved_views__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

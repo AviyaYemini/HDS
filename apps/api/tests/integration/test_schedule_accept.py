@@ -104,6 +104,7 @@ async def test_a_job_that_has_not_succeeded_cannot_be_accepted_or_discarded(
     async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
 ) -> None:
     manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)  # a run needs a project of theirs (T108)
     queued = (await ask(async_client, manager)).json()
     for action in ("accept", "discard"):
         answer = await async_client.post(f"{JOBS}/{queued['id']}/{action}", headers=manager)

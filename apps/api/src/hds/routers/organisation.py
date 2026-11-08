@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from hds.core.capabilities import Capability
 from hds.core.deps import get_current_user, require_capability
-from hds.core.types import ChangeRequest, Email, Phone, omittable
+from hds.core.types import WHOLE_NUMBER, ChangeRequest, Email, Phone, omittable
 from hds.models.user import User
 from hds.services.organisation_contact import OrganisationContactService
 from hds.wiring import organisation_contact
@@ -24,7 +24,8 @@ LocalTime = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
 class OpeningHours(BaseModel):
     """One day's opening hours in the organisation's local time (0 is Sunday)."""
 
-    weekday: Annotated[int, Field(ge=0, le=6)]
+    # A JSON whole number only: never true or "3" (R165).
+    weekday: Annotated[int, Field(ge=0, le=6), WHOLE_NUMBER]
     opens: LocalTime
     closes: LocalTime
 

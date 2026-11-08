@@ -1,12 +1,12 @@
-/** Projects: built by a later group of 007; a guarded placeholder until then (FR-007). */
+/** Projects: the admin table and record panel (specs/007-ux-redesign T083 to T085, FR-007). */
 import { RequireCapability } from "../../../src/capabilities";
-import { PlaceholderScreen } from "../../../src/screens/misc/HubScreen";
+import { ProjectsScreen } from "../../../src/screens/admin/AdminScreens";
 import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
 
 export default function Route() {
   return (
     <RequireCapability need="projects.manage" denied={<NoAccessScreen />}>
-      <PlaceholderScreen titleKey="nav.projects" bodyKey="placeholder.admin" eyebrowKey="nav.group.admin" testID="screen-admin-projects" />
+      <ProjectsScreen />
     </RequireCapability>
   );
 }

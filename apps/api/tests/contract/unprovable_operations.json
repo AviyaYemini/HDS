@@ -153,7 +153,7 @@
       "path": "/api/v1/schedule-jobs",
       "operation_id": "create_job_api_v1_schedule_jobs_post",
       "suites": ["pytest", "cli"],
-      "reason": "to >= from and at most 31 days span two fields (004 FR-005), answered 422 schedule.range_invalid; a project id must be an active project of the organisation, answered 422 schedule.project_not_active"
+      "reason": "to >= from and at most 31 days span two fields (004 FR-005), answered 422 schedule.range_invalid; a project id must be an active project of the organisation, answered 422 schedule.project_not_active; a Manager may name only projects they manage, answered 403 roster.project_not_managed, and with none named needs a project of their own, answered 422 schedule.no_projects (007 T108)"
     },
     {
       "method": "GET",
@@ -202,7 +202,7 @@
       "path": "/api/v1/reports/work-log",
       "operation_id": "work_log_api_v1_reports_work_log_get",
       "suites": ["pytest", "cli"],
-      "reason": "exactly one of three optional ids, a start needed for a site or group, and a range of at most 366 days span several parameters, which OpenAPI 3.0 cannot state (005 FR-023, FR-024, FR-030); answered 422 reports.scope_invalid, reports.start_required or reports.range_invalid"
+      "reason": "at most one of three optional ids, a start needed for a site, a group or the whole organisation (no id, 007 PR 5), and a range of at most 366 days span several parameters, which OpenAPI 3.0 cannot state (005 FR-023, FR-024, FR-030); answered 422 reports.scope_invalid, reports.start_required or reports.range_invalid"
     },
     {
       "method": "GET",
@@ -252,6 +252,27 @@
       "operation_id": "bulk_api_v1_projects__id__roster_bulk_post",
       "suites": ["pytest", "cli"],
       "reason": "exactly one of headcount and remove (007 FR-038), which spans two fields and OpenAPI 3.0 cannot state; answered 422 roster.bulk_change_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedule-jobs/{id}/accept",
+      "operation_id": "accept_job_api_v1_schedule_jobs__id__accept_post",
+      "suites": ["pytest", "cli"],
+      "reason": "accepting depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedule-jobs/{id}/discard",
+      "operation_id": "discard_job_api_v1_schedule_jobs__id__discard_post",
+      "suites": ["pytest", "cli"],
+      "reason": "discarding depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108)"
+    },
+    {
+      "method": "POST",
+      "path": "/me/saved-views",
+      "operation_id": "save_view_me_saved_views_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a name is unique per user and screen (007 FR-043), which depends on stored views; a second view of the same name is answered 409 views.duplicate_name"
     }
   ]
 }

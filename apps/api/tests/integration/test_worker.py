@@ -76,6 +76,7 @@ async def test_a_job_lost_three_times_fails_as_worker_lost(
     async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
 ) -> None:
     manager = await headers_for(async_client, "manager")
+    await staffed_project(async_client, manager)  # a run needs a project of theirs (T108)
     job = (await ask(async_client, manager)).json()
     await test_db.execute(
         text(

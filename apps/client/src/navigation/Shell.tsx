@@ -24,6 +24,7 @@ import { useKeyboardMode } from "../design/focus";
 import { Icon, type IconName } from "../design/icons/Icon";
 import { useTheme } from "../design/theme/ThemeProvider";
 import { component } from "../design/theme/theme.generated";
+import { mayLeaveFor } from "../design/unsaved";
 import { webProps } from "../design/web";
 import {
   groupsFor,
@@ -216,6 +217,8 @@ function Header() {
   const session = useSession();
   const capabilities = useCapabilities();
   const signOut = async (): Promise<void> => {
+    // Unsaved changes on screen: ask first, as any other way out does (FR-045).
+    if (!mayLeaveFor(() => void signOut())) return;
     await session.signOut();
     router.replace("/sign-in");
   };

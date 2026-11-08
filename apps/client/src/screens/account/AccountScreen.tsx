@@ -22,7 +22,7 @@ import { THEME_NAMES, type ThemePreference } from "../../design/theme/themeStore
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { component } from "../../design/theme/theme.generated";
 import { webProps } from "../../design/web";
-import { switchLanguage } from "../../i18n";
+import { useLanguageSwitch } from "../../navigation/LanguageSwitching";
 import { DEFAULT_TIME_ZONE, formatHeaderDate, dateOf, formatTime, isolateLtr, weekdayNames } from "../../locale";
 import { useLoad } from "../useLoad";
 import { DestinationRow } from "../misc/HubScreen";
@@ -58,8 +58,8 @@ export function LanguageSwitch() {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const keyboard = useKeyboardMode();
-  const choose = (code: string): Promise<void> =>
-    switchLanguage(code, () => showToast(t("language.restart_notice"), { tone: "info", duration: 6000 }));
+  // The same restart as the top bar's switch (FR-078).
+  const choose = useLanguageSwitch();
   return (
     <View role="radiogroup" accessibilityLabel={t("language.label")} style={[styles.radios, { borderColor: colors.border.strong }]}>
       {LANGUAGES.map((language) => {
@@ -71,7 +71,7 @@ export function LanguageSwitch() {
             role="radio"
             accessibilityState={{ checked }}
             aria-checked={checked}
-            onPress={() => void choose(language.code)}
+            onPress={() => choose(language.code)}
             {...webProps({ tabIndex: checked ? 0 : -1, lang: language.code })}
             style={(state) => [
               styles.radio,

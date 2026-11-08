@@ -10,6 +10,7 @@ import { StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
+import { useCapabilities } from "../../capabilities";
 import {
   Button,
   DateRangeField,
@@ -17,6 +18,7 @@ import {
   InlineBanner,
   LinkPressable,
   PageTitle,
+  SearchablePicker,
   SkeletonRows,
   StatusChip,
   Txt,
@@ -25,15 +27,16 @@ import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, compareDates, formatNumericRange, presetRange, todayIn, type DateRange } from "../../locale";
+import { useLoad } from "../useLoad";
 import { HonestyLabel } from "./HonestyLabel";
-import { STATUS_TONE, isActive, type JobSummary } from "./model";
+import { STATUS_TONE, coveredText, digest, isActive, typesOf, type JobSummary } from "./model";
 
 /** A run covers at most this many days (the API's limit, 004 FR-005). */
 const MAX_DAYS = 31;
 const REFRESH_MS = 2000;
 
 
-function RunRow({ job }: { job: JobSummary }) {
+function RunRow({ job, names }: { job: JobSummary; names: Map<string, string> }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   return (
@@ -46,6 +49,9 @@ function RunRow({ job }: { job: JobSummary }) {
       <Txt role="label" numeric style={styles.range}>
         {formatNumericRange(job.from, job.to)}
       </Txt>
+      <Txt role="meta" tone="secondary" testID="run-row-projects" style={styles.range}>
+        {coveredText(job.project_ids, names, t("runs.every_project"))}
+      </Txt>
       <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} />
       <HonestyLabel job={job} testID="run-row-honesty" />
       {job.proposal_state && job.status === "succeeded" ? (
@@ -57,11 +63,31 @@ function RunRow({ job }: { job: JobSummary }) {
   );
 }
 
-function newKey(): string {
-  return `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+/** A project the generate form may offer: its name and type (training and security don't mix). */
+interface Offered {
+  id: string;
+  name: string;
+  type: string;
 }
 
-function GenerateForm({ onCancel }: { onCancel: () => void }) {
+/**
+ * The projects a run may cover, for the reader (FR-081): a Manager's own active projects, an
+ * Admin's every active one, as the API scopes a run (T108); and every project's name, for the rows.
+ */
+function useRunProjects(): { offered: Offered[] | null; names: Map<string, string>; error: string | null; reload: () => Promise<void> } {
+  const session = useSession();
+  const capabilities = useCapabilities();
+  const projects = useLoad(async () => (await call(session.api.GET("/api/v1/projects"))).items, []);
+  const all = projects.data ?? [];
+  const offered = projects.data
+    ? all
+        .filter((p) => p.status === "active" && capabilities.hasOnProject("roster.edit:project", p.id))
+        .map((p) => ({ id: p.id, name: p.name, type: p.type }))
+    : null;
+  return { offered, names: new Map(all.map((p) => [p.id, p.name])), error: projects.error, reload: projects.reload };
+}
+
+function GenerateForm({ onCancel, offered }: { onCancel: () => void; offered: Offered[] }) {
   const { t } = useTranslation();
   const session = useSession();
   const router = useRouter();
@@ -71,13 +97,25 @@ function GenerateForm({ onCancel }: { onCancel: () => void }) {
   const [range, setRange] = useState<DateRange>(() => presetRange("next-week", today));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // One key per range: a repeat (a double press, a retry after a lost answer) answers the same run,
-  // and a new range is a new request.
-  const [key, setKey] = useState(newKey);
-  const choose = (next: DateRange) => {
-    setRange(next);
-    setKey(newKey());
-  };
+  // Every offered project at first when they are all of one type (every Manager today); with
+  // both types offered, none, and a quick choice of each type: the default never mixes training
+  // and security, though choosing both on purpose stays allowed (reviewer's ruling, 2026-11-08,
+  // after the owner's note in spec.md's assumptions).
+  const types = typesOf(offered);
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const projects = picked ?? (types.length > 1 ? [] : offered.map((p) => p.id));
+  // The key follows the request itself: a repeat of the same one (a double press, a retry after a
+  // lost answer) answers the same run, and any change of range or projects (the offered list
+  // arriving late included) is a new request, never a reused key (group O review).
+  const [form] = useState(() => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
+  const key = `run-${form}-${digest(`${range.start}|${range.end}|${projects.join(",")}`)}`;
+  const summary =
+    projects.length === offered.length
+      ? t("runs.projects_all", { count: offered.length })
+      : projects.length === 0
+        ? t("runs.projects_none")
+        : offered.filter((p) => projects.includes(p.id)).map((p) => p.name).join(", ");
+  const noProjects = projects.length === 0;
 
   const tooLong = compareDates(range.end, addDays(range.start, MAX_DAYS - 1)) > 0;
 
@@ -87,7 +125,7 @@ function GenerateForm({ onCancel }: { onCancel: () => void }) {
     try {
       const job = await call(
         session.api.POST("/api/v1/schedule-jobs", {
-          body: { from: range.start, to: range.end, solver: "cpsat" },
+          body: { from: range.start, to: range.end, project_ids: projects, solver: "cpsat" },
           params: { header: { "idempotency-key": key } },
         }),
       );
@@ -100,13 +138,33 @@ function GenerateForm({ onCancel }: { onCancel: () => void }) {
 
   return (
     <View testID="run-form" style={[styles.form, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
-      <DateRangeField label={t("runs.range")} value={range} onChange={choose} forward minDate={today} />
+      <SearchablePicker
+        label={t("runs.projects")}
+        items={offered.map((p) => ({ id: p.id, label: p.name, secondary: t(`project.type.${p.type}`) }))}
+        value={null}
+        onChange={() => undefined}
+        multiple={{ values: projects, onChange: setPicked, summary }}
+        testID="run-projects"
+      />
+      {types.length > 1 ? (
+        <View style={styles.formActions}>
+          {types.map((type) => (
+            <Button
+              key={type}
+              label={t(`runs.projects_of_type.${type}`)}
+              onPress={() => setPicked(offered.filter((p) => p.type === type).map((p) => p.id))}
+              testID={`action-projects-${type}`}
+            />
+          ))}
+        </View>
+      ) : null}
+      <DateRangeField label={t("runs.range")} value={range} onChange={setRange} forward minDate={today} />
       <Txt role="meta" tone="secondary">
         {t("runs.range_hint")}
       </Txt>
       {error ? <InlineBanner tone="warning" title={errorText(error)} /> : null}
       <View style={styles.formActions}>
-        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong} disabledReason={tooLong ? t("schedule.range_invalid") : undefined} testID="action-generate" />
+        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong || noProjects} disabledReason={tooLong ? t("schedule.range_invalid") : noProjects ? t("runs.projects_none") : undefined} testID="action-generate" />
         <Button label={t("common.cancel")} onPress={onCancel} testID="action-cancel-run" />
       </View>
     </View>
@@ -183,12 +241,22 @@ export function RunsScreen() {
   const errorText = useErrorText();
   const [creating, setCreating] = useState(false);
   const jobs = useRuns();
+  const projects = useRunProjects();
   return (
     <Screen testID="screen-runs">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>
         {creating ? null : <Button variant="primary" icon="plus" label={t("runs.new")} onPress={() => setCreating(true)} testID="action-new-run" />}
       </PageTitle>
-      {creating ? <GenerateForm onCancel={() => setCreating(false)} /> : null}
+      {!creating ? null : projects.error ? (
+        // A failed read of the projects says so, with a way to try again (CodeRabbit, PR 20).
+        <InlineBanner tone="warning" title={errorText(projects.error)} action={{ label: t("common.retry"), onPress: () => void projects.reload() }} />
+      ) : projects.offered === null ? (
+        <SkeletonRows rows={2} />
+      ) : projects.offered.length === 0 ? (
+        <EmptyState icon="briefcase" title={t("runs.no_projects_title")} body={t("runs.no_projects_body")} testID="run-no-projects" />
+      ) : (
+        <GenerateForm onCancel={() => setCreating(false)} offered={projects.offered} />
+      )}
       {jobs.error ? (
         <InlineBanner tone="warning" title={errorText(jobs.error)} action={{ label: t("common.retry"), onPress: () => void jobs.reload() }} />
       ) : jobs.data === null ? (
@@ -205,7 +273,7 @@ export function RunsScreen() {
       ) : (
         <View style={styles.list}>
           {jobs.data.map((job) => (
-            <RunRow key={job.id} job={job} />
+            <RunRow key={job.id} job={job} names={projects.names} />
           ))}
           {jobs.more ? <Button label={t("runs.more")} onPress={() => void jobs.more?.()} busy={jobs.loadingMore} testID="action-more-runs" /> : null}
           {jobs.moreError ? <InlineBanner tone="warning" testID="banner-more-runs" title={errorText(jobs.moreError)} /> : null}

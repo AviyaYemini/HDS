@@ -85,7 +85,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 8,
-    height: 24,
+    // At least a line's height; a label that wraps makes the chip taller, never spills (FR-079).
+    minHeight: 24,
     alignSelf: "flex-start",
   },
 });

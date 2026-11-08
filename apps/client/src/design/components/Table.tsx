@@ -82,7 +82,7 @@ export function Table<Row>({
   empty,
   scrollable = false,
   frozenFirstColumn = false,
-  testID,
+  testID = "data-table",
   style,
 }: TableProps<Row>) {
   const { colors, spacing, density, isDesktop } = useTheme();
@@ -109,6 +109,7 @@ export function Table<Row>({
       <View
         key={column.key}
         role={plain ? undefined : "columnheader"}
+        testID={sortable ? `sort-${column.key}` : undefined}
         {...sortProps}
         style={[styles.cell, widthOf(column), index === 0 ? styles.firstCell : null]}
       >
@@ -180,7 +181,13 @@ export function Table<Row>({
     );
     if (!pressable) {
       return (
-        <View key={key} role={interactive ? "row" : undefined} aria-selected={interactive && selected ? true : undefined}>
+        <View
+          key={key}
+          role={interactive ? "row" : undefined}
+          testID={interactive ? "table-row" : undefined}
+          {...webProps(interactive ? { dataSet: { id: key } } : {})}
+          aria-selected={interactive && selected ? true : undefined}
+        >
           {content()}
         </View>
       );
@@ -189,6 +196,8 @@ export function Table<Row>({
       <Pressable
         key={key}
         role="row"
+        testID="table-row"
+        {...webProps({ dataSet: { id: key } })}
         aria-selected={selected}
         accessibilityState={{ selected }}
         onPress={() => onRowPress(row)}
@@ -256,7 +265,8 @@ const styles = StyleSheet.create({
   firstCell: { paddingStart: 4 },
   end: { textAlign: "right" },
   rowEnd: { justifyContent: "flex-end" },
-  sortButton: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" },
+  // The whole header cell sorts, not just its words (a press anywhere on the column's title).
+  sortButton: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "stretch" },
   compactText: { fontSize: 14, lineHeight: 20 },
   empty: { paddingVertical: 24 },
   frozen: { position: "absolute", top: 0, bottom: 0, start: 0, borderEndWidth: 1 },

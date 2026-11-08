@@ -158,6 +158,10 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("POST", P + "/week-templates/{template_id}/apply"): MGR,
     ("POST", P + "/roster/bulk"): MGR,
     ("GET", "/api/v1/availability-windows/{id}/submissions"): MGR,
+    # saved views (007 FR-043)
+    ("GET", "/me/saved-views"): STAFF,
+    ("POST", "/me/saved-views"): STAFF,
+    ("DELETE", "/me/saved-views/{id}"): STAFF,
 }
 
 ROLE_GATE_CODES = {"users.manager_required", "users.admin_required", "users.forbidden"}

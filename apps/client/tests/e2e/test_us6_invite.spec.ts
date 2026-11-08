@@ -1,7 +1,8 @@
 /**
  * US6 — Password Reset and Invitation: Playwright smoke tests.
  *
- * NOTE: SKIPPED pending apps/client implementation.
+ * NOTE: SKIPPED: invitations and the password reset are not part of 007's screens (staff are added
+ * with a first password in the admin staff panel); the API is covered by the API tests.
  */
 import { test, expect } from "@playwright/test";
 

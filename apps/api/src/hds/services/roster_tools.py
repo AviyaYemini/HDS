@@ -424,6 +424,10 @@ class RosterToolsService:
             NotFoundError: The project is not in the caller's organisation (HTTP 404).
         """
         await self._roster.require_project(actor, project_id)
+        return await self._plan_of(actor, project_id, week)
+
+    async def _plan_of(self, actor: User, project_id: uuid.UUID, week: date) -> list[PlannedShift]:
+        """The week as a plan, for a caller that has already checked the project."""
         zone = await self._roster.site_zone(project_id)
         begins, ends = utc_range(week, week + timedelta(days=6), zone)
         shifts = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)
@@ -568,7 +572,8 @@ class RosterToolsService:
         _check_week(week)
         ensure_role(actor, *MANAGER_ROLES)
         await self._roster.require_edit(actor, project_id)
-        plan = await self.week_plan(actor, project_id, week)
+        # require_edit has looked the project up already (group O review).
+        plan = await self._plan_of(actor, project_id, week)
         return await self._templates.create(
             actor.organization_id,
             {

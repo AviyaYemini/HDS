@@ -177,5 +177,6 @@ const styles = StyleSheet.create({
   links: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   section: { gap: 10 },
   contact: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12, padding: 12, borderWidth: 1 },
-  contactBody: { flex: 1, minWidth: 140, gap: 2 },
+  // The width is the basis, so the row wraps on a narrow screen (FR-079).
+  contactBody: { flexGrow: 1, flexShrink: 1, flexBasis: 140, gap: 2 },
 });

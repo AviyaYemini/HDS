@@ -1,12 +1,12 @@
-/** Staff: built by a later group of 007; a guarded placeholder until then (FR-007). */
+/** Staff: the admin table and record panel (specs/007-ux-redesign T083 to T085, FR-007). */
 import { RequireCapability } from "../../../src/capabilities";
-import { PlaceholderScreen } from "../../../src/screens/misc/HubScreen";
+import { StaffScreen } from "../../../src/screens/admin/AdminScreens";
 import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
 
 export default function Route() {
   return (
     <RequireCapability need="staff.manage" denied={<NoAccessScreen />}>
-      <PlaceholderScreen titleKey="nav.staff" bodyKey="placeholder.admin" eyebrowKey="nav.group.admin" testID="screen-admin-staff" />
+      <StaffScreen />
     </RequireCapability>
   );
 }
