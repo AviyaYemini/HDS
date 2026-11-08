@@ -43,8 +43,8 @@ catches line-level slips.
 
 ## Phase 1: Setup
 
-- [ ] T001 Create `specs/008-auto-scheduler-review/review-ledger.md` from `.claude/hds/review-ledger-template.md`
-- [ ] T002 Add ADR 020 "A proposal's working copy and the append-only run record" in `docs/adr/` and its row in `docs/README.md` (research P8, P14)
+- [x] T001 Create `specs/008-auto-scheduler-review/review-ledger.md` from `.claude/hds/review-ledger-template.md`
+- [x] T002 Add ADR 020 "A proposal's working copy and the append-only run record" in `docs/adr/` and its row in `docs/README.md` (research P8, P14)
 
 ---
 
