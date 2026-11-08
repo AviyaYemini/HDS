@@ -1,8 +1,12 @@
 /** Helpers for the e2e specs: signing in through the page, and setting up data through the API. */
 import { expect, request, type APIRequestContext, type Page } from "@playwright/test";
 
-/** The e2e API; the web build is exported against it (`pnpm e2e`). */
-export const API = "http://localhost:8100";
+/**
+ * The e2e API; the web build is exported against it (`pnpm e2e`). Inside the Playwright container
+ * of `scripts/ops/e2e_ux.sh` the host's API is at `E2E_API_URL` (host.docker.internal), as the ux
+ * specs already read it.
+ */
+export const API = process.env.E2E_API_URL ?? "http://localhost:8100";
 export const PASSWORD = "Dev1234!";
 
 /** Sign in through the sign-in screen as the seeded account of `role`. */
