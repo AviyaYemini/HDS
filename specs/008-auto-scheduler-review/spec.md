@@ -163,7 +163,7 @@ silently.
 
 ### User Story 4 - Steer a run: plain controls, locks and own preferences (Priority: P2)
 
-Before running the week, the manager chooses "Fill every slot" over "Avoid overstaffing", sets
+Before running the week, the manager chooses "Keep changes small", sets
 "Respect would rather not: strictly", and adds two preferences of their own: "Noa: at most 2 nights"
 and "Keep Dana on North Gate". After looking at the proposal they lock four assignments they like and
 run again; the locked ones stay, and the rest of the week changes as little as it can.
@@ -178,8 +178,8 @@ more than the rules and chips require.
 **Acceptance Scenarios**:
 
 1. **Given** the run form, **When** the manager sets it up, **Then** besides the projects and dates of 007
-   they may choose one or two plain controls in words (fill every slot, or avoid placing more people than
-   needed; how strictly to respect "would rather not"), never raw weights, and the run uses them.
+   they may choose two plain controls in words ("Keep changes small" or "Rebalance freely"; how strictly
+   to respect "would rather not"), never raw weights, and the run uses them.
    *Proposed* [AS6]
 2. **Given** an assignment on the roster or in a proposal, **When** the manager locks it, **Then** every
    later run over that range keeps it, counts it toward hours, nights and fairness, and says so on the
@@ -385,10 +385,12 @@ accept and publish, counting that each step is one tap from the last.
 
 **Steering a run**
 
-- **FR-017**: The run form MUST offer, besides 007's projects and dates, plain controls in words: fill
-  every slot, or avoid placing more people than a slot needs; and how strictly to respect "would rather
-  not" (gently, or strictly while it leaves no slot empty). The organisation's defaults apply when
-  untouched; raw weights MUST never be shown. *Proposed* [AS6]
+- **FR-017**: The run form MUST offer, besides 007's projects and dates, two plain controls in words:
+  "Keep changes small" or "Rebalance freely" against the starting roster; and how strictly to respect
+  "would rather not" (strictly, before balancing hours and nights; or gently, after it), never above
+  filling every slot. Today's order applies when untouched; raw weights MUST never be shown.
+  *Proposed* [AS6; amended in the plan, research P3: no solver ever places more people than a slot
+  needs, so "avoid overstaffing" could not change anything]
 - **FR-018**: A Manager or Admin MUST be able to lock and unlock an assignment on the roster or in a
   proposal, within the projects they may edit. Every later run MUST keep locked assignments, count them
   toward hours, nights, the weekly maximum and fairness, and state how many it kept. A lock MUST last
