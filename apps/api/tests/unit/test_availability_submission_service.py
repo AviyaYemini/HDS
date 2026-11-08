@@ -8,7 +8,7 @@ its own change into an existing snapshot.
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -293,15 +293,17 @@ async def test_an_absence_or_a_window_without_submission_leaves_snapshots_alone(
     submissions.change.assert_not_awaited()
 
 
-def _runs(draw: Any, first: int, last: int) -> list[tuple[int, int, str]]:
+Kind = Literal["blocked", "open", "close"]
+KINDS: list[Kind] = ["blocked", "open", "close"]
+
+
+def _runs(draw: Any, first: int, last: int) -> list[tuple[int, int, Kind]]:
     """Consecutive day runs over ``first`` to ``last``, some left out: entries that never clash."""
     runs, day = [], first
     while day <= last:
         length = draw(st.integers(1, last - day + 1))
         if draw(st.booleans()):
-            runs.append(
-                (day, day + length - 1, draw(st.sampled_from(["blocked", "open", "close"])))
-            )
+            runs.append((day, day + length - 1, draw(st.sampled_from(KINDS))))
         day += length
     return runs
 
