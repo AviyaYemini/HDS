@@ -67,7 +67,7 @@ from hds.repositories.saved_view import SavedViewRepository
 from hds.repositories.user import UserRepository
 from hds.scripts.seed_dev import SITE_ZONE, _seed_id, _sunday_of
 from hds.services.saved_view import SavedViewService
-from hds.services.schedule_job import LEASE, proposal_state
+from hds.services.schedule_job import proposal_state
 from hds.wiring import (
     availability_service,
     job_service,
@@ -732,7 +732,6 @@ async def _week(
             await db.commit()
             job_id = job.id
     # Run it here; one a stopped seed left running is claimed again once its lease runs out.
-    give_up = now + LEASE + datetime.timedelta(minutes=1)
     while True:
         while await run_once(factory) is not None:
             pass
@@ -744,9 +743,9 @@ async def _week(
                     )
                 )
             ).one()
-        if status not in ("queued", "running") or datetime.datetime.now(datetime.UTC) > give_up:
+        if status not in ("queued", "running"):
             break
-        print(f"The run for the week of {first} is still held by a stopped seed; waiting")
+        print(f"The run for the week of {first} is still queued or running; waiting")
         await asyncio.sleep(WAIT_SECONDS)
     if status != "succeeded":
         # Stop here, loudly: the next run makes a new run for the week (a failed one is not reused).

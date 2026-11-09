@@ -1,3 +1,7 @@
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:b167107b5eab3ca60e0d6714cceaff3c56064bdf431223431f4177ff46735230 -->
+
 # Review ledger: stabilization after 008 (chore lane)
 
 Every finding of a review of this feature (/code-review, /hds-review, the reviewer session), one
@@ -43,3 +47,7 @@ count.
 | R33 | CodeRabbit (PR 27) | `apps/api/src/hds/scripts/seed_wide.py:644`: a window's id was drawn in creation order, so a later week's run on a kept database could draw an id an earlier window took; it is derived from the organisation and the week, with the base seed's fallback for a taken id | fixed |
 | R34 | CodeRabbit (PR 27) | `apps/api/src/hds/scripts/seed_wide.py:737`: an earlier seed's expired proposal was reused and its accept refused. Only a usable run is reused, and a new test of `make up` a week later found the same for a proposal the roster had moved past (`schedule.proposal_out_of_date`): that one is discarded and the week generated again | fixed |
 | R35 | CodeRabbit (PR 27) | `apps/api/src/hds/scripts/seed_wide.py:729`: a run a stopped seed left `running` failed the next seed at once; it waits until the run's lease lets the worker claim it again (about five minutes), then reports its end | fixed |
+| R36 | CodeRabbit (weekly job follow-up) | `apps/api/src/hds/scripts/seed_wide.py`: the fixed wait deadline could raise while a job was still running or queued; removed the deadline so the existing worker lifecycle retries claims until a terminal result, preserving the week, status and error code in failures. Regression tests cover success, failure and cancellation after waiting | fixed |
+
+
+<!-- /coderabbit-ai-generated:v1 -->
