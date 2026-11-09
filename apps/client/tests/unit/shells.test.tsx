@@ -58,7 +58,7 @@ const CLIENT: Capability[] = ["client_portal.read", "client_portal.requests", "a
 function me(role: Me["role"], capabilities: Capability[]): Me {
   return {
     id: "u",
-    organization_id: "o",
+    organisation_id: "o",
     email: `${role}@hds.test`,
     full_name: `${role} user`,
     role,
