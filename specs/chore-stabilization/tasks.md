@@ -12,7 +12,7 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 
 ## PR 2: client structure
 
-- [ ] S11 Roster: the screen keeps its layout; its sheets, rows and data calls move beside it
+- [x] S11 Roster: the screen keeps its layout; its sheets, rows and data calls move beside it
 - [x] S12 Admin: one file per screen
 - [ ] S13 Runs: the review, the run page and the run list lose their parts and hooks to files of their own
 - [ ] S14 Admin table, availability and account split the same way
