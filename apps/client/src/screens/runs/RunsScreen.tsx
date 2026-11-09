@@ -99,6 +99,16 @@ function useRunProjects(): { offered: Offered[] | null; names: Map<string, strin
   return { offered, names: new Map(all.map((p) => [p.id, p.name])), error: projects.error, reload: projects.reload };
 }
 
+/**
+ * The roster's week as a run's range, never starting before today, as the date field allows: this
+ * week from today on, or next week when the whole week has passed (FR-032).
+ */
+export function fromPreset(week: string, today: string): DateRange {
+  const end = addDays(week, 6);
+  if (compareDates(end, today) < 0) return presetRange("next-week", today);
+  return { start: compareDates(week, today) < 0 ? today : week, end };
+}
+
 function GenerateForm({ onCancel, offered, again, preset }: { onCancel: () => void; offered: Offered[]; again?: Again | null; preset?: { week: string; project: string | null } | null }) {
   const { t } = useTranslation();
   const session = useSession();
@@ -107,7 +117,7 @@ function GenerateForm({ onCancel, offered, again, preset }: { onCancel: () => vo
   const { colors, isDesktop } = useTheme();
   const today = todayIn(DEFAULT_TIME_ZONE);
   const [range, setRange] = useState<DateRange>(() =>
-    again ? { start: again.from, end: again.to } : preset ? { start: preset.week, end: addDays(preset.week, 6) } : presetRange("next-week", today),
+    again ? { start: again.from, end: again.to } : preset ? fromPreset(preset.week, today) : presetRange("next-week", today),
   );
   // The two plain controls and the chips (FR-017, FR-020); a rerun starts with the earlier run's.
   const [controls, setControls] = useState<Controls>(() => again?.controls ?? DEFAULT_CONTROLS);

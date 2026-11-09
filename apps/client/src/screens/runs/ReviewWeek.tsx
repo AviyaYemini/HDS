@@ -136,7 +136,8 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
       );
       // The roster week accepted is the next step, where Publish is one tap away (FR-033): all
       // of it goes there at once; a part offers it, so the rest can still be reviewed.
-      const project = projectsOf(job)[0];
+      // The project accepted, when the part names one; else the run's first.
+      const project = (part && "project_ids" in part && part.project_ids?.[0]) || projectsOf(job)[0];
       const week = startOfWeek(part && "days" in part && part.days?.[0] ? part.days[0] : job.from);
       const roster = project ? rosterHref(project, week) : null;
       showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), {

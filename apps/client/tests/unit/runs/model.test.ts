@@ -69,3 +69,12 @@ test("the types offered, so the default never mixes training and security", () =
   expect(typesOf([{ type: "security" }, { type: "security" }])).toEqual(["security"]);
   expect(typesOf([{ type: "training" }, { type: "security" }])).toEqual(["security", "training"]);
 });
+
+describe("fromPreset (FR-032)", () => {
+  it("keeps a coming week, starts this one today, and moves a past one to next week", () => {
+    const { fromPreset } = jest.requireActual<typeof import("../../../src/screens/runs/RunsScreen")>("../../../src/screens/runs/RunsScreen");
+    expect(fromPreset("2027-06-13", "2027-06-09")).toEqual({ start: "2027-06-13", end: "2027-06-19" });
+    expect(fromPreset("2027-06-06", "2027-06-09")).toEqual({ start: "2027-06-09", end: "2027-06-12" });
+    expect(fromPreset("2027-05-30", "2027-06-09").start >= "2027-06-09").toBe(true);
+  });
+});

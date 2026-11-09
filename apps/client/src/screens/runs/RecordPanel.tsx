@@ -3,7 +3,7 @@
  * ended, each edit, override, accept and discard, each with who and when, oldest first, read a
  * page at a time. It only grows; nothing here changes it.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -48,15 +48,21 @@ export function RecordPanel({ jobId, stamp = "", name }: Props) {
   );
   const [more, setMore] = useState<Step[]>([]);
   const [after, setAfter] = useState<number | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   // A new read starts over: the pages read past the first belong to the old one.
   const [readFor, setReadFor] = useState(stamp);
+  // The read a "Show more" belongs to: an answer that arrives after a new read is dropped.
+  const current = useRef(stamp);
+  useEffect(() => {
+    current.current = stamp;
+  }, [stamp]);
   if (readFor !== stamp) {
     setReadFor(stamp);
     setMore([]);
     setAfter(undefined);
+    setBusy(false);
   }
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
 
   if (first.error && !first.data) return <InlineBanner tone="warning" title={errorText(first.error)} action={{ label: t("common.retry"), onPress: first.reload }} />;
   if (!first.data) return <SkeletonRows rows={3} />;
@@ -65,16 +71,18 @@ export function RecordPanel({ jobId, stamp = "", name }: Props) {
 
   const loadMore = async () => {
     if (next == null) return;
+    const read = stamp;
     setBusy(true);
     setProblem(null);
     try {
       const page = await call(session.api.GET("/api/v1/schedule-jobs/{id}/record", { params: { path: { id: jobId }, query: { after: next, limit: PAGE } } }));
+      if (current.current !== read) return;
       setMore((now) => [...now, ...page.items]);
       setAfter(page.next_after);
     } catch (failure) {
-      setProblem(codeOf(failure));
+      if (current.current === read) setProblem(codeOf(failure));
     } finally {
-      setBusy(false);
+      if (current.current === read) setBusy(false);
     }
   };
 
