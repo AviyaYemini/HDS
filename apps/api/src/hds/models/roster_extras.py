@@ -109,3 +109,42 @@ class PublishEvent(TimestampedBase):
         CheckConstraint("shift_count >= 1", name="ck_publish_events_shift_count"),
         Index("idx_publish_events_undelivered", "organization_id", "delivered_at"),
     )
+
+
+EDIT_KINDS = ("assigned", "unassigned", "moved", "swapped")
+ALERTS = ("everyone", "affected", "none")
+
+
+class RosterEditEvent(TimestampedBase):
+    """One manual roster edit, recorded for delivery (008 T042f, T042g).
+
+    ``affected`` lists the people the edit placed, removed or moved, as id strings. ``alert`` is
+    the editor's choice of who hears of it: ``everyone`` on the edited roster, only the
+    ``affected``, or ``none``; ``note`` is their word to the person placed. Feature 010 delivers
+    the rows and sets ``delivered_at``; 008 only records them, as ``PublishEvent`` does.
+    """
+
+    __tablename__ = "roster_edit_events"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    shift_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("shifts.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    affected: Mapped[list[str]] = mapped_column(_JSON, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    alert: Mapped[str] = mapped_column(String(16), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('assigned', 'unassigned', 'moved', 'swapped')",
+            name="ck_roster_edit_events_kind",
+        ),
+        CheckConstraint(
+            "alert IN ('everyone', 'affected', 'none')", name="ck_roster_edit_events_alert"
+        ),
+        Index("idx_roster_edit_events_undelivered", "organization_id", "delivered_at"),
+    )

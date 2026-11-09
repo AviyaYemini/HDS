@@ -34,6 +34,7 @@ from hds.repositories.availability import AvailabilityRepository
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.roster_extras import RosterEditEventRepository, RuleOverrideRepository
 from hds.repositories.shift import (
     AssignmentRepository,
     OwnShift,
@@ -160,6 +161,28 @@ def _warning(found: RuleWarning) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class Busy:
+    """Someone already on another shift at that time, as far as the editor may see it (T042f)."""
+
+    user_id: uuid.UUID
+    assignment_id: uuid.UUID | None
+    shift_id: uuid.UUID | None
+    project_id: uuid.UUID | None
+    starts_at: datetime | None
+    ends_at: datetime | None
+    movable: bool
+
+
+@dataclass(frozen=True)
+class Moved:
+    """The two shifts a move changed, and the warnings they have now."""
+
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+    warnings: list[dict[str, Any]]
+
+
 class RosterService:
     """Shifts and assignments, judged by the pure roster rules."""
 
@@ -174,6 +197,8 @@ class RosterService:
         organisation_repo: OrganisationRepository,
         project_manager_repo: ProjectManagerRepository,
         availability: "AvailabilitySubmissionService | None" = None,
+        edit_events: RosterEditEventRepository | None = None,
+        overrides: RuleOverrideRepository | None = None,
     ) -> None:
         """Wire the service to its repositories.
 
@@ -189,6 +214,9 @@ class RosterService:
             availability: When given, the entries that stand once windows close (007 FR-014), so
                 assigning someone who did not submit warns ``warnings.not_submitted``; without
                 it the live entries are read, as before 007.
+            edit_events: When given, each manual edit is recorded with its note and alert choice
+                for feature 010 to deliver (008 T042g).
+            overrides: Rule overrides, removed from an assignment that moves to another shift.
         """
         self._shifts = shift_repo
         self._assignments = assignment_repo
@@ -199,6 +227,8 @@ class RosterService:
         self._orgs = organisation_repo
         self._managers = project_manager_repo
         self._availability = availability
+        self._edit_events = edit_events
+        self._overrides = overrides
 
     # ------------------------------------------------------------------ reads
 
@@ -507,11 +537,15 @@ class RosterService:
         starts_at: datetime | None = None,
         ends_at: datetime | None = None,
         expected: str | None = None,
+        note: str | None = None,
+        alert: str = "none",
     ) -> Judged:
         """Put an active employee on a shift (its Managers, or an Admin).
 
         ``starts_at`` and ``ends_at``, when given, are the person's own times, within 4 hours of
-        the shift's start and end (007 FR-027).
+        the shift's start and end (007 FR-027). ``note`` is a word to the person, shown on their
+        own shift page; ``alert`` says who hears of the edit (``everyone``, ``affected`` or
+        ``none``), recorded for feature 010 (008 T042g).
 
         Raises:
             ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
@@ -549,9 +583,11 @@ class RosterService:
                 "assigned_by": actor.id,
                 "starts_at": starts_at,
                 "ends_at": ends_at,
+                "note": note,
             },
         )
         await self._shifts.touch(shift_id, actor.organization_id)
+        await self._record(actor, shift, "assigned", [user_id], note, alert)
         return Judged(assignment, await self._judge(actor, [shift_id]))
 
     async def change_assignment_times(
@@ -596,18 +632,20 @@ class RosterService:
         return shift
 
     async def unassign_returning_shift(
-        self, actor: User, id: uuid.UUID, expected: str | None = None
+        self, actor: User, id: uuid.UUID, expected: str | None = None, alert: str = "none"
     ) -> tuple[uuid.UUID, list[dict[str, Any]]]:
         """:meth:`unassign`, also answering the shift the assignment was on."""
         assignment = await self._assignments.get_by_id(id, actor.organization_id)
-        warnings = await self.unassign(actor, id, expected)
+        warnings = await self.unassign(actor, id, expected, alert)
         assert assignment is not None, "unassign found it"
         return assignment.shift_id, warnings
 
     async def unassign(
-        self, actor: User, id: uuid.UUID, expected: str | None = None
+        self, actor: User, id: uuid.UUID, expected: str | None = None, alert: str = "none"
     ) -> list[dict[str, Any]]:
         """Take an employee off a shift (its Managers, or an Admin); answer the warnings left.
+
+        ``alert`` says who hears of it, recorded for feature 010 (008 T042g).
 
         Raises:
             ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed``
@@ -627,7 +665,160 @@ class RosterService:
         _refuse_stale(shift, expected)
         await self._assignments.delete(id, actor.organization_id)
         await self._shifts.touch(shift.id, actor.organization_id)
+        await self._record(actor, shift, "unassigned", [assignment.user_id], None, alert)
         return await self._judge(actor, [assignment.shift_id])
+
+    async def busy(self, actor: User, shift_id: uuid.UUID) -> list[Busy]:
+        """Who is already on another shift that overlaps ``shift_id``, in any project (T042f).
+
+        For the roster's assign sheet. The other shift is named (its id, project and times) only
+        when ``actor`` may edit it; otherwise only that the person is busy then, as today's
+        overlap warning says (008 FR-016). ``movable`` says swap and transfer may be offered.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: The shift is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        shift = await self._shifts.get_by_id(shift_id, actor.organization_id)
+        if shift is None:
+            raise NotFoundError(resource="Shift", id=shift_id)
+        await self._require_edit(actor, shift.project_id)
+        found = await self._assignments.overlapping(
+            actor.organization_id, shift.id, shift.starts_at, shift.ends_at
+        )
+        mine = await self._editable(actor, {s.project_id for _, s in found})
+        return [
+            Busy(
+                user_id=a.user_id,
+                assignment_id=a.id if s.project_id in mine else None,
+                shift_id=s.id if s.project_id in mine else None,
+                project_id=s.project_id if s.project_id in mine else None,
+                starts_at=(a.starts_at or s.starts_at) if s.project_id in mine else None,
+                ends_at=(a.ends_at or s.ends_at) if s.project_id in mine else None,
+                movable=s.project_id in mine,
+            )
+            for a, s in found
+        ]
+
+    async def move(
+        self,
+        actor: User,
+        assignment_id: uuid.UUID,
+        to_shift_id: uuid.UUID,
+        *,
+        swap_with: uuid.UUID | None = None,
+        note: str | None = None,
+        alert: str = "none",
+    ) -> Moved:
+        """Move an assignment to another shift, or swap it with one there, in one step (T042f).
+
+        A transfer moves the person and their first shift loses them; a swap also moves the person
+        ``swap_with`` names from the target to the first shift. The assignments keep their ids,
+        so moving back undoes it; each takes its new shift's times, and any override it carried is
+        dropped, since it excused a rule on the shift it left. The editor must be able to edit
+        both shifts. ``note`` goes to the person moved here; ``alert`` is recorded as for assign.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: The assignment, the shift or ``swap_with`` is not in the organisation,
+                or ``swap_with`` is not on the target shift (HTTP 404).
+            ConflictError: ``assignments.duplicate`` when the person is already on the target, or
+                the swapped person already on the first shift; ``assignments.move_same_shift``
+                when the target is the shift they are on (HTTP 409).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        org = actor.organization_id
+        moving = await self._assignments.get_by_id(assignment_id, org)
+        if moving is None:
+            raise NotFoundError(resource="Assignment", id=assignment_id)
+        if moving.shift_id == to_shift_id:
+            raise ConflictError(
+                code="assignments.move_same_shift", detail="They are on that shift already."
+            )
+        # Both shifts locked, in id order, so two moves between the same shifts never deadlock.
+        first, second = sorted((moving.shift_id, to_shift_id), key=str)
+        locked = {first: await self._locked_shift(actor, first)}
+        locked[second] = await self._locked_shift(actor, second)
+        source, target = locked[moving.shift_id], locked[to_shift_id]
+        await self._require_edit(actor, source.project_id)
+        await self._require_edit(actor, target.project_id)
+        # Read again under the locks: another request may have changed them while this one waited.
+        moving = await self._assignments.get_by_id(assignment_id, org)
+        if moving is None or moving.shift_id != source.id:
+            raise NotFoundError(resource="Assignment", id=assignment_id)
+        on_target = {a.user_id: a for a in await self._assignments.on_shift(target.id)}
+        on_source = {a.user_id for a in await self._assignments.on_shift(source.id)}
+        other = None
+        if swap_with is not None:
+            other = next((a for a in on_target.values() if a.id == swap_with), None)
+            if other is None:
+                raise NotFoundError(resource="Assignment", id=swap_with)
+            if other.user_id in on_source:
+                raise ConflictError(
+                    code="assignments.duplicate",
+                    detail="The person swapped is already on the first shift.",
+                    field="swap_with",
+                )
+        if moving.user_id in on_target:
+            raise ConflictError(
+                code="assignments.duplicate",
+                detail="The employee is already assigned to that shift.",
+                field="to_shift_id",
+            )
+        moved = [moving.id] + ([other.id] if other else [])
+        if self._overrides is not None:
+            await self._overrides.delete_for_assignments(org, moved)
+        await self._assignments.update(
+            moving.id, org, shift_id=target.id, starts_at=None, ends_at=None, note=note
+        )
+        if other is not None:
+            await self._assignments.update(
+                other.id, org, shift_id=source.id, starts_at=None, ends_at=None, note=None
+            )
+        await self._shifts.touch(source.id, org)
+        await self._shifts.touch(target.id, org)
+        people = [moving.user_id] + ([other.user_id] if other else [])
+        kind = "swapped" if other else "moved"
+        await self._record(actor, target, kind, people, note, alert)
+        warnings = await self._judge(actor, [source.id, target.id])
+        return Moved(source.id, target.id, warnings)
+
+    async def _editable(self, actor: User, project_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        """Those of ``project_ids`` whose roster ``actor`` may edit."""
+        if actor.role == UserRole.admin:
+            return set(project_ids)
+        managed = await self._managers.manages(actor.id, project_ids)
+        return {
+            p
+            for p in project_ids
+            if has_on_project(actor.role, Capability.ROSTER_EDIT_PROJECT, p, managed)
+        }
+
+    async def _record(
+        self,
+        actor: User,
+        shift: Shift,
+        kind: str,
+        people: Collection[uuid.UUID],
+        note: str | None,
+        alert: str,
+    ) -> None:
+        """Record a manual edit for feature 010 to deliver, when the service records them."""
+        if self._edit_events is None:
+            return
+        await self._edit_events.add(
+            actor.organization_id,
+            {
+                "project_id": shift.project_id,
+                "shift_id": shift.id,
+                "kind": kind,
+                "actor_id": actor.id,
+                "affected": sorted(str(p) for p in people),
+                "note": note,
+                "alert": alert,
+            },
+        )
 
     # ---------------------------------------------------------------- warnings
 

@@ -104,6 +104,8 @@ class Assignment(TimestampedBase):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # A lock keeps the assignment in every later run until someone unlocks it (008 FR-018).
+    # A word to the person placed, from whoever placed or moved them (008 T042g).
+    note: Mapped[str | None] = mapped_column(String(500))
     locked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

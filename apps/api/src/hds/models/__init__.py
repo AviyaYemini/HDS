@@ -19,7 +19,7 @@ from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.project_manager import ProjectManager
 from hds.models.qualification import Qualification, user_qualifications
 from hds.models.refresh_token import RefreshToken
-from hds.models.roster_extras import PublishEvent, RuleOverride, WeekTemplate
+from hds.models.roster_extras import PublishEvent, RosterEditEvent, RuleOverride, WeekTemplate
 from hds.models.saved_view import SavedView
 from hds.models.schedule_job import ScheduleJob
 from hds.models.schedule_job_event import ScheduleJobEvent
@@ -40,6 +40,7 @@ __all__ = [
     "User",
     "UserRole",
     "PublishEvent",
+    "RosterEditEvent",
     "RefreshToken",
     "RuleOverride",
     "SavedView",

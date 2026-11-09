@@ -14,7 +14,7 @@ export interface paths {
         post?: never;
         /**
          * Remove an assignment
-         * @description A Manager of the project, or an Admin. Take the employee off the shift; the answer lists the warnings the shift has left, for example too few people. A stale `If-Match` is refused with 412 (`roster.changed`).
+         * @description A Manager of the project, or an Admin. Take the employee off the shift; the answer lists the warnings the shift has left, for example too few people. A stale `If-Match` is refused with 412 (`roster.changed`). `alert` says who hears of it: everyone on the edited roster, only the person removed, or no one (recorded for feature 010).
          */
         delete: operations["unassign_api_v1_assignments__id__delete"];
         options?: never;
@@ -24,6 +24,26 @@ export interface paths {
          * @description A Manager of the project, or an Admin. Set the person's own `starts_at` and `ends_at` in the shift, at most 4 hours before it starts and after it ends (422 `assignment.times_out_of_range`), or both null for the shift's times (007 FR-027). Pay, the rule checks and reports use the person's times. A stale `If-Match` is refused with 412 (`roster.changed`).
          */
         patch: operations["change_assignment_times_api_v1_assignments__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/assignments/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move or swap an assignment
+         * @description A Manager of both projects, or an Admin. Move the person to `to_shift_id` (a transfer: their first shift loses them), or, with `swap_with` (an assignment on that shift), swap the two in one step. The assignments keep their ids, so moving back undoes it; each takes its new shift's times and drops the overrides it carried. 404 for an assignment, shift or `swap_with` not found; 409 `assignments.duplicate` when someone would be on a shift twice, `assignments.move_same_shift` for the shift they are on. The answer lists both shifts' warnings and new `etag`s (008 T042f).
+         */
+        post: operations["move_api_v1_assignments__id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/assignments/{id}/overrides": {
@@ -1218,6 +1238,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shifts/{id}/busy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who is busy then
+         * @description A Manager of the project, or an Admin. Everyone already on another shift that overlaps this one, in any project, by the times they work it. The other shift (its id, project and times, and the assignment) is named only when the caller may edit its roster; `movable` then says swap and transfer may be offered (008 T042f).
+         */
+        get: operations["busy_api_v1_shifts__id__busy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sites": {
         parameters: {
             query?: never;
@@ -1736,10 +1776,20 @@ export interface components {
         /**
          * AssignRequest
          * @description The employee to put on the shift, and optionally their own times in it (007 FR-027).
+         *
+         *     ``note`` is a word to them, shown on their own shift page; ``alert`` says who hears of it.
          */
         AssignRequest: {
+            /**
+             * Alert
+             * @default none
+             * @enum {string}
+             */
+            alert: "everyone" | "affected" | "none";
             /** Ends At */
             ends_at?: string | null;
+            /** Note */
+            note?: string | null;
             /** Starts At */
             starts_at?: string | null;
             /**
@@ -1847,6 +1897,40 @@ export interface components {
              * Format: date
              */
             to: string;
+        };
+        /**
+         * BusyAnswer
+         * @description Everyone on another shift that overlaps this one, in any project.
+         */
+        BusyAnswer: {
+            /** Items */
+            items: components["schemas"]["BusyRead"][];
+        };
+        /**
+         * BusyRead
+         * @description Someone already on another shift then (008 T042f, FR-016).
+         *
+         *     The shift is named only when the editor may change it; ``movable`` says swap and transfer may
+         *     be offered.
+         */
+        BusyRead: {
+            /** Assignment Id */
+            assignment_id: string | null;
+            /** Ends At */
+            ends_at: string | null;
+            /** Movable */
+            movable: boolean;
+            /** Project Id */
+            project_id: string | null;
+            /** Shift Id */
+            shift_id: string | null;
+            /** Starts At */
+            starts_at: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * Capability
@@ -2815,6 +2899,39 @@ export interface components {
             updated_at: string;
         };
         /**
+         * MoveAnswer
+         * @description The warnings both shifts have after a move, and their new ``etag``s.
+         */
+        MoveAnswer: {
+            /** Shift Etags */
+            shift_etags: {
+                [key: string]: string;
+            };
+            /** Warnings */
+            warnings: components["schemas"]["WarningRead"][];
+        };
+        /**
+         * MoveRequest
+         * @description Where an assignment goes, and whom it swaps with there, if anyone (008 T042f).
+         */
+        MoveRequest: {
+            /**
+             * Alert
+             * @default none
+             * @enum {string}
+             */
+            alert: "everyone" | "affected" | "none";
+            /** Note */
+            note?: string | null;
+            /** Swap With */
+            swap_with?: string | null;
+            /**
+             * To Shift Id
+             * Format: uuid
+             */
+            to_shift_id: string;
+        };
+        /**
          * MyShift
          * @description One of the caller's published shifts: UTC instants and the site's IANA time zone.
          */
@@ -2844,6 +2961,8 @@ export interface components {
         /**
          * MyShiftDetail
          * @description One of the caller's published shifts, with the site's address and who to contact.
+         *
+         *     ``note`` is a word from whoever placed or moved them there, if any (008 T042g).
          */
         MyShiftDetail: {
             /** Contacts */
@@ -2858,6 +2977,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Note */
+            note?: string | null;
             project: components["schemas"]["NamedRef"];
             /** Shift Type */
             shift_type: string;
@@ -4857,7 +4978,9 @@ export type $defs = Record<string, never>;
 export interface operations {
     unassign_api_v1_assignments__id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                alert?: "everyone" | "affected" | "none";
+            };
             header?: {
                 /** @description The shift's `etag` as read; a stale one is refused with 412 (`roster.changed`). */
                 "If-Match"?: string | null;
@@ -4990,6 +5113,86 @@ export interface operations {
             };
             /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    move_api_v1_assignments__id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveAnswer"];
+                };
+            };
+            /** @description The request body could not be parsed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10588,6 +10791,64 @@ export interface operations {
             };
             /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    busy_api_v1_shifts__id__busy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusyAnswer"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

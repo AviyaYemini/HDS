@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from hds.core.exceptions import ConflictError
-from hds.models.roster_extras import PublishEvent, RuleOverride, WeekTemplate
+from hds.models.roster_extras import PublishEvent, RosterEditEvent, RuleOverride, WeekTemplate
 from hds.repositories.base import BaseRepository
 
 
@@ -36,6 +36,18 @@ class RuleOverrideRepository(BaseRepository[RuleOverride]):
             .order_by(RuleOverride.created_at, RuleOverride.id)
         )
         return list(result.scalars())
+
+    async def delete_for_assignments(
+        self, org_id: uuid.UUID, assignment_ids: Collection[uuid.UUID]
+    ) -> None:
+        """Remove the overrides of ``assignment_ids``: they excused rules on a shift they left."""
+        if assignment_ids:
+            await self.session.execute(
+                delete(RuleOverride).where(
+                    RuleOverride.organization_id == org_id,
+                    RuleOverride.assignment_id.in_(list(assignment_ids)),
+                )
+            )
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> RuleOverride:
         """Record an override.
@@ -134,5 +146,30 @@ class PublishEventRepository(BaseRepository[PublishEvent]):
             select(PublishEvent)
             .where(PublishEvent.organization_id == org_id, PublishEvent.project_id == project_id)
             .order_by(PublishEvent.created_at, PublishEvent.id)
+        )
+        return list(result.scalars())
+
+
+class RosterEditEventRepository(BaseRepository[RosterEditEvent]):
+    """One row per manual roster edit, for feature 010 to deliver (008 T042g)."""
+
+    model = RosterEditEvent
+
+    async def add(self, org_id: uuid.UUID, data: dict[str, Any]) -> RosterEditEvent:
+        """Record one edit."""
+        row = RosterEditEvent(id=uuid.uuid4(), organization_id=org_id, **data)
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def for_project(self, org_id: uuid.UUID, project_id: uuid.UUID) -> list[RosterEditEvent]:
+        """A project's edits, oldest first (for tests and feature 010)."""
+        result = await self.session.execute(
+            select(RosterEditEvent)
+            .where(
+                RosterEditEvent.organization_id == org_id,
+                RosterEditEvent.project_id == project_id,
+            )
+            .order_by(RosterEditEvent.created_at, RosterEditEvent.id)
         )
         return list(result.scalars())
