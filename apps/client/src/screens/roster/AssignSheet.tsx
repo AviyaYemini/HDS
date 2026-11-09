@@ -7,12 +7,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
-import { call } from "../../api/errors";
-import { useSession } from "../../api/SessionContext";
 import { previewsEnabled } from "../../config/previews";
 import { Button, EmptyState, Sheet, TextField, Txt } from "../../design/components";
 import { DEFAULT_TIME_ZONE, formatTimeRange } from "../../locale";
-import { useLoad } from "../useLoad";
 import { numbersOf as coverNumbers, reasonKey } from "../runs/review";
 import { AlertChoice } from "./AlertChoice";
 import type { Alert, BusyOn, Cover, Person, Shift } from "./model";
@@ -20,6 +17,8 @@ import type { Alert, BusyOn, Cover, Person, Shift } from "./model";
 export function AssignSheet({
   shift,
   people,
+  busy,
+  ranked,
   replacing,
   note,
   alert,
@@ -30,6 +29,9 @@ export function AssignSheet({
 }: {
   shift: Shift | null;
   people: Person[];
+  busy: BusyOn[];
+  /** The shift's "Find someone" ranking (FR-034), when read; until then, by name. */
+  ranked: Cover | null;
   /** The name of the person being replaced, when the sheet replaces someone (T042f). */
   replacing: string | null;
   note: string;
@@ -40,20 +42,6 @@ export function AssignSheet({
   onChoose: (userId: string, how: "assign" | "move", busyOn: BusyOn | null) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const session = useSession();
-  // "Find someone" (008 FR-034): the shift's ranked list, as a proposal's "who else could cover";
-  // until it is read, by name.
-  const rankedLoad = useLoad(
-    async () => (shift ? await call(session.api.GET("/api/v1/shifts/{id}/cover", { params: { path: { id: shift.id } } })) : null),
-    [shift?.id],
-  );
-  // Who is already on another shift at this shift's time, in any project (T042f).
-  const busyLoad = useLoad(
-    async () => (shift ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: shift.id } } }))).items : []),
-    [shift?.id],
-  );
-  const ranked: Cover | null = rankedLoad.data;
-  const busy: BusyOn[] = busyLoad.data ?? [];
   const [query, setQuery] = useState("");
   // Someone already on another shift then, chosen: the sheet asks what to do (T042f).
   const [pick, setPick] = useState<{ person: Person; on: BusyOn } | null>(null);

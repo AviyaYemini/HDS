@@ -11,6 +11,7 @@ import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { type TableState } from "./tableState";
+import { shared } from "./tableStyles";
 
 /** A column's value as text (every admin column renders text, so a phone can show it in a line). */
 export function cellText<Row>(column: Column<Row>, row: Row): string {
@@ -101,7 +102,7 @@ export function PhoneList<Row>({
             >
               <View style={styles.itemHead}>
                 {selecting ? (
-                  <View style={[styles.checkbox, { borderColor: colors.border.strong }, selected?.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}>
+                  <View style={[shared.checkbox, { borderColor: colors.border.strong }, selected?.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}>
                     {selected?.has(keyOf(row)) ? <Icon name="check" size={14} color={colors.bg.canvas} /> : null}
                   </View>
                 ) : null}
@@ -128,5 +129,4 @@ const styles = StyleSheet.create({
   item: { gap: 2, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1 },
   itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   itemTitle: { flexGrow: 1, flexShrink: 1 },
-  checkbox: { width: 22, height: 22, borderWidth: 2, alignItems: "center", justifyContent: "center" },
 });

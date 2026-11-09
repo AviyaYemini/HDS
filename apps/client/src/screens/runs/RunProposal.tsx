@@ -12,6 +12,7 @@ import { DEFAULT_TIME_ZONE, formatNumericDate, formatTimeRange } from "../../loc
 import { HonestyLabel } from "./HonestyLabel";
 import { numbersOf, reasonKey } from "./review";
 import { filled, type Job, type Names } from "./model";
+import { shared } from "./runStyles";
 
 
 export function Proposal({ job, names }: { job: Job; names: Names }) {
@@ -25,7 +26,7 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
   const slots = new Map(proposal.slots.map((slot) => [slot.key, slot]));
   return (
     <View style={styles.section}>
-      <View style={styles.summary}>
+      <View style={shared.summary}>
         <HonestyLabel job={job} />
         <Txt role="section" numeric testID="run-filled">
           {t("runs.filled", { filled: count.filled, required: count.required })}
@@ -107,7 +108,6 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
 
 const styles = StyleSheet.create({
   section: { gap: 12 },
-  summary: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
   list: { gap: 8 },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12, padding: 12, borderWidth: 1 },
   when: { flexGrow: 1, minWidth: 160 },

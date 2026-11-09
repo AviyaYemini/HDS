@@ -27,7 +27,7 @@ import { PublishSheet } from "./PublishSheet";
 import { WarningSheet } from "./WarningSheet";
 import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
 import { useCopyNextWeek } from "./useCopyNextWeek";
-import { useRosterData } from "./useRosterData";
+import { useAssignInputs, useRosterData } from "./useRosterData";
 import { useRosterEdits } from "./useRosterEdits";
 
 export function RosterScreen() {
@@ -55,8 +55,9 @@ export function RosterScreen() {
   // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
   const [note, setNote] = useState("");
   const [alert, setAlert] = useState<Alert>("none");
-  const { warnings, setWarnings, history, setHistory, stale, setStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert, onBreaks: setWarningsOf });
+  const { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert, onBreaks: setWarningsOf });
   const { copyReplaces, setCopyReplaces, copyToNextWeek } = useCopyNextWeek(project, week);
+  const { ranked, busy } = useAssignInputs(assignTo);
 
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
   const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
@@ -113,7 +114,7 @@ export function RosterScreen() {
           />
         ) : null}
       </PageTitle>
-      {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={() => setStale(false)} /> : null}
+      {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={dismissStale} /> : null}
       {previewsEnabled ? (
         <EmptyState testID="preview-cost-strip" icon="wallet" badge={t("preview.badge")} title={t("preview.cost_strip_title")} body={t("preview.cost_strip_body")} feature={t("preview.comes_with", { feature: "011" })} />
       ) : null}
@@ -168,6 +169,8 @@ export function RosterScreen() {
       <AssignSheet
         shift={assignTo}
         people={people.data ?? []}
+        busy={busy}
+        ranked={ranked}
         replacing={replacing ? nameOf(replacing.userId) : null}
         note={note}
         alert={alert}
@@ -226,13 +229,12 @@ export function RosterScreen() {
         }}
       />
       <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
-        const id = warningsOf!.id;
-        setWarnings((map) => new Map(map).set(id, (map.get(id) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
+        dropWarning(warningsOf!.id, code, employee);
         setWarningsOf(null);
       }} />
       <PublishSheet open={publishing} project={project} first={week} last={addDays(week, 6)} onClose={() => setPublishing(false)} onPublished={async () => {
         setPublishing(false);
-        setHistory([]);
+        clearHistory();
         await shifts.reload();
         // After a publish, the next step is next week (008 FR-033): copy this week's shifts there,
         // replacing only drafts, never a published shift, once the manager agrees, and open it.

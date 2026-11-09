@@ -4,12 +4,13 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { Button, Txt, showToast } from "../../design/components";
 import { type Job } from "./model";
+import { shared } from "./runStyles";
 
 
 export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void }) {
@@ -31,7 +32,7 @@ export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void })
     }
   };
   return (
-    <View style={styles.summary} testID="run-best-so-far">
+    <View style={shared.summary} testID="run-best-so-far">
       {hasResult ? (
         <Txt role="body" numeric testID="run-best">
           {t("runs.best_so_far", { filled: progress!.filled, needed: progress!.needed })}
@@ -50,7 +51,3 @@ export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void })
   );
 }
 
-
-const styles = StyleSheet.create({
-  summary: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
-});

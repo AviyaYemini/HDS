@@ -157,5 +157,12 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
     );
   };
 
-  return { warnings, setWarnings, history, setHistory, stale, setStale, assign, unassign, move, undo, lockAssignment };
+  /** An override covers the rule: its warning leaves the shift's list (FR-040). */
+  const dropWarning = (shiftId: string, code: string, employee: string | null) =>
+    setWarnings((map) => new Map(map).set(shiftId, (map.get(shiftId) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
+  /** After a publish, nothing left to undo (FR-037). */
+  const clearHistory = () => setHistory([]);
+  const dismissStale = () => setStale(false);
+
+  return { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment };
 }

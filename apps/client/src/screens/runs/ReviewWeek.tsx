@@ -370,5 +370,3 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     </View>
   );
 }
-
-/** Why a slot of the run stayed empty, from the run's own reasons, with the people they name. */

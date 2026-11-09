@@ -21,6 +21,7 @@ import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
 import { PhoneList } from "./PhoneList";
 import { fromViewQuery, readState, searched, sorted, toParams, viewQuery, type TableState } from "./tableState";
+import { shared } from "./tableStyles";
 
 export interface PanelArgs<Row> {
   /** The open record, or null for a new one. */
@@ -270,7 +271,7 @@ export function AdminTable<Row>({
                 testID="row-select"
                 {...webProps({ dataSet: { id: keyOf(row) } })}
                 onPress={() => toggle(row)}
-                style={[styles.checkbox, { borderColor: colors.border.strong }, chosen.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}
+                style={[shared.checkbox, { borderColor: colors.border.strong }, chosen.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}
               >
                 {chosen.has(keyOf(row)) ? <Icon name="check" size={14} color={colors.bg.canvas} /> : null}
               </Pressable>
@@ -522,7 +523,6 @@ const styles = StyleSheet.create({
   sheet: { gap: 16 },
   bulkBar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, padding: 8, borderWidth: 1 },
   bulkCount: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
-  checkbox: { width: 22, height: 22, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   page: { gap: 16 },
   pageHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   pageTitle: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },

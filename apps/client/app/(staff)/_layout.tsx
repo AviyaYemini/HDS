@@ -10,7 +10,7 @@ import { SignInRedirect } from "../../src/auth/SignInRedirect";
 import { useCapabilities } from "../../src/capabilities";
 import { Shell } from "../../src/navigation/Shell";
 import { shellFor } from "../../src/navigation/destinations";
-import { RunFinishedNotice } from "../../src/screens/runs/RunFinishedNotice";
+import { RunFinishedNotice } from "../../src/screens/runs";
 
 export default function StaffLayout() {
   const signedIn = useSignedIn();

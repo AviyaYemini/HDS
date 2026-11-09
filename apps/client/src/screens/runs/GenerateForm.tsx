@@ -14,38 +14,14 @@ import { Button, DateRangeField, InlineBanner, SearchablePicker, Txt } from "../
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { DEFAULT_TIME_ZONE, addDays, compareDates, presetRange, todayIn, type DateRange } from "../../locale";
 import { ChipEditor } from "./ChipEditor";
-import { digest, typesOf } from "./model";
+import { digest, fromPreset, typesOf, type Again, type Offered } from "./model";
 import { DEFAULT_CONTROLS, type Chip, type Controls } from "./steering";
 
-/** A run to run again (FR-019, FR-021a): its range, projects, controls and chips, and its id. */
-export interface Again {
-  id: string;
-  from: string;
-  to: string;
-  project_ids: string[];
-  controls: Controls;
-  chips: Chip[];
-}
 
 /** A run covers at most this many days (the API's limit, 004 FR-005). */
 const MAX_DAYS = 31;
 
-/** A project the generate form may offer: its name and type (training and security don't mix). */
-export interface Offered {
-  id: string;
-  name: string;
-  type: string;
-}
 
-/**
- * The roster's week as a run's range, never starting before today, as the date field allows: this
- * week from today on, or next week when the whole week has passed (FR-032).
- */
-export function fromPreset(week: string, today: string): DateRange {
-  const end = addDays(week, 6);
-  if (compareDates(end, today) < 0) return presetRange("next-week", today);
-  return { start: compareDates(week, today) < 0 ? today : week, end };
-}
 
 export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: () => void; offered: Offered[]; again?: Again | null; preset?: { week: string; project: string | null } | null }) {
   const { t } = useTranslation();

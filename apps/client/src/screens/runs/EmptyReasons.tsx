@@ -8,13 +8,14 @@ import { Txt } from "../../design/components";
 import { numbersOf, reasonKey, type Review, type ReviewSlot } from "./review";
 import { styles } from "./reviewStyles";
 
-/** An empty place of a run, with why, as the run reports it. */
+/** One empty slot of the run as the job stores it (the review sends it as it is). */
 interface RunGap {
   key: string;
   places: number;
   reasons: { code: string; employees: number; people?: ({ user_id: string } & Parameters<typeof numbersOf>[0])[] }[];
 }
 
+/** Why a slot of the run stayed empty, from the run's own reasons, with the people they name. */
 export function EmptyReasons({ review, slot, name }: { review: Review; slot: ReviewSlot; name: (id: string) => string }) {
   const { t, i18n } = useTranslation();
   const gap = (review.unfilled as unknown as RunGap[]).find((u) => u.key === slot.key);
@@ -45,5 +46,3 @@ export function EmptyReasons({ review, slot, name }: { review: Review; slot: Rev
     </View>
   );
 }
-
-/** One empty slot of the run as the job stores it (the review sends it as it is). */

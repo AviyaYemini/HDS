@@ -8,14 +8,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
-import { call, useErrorText } from "../../api/errors";
-import { useSession } from "../../api/SessionContext";
+import { useErrorText } from "../../api/errors";
 import { Button, EmptyState, InlineBanner, PageTitle, SkeletonRows } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
-import { useLoad } from "../useLoad";
-import { GenerateForm, type Again } from "./GenerateForm";
+import { GenerateForm } from "./GenerateForm";
 import { RunRow } from "./RunRow";
-import { useRunProjects, useRuns } from "./useRuns";
+import { useAgain, useRunProjects, useRuns } from "./useRuns";
 
 export function RunsScreen() {
   const { t } = useTranslation();
@@ -27,12 +25,7 @@ export function RunsScreen() {
   const preset = params.week ? { week: params.week, project: params.project ?? null } : null;
   const jobs = useRuns();
   const projects = useRunProjects();
-  const session = useSession();
-  const again = useLoad(async () => {
-    if (!params.again) return null;
-    const job = await call(session.api.GET("/api/v1/schedule-jobs/{id}", { params: { path: { id: params.again } } }));
-    return { id: job.id, from: job.from, to: job.to, project_ids: job.project_ids, controls: job.controls, chips: job.chips } satisfies Again;
-  }, [params.again]);
+  const again = useAgain(params.again);
   return (
     <Screen testID="screen-runs">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>

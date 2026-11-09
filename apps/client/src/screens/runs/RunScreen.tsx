@@ -25,6 +25,7 @@ import { STATUS_TONE, coveredText, isActive, projectsOf } from "./model";
 import { Proposal } from "./RunProposal";
 import { RunStop } from "./RunStop";
 import { useJob, useNames, useRunBar } from "./useRun";
+import { shared } from "./runStyles";
 
 export function RunScreen() {
   const { t } = useTranslation();
@@ -51,7 +52,7 @@ export function RunScreen() {
           <Txt role="body" testID="run-projects-covered">
             {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
           </Txt>
-          <View style={styles.summary}>
+          <View style={shared.summary}>
             <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (
               <Txt role="meta" tone="secondary" testID="run-proposal-state">
@@ -75,7 +76,7 @@ export function RunScreen() {
           {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
           {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
           {job.status === "succeeded" && (job.proposal_state === "accepted" || job.proposal_state === "partly_accepted") ? (
-            <View style={styles.summary}>
+            <View style={shared.summary}>
               {projectsOf(job).map((project) => (
                 <LinkPressable
                   key={project}
@@ -110,6 +111,5 @@ export function RunScreen() {
 
 const styles = StyleSheet.create({
   section: { gap: 12 },
-  summary: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
   link: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderWidth: 1 },
 });

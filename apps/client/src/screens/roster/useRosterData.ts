@@ -8,7 +8,7 @@ import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { addDays } from "../../locale";
 import { useLoad } from "../useLoad";
-import type { Person, Shift } from "./model";
+import type { BusyOn, Cover, Person, Shift } from "./model";
 
 export function useRosterData(project: string | null, week: string) {
   const session = useSession();
@@ -43,4 +43,21 @@ export function useRosterData(project: string | null, week: string) {
   }, [people.data, shifts.data]);
   const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? "") : ""), [names]);
   return { types, shifts, people, nameOf };
+}
+
+/**
+ * What the assign sheet shows for ``shift`` (008 FR-034, T042f): its "Find someone" ranking, as a
+ * proposal's "who else could cover", and who is already on another shift then, in any project.
+ */
+export function useAssignInputs(shift: Shift | null): { ranked: Cover | null; busy: BusyOn[] } {
+  const session = useSession();
+  const ranked = useLoad(
+    async () => (shift ? await call(session.api.GET("/api/v1/shifts/{id}/cover", { params: { path: { id: shift.id } } })) : null),
+    [shift?.id],
+  );
+  const busy = useLoad(
+    async () => (shift ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: shift.id } } }))).items : []),
+    [shift?.id],
+  );
+  return { ranked: ranked.data, busy: busy.data ?? [] };
 }

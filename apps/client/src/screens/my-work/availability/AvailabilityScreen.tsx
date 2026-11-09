@@ -20,11 +20,9 @@ import { useTheme } from "../../../design/theme/ThemeProvider";
 import { component } from "../../../design/theme/theme.generated";
 import { webProps } from "../../../design/web";
 import { DEFAULT_TIME_ZONE, dateOf, formatNumericDate, formatNumericRange, formatShortNumericRange, formatTime, holidaysBetween, todayIn, weekdayNames } from "../../../locale";
-import type { PendingChange } from "./draftQueue";
-import { ALL_DAY, CYCLE, absencesOn, cellEntry, copyPlan, daysOfWeek, editable, initialWeek, nextState, planCellChange, reviewRows, statusAfterChange, targetKey, weeksOf, type CellKey, type CellState, type Change, type Entry, type PlannedCall, type Submission, Serial, CellLedger } from "./model";
+import { ALL_DAY, CYCLE, absencesOn, cellEntry, copyPlan, daysOfWeek, editable, initialWeek, nextState, planCellChange, reviewRows, statusAfterChange, targetKey, weeksOf, type CellKey, type CellState, type Change, type Entry, type Submission, Serial, CellLedger } from "./model";
 import { Cell, STATE_CHIP } from "./Cell";
 import { lightTap, successTap } from "./haptics";
-import { runPlan as runPlanCalls } from "./runPlan";
 import { useAvailabilityData } from "./useAvailabilityData";
 import { usePendingQueue } from "./usePendingQueue";
 
@@ -46,7 +44,7 @@ export function AvailabilityScreen() {
   const userId = session.user?.id ?? "";
   const today = todayIn(DEFAULT_TIME_ZONE);
 
-  const { setup, window, shiftTypes, range, entries, submission } = useAvailabilityData(askedWindow, userId, today);
+  const { setup, window, shiftTypes, entries, submission, readEntries, runPlan, sendPending } = useAvailabilityData(askedWindow, userId, today);
 
   const [week, setWeek] = useState<string | null>(null);
   const shownWeek = week ?? (window ? initialWeek(window, today) : null);
@@ -64,36 +62,12 @@ export function AvailabilityScreen() {
   // The cell writes in flight, one after another, and a fresh reading of the entries for each.
   const [writes] = useState(() => new Serial());
   const [ledger] = useState(() => new CellLedger<CellState, Change>());
-  const readEntries = useCallback(
-    async (): Promise<Entry[]> =>
-      range ? (await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: range } }))).items : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the range's two dates are the dependency
-    [range?.from, range?.to, userId, session],
-  );
-
-  /** Run a plan's calls in order. */
-  const runPlan = useCallback((calls: readonly PlannedCall[]): Promise<void> => runPlanCalls(session.api, userId, calls), [session.api, userId]);
 
   const reload = useCallback(async (): Promise<void> => {
     await Promise.all([entries.reload(), submission.reload()]);
     setStatus(null);
   }, [entries, submission]);
 
-  // A saved change is sent against the server's entries of that day, read afresh, so it lands right
-  // however the week changed meanwhile (R49, R50).
-  const sendPending = useCallback(
-    async (change: PendingChange): Promise<void> => {
-      if (!window) return;
-      try {
-        const fresh = await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: { from: change.key.date, to: change.key.date } } }));
-        await runPlan(planCellChange(fresh.items, change.key, change.state, window));
-      } catch (failure) {
-        if (failure instanceof ApiError && failure.status === 0) throw Object.assign(new Error("unreachable"), { retry: true });
-        throw failure;
-      }
-    },
-    [window, session.api, userId, runPlan],
-  );
   const dropOverride = useCallback((key: CellKey) => {
     setOverrides((map) => {
       const next = new Map(map);

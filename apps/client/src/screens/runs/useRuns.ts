@@ -8,8 +8,7 @@ import { call, codeOf } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { useLoad } from "../useLoad";
-import { isActive, type JobSummary } from "./model";
-import type { Offered } from "./GenerateForm";
+import { isActive, type Again, type JobSummary, type Offered } from "./model";
 
 const REFRESH_MS = 2000;
 
@@ -93,4 +92,14 @@ export function useRuns() {
   };
 
   return { data: items, error, reload: () => first(false), more: cursor === null ? null : more, loadingMore, moreError };
+}
+
+/** The earlier run "Run again" starts from (?again=<id>, FR-019): its range, projects, controls and chips. */
+export function useAgain(id: string | undefined) {
+  const session = useSession();
+  return useLoad(async () => {
+    if (!id) return null;
+    const job = await call(session.api.GET("/api/v1/schedule-jobs/{id}", { params: { path: { id } } }));
+    return { id: job.id, from: job.from, to: job.to, project_ids: job.project_ids, controls: job.controls, chips: job.chips } satisfies Again;
+  }, [id]);
 }
