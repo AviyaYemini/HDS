@@ -24,7 +24,7 @@ ModelT = TypeVar("ModelT", bound=Base)
 class BaseRepository(Generic[ModelT]):
     """Holds the session and the mapped class a repository works on.
 
-    Subclasses set ``model``. Use this directly only for tables without ``organization_id``
+    Subclasses set ``model``. Use this directly only for tables without ``organisation_id``
     (organisations, refresh tokens); everything else extends ``OrgScopedRepository``.
     """
 
@@ -66,7 +66,7 @@ class BaseRepository(Generic[ModelT]):
 
 
 class OrgScopedRepository(BaseRepository[ModelT]):
-    """Repository for tables with ``organization_id``: every lookup is tenant-scoped.
+    """Repository for tables with ``organisation_id``: every lookup is tenant-scoped.
 
     ``get_by_id`` and ``list`` REQUIRE the caller's organisation; a row that belongs to
     another organisation is indistinguishable from a missing one (``None``).
@@ -88,7 +88,7 @@ class OrgScopedRepository(BaseRepository[ModelT]):
         """
         stmt = select(self.model).where(
             self.model.id == id,  # type: ignore[attr-defined]
-            self.model.organization_id == org_id,  # type: ignore[attr-defined]
+            self.model.organisation_id == org_id,  # type: ignore[attr-defined]
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -105,7 +105,7 @@ class OrgScopedRepository(BaseRepository[ModelT]):
             Matching rows in unspecified order.
         """
         stmt = select(self.model).where(
-            self.model.organization_id == org_id  # type: ignore[attr-defined]
+            self.model.organisation_id == org_id  # type: ignore[attr-defined]
         )
         for key, value in filters.items():
             if value is not None:
@@ -134,7 +134,7 @@ class OrgScopedRepository(BaseRepository[ModelT]):
             sa_update(self.model)
             .where(
                 self.model.id == id,  # type: ignore[attr-defined]
-                self.model.organization_id == org_id,  # type: ignore[attr-defined]
+                self.model.organisation_id == org_id,  # type: ignore[attr-defined]
             )
             .values(**fields)
         )
@@ -154,7 +154,7 @@ class OrgScopedRepository(BaseRepository[ModelT]):
             sa_update(self.model)
             .where(
                 self.model.id == id,  # type: ignore[attr-defined]
-                self.model.organization_id == org_id,  # type: ignore[attr-defined]
+                self.model.organisation_id == org_id,  # type: ignore[attr-defined]
             )
             .values(is_deleted=True, deleted_at=datetime.now(UTC))
         )

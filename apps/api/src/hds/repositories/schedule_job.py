@@ -25,7 +25,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
 
     async def create(self, org_id: uuid.UUID, data: Mapping[str, Any]) -> ScheduleJob:
         """Store a queued job and announce it to workers when the transaction commits."""
-        job = ScheduleJob(id=uuid.uuid4(), organization_id=org_id, **data)
+        job = ScheduleJob(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(job)
         await self.session.flush()
         if self.session.get_bind().dialect.name == "postgresql":
@@ -46,7 +46,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
         """
         result = await self.session.execute(
             select(ScheduleJob)
-            .where(ScheduleJob.id == id, ScheduleJob.organization_id == org_id)
+            .where(ScheduleJob.id == id, ScheduleJob.organisation_id == org_id)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -60,7 +60,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
         limit: int,
     ) -> list[ScheduleJob]:
         """The organisation's jobs, newest first, after the ``(created_at, id)`` of the last one."""
-        query = select(ScheduleJob).where(ScheduleJob.organization_id == org_id)
+        query = select(ScheduleJob).where(ScheduleJob.organisation_id == org_id)
         if status is not None:
             query = query.where(ScheduleJob.status == status)
         if after is not None:
@@ -121,7 +121,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
             if job.status == "running" and job.attempts >= max_attempts:
                 job.status, job.error_code, job.ended = "failed", "jobs.worker_lost", "failed"
                 job.finished_at, job.lease_until = now, None
-                lost.append((job.id, job.organization_id))
+                lost.append((job.id, job.organisation_id))
                 await self.session.flush()
                 continue
             job.status = "running"

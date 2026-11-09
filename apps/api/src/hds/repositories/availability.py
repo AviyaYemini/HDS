@@ -32,7 +32,7 @@ class AvailabilityRepository(OrgScopedRepository[AvailabilityEntry]):
                 after taking the employee's row lock.
         """
         stmt = select(AvailabilityEntry).where(
-            AvailabilityEntry.id == id, AvailabilityEntry.organization_id == org_id
+            AvailabilityEntry.id == id, AvailabilityEntry.organisation_id == org_id
         )
         if fresh:
             stmt = stmt.execution_options(populate_existing=True)
@@ -59,7 +59,7 @@ class AvailabilityRepository(OrgScopedRepository[AvailabilityEntry]):
             The entries ordered by start date.
         """
         stmt = select(AvailabilityEntry).where(
-            AvailabilityEntry.organization_id == org_id, AvailabilityEntry.user_id == user_id
+            AvailabilityEntry.organisation_id == org_id, AvailabilityEntry.user_id == user_id
         )
         if first is not None:
             stmt = stmt.where(AvailabilityEntry.ends_on >= first)
@@ -80,7 +80,7 @@ class AvailabilityRepository(OrgScopedRepository[AvailabilityEntry]):
             return []
         result = await self.session.execute(
             select(AvailabilityEntry).where(
-                AvailabilityEntry.organization_id == org_id,
+                AvailabilityEntry.organisation_id == org_id,
                 AvailabilityEntry.user_id.in_(user_ids),
                 AvailabilityEntry.ends_on >= first,
                 AvailabilityEntry.starts_on <= last,
@@ -98,7 +98,7 @@ class AvailabilityRepository(OrgScopedRepository[AvailabilityEntry]):
         Returns:
             The stored entry.
         """
-        entry = AvailabilityEntry(id=uuid.uuid4(), organization_id=org_id, **data)
+        entry = AvailabilityEntry(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(entry)
         await self.session.flush()
         return entry

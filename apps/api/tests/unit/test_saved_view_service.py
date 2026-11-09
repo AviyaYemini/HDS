@@ -15,7 +15,7 @@ from hds.services.saved_view import SavedViewService
 
 def _user(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
-    user.id, user.organization_id, user.role = uuid.uuid4(), uuid.uuid4(), role
+    user.id, user.organisation_id, user.role = uuid.uuid4(), uuid.uuid4(), role
     return user
 
 

@@ -25,7 +25,7 @@ class GroupRepository(OrgScopedRepository[Group]):
             org_id: The caller's organisation.
         """
         result = await self.session.execute(
-            select(Group).where(Group.organization_id == org_id).order_by(Group.name)
+            select(Group).where(Group.organisation_id == org_id).order_by(Group.name)
         )
         return list(result.scalars().all())
 
@@ -40,7 +40,7 @@ class GroupRepository(OrgScopedRepository[Group]):
             The group, or ``None``.
         """
         result = await self.session.execute(
-            select(Group).where(Group.name == name, Group.organization_id == org_id)
+            select(Group).where(Group.name == name, Group.organisation_id == org_id)
         )
         return result.scalar_one_or_none()
 
@@ -57,7 +57,7 @@ class GroupRepository(OrgScopedRepository[Group]):
         Raises:
             sqlalchemy.exc.IntegrityError: If the name already exists in the organisation.
         """
-        group = Group(id=uuid.uuid4(), organization_id=org_id, name=name)
+        group = Group(id=uuid.uuid4(), organisation_id=org_id, name=name)
         self.session.add(group)
         await self.session.flush()
         await self.session.refresh(group)
@@ -105,7 +105,7 @@ class GroupRepository(OrgScopedRepository[Group]):
         result = await self.session.execute(
             select(Group)
             .join(user_groups, Group.id == user_groups.c.group_id)
-            .where(user_groups.c.user_id == user_id, Group.organization_id == org_id)
+            .where(user_groups.c.user_id == user_id, Group.organisation_id == org_id)
         )
         return list(result.scalars().all())
 

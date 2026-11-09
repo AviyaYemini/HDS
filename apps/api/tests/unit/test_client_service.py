@@ -18,7 +18,7 @@ from hds.services.client import ClientService
 def _actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -53,7 +53,7 @@ async def test_create_client_success() -> None:
 
     await svc.create_client(actor, data)
 
-    repo.create.assert_awaited_once_with(actor.organization_id, data)
+    repo.create.assert_awaited_once_with(actor.organisation_id, data)
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_soft_delete_client_no_projects_succeeds() -> None:
     await svc.soft_delete(actor, client_id)
 
     repo.deactivate_client_users.assert_awaited_once_with(client_id)
-    repo.soft_delete.assert_awaited_once_with(client_id, actor.organization_id)
+    repo.soft_delete.assert_awaited_once_with(client_id, actor.organisation_id)
 
 
 @pytest.mark.asyncio
@@ -145,7 +145,7 @@ async def test_create_client_user_hashes_password_and_sets_client_role() -> None
     )
 
     org_id, payload = user_repo.create_if_absent.await_args.args
-    assert org_id == actor.organization_id
+    assert org_id == actor.organisation_id
     assert payload["role"] == UserRole.client
     assert payload["client_id"] == client_id
     assert "initial_password" not in payload
@@ -209,7 +209,7 @@ async def test_remove_client_user_success() -> None:
 
     await svc.remove_client_user(actor, client_id, user_id)
 
-    user_repo.soft_delete.assert_awaited_once_with(user_id, actor.organization_id)
+    user_repo.soft_delete.assert_awaited_once_with(user_id, actor.organisation_id)
 
 
 @pytest.mark.asyncio
@@ -244,7 +244,7 @@ def _portal_user() -> MagicMock:
 @pytest.mark.asyncio
 async def test_deactivating_a_client_cancels_the_links_of_its_portal_users() -> None:
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.manager, organisation_id=uuid.uuid4())
     client = MagicMock(is_active=True)
     portal = [_portal_user(), _portal_user()]
     repo.get_by_id = AsyncMock(return_value=client)
@@ -260,7 +260,7 @@ async def test_deactivating_a_client_cancels_the_links_of_its_portal_users() -> 
 @pytest.mark.asyncio
 async def test_editing_a_client_without_deactivating_it_cancels_nothing() -> None:
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.manager, organisation_id=uuid.uuid4())
     repo.get_by_id = AsyncMock(return_value=MagicMock(is_active=True))
     repo.update = AsyncMock()
 
@@ -273,7 +273,7 @@ async def test_editing_a_client_without_deactivating_it_cancels_nothing() -> Non
 @pytest.mark.asyncio
 async def test_deleting_a_client_cancels_the_links_of_its_portal_users() -> None:
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.admin, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.admin, organisation_id=uuid.uuid4())
     portal = [_portal_user()]
     repo.get_by_id = AsyncMock(return_value=MagicMock())
     repo.count_non_deleted_projects = AsyncMock(return_value=0)
@@ -287,7 +287,7 @@ async def test_deleting_a_client_cancels_the_links_of_its_portal_users() -> None
 @pytest.mark.asyncio
 async def test_a_refused_client_deletion_cancels_nothing() -> None:
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.admin, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.admin, organisation_id=uuid.uuid4())
     repo.get_by_id = AsyncMock(return_value=MagicMock())
     repo.count_non_deleted_projects = AsyncMock(return_value=2)
 
@@ -306,7 +306,7 @@ def _portal(user_id: uuid.UUID) -> MagicMock:
 @pytest.mark.asyncio
 async def test_deactivating_a_client_ends_its_portal_sessions_in_id_order() -> None:
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.manager, organisation_id=uuid.uuid4())
     first, second = sorted([uuid.uuid4(), uuid.uuid4()])
     repo.get_by_id = AsyncMock(return_value=_client(is_active=True))
     repo.update = AsyncMock(return_value=_client(is_active=False))
@@ -321,7 +321,7 @@ async def test_deactivating_a_client_ends_its_portal_sessions_in_id_order() -> N
 @pytest.mark.asyncio
 async def test_removing_a_portal_user_ends_their_sessions_and_links() -> None:
     svc, _, user_repo = _svc()
-    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.manager, organisation_id=uuid.uuid4())
     client_id = uuid.uuid4()
     user = MagicMock()
     user.id = uuid.uuid4()
@@ -339,7 +339,7 @@ async def test_removing_a_portal_user_ends_their_sessions_and_links() -> None:
 async def test_portal_sessions_end_before_their_links_are_touched() -> None:
     """The user's row lock comes before the links, or a reset can deadlock with this path."""
     svc, repo, _ = _svc()
-    actor = MagicMock(spec=User, role=UserRole.manager, organization_id=uuid.uuid4())
+    actor = MagicMock(spec=User, role=UserRole.manager, organisation_id=uuid.uuid4())
     order: list[str] = []
     repo.get_by_id = AsyncMock(return_value=_client(is_active=True))
     repo.update = AsyncMock(return_value=_client(is_active=False))

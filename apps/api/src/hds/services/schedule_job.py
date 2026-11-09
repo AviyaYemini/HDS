@@ -85,7 +85,7 @@ class Claim:
     """A job a worker holds: enough to build, solve and store it without the row."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     first_day: date
     last_day: date
     project_ids: tuple[uuid.UUID, ...]
@@ -295,7 +295,7 @@ class ScheduleJobService:
             )
         ids = list(dict.fromkeys(data.get("project_ids") or []))
         if ids:
-            found = await self._inputs.active_projects(actor.organization_id, ids)
+            found = await self._inputs.active_projects(actor.organisation_id, ids)
             if len(found) != len(ids):
                 raise DomainValidationError(
                     code="schedule.project_not_active",
@@ -303,28 +303,28 @@ class ScheduleJobService:
                 )
             await self._require_scope(actor, ids)
         else:
-            active = [p.id for p in await self._inputs.active_projects(actor.organization_id, None)]
+            active = [p.id for p in await self._inputs.active_projects(actor.organisation_id, None)]
             ids = await self._in_scope(actor, active)
             if not ids:
                 raise DomainValidationError(
                     code="schedule.no_projects",
                     detail="There is no active project of yours to schedule.",
                 )
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         based_on = data.get("based_on")
         chips = data.get("chips")
         if based_on is not None:
             # An earlier run of this organisation only; another's is not found (FR-035).
-            earlier = await self._jobs.get(based_on, actor.organization_id)
+            earlier = await self._jobs.get(based_on, actor.organisation_id)
             if earlier is None:
                 raise NotFoundError(resource="ScheduleJob", id=based_on)
             if chips is None:
                 chips = list(earlier.chips or [])
         chips = await self._checked_chips(actor, chips or [])
         job = await self._jobs.create(
-            actor.organization_id,
+            actor.organisation_id,
             {
                 "requested_by": actor.id,
                 "first_day": first,
@@ -381,7 +381,7 @@ class ScheduleJobService:
         staff = (
             {
                 u.id
-                for u in await self._users.get_many(people, actor.organization_id)
+                for u in await self._users.get_many(people, actor.organisation_id)
                 # Anyone of the organisation's staff, even deleted or inactive since: such a chip is
                 # reported as no longer applying and never fails a run (FR-022, R42).
                 if u.role != UserRole.client
@@ -419,7 +419,7 @@ class ScheduleJobService:
         """
         job = await self.get(actor, id)
         await self.require_scope_of(actor, job)
-        locked = await self._jobs.get_locked(id, actor.organization_id)
+        locked = await self._jobs.get_locked(id, actor.organisation_id)
         assert locked is not None, "get found it"
         if locked.status == "queued":
             await self._jobs.cancel_queued(locked.id, self._now())
@@ -430,7 +430,7 @@ class ScheduleJobService:
                 await self.record(locked, "stopped", {"asked": True}, actor=actor)
         else:
             raise ConflictError(code="schedule.not_running", detail="The run has already ended.")
-        refreshed = await self._jobs.get(id, actor.organization_id)
+        refreshed = await self._jobs.get(id, actor.organisation_id)
         assert refreshed is not None
         return refreshed
 
@@ -449,12 +449,12 @@ class ScheduleJobService:
         await self.require_scope_of(actor, job)
         if self._events is None:
             return []
-        return await self._events.page(job.organization_id, job.id, after, limit)
+        return await self._events.page(job.organisation_id, job.id, after, limit)
 
     async def recorded(self, claim: Claim, kind: str, body: dict[str, Any]) -> None:
         """Add how a worker's run ended to its record (worker, FR-030)."""
         if self._events is not None:
-            await self._events.append(claim.organization_id, claim.id, kind, self._now(), body)
+            await self._events.append(claim.organisation_id, claim.id, kind, self._now(), body)
 
     async def get(self, actor: User, id: uuid.UUID) -> ScheduleJob:
         """A job of the organisation (Manager or Admin).
@@ -464,7 +464,7 @@ class ScheduleJobService:
             NotFoundError: Not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        job = await self._jobs.get(id, actor.organization_id)
+        job = await self._jobs.get(id, actor.organisation_id)
         if job is None:
             raise NotFoundError(resource="ScheduleJob", id=id)
         return job
@@ -482,7 +482,7 @@ class ScheduleJobService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._jobs.page(actor.organization_id, status, after, limit)
+        return await self._jobs.page(actor.organisation_id, status, after, limit)
 
     def state(self, job: ScheduleJob) -> str | None:
         """The proposal's state now, ``expired`` included."""
@@ -524,13 +524,13 @@ class ScheduleJobService:
         job stored without projects (before 007 T108) covers every active one.
         """
         ensure_role(actor, *MANAGER_ROLES)
-        job = await self._jobs.get_locked(id, actor.organization_id)
+        job = await self._jobs.get_locked(id, actor.organisation_id)
         if job is None:
             raise NotFoundError(resource="ScheduleJob", id=id)
         if actor.role != UserRole.admin:
             # An Admin may decide on every run; a Manager's is checked against what it covers.
             covered = [uuid.UUID(p) for p in job.project_ids] or [
-                p.id for p in await self._inputs.active_projects(actor.organization_id, None)
+                p.id for p in await self._inputs.active_projects(actor.organisation_id, None)
             ]
             await self._require_scope(actor, covered)
         if job.status != "succeeded":
@@ -581,7 +581,7 @@ class ScheduleJobService:
         """
         job = await self._open(actor, id)
         check_version(job, if_match)
-        org_id = actor.organization_id
+        org_id = actor.organisation_id
         org = await self._orgs.get_by_id(org_id)
         if org is None:
             raise NotFoundError(resource="Organisation", id=org_id)
@@ -867,7 +867,7 @@ class ScheduleJobService:
         """Add a step to the run's record (008 FR-030), when the record is wired."""
         if self._events is not None:
             await self._events.append(
-                job.organization_id,
+                job.organisation_id,
                 job.id,
                 kind,
                 self._now(),
@@ -889,7 +889,7 @@ class ScheduleJobService:
         if actor.role == UserRole.admin:
             return
         covered = [uuid.UUID(p) for p in job.project_ids] or [
-            p.id for p in await self._inputs.active_projects(job.organization_id, None)
+            p.id for p in await self._inputs.active_projects(job.organisation_id, None)
         ]
         await self._require_scope(actor, covered)
 
@@ -915,7 +915,7 @@ class ScheduleJobService:
             return None
         return Claim(
             job.id,
-            job.organization_id,
+            job.organisation_id,
             job.first_day,
             job.last_day,
             tuple(uuid.UUID(i) for i in job.project_ids),
@@ -937,7 +937,7 @@ class ScheduleJobService:
                 active, so a proposal never quietly leaves one out.
         """
         built = await self._inputs.build(
-            claim.organization_id,
+            claim.organisation_id,
             claim.first_day,
             claim.last_day,
             claim.project_ids,
@@ -958,7 +958,7 @@ class ScheduleJobService:
         start: dict[str, tuple[uuid.UUID, ...]] = dict(problem.current)
         kept_more: dict[str, tuple[uuid.UUID, ...]] = {}
         if claim.based_on_id is not None:
-            earlier = await self._jobs.get(claim.based_on_id, claim.organization_id)
+            earlier = await self._jobs.get(claim.based_on_id, claim.organisation_id)
             if earlier is not None and earlier.result is not None:
                 work = proposal_copy.of(earlier.current, earlier.result)
                 candidates = {c.id for c in problem.candidates}

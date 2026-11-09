@@ -35,7 +35,7 @@ class AvailabilitySubmission(TimestampedBase):
 
     __tablename__ = "availability_submissions"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     window_id: Mapped[uuid.UUID] = mapped_column(

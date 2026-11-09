@@ -1,7 +1,7 @@
 # Data model: UX foundation and redesign
 
 Five migrations, numbered in shipping order, all additive and reversible (Constitution X). Times are UTC instants; money is
-Decimal (Constitution VII). Every new table carries `organization_id` and is read only through its
+Decimal (Constitution VII). Every new table carries `organisation_id` and is read only through its
 repository (Constitution II).
 
 ## 025 — organisation contact and phone sessions (group B); 029 — saved views (group F)
@@ -9,7 +9,7 @@ repository (Constitution II).
 **organisations** (changed): `contact_phone` (string 32, null), `contact_email` (string 254, null),
 `opening_hours` (jsonb, null: up to seven `{weekday, opens, closes}` items in local time).
 
-**saved_views** (new, migration 029): `id`, `organization_id`, `user_id`, `screen` (string 48, for example
+**saved_views** (new, migration 029): `id`, `organisation_id`, `user_id`, `screen` (string 48, for example
 `staff`, `work_log`), `name` (1–60 chars), `query` (string 2000: the web address's query string),
 `created_at`. Unique (user_id, screen, name).
 
@@ -23,7 +23,7 @@ rotation keeps the token's lifetime class.
 | Column | Type | Rule |
 | --- | --- | --- |
 | `id` | uuid pk | |
-| `organization_id` | uuid fk | |
+| `organisation_id` | uuid fk | |
 | `window_id` | uuid fk → submission_windows, on delete cascade | |
 | `user_id` | uuid fk → users | |
 | `submitted_at` | timestamptz | the latest submit |
@@ -75,15 +75,15 @@ group D and F branches; when D merged, its 027 and 028 were added again as 031 a
 
 ## 032 — overrides, templates, publish events (group D; written as 028)
 
-**rule_overrides** (new): `id`, `organization_id`, `assignment_id` (fk, on delete cascade),
+**rule_overrides** (new): `id`, `organisation_id`, `assignment_id` (fk, on delete cascade),
 `warning_code` (string 64), `reason` (text, 1–500 chars), `created_by` (fk users), `created_at`.
 Unique (assignment_id, warning_code).
 
-**week_templates** (new): `id`, `organization_id`, `project_id` (fk, on delete cascade), `name`
+**week_templates** (new): `id`, `organisation_id`, `project_id` (fk, on delete cascade), `name`
 (1–80 chars, unique per project), `body` (jsonb: a list of `{weekday, shift_type_id, headcount,
 assignments: [{user_id, start_offset_min?, end_offset_min?}]}`), `created_by`, timestamps.
 
-**publish_events** (new): `id`, `organization_id`, `project_id`, `user_id` (the affected person),
+**publish_events** (new): `id`, `organisation_id`, `project_id`, `user_id` (the affected person),
 `published_by`, `first`, `last` (dates), `shift_count`, `notify` (bool), `created_at`,
 `delivered_at` (null until feature 010 delivers it). One row per affected person per publish.
 

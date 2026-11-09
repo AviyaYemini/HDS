@@ -19,7 +19,7 @@ from hds.services.project import ProjectService
 def _user(role: UserRole = UserRole.client, client_id: uuid.UUID | None = None) -> User:
     u = MagicMock(spec=User)
     u.id = uuid.uuid4()
-    u.organization_id = uuid.uuid4()
+    u.organisation_id = uuid.uuid4()
     u.role = role
     u.client_id = client_id or uuid.uuid4()
     return u
@@ -48,13 +48,13 @@ async def test_list_projects_client_scoped_to_own_client() -> None:
 
     svc = _svc(repo)
     await svc.list_projects(
-        org_id=client_user.organization_id,
+        org_id=client_user.organisation_id,
         current_user=client_user,
     )
 
     # A Client reads through the per-client query, never the organisation-wide one.
     repo.list_by_client.assert_awaited_once_with(
-        expected_client_id, client_user.organization_id, status=None
+        expected_client_id, client_user.organisation_id, status=None
     )
     repo.list_by_org.assert_not_awaited()
 
@@ -69,14 +69,14 @@ async def test_list_projects_client_ignores_external_client_id_filter() -> None:
 
     svc = _svc(repo)
     await svc.list_projects(
-        org_id=client_user.organization_id,
+        org_id=client_user.organisation_id,
         current_user=client_user,
         client_id=other_client_id,
     )
 
     # Must use own client_id, not the filter arg
     repo.list_by_client.assert_awaited_once_with(
-        client_user.client_id, client_user.organization_id, status=None
+        client_user.client_id, client_user.organisation_id, status=None
     )
     repo.list_by_org.assert_not_awaited()
 
@@ -88,11 +88,11 @@ async def test_list_projects_client_keeps_the_status_filter() -> None:
     repo.list_by_client = AsyncMock(return_value=[])
 
     await _svc(repo).list_projects(
-        org_id=client_user.organization_id, current_user=client_user, status=ProjectStatus.ended
+        org_id=client_user.organisation_id, current_user=client_user, status=ProjectStatus.ended
     )
 
     repo.list_by_client.assert_awaited_once_with(
-        client_user.client_id, client_user.organization_id, status=ProjectStatus.ended
+        client_user.client_id, client_user.organisation_id, status=ProjectStatus.ended
     )
 
 
@@ -107,7 +107,7 @@ async def test_get_project_client_with_unowned_project_raises_forbidden() -> Non
     svc = _svc(repo)
     with pytest.raises(ForbiddenError) as exc_info:
         await svc.get_project(
-            id=project.id, org_id=client_user.organization_id, current_user=client_user
+            id=project.id, org_id=client_user.organisation_id, current_user=client_user
         )
     assert exc_info.value.code == "projects.access_denied"
 
@@ -119,14 +119,14 @@ async def test_a_staff_listing_filtered_by_client_uses_the_per_client_read() -> 
     repo = AsyncMock()
 
     await _svc(repo).list_projects(
-        org_id=staff.organization_id,
+        org_id=staff.organisation_id,
         current_user=staff,
         client_id=wanted,
         status=ProjectStatus.ended,
     )
 
     repo.list_by_client.assert_awaited_once_with(
-        wanted, staff.organization_id, status=ProjectStatus.ended
+        wanted, staff.organisation_id, status=ProjectStatus.ended
     )
     repo.list_by_org.assert_not_awaited()
 
@@ -136,9 +136,9 @@ async def test_a_staff_listing_without_a_client_filter_lists_the_organisation() 
     staff = _user(role=UserRole.admin)
     repo = AsyncMock()
 
-    await _svc(repo).list_projects(org_id=staff.organization_id, current_user=staff)
+    await _svc(repo).list_projects(org_id=staff.organisation_id, current_user=staff)
 
-    repo.list_by_org.assert_awaited_once_with(staff.organization_id, status=None)
+    repo.list_by_org.assert_awaited_once_with(staff.organisation_id, status=None)
     repo.list_by_client.assert_not_awaited()
 
 

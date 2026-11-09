@@ -42,7 +42,7 @@ async def test_blocked_open_and_close_entries_are_stored_inside_an_open_window(
     employee: dict[str, str],
 ) -> None:
     me = seed_users["employee"]
-    morning = await shift_type_id(test_db, me.organization_id)
+    morning = await shift_type_id(test_db, me.organisation_id)
     url = constraints(me.id)
 
     blocked = await async_client.post(url, json=body("blocked", FIRST), headers=employee)
@@ -246,7 +246,7 @@ async def test_two_entries_for_the_same_shift_and_date_conflict(
         extra: dict[str, Any] = {}
         if "shift" in spec:
             extra["shift_type_id"] = await shift_type_id(
-                test_db, me.organization_id, spec.pop("shift")
+                test_db, me.organisation_id, spec.pop("shift")
             )
         start = FIRST + timedelta(days=spec.pop("first", 0))
         end = FIRST + timedelta(days=spec.pop("last", 0)) if "last" in spec else start
@@ -290,7 +290,7 @@ async def test_entries_for_different_shifts_or_dates_do_not_conflict(
         extra: dict[str, Any] = {}
         if "shift" in spec:
             extra["shift_type_id"] = await shift_type_id(
-                test_db, me.organization_id, spec.pop("shift")
+                test_db, me.organisation_id, spec.pop("shift")
             )
         start = FIRST + timedelta(days=spec.pop("first", 0))
         end = FIRST + timedelta(days=spec.pop("last", 0)) if "last" in spec else start
@@ -392,7 +392,7 @@ async def test_a_retired_shift_type_cannot_be_used(
     employee: dict[str, str],
 ) -> None:
     me = seed_users["employee"]
-    night = await shift_type_id(test_db, me.organization_id, "night")
+    night = await shift_type_id(test_db, me.organisation_id, "night")
     await test_db.execute(
         text("UPDATE shift_types SET is_active = false WHERE id = :i"), {"i": night}
     )

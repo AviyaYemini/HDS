@@ -20,7 +20,7 @@ class UserRead(BaseModel):
     """
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     email: EmailStr
     full_name: str
     phone: str | None = None

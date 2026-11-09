@@ -16,10 +16,9 @@ import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable
 
-from sqlalchemy import select
+from sqlalchemy import text
 
 from hds.core.database import AsyncSessionLocal, engine
-from hds.models.user import User
 
 Row = tuple[uuid.UUID, uuid.UUID, str]
 """``(account id, organisation id, address)``."""
@@ -55,11 +54,31 @@ async def run(fetch: Callable[[], Awaitable[list[Row]]]) -> int:
     return 1 if groups else 0
 
 
+def organisation_column(columns: Iterable[str]) -> str:
+    """Name the user table's organisation column, which migration 037 renamed.
+
+    Args:
+        columns: The user table's column names, as the database lists them.
+
+    Returns:
+        ``organisation_id`` when present, else ``organization_id``. The script runs before
+        migration 016, so the schema it reads may predate the rename (ADR 021).
+    """
+    return "organisation_id" if "organisation_id" in set(columns) else "organization_id"
+
+
 async def _fetch_live_accounts() -> list[Row]:
-    """Read id, organisation and address of every non-deleted account."""
+    """Read id, organisation and address of every non-deleted account, on any schema."""
     async with AsyncSessionLocal() as session:
+        listed = await session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'users'"
+            )
+        )
+        column = organisation_column(name for (name,) in listed.all())
         result = await session.execute(
-            select(User.id, User.organization_id, User.email).where(User.is_deleted.is_(False))
+            text(f"SELECT id, {column}, email FROM users WHERE is_deleted IS FALSE")  # noqa: S608
         )
         return [(i, o, e) for i, o, e in result.all()]
 

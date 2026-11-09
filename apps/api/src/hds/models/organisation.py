@@ -16,7 +16,7 @@ from hds.models.pay_columns import pay_setting_checks
 
 
 class Organisation(TimestampedBase):
-    """A tenant. Every other table carries ``organization_id`` pointing here.
+    """A tenant. Every other table carries ``organisation_id`` pointing here.
 
     ``timezone`` is the IANA zone used to display this organisation's UTC timestamps; times
     are never stored in local time (Constitution VII). Its weeks for the weekly-hours rule run

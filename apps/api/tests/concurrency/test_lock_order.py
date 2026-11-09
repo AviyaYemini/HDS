@@ -55,7 +55,7 @@ async def add_pending(db: AsyncSession, org_id: uuid.UUID, email: str) -> uuid.U
     user_id = uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active) VALUES (:i, :o, :e, 'h', 'Pending', CAST('employee' AS user_role), false)"
         ),
         {"i": user_id, "o": org_id, "e": email},
@@ -76,7 +76,7 @@ async def add_active(db: AsyncSession, org_id: uuid.UUID, email: str) -> uuid.UU
     user_id = uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active, activated_at) VALUES (:i, :o, :e, 'h', 'Active', "
             "CAST('employee' AS user_role), true, now())"
         ),
@@ -127,7 +127,7 @@ async def test_a_reset_and_a_deactivation_of_one_account_never_deadlock(
 async def test_accepting_an_invitation_and_deleting_the_account_never_deadlock(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User], race: Race
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     headers = await admin_headers(async_client)
 
     for n in range(ROUNDS):
@@ -152,7 +152,7 @@ async def test_accepting_an_invitation_and_a_re_invitation_never_deadlock(
     outbox: OutboxMailSender,
     race: Race,
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     headers = await admin_headers(async_client)
 
     for n in range(ROUNDS):
@@ -201,10 +201,10 @@ async def test_a_reset_request_and_a_reset_confirmation_never_deadlock(
 async def test_a_reset_and_a_client_deactivation_never_deadlock(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User], race: Race
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     client = Client(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         name="Acme",
         contract_start=datetime.now(UTC).date(),
     )
@@ -215,7 +215,7 @@ async def test_a_reset_and_a_client_deactivation_never_deadlock(
     test_db.add(
         User(
             id=user_id,
-            organization_id=org_id,
+            organisation_id=org_id,
             client_id=client_id,
             email="portal@hds.test",
             password_hash=hash_password(PASSWORD),
@@ -286,7 +286,7 @@ async def test_a_reset_job_and_deleting_the_account_never_deadlock(
     race: Race,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     headers = await admin_headers(async_client)
 
     with caplog.at_level(logging.ERROR, logger="hds.database"):

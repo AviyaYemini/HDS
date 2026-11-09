@@ -49,7 +49,7 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
             raise ValueError(f"unknown run record kind {kind!r}")
         row = ScheduleJobEvent(
             id=uuid.uuid4(),
-            organization_id=org_id,
+            organisation_id=org_id,
             job_id=job_id,
             kind=kind,
             actor_id=actor_id,
@@ -67,7 +67,7 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
         """The run's steps in the order they were written."""
         query = (
             select(ScheduleJobEvent)
-            .where(ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id)
+            .where(ScheduleJobEvent.organisation_id == org_id, ScheduleJobEvent.job_id == job_id)
             .order_by(ScheduleJobEvent.seq)
             .offset(offset)
         )
@@ -81,7 +81,7 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
     ) -> list[ScheduleJobEvent]:
         """Up to ``limit`` steps of the run after ``after`` (a ``seq``), in the order written."""
         query = select(ScheduleJobEvent).where(
-            ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id
+            ScheduleJobEvent.organisation_id == org_id, ScheduleJobEvent.job_id == job_id
         )
         if after is not None:
             query = query.where(ScheduleJobEvent.seq > after)
@@ -96,7 +96,7 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
         Reads the ``undone`` steps (few), then only as many of the newest edits as can hold the
         answer: one more than there are undos.
         """
-        scope = (ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id)
+        scope = (ScheduleJobEvent.organisation_id == org_id, ScheduleJobEvent.job_id == job_id)
         undos = await self.session.execute(
             select(ScheduleJobEvent.body).where(*scope, ScheduleJobEvent.kind == "undone")
         )
@@ -114,6 +114,6 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
         result = await self.session.execute(
             select(func.count())
             .select_from(ScheduleJobEvent)
-            .where(ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id)
+            .where(ScheduleJobEvent.organisation_id == org_id, ScheduleJobEvent.job_id == job_id)
         )
         return int(result.scalar_one())

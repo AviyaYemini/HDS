@@ -27,7 +27,7 @@ DANA = uuid.uuid4()
 
 
 def person(role: UserRole) -> Any:
-    return SimpleNamespace(id=uuid.uuid4(), organization_id=ORG, role=role)
+    return SimpleNamespace(id=uuid.uuid4(), organisation_id=ORG, role=role)
 
 
 def project(

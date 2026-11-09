@@ -17,7 +17,7 @@ from hds.services.employee import EmployeeService
 def _make_user(**kwargs: object) -> User:
     user = MagicMock(spec=User)
     user.id = kwargs.get("id", uuid.uuid4())
-    user.organization_id = kwargs.get("org_id", uuid.uuid4())
+    user.organisation_id = kwargs.get("org_id", uuid.uuid4())
     user.email = kwargs.get("email", "emp@hds.test")
     user.full_name = kwargs.get("full_name", "Test Employee")
     user.phone = kwargs.get("phone", None)
@@ -47,7 +47,7 @@ async def test_update_own_profile_success() -> None:
     result = await svc.update_own_profile(user, {"full_name": "New Name", "phone": "+972501234567"})
 
     user_repo.update.assert_awaited_once_with(
-        user.id, user.organization_id, full_name="New Name", phone="+972501234567"
+        user.id, user.organisation_id, full_name="New Name", phone="+972501234567"
     )
     assert result.full_name == "New Name"
 
@@ -108,15 +108,15 @@ async def test_get_profile_returns_user_with_hourly_rate() -> None:
         project_manager_repo=AsyncMock(),
     )
 
-    result = await svc.get_profile(user.id, user.organization_id)
+    result = await svc.get_profile(user.id, user.organisation_id)
 
     assert result.default_hourly_rate == Decimal("75.0000")
-    user_repo.get_by_id.assert_awaited_once_with(user.id, user.organization_id)
+    user_repo.get_by_id.assert_awaited_once_with(user.id, user.organisation_id)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "field", ["role", "is_active", "organization_id", "default_hourly_rate", "email", "bogus"]
+    "field", ["role", "is_active", "organisation_id", "default_hourly_rate", "email", "bogus"]
 )
 async def test_update_own_profile_never_passes_forbidden_fields_to_repo(field: str) -> None:
     user = _make_user()
@@ -154,5 +154,5 @@ async def test_update_own_profile_passes_only_whitelisted_fields() -> None:
     await svc.update_own_profile(user, {"full_name": "New", "phone": "123"})
 
     user_repo.update.assert_awaited_once_with(
-        user.id, user.organization_id, full_name="New", phone="123"
+        user.id, user.organisation_id, full_name="New", phone="123"
     )

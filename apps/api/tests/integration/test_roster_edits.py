@@ -75,8 +75,8 @@ async def test_a_transfer_moves_the_person_keeping_the_assignment(
     moving = await placed(async_client, admin, first, person)
     await test_db.execute(
         text(
-            "INSERT INTO rule_overrides (id, organization_id, assignment_id, warning_code, reason,"
-            " created_by) SELECT :i, organization_id, id, 'warnings.overlap', 'old', :u"
+            "INSERT INTO rule_overrides (id, organisation_id, assignment_id, warning_code, reason,"
+            " created_by) SELECT :i, organisation_id, id, 'warnings.overlap', 'old', :u"
             " FROM assignments WHERE id = :a"
         ),
         {"i": uuid.uuid4(), "a": moving, "u": seed_users["admin"].id},

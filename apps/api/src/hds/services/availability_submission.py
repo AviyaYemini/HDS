@@ -123,7 +123,7 @@ class AvailabilitySubmissionService:
         self._now = now
 
     async def _window(self, actor: User, window_id: uuid.UUID) -> SubmissionWindow:
-        window = await self._windows.get_by_id(window_id, actor.organization_id)
+        window = await self._windows.get_by_id(window_id, actor.organisation_id)
         if window is None:
             raise NotFoundError(resource="SubmissionWindow", id=window_id)
         return window
@@ -147,7 +147,7 @@ class AvailabilitySubmissionService:
         """
         ensure_role(actor, *STAFF_ROLES)
         window = await self._window(actor, window_id)
-        return await self._status_of(actor.organization_id, actor.id, window)
+        return await self._status_of(actor.organisation_id, actor.id, window)
 
     async def status_for(
         self, actor: User, user_id: uuid.UUID, window_id: uuid.UUID
@@ -160,7 +160,7 @@ class AvailabilitySubmissionService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         window = await self._window(actor, window_id)
-        return await self._status_of(actor.organization_id, user_id, window)
+        return await self._status_of(actor.organisation_id, user_id, window)
 
     async def _status_of(
         self, org_id: uuid.UUID, user_id: uuid.UUID, window: SubmissionWindow
@@ -184,7 +184,7 @@ class AvailabilitySubmissionService:
             NotFoundError: The window is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        org = actor.organization_id
+        org = actor.organisation_id
         window = await self._window(actor, window_id)
         rows = await self._submissions.for_windows(org, [window.id], user_ids)
         stored = {row.user_id: row for row in rows}
@@ -228,7 +228,7 @@ class AvailabilitySubmissionService:
                 detail="The deadline for this window has passed.",
             )
         await self._store(actor, actor.id, window)
-        return await self._status_of(actor.organization_id, actor.id, window)
+        return await self._status_of(actor.organisation_id, actor.id, window)
 
     async def apply_admin_edit(
         self,
@@ -261,7 +261,7 @@ class AvailabilitySubmissionService:
             return
         first = min(e["starts_on"] for e in changes)
         last = max(e["ends_on"] for e in changes)
-        org = admin.organization_id
+        org = admin.organisation_id
         for window in await self._windows.covering(org, first, last):
             if not window.requires_submission:
                 continue
@@ -304,17 +304,17 @@ class AvailabilitySubmissionService:
         """
         ensure_role(admin, UserRole.admin)
         window = await self._window(admin, window_id)
-        employee = await self._users.get_by_id(user_id, admin.organization_id)
+        employee = await self._users.get_by_id(user_id, admin.organisation_id)
         if employee is None or employee.role == UserRole.client:
             raise NotFoundError(resource="Employee", id=user_id)
         await self._users.lock_user(user_id)
         await self._store(admin, user_id, window)
-        return await self._status_of(admin.organization_id, user_id, window)
+        return await self._status_of(admin.organisation_id, user_id, window)
 
     async def _store(self, by: User, user_id: uuid.UUID, window: SubmissionWindow) -> None:
-        items = await self._live_snapshot(by.organization_id, user_id, window)
+        items = await self._live_snapshot(by.organisation_id, user_id, window)
         await self._submissions.put(
-            by.organization_id,
+            by.organisation_id,
             window.id,
             user_id,
             submitted_at=self._now(),

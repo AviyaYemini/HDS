@@ -212,17 +212,17 @@ U is the count of unfilled slots, P the preference penalty, H the hours per empl
 
 ## 6. Domain model
 
-The model grows HDS 1.0's six tables to fourteen entities. Every table carries `id` (UUID), `created_at`, `updated_at` and an `organization_id`, so a second company can use the same system, as the original asks ("adaptable to additional customers").
+The model grows HDS 1.0's six tables to fourteen entities. Every table carries `id` (UUID), `created_at`, `updated_at` and an `organisation_id`, so a second company can use the same system, as the original asks ("adaptable to additional customers").
 
 | Entity | Key fields | Relationships |
 | --- | --- | --- |
-| Organization | name, timezone, scheduling settings (rest hours, weekly cap, objective weights) | has many users, clients, sites |
-| User | name, email, phone, password hash, role (employee, manager, admin, client), active, locale, default hourly pay rate | belongs to organization; managers and admins are also employees; a client user belongs to one client |
+| Organisation | name, timezone, scheduling settings (rest hours, weekly cap, objective weights) | has many users, clients, sites |
+| User | name, email, phone, password hash, role (employee, manager, admin, client), active, locale, default hourly pay rate | belongs to organisation; managers and admins are also employees; a client user belongs to one client |
 | Client | name, contact details, contract start and end, active | has many projects and client users |
 | Site | name, address, timezone | has many projects |
 | Project | client, site, name, type (security or training), billing rate per hour, status (active, ended), start and end date | belongs to a client and a site |
 | Group | name | many-to-many with users |
-| ShiftTemplate | name, start time, end time, crosses midnight | belongs to organization |
+| ShiftTemplate | name, start time, end time, crosses midnight | belongs to organisation |
 | ShiftRequirement | weekday, template, headcount, required qualification | belongs to project |
 | Shift | project, start and end (UTC), location, hourly pay rate (admin-editable), status (draft, published, locked) | has many assignments |
 | Assignment | shift, user, source (generated, manual, reported), locked, approved by | joins shift and user |

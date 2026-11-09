@@ -74,7 +74,7 @@ class SiteService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._repo.list_by_org(actor.organization_id)
+        return await self._repo.list_by_org(actor.organisation_id)
 
     async def get_site(self, actor: User, id: uuid.UUID) -> Site:
         """Return one site of the actor's organisation.
@@ -91,7 +91,7 @@ class SiteService:
             NotFoundError: The site is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        site = await self._repo.get_by_id(id, actor.organization_id)
+        site = await self._repo.get_by_id(id, actor.organisation_id)
         if site is None:
             raise NotFoundError(resource="Site", id=id)
         return site
@@ -113,7 +113,7 @@ class SiteService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         validate_timezone(data.get("timezone"))
-        return await self._repo.create(actor.organization_id, data)
+        return await self._repo.create(actor.organisation_id, data)
 
     async def edit_site(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Site:
         """Update a site of the actor's organisation.
@@ -136,7 +136,7 @@ class SiteService:
         ensure_role(actor, *MANAGER_ROLES)
         if "timezone" in data:
             validate_timezone(data["timezone"])
-        existing = await self._repo.get_by_id(id, actor.organization_id)
+        existing = await self._repo.get_by_id(id, actor.organisation_id)
         if existing is None:
             raise NotFoundError(resource="Site", id=id)
-        return await self._repo.update(id, actor.organization_id, **data)
+        return await self._repo.update(id, actor.organisation_id, **data)

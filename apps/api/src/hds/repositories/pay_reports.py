@@ -66,7 +66,7 @@ class PayReportRepository(BaseRepository[Shift]):
             .join(Project, Project.id == Shift.project_id)
             .join(Site, Site.id == Project.site_id)
             .where(
-                Shift.organization_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.status == "published",
                 Shift.starts_at >= starts_from,
                 Shift.starts_at < starts_before,
@@ -132,7 +132,7 @@ class ReportShiftRepository(BaseRepository[Shift]):
             .join(Project, Project.id == Shift.project_id)
             .join(Site, Site.id == Project.site_id)
             .where(
-                Shift.organization_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.status == "published",
                 Shift.starts_at >= starts_from,
                 Shift.starts_at < starts_before,

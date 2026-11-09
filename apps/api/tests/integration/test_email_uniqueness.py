@@ -19,7 +19,7 @@ from hds.models.user import User, UserRole
 def _user(org_id: uuid.UUID, email: str, *, is_deleted: bool = False) -> User:
     return User(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         email=email,
         password_hash=hash_password("Dev1234!"),
         full_name="Someone",
@@ -54,7 +54,7 @@ async def test_email_may_be_reused_after_soft_delete_in_another_org(
     other = await _second_org(test_db)
     test_db.add(_user(other.id, "gone@hds.test", is_deleted=True))
     await test_db.commit()
-    test_db.add(_user(seed_users["admin"].organization_id, "gone@hds.test"))
+    test_db.add(_user(seed_users["admin"].organisation_id, "gone@hds.test"))
     await test_db.commit()  # only non-deleted rows compete for the email
 
 

@@ -25,7 +25,7 @@ class SpecialDay(TimestampedBase):
 
     __tablename__ = "special_days"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -42,7 +42,7 @@ class SpecialDay(TimestampedBase):
         CheckConstraint("trim(name) <> ''", name="ck_special_days_name"),
         Index(
             "uq_special_days_org_day",
-            "organization_id",
+            "organisation_id",
             "day",
             unique=True,
             postgresql_where=text("project_id IS NULL"),

@@ -52,7 +52,7 @@ for all timestamps (stored UTC, rendered in org timezone), native ENUMs for role
 - All user-facing strings externalised before merge; RTL layouts required (Principle VIII)
 
 **Scale/Scope**: ~50–200 employees, single organisation per deployment for now; data model
-carries `organization_id` on every table for future multi-tenancy (spec §6)
+carries `organisation_id` on every table for future multi-tenancy (spec §6)
 
 ## Constitution Check
 

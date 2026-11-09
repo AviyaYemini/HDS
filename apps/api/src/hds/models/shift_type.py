@@ -46,7 +46,7 @@ class ShiftType(TimestampedBase):
 
     __tablename__ = "shift_types"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -61,10 +61,10 @@ class ShiftType(TimestampedBase):
         CheckConstraint(
             "crosses_midnight = (ends_at_local <= starts_at_local)", name="ck_shift_types_crossing"
         ),
-        Index("idx_shift_types_org", "organization_id"),
+        Index("idx_shift_types_org", "organisation_id"),
         Index(
             "uq_shift_types_org_name",
-            "organization_id",
+            "organisation_id",
             text("lower(name)"),
             unique=True,
             postgresql_where=text("is_active"),

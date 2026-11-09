@@ -49,7 +49,7 @@ class StaffingNeedService:
             NotFoundError: The project is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+        if await self._projects.get_by_id(project_id, actor.organisation_id) is None:
             raise NotFoundError(resource="Project", id=project_id)
         return await self._needs.for_project(project_id)
 
@@ -71,7 +71,7 @@ class StaffingNeedService:
                 (HTTP 422); nothing changes.
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if not await self._projects.lock(project_id, actor.organization_id):
+        if not await self._projects.lock(project_id, actor.organisation_id):
             raise NotFoundError(resource="Project", id=project_id)
         pairs = [(item["shift_type_id"], item["weekday"]) for item in items]
         if len(set(pairs)) != len(pairs):
@@ -85,7 +85,7 @@ class StaffingNeedService:
         # in the same order and cannot deadlock.
         held = await self._needs.types_of(project_id)
         found = {
-            t.id: t for t in await self._types.share_lock(actor.organization_id, [*named, *held])
+            t.id: t for t in await self._types.share_lock(actor.organisation_id, [*named, *held])
         }
         used = {t.id for t in await self._types.for_project(project_id)}
         for type_id in named:  # request order, so the first problem is the one reported
@@ -99,5 +99,5 @@ class StaffingNeedService:
                     code="requirements.shift_type_not_in_project",
                     detail="The project does not use this shift type.",
                 )
-        await self._needs.replace(actor.organization_id, project_id, items)
+        await self._needs.replace(actor.organisation_id, project_id, items)
         return await self._needs.for_project(project_id)

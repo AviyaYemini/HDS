@@ -27,7 +27,7 @@ async def seed(db: AsyncSession, table: str) -> list[uuid.UUID]:
     )
     await db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active, activated_at) VALUES (:u, :o, 'a@hds.test', 'h', 'A', "
             "CAST('employee' AS user_role), true, now())"
         ),

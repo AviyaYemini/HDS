@@ -53,7 +53,7 @@ def test_the_last_days_of_the_calendar_are_judged_without_overflow() -> None:
 
 async def test_a_window_ending_on_the_last_calendar_day_is_walked_without_overflow() -> None:
     """A window that ends on 9999-12-31 covers an entry up to that day (FR-105)."""
-    actor = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), role=UserRole.employee)
+    actor = SimpleNamespace(id=uuid.uuid4(), organisation_id=uuid.uuid4(), role=UserRole.employee)
     window = SimpleNamespace(
         starts_on=date(9999, 12, 26),
         ends_on=date(9999, 12, 31),
@@ -75,7 +75,7 @@ async def test_a_window_ending_on_the_last_calendar_day_is_walked_without_overfl
 
 async def test_a_change_is_judged_on_the_entry_as_read_after_the_lock() -> None:
     """A concurrent change committed while this one waited for the lock must be seen."""
-    actor = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), role=UserRole.admin)
+    actor = SimpleNamespace(id=uuid.uuid4(), organisation_id=uuid.uuid4(), role=UserRole.admin)
     before = entry(user_id=actor.id, starts_on=date(2027, 6, 6), ends_on=date(2027, 6, 6))
     after = entry(
         id=before.id, user_id=actor.id, starts_on=date(2027, 6, 9), ends_on=date(2027, 6, 9)

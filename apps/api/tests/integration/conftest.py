@@ -54,7 +54,7 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     await test_db.flush()
     user = User(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         email="employee@other.test",
         password_hash=hash_password("Dev1234!"),
         full_name="Other Employee",
@@ -62,18 +62,18 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         activated_at=datetime.now(UTC),
     )
     client = Client(
-        id=uuid.uuid4(), organization_id=org.id, name="Other Client", contract_start=date.today()
+        id=uuid.uuid4(), organisation_id=org.id, name="Other Client", contract_start=date.today()
     )
     site = Site(
-        id=uuid.uuid4(), organization_id=org.id, name="Other Site", address="x", timezone="UTC"
+        id=uuid.uuid4(), organisation_id=org.id, name="Other Site", address="x", timezone="UTC"
     )
-    group = Group(id=uuid.uuid4(), organization_id=org.id, name="Other Group")
-    qualification = Qualification(id=uuid.uuid4(), organization_id=org.id, name="Other Qual")
+    group = Group(id=uuid.uuid4(), organisation_id=org.id, name="Other Group")
+    qualification = Qualification(id=uuid.uuid4(), organisation_id=org.id, name="Other Qual")
     test_db.add_all([user, client, site, group, qualification])
     await test_db.flush()
     project = Project(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         client_id=client.id,
         site_id=site.id,
         name="Other Project",
@@ -84,14 +84,14 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     )
     window = SubmissionWindow(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         starts_on=date(2027, 6, 6),
         ends_on=date(2027, 6, 12),
         deadline=datetime.now(UTC),
     )
     entry = AvailabilityEntry(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         user_id=user.id,
         kind="blocked",
         starts_on=date(2027, 6, 6),
@@ -102,7 +102,7 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     # The organisation's default shift types come from the database trigger. Read before the
     # commit: a query after it would open a transaction whose rollback expires these objects.
     shift_type = (
-        (await test_db.execute(select(ShiftType).where(ShiftType.organization_id == org.id)))
+        (await test_db.execute(select(ShiftType).where(ShiftType.organisation_id == org.id)))
         .scalars()
         .first()
     )
@@ -112,7 +112,7 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     )
     shift = Shift(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         project_id=project.id,
         shift_type_id=shift_type.id,
         starts_at=datetime(2027, 6, 7, 4, tzinfo=UTC),
@@ -122,11 +122,11 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
     test_db.add(shift)
     await test_db.flush()
     assignment = Assignment(
-        id=uuid.uuid4(), organization_id=org.id, shift_id=shift.id, user_id=user.id
+        id=uuid.uuid4(), organisation_id=org.id, shift_id=shift.id, user_id=user.id
     )
     job = ScheduleJob(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         requested_by=user.id,
         first_day=date(2027, 6, 6),
         last_day=date(2027, 6, 12),
@@ -134,7 +134,7 @@ async def other_org(test_db: AsyncSession, seed_users: dict[str, User]) -> Other
         settings={"min_rest_hours": 11, "max_weekly_hours": 48},
     )
     special_day = SpecialDay(
-        id=uuid.uuid4(), organization_id=org.id, day=date(2027, 9, 11), name="Their holiday"
+        id=uuid.uuid4(), organisation_id=org.id, day=date(2027, 9, 11), name="Their holiday"
     )
     test_db.add_all([assignment, job, special_day])
     await test_db.commit()

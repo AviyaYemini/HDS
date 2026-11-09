@@ -45,6 +45,7 @@
 | [018](adr/018-assignment-times.md) | Each assignment may carry its own times, and every rule reads the person's span |
 | [019](adr/019-web-sessions-per-tab.md) | The web keeps its session per tab (amends 010) |
 | [020](adr/020-proposal-working-copy-and-run-record.md) | A proposal keeps a working copy, and every run an append-only record |
+| [021](adr/021-organisation-spelling-in-one-step.md) | One spelling for organisation, renamed in one step |
 
 Every architectural decision gets an ADR (Constitution XI). Number new ones in sequence.
 

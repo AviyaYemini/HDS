@@ -31,10 +31,10 @@ async def test_two_simultaneous_client_deactivations_never_deadlock(
     seed_users: dict[str, User],
     race: Callable[..., Awaitable[list[Any]]],
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     client = Client(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         name="Acme",
         contract_start=datetime.now(UTC).date(),
     )
@@ -46,7 +46,7 @@ async def test_two_simultaneous_client_deactivations_never_deadlock(
         test_db.add(
             User(
                 id=uuid.uuid4(),
-                organization_id=org_id,
+                organisation_id=org_id,
                 client_id=client_id,
                 email=f"portal{n}@hds.test",
                 password_hash=secret,

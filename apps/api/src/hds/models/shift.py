@@ -39,7 +39,7 @@ class Shift(TimestampedBase):
 
     __tablename__ = "shifts"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
@@ -61,12 +61,12 @@ class Shift(TimestampedBase):
         CheckConstraint(
             "(status = 'published') = (published_at IS NOT NULL)", name="ck_shifts_published_at"
         ),
-        Index("idx_shifts_org_start", "organization_id", "starts_at"),
+        Index("idx_shifts_org_start", "organisation_id", "starts_at"),
         Index("idx_shifts_project_start", "project_id", "starts_at"),
         # Reports and pay to date read published shifts only (005 research R9).
         Index(
             "idx_shifts_org_published_start",
-            "organization_id",
+            "organisation_id",
             "starts_at",
             postgresql_where=text("status = 'published'"),
             sqlite_where=text("status = 'published'"),
@@ -90,7 +90,7 @@ class Assignment(TimestampedBase):
 
     __tablename__ = "assignments"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     shift_id: Mapped[uuid.UUID] = mapped_column(

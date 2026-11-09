@@ -133,7 +133,7 @@ That is dependency order. A project points at a client and a site, so those tabl
 - Passwords are hashed with Argon2id. Plain passwords are never stored.
 - Sign-in returns a short-lived access token (15 minutes) plus a refresh token that is stored only as a hash and rotated on every use. Reuse of an old refresh token revokes all of that user's tokens (ADR 003).
 - Roles (employee, manager, admin, client) are checked twice: in the router and in the service. Role is re-read from the database on every request, so a demotion takes effect immediately.
-- **Multi-tenancy:** every table carries `organization_id`, and `OrgScopedRepository` makes every lookup filter by it. A row from another organisation looks exactly like a missing row (404). `test_org_scoping.py` proves it.
+- **Multi-tenancy:** every table carries `organisation_id`, and `OrgScopedRepository` makes every lookup filter by it. A row from another organisation looks exactly like a missing row (404). `test_org_scoping.py` proves it.
 
 **Correctness**
 - Money is `NUMERIC(12,4)` in the database and `Decimal` in Python, never float. A CHECK constraint makes a non-positive rate impossible at the database level, even if the code has a bug.

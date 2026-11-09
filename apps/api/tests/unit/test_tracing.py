@@ -107,7 +107,7 @@ def queuing_service(jobs: CapturingJobs) -> ScheduleJobService:
     )
 
 
-MANAGER = cast(Any, SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4()))
+MANAGER = cast(Any, SimpleNamespace(id=uuid.uuid4(), organisation_id=uuid.uuid4()))
 MANAGER.role = UserRole.manager
 REQUEST = {"first_day": date(2027, 6, 6), "last_day": date(2027, 6, 12), "project_ids": []}
 

@@ -260,12 +260,12 @@ class RosterService:
         ensure_role(actor, *MANAGER_ROLES)
         if (
             project_id is not None
-            and await self._projects.get_by_id(project_id, actor.organization_id) is None
+            and await self._projects.get_by_id(project_id, actor.organisation_id) is None
         ):
             raise NotFoundError(resource="Project", id=project_id)
         starts_from, starts_before = _bounds((await self._org(actor)).timezone, first, last)
         shifts = await self._shifts.page(
-            actor.organization_id,
+            actor.organisation_id,
             starts_from=starts_from,
             starts_before=starts_before,
             project_id=project_id,
@@ -280,7 +280,7 @@ class RosterService:
         if actor.role == UserRole.admin:
             return views, following
         projects = await self._projects.get_many(
-            actor.organization_id, {v.shift.project_id for v in views}
+            actor.organisation_id, {v.shift.project_id for v in views}
         )
         shown = await pay_visible(actor, projects, self._managers)
         return [replace(v, rate_shown=v.shift.project_id in shown) for v in views], following
@@ -297,10 +297,10 @@ class RosterService:
                 cannot be probed.
         """
         ensure_role(actor, *STAFF_ROLES)
-        found = await self._shifts.own_published_one(actor.organization_id, actor.id, shift_id)
+        found = await self._shifts.own_published_one(actor.organisation_id, actor.id, shift_id)
         if found is None:
             raise NotFoundError(resource="Shift", id=shift_id)
-        contacts = await self._managers.members(actor.organization_id, found.project_id)
+        contacts = await self._managers.members(actor.organisation_id, found.project_id)
         return found, [m for m in contacts if m.is_active and not m.is_deleted]
 
     async def my_shifts(self, actor: User, first: date | None, last: date | None) -> list[OwnShift]:
@@ -316,7 +316,7 @@ class RosterService:
         ensure_role(actor, *STAFF_ROLES)
         starts_from, starts_before = _bounds((await self._org(actor)).timezone, first, last)
         return await self._shifts.own_published(
-            actor.organization_id, actor.id, starts_from, starts_before
+            actor.organisation_id, actor.id, starts_from, starts_before
         )
 
     async def publish(self, actor: User, project_id: uuid.UUID, first: date, last: date) -> int:
@@ -346,7 +346,7 @@ class RosterService:
         zone = await self._shifts.site_timezone(project_id)
         starts_from, starts_before = _bounds(zone, first, last)
         return await self._shifts.publish(
-            actor.organization_id, project_id, starts_from, starts_before, datetime.now(UTC)
+            actor.organisation_id, project_id, starts_from, starts_before, datetime.now(UTC)
         )
 
     # ------------------------------------------------------------------ shifts
@@ -403,7 +403,7 @@ class RosterService:
         ensure_role(actor, *MANAGER_ROLES)
         self._refuse_pay_rate(actor, data)
         _refuse_bad_pay_rate(data.get("pay_rate"))
-        org_id = actor.organization_id
+        org_id = actor.organisation_id
         if await self._projects.get_by_id(data["project_id"], org_id) is None:
             raise NotFoundError(resource="Project", id=data["project_id"])
         await self._require_edit(actor, data["project_id"])
@@ -446,7 +446,7 @@ class RosterService:
         return Judged(shift, await self._judge(actor, [shift.id]))
 
     async def _locked_shift(self, actor: User, id: uuid.UUID) -> Shift:
-        shift = await self._shifts.get_locked(id, actor.organization_id)
+        shift = await self._shifts.get_locked(id, actor.organisation_id)
         if shift is None:
             raise NotFoundError(resource="Shift", id=id)
         return shift
@@ -477,7 +477,7 @@ class RosterService:
         ends_at = data.get("ends_at", shift.ends_at)
         if ends_at <= starts_at:
             raise _times_invalid()
-        updated = await self._shifts.update(id, actor.organization_id, **data)
+        updated = await self._shifts.update(id, actor.organisation_id, **data)
         moved = starts_at - shift_start
         if moved or ends_at != shift_end:
             await self._follow_shift(actor, updated, moved)
@@ -502,7 +502,7 @@ class RosterService:
             )
             await self._assignments.update(
                 a.id,
-                actor.organization_id,
+                actor.organisation_id,
                 starts_at=starts_at if within else None,
                 ends_at=ends_at if within else None,
             )
@@ -520,7 +520,7 @@ class RosterService:
         shift = await self._locked_shift(actor, id)
         await self._require_edit(actor, shift.project_id)
         _refuse_stale(shift, expected)
-        await self._shifts.delete(id, actor.organization_id)
+        await self._shifts.delete(id, actor.organisation_id)
 
     async def views(self, shifts: list[Shift]) -> list[ShiftView]:
         """The shifts with their sites' time zones and assignments."""
@@ -566,7 +566,7 @@ class RosterService:
         # The employee's row too: a deactivation at the same moment waits, and two assignments of
         # one employee run one after the other, so the second's warnings see the first.
         await self._users.lock_user(user_id)
-        employee = await self._users.get_by_id(user_id, actor.organization_id)
+        employee = await self._users.get_by_id(user_id, actor.organisation_id)
         if employee is None or employee.role == UserRole.client:
             raise NotFoundError(resource="Employee", id=user_id)
         if not employee.is_active:
@@ -576,7 +576,7 @@ class RosterService:
                 field="user_id",
             )
         assignment = await self._assignments.create(
-            actor.organization_id,
+            actor.organisation_id,
             {
                 "shift_id": shift_id,
                 "user_id": user_id,
@@ -586,7 +586,7 @@ class RosterService:
                 "note": note,
             },
         )
-        await self._shifts.touch(shift_id, actor.organization_id)
+        await self._shifts.touch(shift_id, actor.organisation_id)
         await self._record(actor, shift, "assigned", [user_id], note, alert)
         return Judged(assignment, await self._judge(actor, [shift_id]))
 
@@ -611,7 +611,7 @@ class RosterService:
                 ``assignment.times_out_of_range`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organization_id)
+        assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organisation_id)
         if assignment is None:
             raise NotFoundError(resource="Assignment", id=id)
         shift = await self._locked_shift(actor, assignment.shift_id)
@@ -619,14 +619,14 @@ class RosterService:
         _refuse_stale(shift, expected)
         _refuse_bad_own_times(shift, starts_at, ends_at)
         updated = await self._assignments.update(
-            id, actor.organization_id, starts_at=starts_at, ends_at=ends_at
+            id, actor.organisation_id, starts_at=starts_at, ends_at=ends_at
         )
-        await self._shifts.touch(shift.id, actor.organization_id)
+        await self._shifts.touch(shift.id, actor.organisation_id)
         return Judged(updated, await self._judge(actor, [shift.id]))
 
     async def fresh_shift(self, actor: User, id: uuid.UUID) -> Shift:
         """The shift as stored now, for its new ``etag`` after a change (007 FR-041)."""
-        shift = await self._shifts.get_locked(id, actor.organization_id)
+        shift = await self._shifts.get_locked(id, actor.organisation_id)
         if shift is None:
             raise NotFoundError(resource="Shift", id=id)
         return shift
@@ -635,7 +635,7 @@ class RosterService:
         self, actor: User, id: uuid.UUID, expected: str | None = None, alert: str = "none"
     ) -> tuple[uuid.UUID, list[dict[str, Any]]]:
         """:meth:`unassign`, also answering the shift the assignment was on."""
-        assignment = await self._assignments.get_by_id(id, actor.organization_id)
+        assignment = await self._assignments.get_by_id(id, actor.organisation_id)
         warnings = await self.unassign(actor, id, expected, alert)
         assert assignment is not None, "unassign found it"
         return assignment.shift_id, warnings
@@ -654,17 +654,17 @@ class RosterService:
             PreconditionFailedError: ``roster.changed`` (HTTP 412).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organization_id)
+        assignment: Assignment | None = await self._assignments.get_by_id(id, actor.organisation_id)
         if assignment is None:
             raise NotFoundError(resource="Assignment", id=id)
-        shift = await self._shifts.get_locked(assignment.shift_id, actor.organization_id)
+        shift = await self._shifts.get_locked(assignment.shift_id, actor.organisation_id)
         # Read again under the lock: another request may have removed it while this one waited.
-        if shift is None or not await self._assignments.exists(id, actor.organization_id):
+        if shift is None or not await self._assignments.exists(id, actor.organisation_id):
             raise NotFoundError(resource="Assignment", id=id)
         await self._require_edit(actor, shift.project_id)
         _refuse_stale(shift, expected)
-        await self._assignments.delete(id, actor.organization_id)
-        await self._shifts.touch(shift.id, actor.organization_id)
+        await self._assignments.delete(id, actor.organisation_id)
+        await self._shifts.touch(shift.id, actor.organisation_id)
         await self._record(actor, shift, "unassigned", [assignment.user_id], None, alert)
         return await self._judge(actor, [assignment.shift_id])
 
@@ -679,25 +679,25 @@ class RosterService:
             NotFoundError: The assignment is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        assignment = await self._assignments.get_by_id(id, actor.organization_id)
+        assignment = await self._assignments.get_by_id(id, actor.organisation_id)
         if assignment is None:
             raise NotFoundError(resource="Assignment", id=id)
         shift = await self._locked_shift(actor, assignment.shift_id)
         await self._require_edit(actor, shift.project_id)
         # Read again under the shift's lock: a move or another lock may have changed it (R48).
-        assignment = await self._assignments.fresh(id, actor.organization_id)
+        assignment = await self._assignments.fresh(id, actor.organisation_id)
         if assignment is None or assignment.shift_id != shift.id:
             raise NotFoundError(resource="Assignment", id=id)
         changed = (assignment.locked_at is None) == on
         if changed:
             assignment = await self._assignments.update(
                 id,
-                actor.organization_id,
+                actor.organisation_id,
                 locked_by=actor.id if on else None,
                 locked_at=datetime.now(UTC) if on else None,
             )
             # Only a real change moves the shift's ETag (R45).
-            await self._shifts.touch(shift.id, actor.organization_id)
+            await self._shifts.touch(shift.id, actor.organisation_id)
         return assignment, await self.fresh_shift(actor, shift.id)
 
     async def shift_to_edit(self, actor: User, shift_id: uuid.UUID) -> Shift:
@@ -708,7 +708,7 @@ class RosterService:
             NotFoundError: The shift is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        shift = await self._shifts.get_by_id(shift_id, actor.organization_id)
+        shift = await self._shifts.get_by_id(shift_id, actor.organisation_id)
         if shift is None:
             raise NotFoundError(resource="Shift", id=shift_id)
         await self._require_edit(actor, shift.project_id)
@@ -726,12 +726,12 @@ class RosterService:
             NotFoundError: The shift is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        shift = await self._shifts.get_by_id(shift_id, actor.organization_id)
+        shift = await self._shifts.get_by_id(shift_id, actor.organisation_id)
         if shift is None:
             raise NotFoundError(resource="Shift", id=shift_id)
         await self._require_edit(actor, shift.project_id)
         found = await self._assignments.overlapping(
-            actor.organization_id, shift.id, shift.starts_at, shift.ends_at
+            actor.organisation_id, shift.id, shift.starts_at, shift.ends_at
         )
         mine = await self._editable(actor, {s.project_id for _, s in found})
         return [
@@ -774,7 +774,7 @@ class RosterService:
                 when the target is the shift they are on (HTTP 409).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        org = actor.organization_id
+        org = actor.organisation_id
         moving = await self._assignments.get_by_id(assignment_id, org)
         if moving is None:
             raise NotFoundError(resource="Assignment", id=assignment_id)
@@ -865,7 +865,7 @@ class RosterService:
         if self._edit_events is None:
             return
         await self._edit_events.add(
-            actor.organization_id,
+            actor.organisation_id,
             {
                 "project_id": shift.project_id,
                 "shift_id": shift.id,
@@ -889,7 +889,7 @@ class RosterService:
             NotFoundError: The project is not in the caller's organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+        if await self._projects.get_by_id(project_id, actor.organisation_id) is None:
             raise NotFoundError(resource="Project", id=project_id)
 
     async def require_edit(self, actor: User, project_id: uuid.UUID) -> None:
@@ -905,7 +905,7 @@ class RosterService:
         return await self._shifts.site_timezone(project_id)
 
     async def _org(self, actor: User) -> Any:
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         assert org is not None, "the caller's organisation exists"
         return org
 
@@ -925,7 +925,7 @@ class RosterService:
         focused = await self._shifts.views(
             [
                 s
-                for s in [await self._shifts.get_by_id(i, actor.organization_id) for i in focus]
+                for s in [await self._shifts.get_by_id(i, actor.organisation_id) for i in focus]
                 if s
             ]
         )
@@ -942,7 +942,7 @@ class RosterService:
                 week_start(latest, org.timezone) + timedelta(days=7), time(), week
             )
             start, end = min(week_begins, earliest - margin), max(week_ends, latest + margin)
-            nearby = await self._shifts.of_employees(actor.organization_id, people, end, start)
+            nearby = await self._shifts.of_employees(actor.organisation_id, people, end, start)
             others = await self._shifts.views([s for s in nearby if s.id not in set(focus)])
             entry_first, entry_last = (
                 (start - timedelta(days=1)).date(),
@@ -950,13 +950,13 @@ class RosterService:
             )
             if self._availability is not None:
                 entries = await self._availability.scheduling_entries(
-                    actor.organization_id, people, entry_first, entry_last
+                    actor.organisation_id, people, entry_first, entry_last
                 )
             else:
                 entries = [
                     Entry(e.user_id, e.kind, e.starts_on, e.ends_on, e.shift_type_id, e.weekday)  # type: ignore[arg-type]
                     for e in await self._entries.for_users(
-                        actor.organization_id, people, entry_first, entry_last
+                        actor.organisation_id, people, entry_first, entry_last
                     )
                 ]
         # A deleted employee's assignments stay, so they are judged as no longer active.
@@ -964,7 +964,7 @@ class RosterService:
             u.id: Employee(u.id, u.is_active and not u.is_deleted)
             for u in await self._users.get_many(
                 {a.user_id for v in [*focused, *others] for a in v.assignments},
-                actor.organization_id,
+                actor.organisation_id,
             )
         }
         found = validate(

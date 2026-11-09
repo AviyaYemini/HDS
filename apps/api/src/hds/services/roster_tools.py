@@ -288,10 +288,10 @@ class RosterToolsService:
             ConflictError: ``override.duplicate`` (HTTP 409).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        assignment = await self._assignments.get_by_id(assignment_id, actor.organization_id)
+        assignment = await self._assignments.get_by_id(assignment_id, actor.organisation_id)
         if assignment is None:
             raise NotFoundError(resource="Assignment", id=assignment_id)
-        shift = await self._shifts.get_by_id(assignment.shift_id, actor.organization_id)
+        shift = await self._shifts.get_by_id(assignment.shift_id, actor.organisation_id)
         if shift is None:
             raise NotFoundError(resource="Assignment", id=assignment_id)
         await self._roster.require_edit(actor, shift.project_id)
@@ -304,7 +304,7 @@ class RosterToolsService:
                 detail="The assignment does not have that warning now.",
             )
         return await self._overrides.create(
-            actor.organization_id,
+            actor.organisation_id,
             {
                 "assignment_id": assignment_id,
                 "warning_code": warning_code,
@@ -318,7 +318,7 @@ class RosterToolsService:
     ) -> list[RuleOverride]:
         """The overrides on the given assignments (Manager or Admin, for the roster read)."""
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._overrides.for_assignments(actor.organization_id, assignment_ids)
+        return await self._overrides.for_assignments(actor.organisation_id, assignment_ids)
 
     # ---------------------------------------------------------- publish review
 
@@ -334,7 +334,7 @@ class RosterToolsService:
         zone = await self._roster.site_zone(project_id)
         begins, ends = utc_range(first, last, zone)
         return zone, await self._shifts.in_project(
-            actor.organization_id, project_id, begins, ends, status="draft"
+            actor.organisation_id, project_id, begins, ends, status="draft"
         )
 
     async def publish_preview(
@@ -359,7 +359,7 @@ class RosterToolsService:
         overridden = {
             (o.assignment_id, o.warning_code)
             for o in await self._overrides.for_assignments(
-                actor.organization_id, list(by_person_shift.values())
+                actor.organisation_id, list(by_person_shift.values())
             )
         }
         open_count = 0
@@ -395,7 +395,7 @@ class RosterToolsService:
             for a in v.assignments:
                 per_person[a.user_id] = per_person.get(a.user_id, 0) + 1
         await self._events.add_many(
-            actor.organization_id,
+            actor.organisation_id,
             [
                 {
                     "project_id": project_id,
@@ -430,7 +430,7 @@ class RosterToolsService:
         """The week as a plan, for a caller that has already checked the project."""
         zone = await self._roster.site_zone(project_id)
         begins, ends = utc_range(week, week + timedelta(days=6), zone)
-        shifts = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)
+        shifts = await self._shifts.in_project(actor.organisation_id, project_id, begins, ends)
         views = await self._roster.views(shifts)
         return [to_plan(v.shift, zone, v.assignments) for v in views]
 
@@ -456,7 +456,7 @@ class RosterToolsService:
         await self._roster.require_edit(actor, project_id)
         zone = await self._roster.site_zone(project_id)
         begins, ends = utc_range(week, week + timedelta(days=7), zone)
-        existing = await self._shifts.in_project(actor.organization_id, project_id, begins, ends)
+        existing = await self._shifts.in_project(actor.organisation_id, project_id, begins, ends)
         # Each shift is matched once: a second plan item at the same type and start does not
         # replace the same draft twice (R85).
         matched: set[uuid.UUID] = set()
@@ -465,7 +465,7 @@ class RosterToolsService:
         named = {p.user_id for item in plan for p in item.people}
         active = {
             u.id
-            for u in await self._users.get_many(named, actor.organization_id)
+            for u in await self._users.get_many(named, actor.organisation_id)
             if u.is_active and not u.is_deleted
         }
         keep_rates = actor.role == UserRole.admin
@@ -563,7 +563,7 @@ class RosterToolsService:
     async def templates(self, actor: User, project_id: uuid.UUID) -> list[WeekTemplate]:
         """The project's saved weeks (Manager or Admin); 404 for another organisation's project."""
         await self._roster.require_project(actor, project_id)
-        return await self._templates.for_project(actor.organization_id, project_id)
+        return await self._templates.for_project(actor.organisation_id, project_id)
 
     async def save_template(
         self, actor: User, project_id: uuid.UUID, name: str, week: date
@@ -575,7 +575,7 @@ class RosterToolsService:
         # require_edit has looked the project up already (group O review).
         plan = await self._plan_of(actor, project_id, week)
         return await self._templates.create(
-            actor.organization_id,
+            actor.organisation_id,
             {
                 "project_id": project_id,
                 "name": name,
@@ -588,7 +588,7 @@ class RosterToolsService:
         """Remove one of the project's templates."""
         ensure_role(actor, *MANAGER_ROLES)
         await self._roster.require_edit(actor, project_id)
-        if not await self._templates.delete(actor.organization_id, project_id, id):
+        if not await self._templates.delete(actor.organisation_id, project_id, id):
             raise NotFoundError(resource="WeekTemplate", id=id)
 
     async def apply_template(
@@ -603,7 +603,7 @@ class RosterToolsService:
         """Apply a saved week to the week starting on Sunday ``week``."""
         _check_week(week)
         ensure_role(actor, *MANAGER_ROLES)
-        template = await self._templates.get(actor.organization_id, project_id, id)
+        template = await self._templates.get(actor.organisation_id, project_id, id)
         if template is None:
             raise NotFoundError(resource="WeekTemplate", id=id)
         plan = plan_from_json(template.body)
@@ -674,7 +674,7 @@ class RosterToolsService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         found: list[TrackedSubmission] = []
-        staff = await self._users.staff_of(actor.organization_id)
+        staff = await self._users.staff_of(actor.organisation_id)
         statuses = await self._submissions.statuses_for(actor, window_id, [p.id for p in staff])
         for person in staff:
             status = statuses[person.id]

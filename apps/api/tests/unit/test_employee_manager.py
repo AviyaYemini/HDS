@@ -21,7 +21,7 @@ from hds.services.employee import EmployeeService
 def _make_user(**kwargs: object) -> User:
     user = MagicMock(spec=User)
     user.id = kwargs.get("id", uuid.uuid4())
-    user.organization_id = kwargs.get("org_id", uuid.uuid4())
+    user.organisation_id = kwargs.get("org_id", uuid.uuid4())
     user.email = kwargs.get("email", "emp@hds.test")
     user.full_name = kwargs.get("full_name", "Test Employee")
     user.role = kwargs.get("role", UserRole.employee)
@@ -69,7 +69,7 @@ async def test_create_employee_success_hashes_password() -> None:
 
     assert result is created
     org_id, data = user_repo.create_if_absent.await_args.args
-    assert org_id == actor.organization_id
+    assert org_id == actor.organisation_id
     assert "initial_password" not in data
     assert data["password_hash"].startswith("$argon2id$")
     assert data["role"] == UserRole.employee
@@ -174,7 +174,7 @@ async def test_a_manager_promoting_to_manager_by_edit_ends_the_sessions() -> Non
 
     assert result.role == UserRole.manager
     user_repo.update.assert_awaited_once_with(
-        target.id, actor.organization_id, role=UserRole.manager
+        target.id, actor.organisation_id, role=UserRole.manager
     )
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
@@ -190,7 +190,7 @@ async def test_an_admin_making_an_admin_by_edit_ends_the_sessions() -> None:
 
     await svc.edit_employee(actor, target.id, {"role": "admin"})
 
-    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, role=UserRole.admin)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organisation_id, role=UserRole.admin)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
@@ -251,7 +251,7 @@ async def test_deactivate_revokes_all_sessions() -> None:
 
     await svc.deactivate(actor, target.id)
 
-    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=False)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organisation_id, is_active=False)
     token_repo.revoke_all_for_user.assert_awaited_once_with(target.id, "account")
 
 
@@ -263,7 +263,7 @@ async def test_reactivate_employee() -> None:
     user_repo.get_by_id = AsyncMock(return_value=target)
     user_repo.update = AsyncMock(return_value=_make_user(is_active=True))
     await svc.reactivate(actor, target.id)
-    user_repo.update.assert_awaited_once_with(target.id, actor.organization_id, is_active=True)
+    user_repo.update.assert_awaited_once_with(target.id, actor.organisation_id, is_active=True)
 
 
 # ── FR-011: last active Admin ──────────────────────────────────────────────
@@ -442,7 +442,7 @@ async def test_reactivating_a_deactivated_account_still_works_and_keeps_its_acti
 
     await svc.reactivate(actor, deactivated.id)
 
-    user_repo.update.assert_awaited_once_with(deactivated.id, actor.organization_id, is_active=True)
+    user_repo.update.assert_awaited_once_with(deactivated.id, actor.organisation_id, is_active=True)
 
 
 @pytest.mark.asyncio
@@ -483,7 +483,7 @@ async def test_deactivating_a_pending_account_is_refused() -> None:
 async def test_an_edit_of_a_client_accounts_role_is_refused(change: str) -> None:
     actor = _make_user(role=UserRole.admin)
     svc, user_repo, _ = _svc()
-    target = _make_user(role=UserRole.client, org_id=actor.organization_id)
+    target = _make_user(role=UserRole.client, org_id=actor.organisation_id)
     user_repo.get_by_id = AsyncMock(return_value=target)
 
     with pytest.raises(ConflictError) as refused:

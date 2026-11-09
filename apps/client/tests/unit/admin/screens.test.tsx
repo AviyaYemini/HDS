@@ -24,8 +24,8 @@ const ADMIN: Me = {
 };
 const MANAGER: Me = { ...ADMIN, role: "manager", capabilities: ["staff.manage", "clients.manage", "projects.manage", "account.self"] };
 
-const CLIENT = { id: "c1", organization_id: "o", name: "Acme", contract_start: "2026-01-01", contract_end: null, contact_name: "Rina", contact_email: null, contact_phone: null, is_active: true, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
-const PERSON = { id: "u1", organization_id: "o", full_name: "Dana Levi", email: "dana@hds.test", role: "employee", is_active: true, phone: null, default_hourly_rate: "48.0000", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
+const CLIENT = { id: "c1", organisation_id: "o", name: "Acme", contract_start: "2026-01-01", contract_end: null, contact_name: "Rina", contact_email: null, contact_phone: null, is_active: true, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
+const PERSON = { id: "u1", organisation_id: "o", full_name: "Dana Levi", email: "dana@hds.test", role: "employee", is_active: true, phone: null, default_hourly_rate: "48.0000", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
 
 async function open(me: Me, params: Record<string, string> = {}) {
   router.__setSearchParams(params);
@@ -143,12 +143,12 @@ test("leaving with unsaved changes asks first, and leaving anyway goes", async (
 });
 
 test("a project's managers are found by name, and only staff who manage can be added", async () => {
-  const project = { id: "p1", organization_id: "o", name: "Night Watch", client_id: "c1", site_id: "s1", type: "security", status: "active", start_date: "2026-01-01", end_date: null, billing_rate: "75.0000", created_at: "x", updated_at: "x" };
+  const project = { id: "p1", organisation_id: "o", name: "Night Watch", client_id: "c1", site_id: "s1", type: "security", status: "active", start_date: "2026-01-01", end_date: null, billing_rate: "75.0000", created_at: "x", updated_at: "x" };
   const { api, session } = await open(ADMIN, { open: "p1" });
   api
     .on("GET", "/api/v1/projects", json(200, { items: [project] }))
     .on("GET", "/api/v1/clients", json(200, { items: [CLIENT] }))
-    .on("GET", "/api/v1/sites", json(200, { items: [{ id: "s1", name: "HQ", address: "1 Main", timezone: "Asia/Jerusalem", organization_id: "o", created_at: "x", updated_at: "x" }] }))
+    .on("GET", "/api/v1/sites", json(200, { items: [{ id: "s1", name: "HQ", address: "1 Main", timezone: "Asia/Jerusalem", organisation_id: "o", created_at: "x", updated_at: "x" }] }))
     .on("GET", "/api/v1/projects/p1/managers", json(200, { items: [] }))
     .on("GET", "/api/v1/employees", json(200, { items: [PERSON, { ...PERSON, id: "u2", full_name: "Avi Manager", email: "avi@hds.test", role: "manager" }] }))
     .on("PUT", "/api/v1/projects/p1/managers", json(200, { items: [{ id: "u2", full_name: "Avi Manager" }] }));

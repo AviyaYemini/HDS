@@ -36,5 +36,5 @@ class CapabilityService:
         """
         managed: list[uuid.UUID] = []
         if user.role == UserRole.manager:
-            managed = await self._managers.managed_by(user.organization_id, user.id)
+            managed = await self._managers.managed_by(user.organisation_id, user.id)
         return UserCapabilities(capabilities_for(user.role), managed)

@@ -35,7 +35,7 @@ class SavedViewRepository(BaseRepository[SavedView]):
         Raises:
             ConflictError: ``views.duplicate_name`` when the user has one by that name there.
         """
-        row = SavedView(id=uuid.uuid4(), organization_id=org_id, **data)
+        row = SavedView(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(row)
         try:
             async with self.session.begin_nested():

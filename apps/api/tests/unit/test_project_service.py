@@ -18,7 +18,7 @@ from hds.services.project import ProjectService
 def _actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -61,7 +61,7 @@ async def test_create_project_with_valid_billing_rate() -> None:
         pay_settings=AsyncMock(),
     ).create_project(actor, data)
 
-    repo.create.assert_awaited_once_with(actor.organization_id, data)
+    repo.create.assert_awaited_once_with(actor.organisation_id, data)
 
 
 @pytest.mark.asyncio
@@ -172,7 +172,7 @@ async def test_set_status_transitions(current: str, target: str) -> None:
         pay_settings=AsyncMock(),
     ).set_status(actor, proj.id, target)
 
-    repo.update.assert_awaited_once_with(proj.id, actor.organization_id, status=target)
+    repo.update.assert_awaited_once_with(proj.id, actor.organisation_id, status=target)
 
 
 @pytest.mark.asyncio
@@ -189,7 +189,7 @@ async def test_soft_delete_project_by_admin() -> None:
         pay_settings=AsyncMock(),
     ).soft_delete(actor, proj.id)
 
-    repo.soft_delete.assert_awaited_once_with(proj.id, actor.organization_id)
+    repo.soft_delete.assert_awaited_once_with(proj.id, actor.organisation_id)
 
 
 @pytest.mark.asyncio
@@ -232,7 +232,7 @@ async def test_a_client_account_with_no_client_lists_nothing(sent: uuid.UUID | N
     actor = _actor(UserRole.client)
     actor.client_id = None
 
-    assert await _svc(repo).list_projects(actor.organization_id, actor, client_id=sent) == []
+    assert await _svc(repo).list_projects(actor.organisation_id, actor, client_id=sent) == []
     repo.list_by_org.assert_not_awaited()
     repo.list_by_client.assert_not_awaited()
 
@@ -244,5 +244,5 @@ async def test_a_client_account_with_no_client_is_told_a_project_does_not_exist(
     actor.client_id = None
 
     with pytest.raises(NotFoundError):
-        await _svc(repo).get_project(uuid.uuid4(), actor.organization_id, actor)
+        await _svc(repo).get_project(uuid.uuid4(), actor.organisation_id, actor)
     repo.get_by_id.assert_not_awaited()

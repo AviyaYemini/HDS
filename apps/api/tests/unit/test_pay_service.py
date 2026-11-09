@@ -27,7 +27,7 @@ NOW = datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
 def person(role: UserRole = UserRole.employee, rate: str | None = "50.0000") -> Any:
     return SimpleNamespace(
         id=uuid.uuid4(),
-        organization_id=ORG,
+        organisation_id=ORG,
         role=role,
         default_hourly_rate=None if rate is None else Decimal(rate),
     )

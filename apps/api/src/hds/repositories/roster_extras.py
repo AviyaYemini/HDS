@@ -30,7 +30,7 @@ class RuleOverrideRepository(BaseRepository[RuleOverride]):
         result = await self.session.execute(
             select(RuleOverride)
             .where(
-                RuleOverride.organization_id == org_id,
+                RuleOverride.organisation_id == org_id,
                 RuleOverride.assignment_id.in_(list(assignment_ids)),
             )
             .order_by(RuleOverride.created_at, RuleOverride.id)
@@ -44,7 +44,7 @@ class RuleOverrideRepository(BaseRepository[RuleOverride]):
         if assignment_ids:
             await self.session.execute(
                 delete(RuleOverride).where(
-                    RuleOverride.organization_id == org_id,
+                    RuleOverride.organisation_id == org_id,
                     RuleOverride.assignment_id.in_(list(assignment_ids)),
                 )
             )
@@ -55,7 +55,7 @@ class RuleOverrideRepository(BaseRepository[RuleOverride]):
         Raises:
             ConflictError: ``override.duplicate`` when that warning already has one (HTTP 409).
         """
-        row = RuleOverride(id=uuid.uuid4(), organization_id=org_id, **data)
+        row = RuleOverride(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(row)
         try:
             async with self.session.begin_nested():
@@ -77,7 +77,7 @@ class WeekTemplateRepository(BaseRepository[WeekTemplate]):
         """The project's templates by name."""
         result = await self.session.execute(
             select(WeekTemplate)
-            .where(WeekTemplate.organization_id == org_id, WeekTemplate.project_id == project_id)
+            .where(WeekTemplate.organisation_id == org_id, WeekTemplate.project_id == project_id)
             .order_by(WeekTemplate.name)
         )
         return list(result.scalars())
@@ -88,7 +88,7 @@ class WeekTemplateRepository(BaseRepository[WeekTemplate]):
         """One of the project's templates."""
         result = await self.session.execute(
             select(WeekTemplate).where(
-                WeekTemplate.organization_id == org_id,
+                WeekTemplate.organisation_id == org_id,
                 WeekTemplate.project_id == project_id,
                 WeekTemplate.id == id,
             )
@@ -101,7 +101,7 @@ class WeekTemplateRepository(BaseRepository[WeekTemplate]):
         Raises:
             ConflictError: ``templates.duplicate_name`` when the project has one by that name.
         """
-        row = WeekTemplate(id=uuid.uuid4(), organization_id=org_id, **data)
+        row = WeekTemplate(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(row)
         try:
             async with self.session.begin_nested():
@@ -120,7 +120,7 @@ class WeekTemplateRepository(BaseRepository[WeekTemplate]):
         result = await self.session.execute(
             delete(WeekTemplate)
             .where(
-                WeekTemplate.organization_id == org_id,
+                WeekTemplate.organisation_id == org_id,
                 WeekTemplate.project_id == project_id,
                 WeekTemplate.id == id,
             )
@@ -137,14 +137,14 @@ class PublishEventRepository(BaseRepository[PublishEvent]):
     async def add_many(self, org_id: uuid.UUID, rows: Sequence[dict[str, Any]]) -> None:
         """Record the events of one publish."""
         for data in rows:
-            self.session.add(PublishEvent(id=uuid.uuid4(), organization_id=org_id, **data))
+            self.session.add(PublishEvent(id=uuid.uuid4(), organisation_id=org_id, **data))
         await self.session.flush()
 
     async def for_project(self, org_id: uuid.UUID, project_id: uuid.UUID) -> list[PublishEvent]:
         """A project's events, oldest first (for tests and feature 010)."""
         result = await self.session.execute(
             select(PublishEvent)
-            .where(PublishEvent.organization_id == org_id, PublishEvent.project_id == project_id)
+            .where(PublishEvent.organisation_id == org_id, PublishEvent.project_id == project_id)
             .order_by(PublishEvent.created_at, PublishEvent.id)
         )
         return list(result.scalars())
@@ -157,7 +157,7 @@ class RosterEditEventRepository(BaseRepository[RosterEditEvent]):
 
     async def add(self, org_id: uuid.UUID, data: dict[str, Any]) -> RosterEditEvent:
         """Record one edit."""
-        row = RosterEditEvent(id=uuid.uuid4(), organization_id=org_id, **data)
+        row = RosterEditEvent(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(row)
         await self.session.flush()
         return row
@@ -167,7 +167,7 @@ class RosterEditEventRepository(BaseRepository[RosterEditEvent]):
         result = await self.session.execute(
             select(RosterEditEvent)
             .where(
-                RosterEditEvent.organization_id == org_id,
+                RosterEditEvent.organisation_id == org_id,
                 RosterEditEvent.project_id == project_id,
             )
             .order_by(RosterEditEvent.created_at, RosterEditEvent.id)

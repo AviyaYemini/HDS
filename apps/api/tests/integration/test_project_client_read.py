@@ -49,7 +49,7 @@ async def test_the_per_client_read_keeps_the_status_filter(
     manager = await headers_for(async_client, "manager@hds.test")
     active, ended = await two_projects(async_client, manager)
     repo = ProjectRepository(test_db)
-    org_id, client_id = uuid.UUID(active["organization_id"]), uuid.UUID(active["client_id"])
+    org_id, client_id = uuid.UUID(active["organisation_id"]), uuid.UUID(active["client_id"])
 
     only_ended = await repo.list_by_client(client_id, org_id, status=ProjectStatus.ended)
     every = await repo.list_by_client(client_id, org_id)

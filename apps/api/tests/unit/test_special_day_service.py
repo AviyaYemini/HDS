@@ -22,13 +22,13 @@ DAY = date(2027, 9, 11)
 
 
 def person(role: UserRole) -> Any:
-    return SimpleNamespace(id=uuid.uuid4(), organization_id=ORG, role=role)
+    return SimpleNamespace(id=uuid.uuid4(), organisation_id=ORG, role=role)
 
 
 def day(project_id: uuid.UUID | None = None, on: date = DAY, rate: str = "150.00") -> Any:
     return SimpleNamespace(
         id=uuid.uuid4(),
-        organization_id=ORG,
+        organisation_id=ORG,
         project_id=project_id,
         day=on,
         name="Holiday",

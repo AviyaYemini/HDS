@@ -38,7 +38,7 @@ async def test_a_new_start_and_a_new_end_sent_at_once_never_store_a_broken_pair(
 ) -> None:
     client = Client(
         id=uuid.uuid4(),
-        organization_id=seed_users["admin"].organization_id,
+        organisation_id=seed_users["admin"].organisation_id,
         name="Acme",
         contract_start=date(2026, 2, 1),
     )
@@ -89,9 +89,9 @@ async def test_a_date_change_that_deactivates_never_deadlocks_with_a_deactivatio
     seed_users: dict[str, User],
     race: Callable[..., Awaitable[list[Any]]],
 ) -> None:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     client = Client(
-        id=uuid.uuid4(), organization_id=org_id, name="Acme", contract_start=date(2026, 2, 1)
+        id=uuid.uuid4(), organisation_id=org_id, name="Acme", contract_start=date(2026, 2, 1)
     )
     test_db.add(client)
     await test_db.flush()
@@ -101,7 +101,7 @@ async def test_a_date_change_that_deactivates_never_deadlocks_with_a_deactivatio
         test_db.add(
             User(
                 id=uuid.uuid4(),
-                organization_id=org_id,
+                organisation_id=org_id,
                 client_id=client_id,
                 email=f"portal{n}@hds.test",
                 password_hash=secret,
@@ -153,7 +153,7 @@ async def test_a_locked_read_returns_the_latest_dates_even_if_the_session_holds_
     first.add(org)
     await first.flush()
     client = Client(
-        id=uuid.uuid4(), organization_id=org.id, name="Acme", contract_start=date(2026, 2, 1)
+        id=uuid.uuid4(), organisation_id=org.id, name="Acme", contract_start=date(2026, 2, 1)
     )
     first.add(client)
     await first.commit()

@@ -27,7 +27,7 @@ async def recorded(
     await staffed_project(client, admin)
     job = (await ask(client, admin)).json()
     events = ScheduleJobEventRepository(test_db)
-    org = users["admin"].organization_id
+    org = users["admin"].organisation_id
     await events.append(org, job["id"], "finished", AT, {"filled": 7}, version=0)
     return events
 
@@ -36,7 +36,7 @@ async def test_the_record_reads_back_in_order(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
     events = await recorded(async_client, test_db, seed_users)
-    org = seed_users["admin"].organization_id
+    org = seed_users["admin"].organisation_id
     job_id = (await test_db.execute(text("SELECT id FROM schedule_jobs"))).scalar_one()
 
     rows = await events.for_job(org, job_id)
@@ -70,4 +70,4 @@ async def test_an_unknown_kind_is_refused_before_the_database(
     job_id = (await test_db.execute(text("SELECT id FROM schedule_jobs"))).scalar_one()
 
     with pytest.raises(ValueError, match="unknown run record kind"):
-        await events.append(seed_users["admin"].organization_id, job_id, "renamed", AT, {})
+        await events.append(seed_users["admin"].organisation_id, job_id, "renamed", AT, {})

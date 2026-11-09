@@ -46,7 +46,7 @@ async def row(db: AsyncSession, email: str) -> Any:
     """The account as stored, read fresh (never from the session's identity map)."""
     result = await db.execute(
         text(
-            "SELECT id, organization_id, role::text AS role, is_active, activated_at, "
+            "SELECT id, organisation_id, role::text AS role, is_active, activated_at, "
             "password_hash FROM users WHERE email = :e"
         ),
         {"e": email},
@@ -210,7 +210,7 @@ async def test_an_address_pending_in_another_organisation_is_untouched(
     token = "other-organisation-pending-link"
     await sql(
         test_db,
-        "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+        "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
         "is_active) VALUES (:i, :o, 'pending@other.test', 'h', 'Pending', "
         "CAST('employee' AS user_role), false)",
         i=uuid.uuid4(),
@@ -343,8 +343,8 @@ async def test_deactivating_a_client_keeps_activation_times_and_leaves_pending_u
     # A pending portal user cannot be created through the API; build one the way a legacy row is.
     await sql(
         test_db,
-        "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
-        "is_active, client_id) SELECT :i, organization_id, 'pending@beta.test', 'h', 'Pending', "
+        "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
+        "is_active, client_id) SELECT :i, organisation_id, 'pending@beta.test', 'h', 'Pending', "
         "CAST('client' AS user_role), false, CAST(:c AS uuid) FROM users "
         "WHERE email = 'kept@beta.test'",
         i=uuid.uuid4(),

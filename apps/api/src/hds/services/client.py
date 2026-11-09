@@ -97,7 +97,7 @@ class ClientService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._client_repo.list_by_org(actor.organization_id, is_active)
+        return await self._client_repo.list_by_org(actor.organisation_id, is_active)
 
     async def get_client(self, actor: User, id: uuid.UUID) -> Client:
         """Return one client of the organisation (Manager or Admin).
@@ -114,7 +114,7 @@ class ClientService:
             NotFoundError: The client is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        client = await self._client_repo.get_by_id(id, actor.organization_id)
+        client = await self._client_repo.get_by_id(id, actor.organisation_id)
         if client is None:
             raise NotFoundError(resource="Client", id=id)
         return client
@@ -134,7 +134,7 @@ class ClientService:
             NotFoundError: The client is not in the organisation (HTTP 404).
         """
         await self.get_client(actor, id)
-        return await self._client_repo.list_users(id, actor.organization_id)
+        return await self._client_repo.list_users(id, actor.organisation_id)
 
     async def create_client(self, actor: User, data: dict[str, Any]) -> Client:
         """Create a client in the actor's organisation (Manager or Admin).
@@ -152,7 +152,7 @@ class ClientService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         _validate_contract_dates(data.get("contract_start"), data.get("contract_end"))
-        return await self._client_repo.create(actor.organization_id, data)
+        return await self._client_repo.create(actor.organisation_id, data)
 
     async def edit_client(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Client:
         """Update a client (Manager or Admin).
@@ -185,7 +185,7 @@ class ClientService:
         # each pass against the old pair and together store a broken one. Deactivation locks it
         # too, so every path takes the client row before its portal users and none can deadlock.
         lock = "contract_start" in data or "contract_end" in data or data.get("is_active") is False
-        existing = await self._client_repo.get_by_id(id, actor.organization_id, for_update=lock)
+        existing = await self._client_repo.get_by_id(id, actor.organisation_id, for_update=lock)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         start = data.get("contract_start", existing.contract_start)
@@ -193,8 +193,8 @@ class ClientService:
         if (start, end) != (existing.contract_start, existing.contract_end):
             _validate_contract_dates(start, end)
         if data.get("is_active") is False and existing.is_active:
-            await self._deactivate_portal_users(id, actor.organization_id)
-        return await self._client_repo.update(id, actor.organization_id, **data)
+            await self._deactivate_portal_users(id, actor.organisation_id)
+        return await self._client_repo.update(id, actor.organisation_id, **data)
 
     async def create_client_user(
         self, actor: User, client_id: uuid.UUID, data: dict[str, Any]
@@ -219,7 +219,7 @@ class ClientService:
             DomainValidationError: ``users.password_too_short`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        client = await self._client_repo.get_by_id(client_id, actor.organization_id)
+        client = await self._client_repo.get_by_id(client_id, actor.organisation_id)
         if client is None:
             raise NotFoundError(resource="Client", id=client_id)
         if not client.is_active:
@@ -242,7 +242,7 @@ class ClientService:
         data["role"] = UserRole.client
         data["client_id"] = client_id
         # Hashing can take a while, so another request may have taken the address since the check.
-        user, created = await self._user_repo.create_if_absent(actor.organization_id, data)
+        user, created = await self._user_repo.create_if_absent(actor.organisation_id, data)
         if not created:
             raise ConflictError(
                 code="users.duplicate_email",
@@ -270,10 +270,10 @@ class ClientService:
             Ends the user's sessions and cancels their outstanding links (FR-207, FR-225).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        user = await self._user_repo.get_by_id(user_id, actor.organization_id)
+        user = await self._user_repo.get_by_id(user_id, actor.organisation_id)
         if user is None or user.role != UserRole.client or user.client_id != client_id:
             raise NotFoundError(resource="User", id=user_id)
-        await self._user_repo.soft_delete(user_id, actor.organization_id)
+        await self._user_repo.soft_delete(user_id, actor.organisation_id)
         await self._token_repo.revoke_all_for_user(user_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(user_id)
 
@@ -296,7 +296,7 @@ class ClientService:
         """
         ensure_role(actor, *ADMIN_ROLES)
         # The client row before its portal users, as in edit_client, so the two cannot deadlock.
-        existing = await self._client_repo.get_by_id(id, actor.organization_id, for_update=True)
+        existing = await self._client_repo.get_by_id(id, actor.organisation_id, for_update=True)
         if existing is None:
             raise NotFoundError(resource="Client", id=id)
         count = await self._client_repo.count_non_deleted_projects(id)
@@ -305,5 +305,5 @@ class ClientService:
                 code="clients.has_projects",
                 detail="Cannot delete a client that has active projects.",
             )
-        await self._deactivate_portal_users(id, actor.organization_id)
-        await self._client_repo.soft_delete(id, actor.organization_id)
+        await self._deactivate_portal_users(id, actor.organisation_id)
+        await self._client_repo.soft_delete(id, actor.organisation_id)

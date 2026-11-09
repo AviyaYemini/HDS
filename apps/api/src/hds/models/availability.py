@@ -31,7 +31,7 @@ class AvailabilityEntry(TimestampedBase):
 
     __tablename__ = "availability_entries"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)

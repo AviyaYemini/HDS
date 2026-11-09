@@ -1,7 +1,7 @@
 # Data model: Schedule generation
 
 Migration `021_schedule_generation` adds two tables and one column. Every table carries
-`organization_id`, as all tables do. Times are UTC; dates are local dates at the project's site.
+`organisation_id`, as all tables do. Times are UTC; dates are local dates at the project's site.
 
 ## staffing_needs (new)
 
@@ -10,7 +10,7 @@ A project's staffing need for one shift type on one weekday (US1, FR-001 to FR-0
 | Column | Type | Rules |
 | --- | --- | --- |
 | id | uuid | primary key |
-| organization_id | uuid | references organisations |
+| organisation_id | uuid | references organisations |
 | project_id | uuid | references projects, on delete cascade |
 | shift_type_id | uuid | references shift_types; must be in the project's set and active (checked by the service) |
 | weekday | smallint | 0 Sunday to 6 Saturday (`ck_staffing_needs_weekday`) |
@@ -27,7 +27,7 @@ A generation run and, once it has succeeded, its proposal (US2 to US4, FR-004 to
 | Column | Type | Rules |
 | --- | --- | --- |
 | id | uuid | primary key |
-| organization_id | uuid | references organisations |
+| organisation_id | uuid | references organisations |
 | requested_by | uuid | references users |
 | first_day, last_day | date | `last_day >= first_day` (`ck_schedule_jobs_order`), at most 31 days (`ck_schedule_jobs_length`) |
 | project_ids | jsonb | the run's project ids as strings; empty means every active project. JSON rather than `uuid[]` so the SQLite unit-test schema builds; the service validates each id |

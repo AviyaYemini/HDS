@@ -66,7 +66,7 @@ class User(TimestampedBase):
 
     __tablename__ = "users"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
@@ -106,7 +106,7 @@ class User(TimestampedBase):
             unique=True,
             postgresql_where=text("is_deleted = false"),
         ),
-        Index("idx_users_org", "organization_id"),
+        Index("idx_users_org", "organisation_id"),
         Index(
             "idx_users_client",
             "client_id",

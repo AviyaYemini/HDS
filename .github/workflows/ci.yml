@@ -261,7 +261,8 @@ jobs:
             "$BASE...$HEAD_SHA" -- apps/ infra/helm/ infra/cluster/k3d.yaml \
             infra/cluster/backup-pvc.yaml 'infra/Dockerfile.*' infra/backup/ infra/web/ \
             scripts/ops/status.sh infra/tests/rolling_update.sh infra/tests/rolling-update-values.yaml \
-            infra/tests/load.py infra/tests/flux_verify.sh .github/workflows/ci.yml); then
+            infra/tests/load.py infra/tests/flux_verify.sh infra/tests/compat_exempt.sh \
+            infra/tests/compat-exemptions.txt .github/workflows/ci.yml); then
             [ -n "$changed" ] || deploy=false
           fi
           echo "deploy=$deploy" | tee -a "$GITHUB_OUTPUT"
@@ -269,7 +270,7 @@ jobs:
           # (review R198), without widening `api`, which the database jobs read.
           compat=$api
           if [ "$compat" = false ] && changed=$(git diff --name-only "$BASE...$HEAD_SHA" -- \
-            infra/tests/compat.sh); then
+            infra/tests/compat.sh infra/tests/compat_exempt.sh infra/tests/compat-exemptions.txt); then
             [ -z "$changed" ] || compat=true
           fi
           echo "compat=$compat" | tee -a "$GITHUB_OUTPUT"

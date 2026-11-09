@@ -16,7 +16,7 @@ from hds.services.site import SiteService
 def _actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -38,7 +38,7 @@ async def test_create_site_success() -> None:
     svc = SiteService(site_repo=repo)
     await svc.create_site(actor, data)
 
-    repo.create.assert_awaited_once_with(actor.organization_id, data)
+    repo.create.assert_awaited_once_with(actor.organisation_id, data)
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_edit_site_success() -> None:
     svc = SiteService(site_repo=repo)
     await svc.edit_site(actor, existing.id, {"name": "Side Gate"})
 
-    repo.update.assert_awaited_once_with(existing.id, actor.organization_id, name="Side Gate")
+    repo.update.assert_awaited_once_with(existing.id, actor.organisation_id, name="Side Gate")
 
 
 @pytest.mark.asyncio

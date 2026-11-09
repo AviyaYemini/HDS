@@ -2194,10 +2194,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /**
              * Updated At
              * Format: date-time
@@ -2268,10 +2268,10 @@ export interface components {
             /** Is Active */
             is_active: boolean;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /** Phone */
             phone?: string | null;
             /**
@@ -3153,10 +3153,10 @@ export interface components {
             /** Managed Project Ids */
             managed_project_ids: string[];
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /** Phone */
             phone?: string | null;
             role: components["schemas"]["UserRole"];
@@ -3872,10 +3872,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /**
              * Site Id
              * Format: uuid
@@ -4647,10 +4647,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /** Timezone */
             timezone: string;
             /**
@@ -5019,10 +5019,10 @@ export interface components {
             /** Is Active */
             is_active: boolean;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /** Phone */
             phone?: string | null;
             role: components["schemas"]["UserRole"];
@@ -5306,10 +5306,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /**
              * Updated At
              * Format: date-time
@@ -5334,10 +5334,10 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Organization Id
+             * Organisation Id
              * Format: uuid
              */
-            organization_id: string;
+            organisation_id: string;
             /**
              * Updated At
              * Format: date-time

@@ -175,7 +175,7 @@ class PaySettingsService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return organisation_settings(await self._organisation(actor.organization_id))
+        return organisation_settings(await self._organisation(actor.organisation_id))
 
     async def change_organisation(self, actor: User, changes: Mapping[str, Any]) -> PaySettings:
         """Change premium defaults (Admin); projects that follow them follow the change.
@@ -189,13 +189,13 @@ class PaySettingsService:
         for name, value in changes.items():
             check(name, value)
             values.update(to_columns(name, value))
-        org = await self._orgs.update_pay(actor.organization_id, values)
+        org = await self._orgs.update_pay(actor.organisation_id, values)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return organisation_settings(org)
 
     async def _project(self, actor: User, project_id: uuid.UUID) -> Project:
-        project = await self._projects.get_by_id(project_id, actor.organization_id)
+        project = await self._projects.get_by_id(project_id, actor.organisation_id)
         if project is None:
             raise NotFoundError(resource="Project", id=project_id)
         return project
@@ -209,7 +209,7 @@ class PaySettingsService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         project = await self._project(actor, project_id)
-        settings, own = project_settings(await self._organisation(actor.organization_id), project)
+        settings, own = project_settings(await self._organisation(actor.organisation_id), project)
         return ProjectPay(project.pay_enabled, project.managers_see_pay, settings, own)
 
     def _columns(self, changes: Mapping[str, Any]) -> dict[str, Any]:
@@ -241,7 +241,7 @@ class PaySettingsService:
         """
         ensure_role(actor, UserRole.admin)
         values = self._columns(changes)
-        project = await self._projects.lock_and_read(project_id, actor.organization_id)
+        project = await self._projects.lock_and_read(project_id, actor.organisation_id)
         if project is None:
             raise NotFoundError(resource="Project", id=project_id)
         if project.status == ProjectStatus.ended:
@@ -250,7 +250,7 @@ class PaySettingsService:
                 detail="An ended project's pay settings and special days are fixed.",
             )
         if values:
-            await self._projects.update(project_id, actor.organization_id, **values)
+            await self._projects.update(project_id, actor.organisation_id, **values)
         return await self.read_project(actor, project_id)
 
     def columns_for_new_project(self, actor: User, pay: Mapping[str, Any]) -> dict[str, Any]:

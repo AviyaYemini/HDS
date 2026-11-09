@@ -16,7 +16,7 @@ from hds.services.qualification import QualificationService
 def _actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -38,7 +38,7 @@ async def test_create_qualification_success() -> None:
     svc = QualificationService(qual_repo=repo)
     await svc.create_qualification(actor, "First Aid")
 
-    repo.create.assert_awaited_once_with(actor.organization_id, "First Aid")
+    repo.create.assert_awaited_once_with(actor.organisation_id, "First Aid")
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_rename_qualification() -> None:
     qual_id = uuid.uuid4()
     await svc.rename_qualification(actor, qual_id, "Advanced First Aid")
 
-    repo.update.assert_awaited_once_with(qual_id, actor.organization_id, name="Advanced First Aid")
+    repo.update.assert_awaited_once_with(qual_id, actor.organisation_id, name="Advanced First Aid")
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_delete_qualification() -> None:
     qual_id = uuid.uuid4()
     await svc.delete_qualification(actor, qual_id)
 
-    repo.delete.assert_awaited_once_with(qual_id, actor.organization_id)
+    repo.delete.assert_awaited_once_with(qual_id, actor.organisation_id)
 
 
 @pytest.mark.asyncio

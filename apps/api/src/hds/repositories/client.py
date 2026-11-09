@@ -32,7 +32,7 @@ class ClientRepository(OrgScopedRepository[Client]):
             Matching clients in unspecified order.
         """
         stmt = select(Client).where(
-            Client.organization_id == org_id,
+            Client.organisation_id == org_id,
             Client.is_deleted.is_(False),
         )
         if is_active is not None:
@@ -44,7 +44,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         """The organisation's clients with these ids, deleted ones too (a report's past work)."""
         if not ids:
             return []
-        query = select(Client).where(Client.organization_id == org_id, Client.id.in_(list(ids)))
+        query = select(Client).where(Client.organisation_id == org_id, Client.id.in_(list(ids)))
         return list((await self.session.execute(query)).scalars())
 
     async def get_by_id(
@@ -60,7 +60,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         """
         stmt = select(Client).where(
             Client.id == id,
-            Client.organization_id == org_id,
+            Client.organisation_id == org_id,
             Client.is_deleted.is_(False),
         )
         if for_update:
@@ -78,7 +78,7 @@ class ClientRepository(OrgScopedRepository[Client]):
         Returns:
             The persisted client.
         """
-        client = Client(id=uuid.uuid4(), organization_id=org_id, **data)
+        client = Client(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(client)
         await self.session.flush()
         await self.session.refresh(client)
@@ -147,7 +147,7 @@ class ClientRepository(OrgScopedRepository[Client]):
             select(User)
             .where(
                 User.client_id == client_id,
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.is_deleted.is_(False),
             )
             .order_by(User.id)

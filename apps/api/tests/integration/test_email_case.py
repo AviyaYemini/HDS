@@ -161,7 +161,7 @@ async def test_the_repository_matches_and_stores_addresses_case_insensitively(
     assert found is not None and found.id == seed_users["admin"].id
 
     created = await repo.create(
-        seed_users["admin"].organization_id,
+        seed_users["admin"].organisation_id,
         {
             "email": " New.Person@HDS.test",
             "password_hash": "x",
@@ -172,7 +172,7 @@ async def test_the_repository_matches_and_stores_addresses_case_insensitively(
     assert created.email == "new.person@hds.test"
     with pytest.raises(IntegrityError) as refused:
         await repo.create(
-            seed_users["admin"].organization_id,
+            seed_users["admin"].organisation_id,
             {
                 "email": "NEW.PERSON@hds.test",
                 "password_hash": "x",
@@ -187,12 +187,12 @@ async def test_an_account_stored_before_the_rule_is_found_and_its_invitation_sti
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
     """A mixed-case row from before migration 016 (inserted raw) and its unused invitation."""
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     user_id = uuid.uuid4()
     raw, token_hash = generate_refresh_token()
     await test_db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active) VALUES (:i, :o, 'Legacy.Hire@HDS.test', 'x', 'Legacy', "
             "CAST('employee' AS user_role), false)"
         ),

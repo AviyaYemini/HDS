@@ -56,12 +56,12 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
         engine = create_async_engine(migrated_test_db, poolclass=NullPool)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
-            org_id = (await session.execute(select(User.organization_id).limit(1))).scalar_one()
+            org_id = (await session.execute(select(User.organisation_id).limit(1))).scalar_one()
             password_hash = hash_password("Dev1234!")  # hash once; Argon2 is deliberately slow
             session.add_all(
                 User(
                     id=ids.employee_id if i == 0 else uuid.uuid4(),
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     email=f"emp{i}@perf.test",
                     password_hash=password_hash,
                     full_name=f"Employee {i}",
@@ -74,7 +74,7 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
             clients = [
                 Client(
                     id=ids.client_id if i == 0 else uuid.uuid4(),
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     name=f"Client {i}",
                     contract_start=date(2026, 1, 1),
                 )
@@ -83,7 +83,7 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
             sites = [
                 Site(
                     id=ids.site_id if i == 0 else uuid.uuid4(),
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     name=f"Site {i}",
                     address="1 Main St",
                     timezone="Asia/Jerusalem",
@@ -92,18 +92,18 @@ def seeded(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
             ]
             session.add_all([*clients, *sites])
             session.add_all(
-                Group(id=uuid.uuid4(), organization_id=org_id, name=f"Group {i}")
+                Group(id=uuid.uuid4(), organisation_id=org_id, name=f"Group {i}")
                 for i in range(SEED["groups"])
             )
             session.add_all(
-                Qualification(id=uuid.uuid4(), organization_id=org_id, name=f"Qual {i}")
+                Qualification(id=uuid.uuid4(), organisation_id=org_id, name=f"Qual {i}")
                 for i in range(SEED["quals"])
             )
             await session.flush()
             session.add_all(
                 Project(
                     id=ids.project_id if i == 0 else uuid.uuid4(),
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     client_id=clients[i % len(clients)].id,
                     site_id=sites[i % len(sites)].id,
                     name=f"Project {i}",

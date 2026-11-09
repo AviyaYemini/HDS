@@ -18,7 +18,7 @@ from hds.services.auth import AuthService, TokenResponse
 def _make_user(**kwargs: object) -> User:
     user = MagicMock(spec=User)
     user.id = kwargs.get("id", uuid.uuid4())
-    user.organization_id = kwargs.get("org_id", uuid.uuid4())
+    user.organisation_id = kwargs.get("org_id", uuid.uuid4())
     user.email = kwargs.get("email", "test@hds.test")
     user.password_hash = kwargs.get("password_hash", "$argon2id$fake")
     user.role = kwargs.get("role", UserRole.employee)

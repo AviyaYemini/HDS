@@ -28,7 +28,7 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
             select(User)
             .join(ProjectManager, ProjectManager.user_id == User.id)
             .where(
-                ProjectManager.organization_id == org_id,
+                ProjectManager.organisation_id == org_id,
                 ProjectManager.project_id == project_id,
             )
             .order_by(User.full_name, User.id)
@@ -42,7 +42,7 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
         if not user_ids:
             return set()
         query = select(User.id).where(
-            User.organization_id == org_id,
+            User.organisation_id == org_id,
             User.id.in_(list(user_ids)),
             User.role.in_(ASSIGNABLE_ROLES),
             User.is_active.is_(True),
@@ -61,7 +61,7 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
             await self.session.execute(
                 insert(ProjectManager),
                 [
-                    {"organization_id": org_id, "project_id": project_id, "user_id": u}
+                    {"organisation_id": org_id, "project_id": project_id, "user_id": u}
                     for u in user_ids
                 ],
             )
@@ -71,7 +71,7 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
         """Take ``user_id`` off every project of the organisation they are assigned to."""
         await self.session.execute(
             delete(ProjectManager).where(
-                ProjectManager.organization_id == org_id, ProjectManager.user_id == user_id
+                ProjectManager.organisation_id == org_id, ProjectManager.user_id == user_id
             )
         )
         await self.session.flush()
@@ -95,7 +95,7 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
         """
         query = (
             select(ProjectManager.project_id)
-            .where(ProjectManager.organization_id == org_id, ProjectManager.user_id == user_id)
+            .where(ProjectManager.organisation_id == org_id, ProjectManager.user_id == user_id)
             .order_by(ProjectManager.project_id)
         )
         return list((await self.session.execute(query)).scalars())

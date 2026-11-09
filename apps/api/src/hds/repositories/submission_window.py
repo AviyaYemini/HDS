@@ -43,7 +43,7 @@ class SubmissionWindowRepository(OrgScopedRepository[SubmissionWindow]):
         Returns:
             The windows in date order.
         """
-        stmt = select(SubmissionWindow).where(SubmissionWindow.organization_id == org_id)
+        stmt = select(SubmissionWindow).where(SubmissionWindow.organisation_id == org_id)
         if last is not None:
             stmt = stmt.where(SubmissionWindow.starts_on <= last)
         if first is not None:
@@ -75,7 +75,7 @@ class SubmissionWindowRepository(OrgScopedRepository[SubmissionWindow]):
         await self.session.execute(
             select(Organisation.id).where(Organisation.id == org_id).with_for_update(key_share=True)
         )
-        window = SubmissionWindow(id=uuid.uuid4(), organization_id=org_id, **data)
+        window = SubmissionWindow(id=uuid.uuid4(), organisation_id=org_id, **data)
         try:
             async with self.session.begin_nested():
                 self.session.add(window)

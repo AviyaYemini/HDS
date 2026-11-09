@@ -24,7 +24,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
     async def list_organisation(self, org_id: uuid.UUID, year: int | None) -> list[SpecialDay]:
         """The organisation's own days (no project), by date; ``year`` narrows them."""
         query = select(SpecialDay).where(
-            SpecialDay.organization_id == org_id, SpecialDay.project_id.is_(None)
+            SpecialDay.organisation_id == org_id, SpecialDay.project_id.is_(None)
         )
         if year is not None:
             query = query.where(extract("year", SpecialDay.day) == year)
@@ -42,7 +42,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
     ) -> list[SpecialDay]:
         """Every organisation day, and every day of ``project_ids``, from ``first`` to ``last``."""
         query = select(SpecialDay).where(
-            SpecialDay.organization_id == org_id,
+            SpecialDay.organisation_id == org_id,
             SpecialDay.day.between(first, last),
             SpecialDay.project_id.is_(None) | SpecialDay.project_id.in_(list(project_ids)),
         )
@@ -52,7 +52,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
         """A day of the organisation, read afresh even if the session holds an older copy."""
         query = (
             select(SpecialDay)
-            .where(SpecialDay.id == id, SpecialDay.organization_id == org_id)
+            .where(SpecialDay.id == id, SpecialDay.organisation_id == org_id)
             .execution_options(populate_existing=True)
         )
         return (await self.session.execute(query)).scalar_one_or_none()
@@ -65,7 +65,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
             else SpecialDay.project_id == project_id
         )
         query = select(
-            exists().where(SpecialDay.organization_id == org_id, owner, SpecialDay.day == day)
+            exists().where(SpecialDay.organisation_id == org_id, owner, SpecialDay.day == day)
         )
         return bool((await self.session.execute(query)).scalar())
 
@@ -73,7 +73,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
         self, org_id: uuid.UUID, project_id: uuid.UUID | None, values: Mapping[str, Any]
     ) -> SpecialDay:
         """Add a day of the organisation or of one project."""
-        row = SpecialDay(organization_id=org_id, project_id=project_id, **values)
+        row = SpecialDay(organisation_id=org_id, project_id=project_id, **values)
         self.session.add(row)
         await self.session.flush()
         await self.session.refresh(row)
@@ -100,13 +100,13 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
         """
         own = select(SpecialDay.day).where(SpecialDay.project_id == project_id)
         source = select(
-            SpecialDay.organization_id,
+            SpecialDay.organisation_id,
             literal(project_id, type_=SpecialDay.project_id.type),
             SpecialDay.day,
             SpecialDay.name,
             SpecialDay.rate_pct,
         ).where(
-            SpecialDay.organization_id == org_id,
+            SpecialDay.organisation_id == org_id,
             SpecialDay.project_id.is_(None),
             SpecialDay.day.not_in(own),
         )
@@ -114,7 +114,7 @@ class SpecialDayRepository(OrgScopedRepository[SpecialDay]):
             # Without the model's Python defaults, which SQLAlchemy would evaluate once for every
             # copied row: each copy takes its own id from the database's gen_random_uuid().
             insert(SpecialDay).from_select(
-                ["organization_id", "project_id", "day", "name", "rate_pct"],
+                ["organisation_id", "project_id", "day", "name", "rate_pct"],
                 source,
                 include_defaults=False,
             )

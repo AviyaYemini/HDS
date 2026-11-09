@@ -96,9 +96,9 @@ class ProjectService:
         if data.get("billing_rate") is not None:
             _validate_billing_rate(data["billing_rate"])
         _validate_date_range(data.get("start_date"), data.get("end_date"))
-        await self._require_client(data["client_id"], actor.organization_id)
-        await self._require_site(data["site_id"], actor.organization_id)
-        return await self._repo.create(actor.organization_id, data)
+        await self._require_client(data["client_id"], actor.organisation_id)
+        await self._require_site(data["site_id"], actor.organisation_id)
+        return await self._repo.create(actor.organisation_id, data)
 
     async def edit_project(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> Project:
         """Update a project (Manager or Admin); the date rule is checked against stored dates.
@@ -118,13 +118,13 @@ class ProjectService:
                 ``projects.date_range_invalid`` (HTTP 422).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_id(id, actor.organization_id)
+        existing = await self._repo.get_by_id(id, actor.organisation_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
         if "billing_rate" in data:
             _validate_billing_rate(data["billing_rate"])
         _validate_date_range(existing.start_date, data.get("end_date", existing.end_date))
-        return await self._repo.update(id, actor.organization_id, **data)
+        return await self._repo.update(id, actor.organisation_id, **data)
 
     async def set_status(self, actor: User, id: uuid.UUID, status: str) -> Project:
         """Move a project between ``active`` and ``ended`` (Manager or Admin).
@@ -144,12 +144,12 @@ class ProjectService:
             NotFoundError: The project is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_id(id, actor.organization_id)
+        existing = await self._repo.get_by_id(id, actor.organisation_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
         if status == ProjectStatus.ended:
-            await self._pay.freeze(actor.organization_id, id)  # 005 FR-007, under the locks
-        return await self._repo.update(id, actor.organization_id, status=status)
+            await self._pay.freeze(actor.organisation_id, id)  # 005 FR-007, under the locks
+        return await self._repo.update(id, actor.organisation_id, status=status)
 
     async def change_project(
         self, actor: User, id: uuid.UUID, data: dict[str, Any], status: str | None
@@ -188,11 +188,11 @@ class ProjectService:
             NotFoundError: The project is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *ADMIN_ROLES)
-        existing = await self._repo.get_by_id(id, actor.organization_id)
+        existing = await self._repo.get_by_id(id, actor.organisation_id)
         if existing is None:
             raise NotFoundError(resource="Project", id=id)
-        await self._pay.freeze(actor.organization_id, id)  # under the locks, org then project
-        await self._repo.soft_delete(id, actor.organization_id)
+        await self._pay.freeze(actor.organisation_id, id)  # under the locks, org then project
+        await self._repo.soft_delete(id, actor.organisation_id)
 
     async def list_projects(
         self,

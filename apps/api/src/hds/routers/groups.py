@@ -24,7 +24,7 @@ class GroupRead(BaseModel):
     """A group with its audit timestamps."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     name: str
     created_at: datetime
     updated_at: datetime

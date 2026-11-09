@@ -156,7 +156,7 @@ async def test_signing_out_of_other_devices_without_a_marked_token_ends_nothing(
     settings = get_settings()
     unmarked = create_access_token(
         user.id,
-        user.organization_id,
+        user.organisation_id,
         user.role,
         60,
         settings.JWT_SECRET_KEY.get_secret_value(),

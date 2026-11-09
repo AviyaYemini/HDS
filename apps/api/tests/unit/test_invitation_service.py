@@ -19,7 +19,7 @@ from hds.services.throttle import hash_key
 def _make_user(**kw: object) -> MagicMock:
     u = MagicMock(spec=User)
     u.id = kw.get("id", uuid.uuid4())
-    u.organization_id = kw.get("org_id", uuid.uuid4())
+    u.organisation_id = kw.get("org_id", uuid.uuid4())
     u.email = kw.get("email", "new@hds.test")
     u.role = kw.get("role", UserRole.employee)
     u.is_active = kw.get("is_active", False)
@@ -88,7 +88,7 @@ async def test_create_invitation_for_active_user_conflicts() -> None:
 async def test_create_invitation_reuses_pending_user() -> None:
     svc, user_repo, token_repo, _ = _svc()
     manager = _make_user(role=UserRole.manager, is_active=True)
-    pending = _make_user(is_active=False, org_id=manager.organization_id)
+    pending = _make_user(is_active=False, org_id=manager.organisation_id)
     user_repo.get_by_email = AsyncMock(return_value=pending)
 
     await svc.create_invitation(manager, "a@hds.test", UserRole.employee)
@@ -345,7 +345,7 @@ async def test_inviting_a_deactivated_account_is_refused_and_sends_nothing() -> 
     svc, user_repo, token_repo, mailer = _svc()
     manager = _manager()
     deactivated = _make_user(
-        is_active=False, org_id=manager.organization_id, activated_at=datetime.now(UTC)
+        is_active=False, org_id=manager.organisation_id, activated_at=datetime.now(UTC)
     )
     user_repo.get_by_email = AsyncMock(return_value=deactivated)
 
@@ -363,13 +363,13 @@ async def test_inviting_a_deactivated_account_is_refused_and_sends_nothing() -> 
 async def test_re_inviting_a_pending_account_sets_the_new_role_and_replaces_the_link() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     manager = _manager()
-    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organization_id)
+    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organisation_id)
     user_repo.get_by_email = AsyncMock(return_value=pending)
 
     await svc.create_invitation(manager, "p@hds.test", UserRole.manager)
 
     user_repo.update.assert_awaited_once_with(
-        pending.id, pending.organization_id, role=UserRole.manager
+        pending.id, pending.organisation_id, role=UserRole.manager
     )
     token_repo.cancel_for_user.assert_awaited_once_with(pending.id)  # the earlier link is replaced
     token_repo.create.assert_awaited_once()
@@ -380,7 +380,7 @@ async def test_re_inviting_a_pending_account_sets_the_new_role_and_replaces_the_
 async def test_re_inviting_with_the_same_role_does_not_rewrite_the_account() -> None:
     svc, user_repo, token_repo, _ = _svc()
     manager = _manager()
-    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organization_id)
+    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organisation_id)
     user_repo.get_by_email = AsyncMock(return_value=pending)
 
     await svc.create_invitation(manager, "p@hds.test", UserRole.employee)
@@ -393,7 +393,7 @@ async def test_re_inviting_with_the_same_role_does_not_rewrite_the_account() -> 
 async def test_a_manager_cannot_re_invite_a_pending_account_as_admin() -> None:
     svc, user_repo, token_repo, mailer = _svc()
     manager = _manager()
-    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organization_id)
+    pending = _make_user(is_active=False, role=UserRole.employee, org_id=manager.organisation_id)
     user_repo.get_by_email = AsyncMock(return_value=pending)
 
     with pytest.raises(ForbiddenError) as exc_info:
@@ -410,7 +410,7 @@ async def test_a_manager_cannot_change_the_role_of_a_pending_admin() -> None:
     """Only an Admin may change an Admin (FR-011a), including one who has not accepted yet."""
     svc, user_repo, token_repo, _ = _svc()
     manager = _manager()
-    pending_admin = _make_user(is_active=False, role=UserRole.admin, org_id=manager.organization_id)
+    pending_admin = _make_user(is_active=False, role=UserRole.admin, org_id=manager.organisation_id)
     user_repo.get_by_email = AsyncMock(return_value=pending_admin)
 
     with pytest.raises(ForbiddenError) as exc_info:
@@ -443,7 +443,7 @@ async def test_losing_the_race_to_create_the_account_continues_as_a_re_invitatio
     svc, user_repo, token_repo, mailer = _svc()
     manager = _manager()
     winner_created = _make_user(
-        is_active=False, role=UserRole.employee, org_id=manager.organization_id
+        is_active=False, role=UserRole.employee, org_id=manager.organisation_id
     )
     user_repo.get_by_email = AsyncMock(side_effect=[None, winner_created])
     user_repo.create_if_absent = AsyncMock(return_value=(winner_created, False))
@@ -517,7 +517,7 @@ async def test_losing_the_race_for_a_link_is_refused_before_anything_is_written(
 def _inviter() -> MagicMock:
     actor = MagicMock(spec=User)
     actor.role = UserRole.admin
-    actor.organization_id = uuid.uuid4()
+    actor.organisation_id = uuid.uuid4()
     return actor
 
 
@@ -526,7 +526,7 @@ async def test_a_re_invitation_locks_the_user_before_touching_its_links() -> Non
     """The user's row comes first, or accepting the old link can deadlock with this path."""
     svc, user_repo, token_repo, _ = _svc()
     actor = _inviter()
-    pending = _make_user(org_id=actor.organization_id, is_active=False)
+    pending = _make_user(org_id=actor.organisation_id, is_active=False)
     order: list[str] = []
     user_repo.get_by_email = AsyncMock(return_value=pending)
     user_repo.lock_user.side_effect = lambda *_: order.append("lock")
@@ -542,8 +542,8 @@ async def test_a_re_invitation_judges_the_account_as_it_is_after_the_lock() -> N
     """An invitee who accepted while this request waited is active now, so this is a duplicate."""
     svc, user_repo, token_repo, _ = _svc()
     actor = _inviter()
-    pending = _make_user(org_id=actor.organization_id, is_active=False)
-    accepted = _make_user(org_id=actor.organization_id, is_active=True, email=pending.email)
+    pending = _make_user(org_id=actor.organisation_id, is_active=False)
+    accepted = _make_user(org_id=actor.organisation_id, is_active=True, email=pending.email)
     user_repo.get_by_email = AsyncMock(side_effect=[pending, accepted])
 
     with pytest.raises(ConflictError) as refused:
@@ -558,7 +558,7 @@ async def test_a_re_invitation_is_refused_if_the_account_was_deleted_during_the_
     """Otherwise the invitee would be mailed a link that can never be accepted."""
     svc, user_repo, token_repo, mailer = _svc()
     actor = _inviter()
-    pending = _make_user(org_id=actor.organization_id, is_active=False)
+    pending = _make_user(org_id=actor.organisation_id, is_active=False)
     user_repo.get_by_email = AsyncMock(side_effect=[pending, None])
 
     with pytest.raises(ConflictError) as refused:

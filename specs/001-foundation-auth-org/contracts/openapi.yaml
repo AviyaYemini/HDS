@@ -738,11 +738,11 @@ components:
 
     UserRead:
       type: object
-      required: [id, organization_id, email, full_name, role, is_active, created_at, updated_at]
+      required: [id, organisation_id, email, full_name, role, is_active, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         email:
           type: string
@@ -773,11 +773,11 @@ components:
     ClientUserRead:
       type: object
       description: A client-portal user. Carries no role or rate fields.
-      required: [id, organization_id, email, full_name, is_active, created_at, updated_at]
+      required: [id, organisation_id, email, full_name, is_active, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         client_id:
           anyOf:
@@ -878,11 +878,11 @@ components:
 
     GroupRead:
       type: object
-      required: [id, organization_id, name, created_at, updated_at]
+      required: [id, organisation_id, name, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         name:
           type: string
@@ -934,11 +934,11 @@ components:
 
     QualificationRead:
       type: object
-      required: [id, organization_id, name, created_at, updated_at]
+      required: [id, organisation_id, name, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         name:
           type: string
@@ -979,11 +979,11 @@ components:
 
     ClientRead:
       type: object
-      required: [id, organization_id, name, contract_start, is_active, created_at, updated_at]
+      required: [id, organisation_id, name, contract_start, is_active, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         name:
           type: string
@@ -1077,11 +1077,11 @@ components:
 
     SiteRead:
       type: object
-      required: [id, organization_id, name, address, timezone, created_at, updated_at]
+      required: [id, organisation_id, name, address, timezone, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         name:
           type: string
@@ -1133,11 +1133,11 @@ components:
 
     ProjectRead:
       type: object
-      required: [id, organization_id, client_id, site_id, name, type, billing_rate, start_date, status, created_at, updated_at]
+      required: [id, organisation_id, client_id, site_id, name, type, billing_rate, start_date, status, created_at, updated_at]
       properties:
         id:
           $ref: "#/components/schemas/UUIDv4"
-        organization_id:
+        organisation_id:
           $ref: "#/components/schemas/UUIDv4"
         client_id:
           $ref: "#/components/schemas/UUIDv4"

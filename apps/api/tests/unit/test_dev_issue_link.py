@@ -64,7 +64,7 @@ async def factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
             session.add(
                 User(
                     id=uuid.uuid4(),
-                    organization_id=org.id,
+                    organisation_id=org.id,
                     email=email,
                     password_hash=hash_password("Dev1234!"),
                     full_name=email,

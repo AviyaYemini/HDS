@@ -92,7 +92,7 @@ class SpecialDayService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._days.list_organisation(actor.organization_id, year)
+        return await self._days.list_organisation(actor.organisation_id, year)
 
     async def create_organisation_day(self, actor: User, values: Mapping[str, Any]) -> SpecialDay:
         """Add an organisation day (Admin); it applies to every project that has not ended.
@@ -104,14 +104,14 @@ class SpecialDayService:
         """
         ensure_role(actor, UserRole.admin)
         _check(values)
-        await self._orgs.lock(actor.organization_id)
-        if await self._days.exists(actor.organization_id, None, values["day"]):
+        await self._orgs.lock(actor.organisation_id)
+        if await self._days.exists(actor.organisation_id, None, values["day"]):
             raise _duplicate(values["day"])
-        return await self._days.create(actor.organization_id, None, values)
+        return await self._days.create(actor.organisation_id, None, values)
 
     async def _open_project(self, actor: User, project_id: uuid.UUID) -> Project:
         """Lock a project of the organisation and check it has not ended."""
-        project = await self._projects.lock_and_read(project_id, actor.organization_id)
+        project = await self._projects.lock_and_read(project_id, actor.organisation_id)
         if project is None:
             raise NotFoundError(resource="Project", id=project_id)
         if project.status == ProjectStatus.ended:
@@ -132,21 +132,21 @@ class SpecialDayService:
         ensure_role(actor, UserRole.admin)
         _check(values)
         await self._open_project(actor, project_id)
-        if await self._days.exists(actor.organization_id, project_id, values["day"]):
+        if await self._days.exists(actor.organisation_id, project_id, values["day"]):
             raise _duplicate(values["day"])
-        return await self._days.create(actor.organization_id, project_id, values)
+        return await self._days.create(actor.organisation_id, project_id, values)
 
     async def _writable(self, actor: User, day_id: uuid.UUID) -> SpecialDay:
         """Find a day and take the lock its owner's writes use."""
-        row = await self._days.get_by_id(day_id, actor.organization_id)
+        row = await self._days.get_by_id(day_id, actor.organisation_id)
         if row is None:
             raise NotFoundError(resource="SpecialDay", id=day_id)
         if row.project_id is None:
-            await self._orgs.lock(actor.organization_id)
+            await self._orgs.lock(actor.organisation_id)
         else:
             await self._open_project(actor, row.project_id)
         # Read again under the lock: the copy above may predate a change committed meanwhile.
-        fresh = await self._days.reread(day_id, actor.organization_id)
+        fresh = await self._days.reread(day_id, actor.organisation_id)
         if fresh is None:
             raise NotFoundError(resource="SpecialDay", id=day_id)
         return fresh
@@ -167,7 +167,7 @@ class SpecialDayService:
         row = await self._writable(actor, day_id)
         new_day = values.get("day")
         if new_day is not None and new_day != row.day:
-            if await self._days.exists(actor.organization_id, row.project_id, new_day):
+            if await self._days.exists(actor.organisation_id, row.project_id, new_day):
                 raise _duplicate(new_day)
         return await self._days.change(row, values)
 
@@ -192,13 +192,13 @@ class SpecialDayService:
             NotFoundError: The project is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        project = await self._projects.get_by_id(project_id, actor.organization_id)
+        project = await self._projects.get_by_id(project_id, actor.organisation_id)
         if project is None:
             raise NotFoundError(resource="Project", id=project_id)
         own = await self._days.list_project(project_id, year)
         merged = {d.day: _seen(d, "project") for d in own}
         if project.status != ProjectStatus.ended:
-            for d in await self._days.list_organisation(actor.organization_id, year):
+            for d in await self._days.list_organisation(actor.organisation_id, year):
                 merged.setdefault(d.day, _seen(d, "organisation"))
         return [merged[day] for day in sorted(merged)]
 

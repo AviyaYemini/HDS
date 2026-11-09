@@ -16,7 +16,7 @@ from hds.services.group import GroupService
 def _actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -38,7 +38,7 @@ async def test_create_group_success() -> None:
     svc = GroupService(group_repo=repo)
     await svc.create_group(actor, "Alpha")
 
-    repo.create.assert_awaited_once_with(actor.organization_id, "Alpha")
+    repo.create.assert_awaited_once_with(actor.organisation_id, "Alpha")
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_rename_group() -> None:
     group_id = uuid.uuid4()
     await svc.rename_group(actor, group_id, "New")
 
-    repo.update.assert_awaited_once_with(group_id, actor.organization_id, name="New")
+    repo.update.assert_awaited_once_with(group_id, actor.organisation_id, name="New")
 
 
 @pytest.mark.asyncio
@@ -90,7 +90,7 @@ async def test_delete_group() -> None:
     group_id = uuid.uuid4()
     await svc.delete_group(actor, group_id)
 
-    repo.delete.assert_awaited_once_with(group_id, actor.organization_id)
+    repo.delete.assert_awaited_once_with(group_id, actor.organisation_id)
 
 
 @pytest.mark.asyncio

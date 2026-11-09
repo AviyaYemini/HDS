@@ -36,7 +36,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
             Matching projects in unspecified order.
         """
         stmt = select(Project).where(
-            Project.organization_id == org_id,
+            Project.organisation_id == org_id,
             Project.is_deleted.is_(False),
         )
         if status is not None:
@@ -61,7 +61,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         """
         stmt = select(Project).where(
             Project.client_id == client_id,
-            Project.organization_id == org_id,
+            Project.organisation_id == org_id,
             Project.is_deleted.is_(False),
         )
         if status is not None:
@@ -82,7 +82,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
             select(Project.id)
             .where(
                 Project.id == id,
-                Project.organization_id == org_id,
+                Project.organisation_id == org_id,
                 Project.is_deleted.is_(False),
             )
             .with_for_update(key_share=True)
@@ -97,7 +97,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         these while it checks the proposal is current and writes it (004 research G9).
         """
         query = select(Project.id).where(
-            Project.organization_id == org_id, Project.is_deleted.is_(False)
+            Project.organisation_id == org_id, Project.is_deleted.is_(False)
         )
         if ids is not None:
             query = query.where(Project.id.in_(list(ids)))
@@ -114,7 +114,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
             select(Project)
             .where(
                 Project.id == id,
-                Project.organization_id == org_id,
+                Project.organisation_id == org_id,
                 Project.is_deleted.is_(False),
             )
             .with_for_update(key_share=True)
@@ -126,7 +126,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         """The organisation's projects with these ids, deleted ones too."""
         if not ids:
             return []
-        query = select(Project).where(Project.organization_id == org_id, Project.id.in_(list(ids)))
+        query = select(Project).where(Project.organisation_id == org_id, Project.id.in_(list(ids)))
         return list((await self.session.execute(query)).scalars())
 
     async def get_by_id(self, id: uuid.UUID, org_id: uuid.UUID) -> Project | None:
@@ -134,7 +134,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
         result = await self.session.execute(
             select(Project).where(
                 Project.id == id,
-                Project.organization_id == org_id,
+                Project.organisation_id == org_id,
                 Project.is_deleted.is_(False),
             )
         )
@@ -154,7 +154,7 @@ class ProjectRepository(OrgScopedRepository[Project]):
             sqlalchemy.exc.IntegrityError: If the billing rate is not positive. The error
                 handler maps it to HTTP 422.
         """
-        project = Project(id=uuid.uuid4(), organization_id=org_id, **data)
+        project = Project(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(project)
         await self.session.flush()
         await self.session.refresh(project)

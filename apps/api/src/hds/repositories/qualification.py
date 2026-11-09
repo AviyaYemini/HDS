@@ -26,7 +26,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         """
         result = await self.session.execute(
             select(Qualification)
-            .where(Qualification.organization_id == org_id)
+            .where(Qualification.organisation_id == org_id)
             .order_by(Qualification.name)
         )
         return list(result.scalars().all())
@@ -44,7 +44,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         result = await self.session.execute(
             select(Qualification).where(
                 Qualification.name == name,
-                Qualification.organization_id == org_id,
+                Qualification.organisation_id == org_id,
             )
         )
         return result.scalar_one_or_none()
@@ -62,7 +62,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
         Raises:
             sqlalchemy.exc.IntegrityError: If the name already exists in the organisation.
         """
-        qual = Qualification(id=uuid.uuid4(), organization_id=org_id, name=name)
+        qual = Qualification(id=uuid.uuid4(), organisation_id=org_id, name=name)
         self.session.add(qual)
         await self.session.flush()
         await self.session.refresh(qual)
@@ -110,7 +110,7 @@ class QualificationRepository(OrgScopedRepository[Qualification]):
             )
             .where(
                 user_qualifications.c.user_id == user_id,
-                Qualification.organization_id == org_id,
+                Qualification.organisation_id == org_id,
             )
         )
         return list(result.scalars().all())
