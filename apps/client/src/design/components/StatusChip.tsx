@@ -27,29 +27,34 @@ export interface StatusChipProps {
 function Mark({ status, color }: { status: ChipStatus; color: string }) {
   const size = component.chip.dot;
   const common = { stroke: color, strokeWidth: 1.6, strokeLinecap: "square" as const, fill: "none" };
+  // Hidden from screen readers on its wrapper, as Icon does: react-native-svg passes unknown props
+  // to the web's <svg>, so the native ones stay off it (they logged a React error per chip), and
+  // aria-hidden reaches the web. The chip's own label speaks for it (R56).
   return (
-    <Svg width={size + 2} height={size + 2} viewBox="0 0 8 8" accessibilityElementsHidden importantForAccessibility="no">
-      {status === "neutral" || status === "ready" ? <Rect x="1" y="1" width="6" height="6" fill={color} /> : null}
-      {status === "success" ? <Polyline points="1 4.5 3.2 6.7 7 1.5" {...common} /> : null}
-      {status === "warning" ? (
-        <>
-          <Line x1="4" y1="0.8" x2="4" y2="4.8" {...common} />
-          <Rect x="3.2" y="6.2" width="1.6" height="1.6" fill={color} />
-        </>
-      ) : null}
-      {status === "danger" ? (
-        <>
-          <Line x1="1" y1="1" x2="7" y2="7" {...common} />
-          <Line x1="7" y1="1" x2="1" y2="7" {...common} />
-        </>
-      ) : null}
-      {status === "info" ? (
-        <>
-          <Rect x="3.2" y="0.4" width="1.6" height="1.6" fill={color} />
-          <Line x1="4" y1="3.4" x2="4" y2="7.6" {...common} />
-        </>
-      ) : null}
-    </Svg>
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...webProps({ "aria-hidden": String(true) })}>
+      <Svg width={size + 2} height={size + 2} viewBox="0 0 8 8">
+        {status === "neutral" || status === "ready" ? <Rect x="1" y="1" width="6" height="6" fill={color} /> : null}
+        {status === "success" ? <Polyline points="1 4.5 3.2 6.7 7 1.5" {...common} /> : null}
+        {status === "warning" ? (
+          <>
+            <Line x1="4" y1="0.8" x2="4" y2="4.8" {...common} />
+            <Rect x="3.2" y="6.2" width="1.6" height="1.6" fill={color} />
+          </>
+        ) : null}
+        {status === "danger" ? (
+          <>
+            <Line x1="1" y1="1" x2="7" y2="7" {...common} />
+            <Line x1="7" y1="1" x2="1" y2="7" {...common} />
+          </>
+        ) : null}
+        {status === "info" ? (
+          <>
+            <Rect x="3.2" y="0.4" width="1.6" height="1.6" fill={color} />
+            <Line x1="4" y1="3.4" x2="4" y2="7.6" {...common} />
+          </>
+        ) : null}
+      </Svg>
+    </View>
   );
 }
 
