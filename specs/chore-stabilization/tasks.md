@@ -1,0 +1,27 @@
+# Tasks: stabilization after 008 (chore lane)
+
+The work of [plan.md](plan.md), one pull request per section, in this order. One commit per task.
+
+## PR 1: one spelling, "organisation"
+
+- [ ] S01 The exemption record (ADR 021): a one-step rename, against Constitution V and X, while nothing is deployed; `infra/tests/compat.sh` skips a base older than the rename revision
+- [ ] S02 Migration: rename every `organization_id` column, foreign key, constraint and index to the British spelling, with a working downgrade; models follow
+- [ ] S03 Repositories, services, routers, schemas, scripts and the API's tests follow; the API fields become `organisation_id`
+- [ ] S04 The 001 contract, the regenerated `packages/api-client`, and the client follow
+- [ ] S05 Docs and specs follow; `git grep -i organization` lists only third-party names and applied migrations
+- [ ] S06 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
+
+## PR 2: client structure
+
+- [ ] S11 Roster: the screen keeps its layout; its sheets, rows and data calls move beside it
+- [ ] S12 Admin: one file per screen
+- [ ] S13 Runs: the review, the run page and the run list lose their parts and hooks to files of their own
+- [ ] S14 Admin table, availability and account split the same way
+- [ ] S15 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
+
+## PR 3: expanded dev dataset
+
+- [ ] S21 The wider records: people, managers, clients, sites, projects of both types, groups, qualifications, shift types, needs, pay settings, special days
+- [ ] S22 Availability history and an open window; published past weeks and the current one through the scheduler and the services; a ready proposal; manual edits with overrides
+- [ ] S23 Tests (every published shift passes validate; a re-run adds nothing) and the README section
+- [ ] S24 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
