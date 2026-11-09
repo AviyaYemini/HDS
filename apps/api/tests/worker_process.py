@@ -29,10 +29,11 @@ def slow_solve(marker: Path) -> None:
     """Make each solve take ``STALL_SECONDS`` longer, after writing the marker."""
     real = schedule_job.solve
 
-    async def solve(claim: Claim, built: Built, time_limit: timedelta) -> Result:
+    async def solve(claim: Claim, built: Built, time_limit: timedelta, **follow: Any) -> Result:
+        # ``follow`` carries the best-so-far and stop hooks (008 FR-027, FR-028) to the real solve.
         marker.write_text("solving")
         await asyncio.sleep(STALL_SECONDS)
-        return await real(claim, built, time_limit)
+        return await real(claim, built, time_limit, **follow)
 
     setattr(worker, "solve", solve)  # the worker's own reference to the solver
 
