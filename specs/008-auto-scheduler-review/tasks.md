@@ -107,6 +107,7 @@ it across every project.
 - [ ] T026 [US3] Contract first for `GET /schedule-jobs/{id}/slots/{key}/cover`; `ProposalService.cover` builds the problem with the working copy; router; regenerate the client
 - [ ] T027 [US3] Client `SlotPanel` in `apps/client/src/screens/runs/`: reasons with counts, named people with numbers, the empty-slot list on the review, "Who else could cover" with reasons in words, picking places the person as an edit (FR-015); "Assign anyway" through the override sheet
 - [ ] T028 [P] [US3] Locale keys for every reason, number format and cover reason; `docs/hds-api.md`
+- [ ] T028a CI (owner, 2026-11-09): the client e2e job, about 27 minutes, runs as four shards at once, each with its own PostgreSQL, like the database shards: each takes one theme of the accessibility sweep and a quarter of every other spec (`--shard`); the job's old name stays as the one required check over them, and a check fails on a sweep test in no shard
 
 ### Close
 
