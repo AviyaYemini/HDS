@@ -603,6 +603,27 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/discard"),  # type: ignore[union-attr]
         ),
     ],
+    "GET /api/v1/schedule-jobs/{id}/proposal": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/proposal"),  # type: ignore[union-attr]
+        ),
+    ],
+    "POST /api/v1/schedule-jobs/{id}/edits": [
+        Case(
+            "foreign job id",
+            lambda w: req(
+                f"/api/v1/schedule-jobs/{w.theirs.job.id}/edits",  # type: ignore[union-attr]
+                json={"op": "unassign", "key": "need:x", "user_id": str(w.theirs.user.id)},
+            ),
+        ),
+    ],
+    "POST /api/v1/schedule-jobs/{id}/edits/undo": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/edits/undo"),  # type: ignore[union-attr]
+        ),
+    ],
     "POST /api/v1/schedule-jobs": [
         Case(
             "foreign project id: refused as not active here, revealing nothing",

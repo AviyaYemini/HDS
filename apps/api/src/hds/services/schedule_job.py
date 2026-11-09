@@ -12,25 +12,34 @@ proposal changes nothing in the roster (FR-022); one left open for 7 days reads 
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from hds.core.authz import MANAGER_ROLES, ensure_role
 from hds.core.capabilities import Capability, has_on_project
-from hds.core.exceptions import ConflictError, DomainValidationError, ForbiddenError, NotFoundError
+from hds.core.exceptions import (
+    ConflictError,
+    DomainValidationError,
+    ForbiddenError,
+    NotFoundError,
+    PreconditionFailedError,
+)
 from hds.core.trace_context import current_traceparent
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User, UserRole
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.roster_extras import RuleOverrideRepository
 from hds.repositories.schedule_job import ScheduleJobRepository
+from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
-from hds.scheduling import Result, generate
+from hds.scheduling import Employee, Result, generate, validate
+from hds.services import proposal_copy
 from hds.services.schedule_inputs import Built, ScheduleInputService, surroundings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +54,20 @@ LEASE = timedelta(minutes=5)
 than the longest solve (``SCHEDULE_TIME_LIMIT_SECONDS`` is at most 60) plus building the problem."""
 MAX_ATTEMPTS = 3
 EXPIRY = timedelta(days=7)
+
+
+def check_version(job: ScheduleJob, if_match: int | None) -> None:
+    """Refuse a change made against an older version of the working copy (008 research P8).
+
+    Raises:
+        PreconditionFailedError: ``schedule.version_stale`` (HTTP 412) when ``if_match`` is given
+            and is not the copy's version.
+    """
+    if if_match is not None and if_match != job.version:
+        raise PreconditionFailedError(
+            code="schedule.version_stale",
+            detail="The proposal changed since you read it; read it again.",
+        )
 
 
 class JobFailedError(Exception):
@@ -73,8 +96,14 @@ class Claim:
 
 
 def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
-    """``open``, ``accepted``, ``discarded`` or ``expired``; ``None`` before the job succeeds."""
+    """``open``, ``accepted``, ``discarded``, ``partly_accepted`` or ``expired``.
+
+    ``None`` before the job succeeds. An open proposal past its 7 days reads as expired, or as
+    partly accepted when some of it was accepted (008 FR-004).
+    """
     if job.proposal_state == "open" and job.finished_at and job.finished_at < now - EXPIRY:
+        if job.current is not None and proposal_copy.any_accepted(job.current):
+            return "partly_accepted"
         return "expired"
     return job.proposal_state
 
@@ -86,6 +115,7 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
             {
                 "key": s.key,
                 "shift_id": str(s.shift_id) if s.shift_id else None,
+                "zone": s.zone,
                 "project_id": str(s.project_id),
                 "shift_type_id": str(s.shift_type_id),
                 "date": s.day.isoformat(),
@@ -142,6 +172,8 @@ class ScheduleJobService:
         shift_type_repo: ShiftTypeRepository,
         project_manager_repo: ProjectManagerRepository,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        override_repo: RuleOverrideRepository | None = None,
+        event_repo: ScheduleJobEventRepository | None = None,
     ) -> None:
         """Wire the service.
 
@@ -156,6 +188,8 @@ class ScheduleJobService:
             shift_type_repo: Shift types, share-locked while a proposal is accepted.
             project_manager_repo: Who manages which project: a run's scope (007 T108).
             now: The current UTC time.
+            override_repo: Rule overrides, written for a person's overrides when accepting (008).
+            event_repo: The run record (008 FR-030); steps are not recorded without it (tests).
         """
         self._jobs = job_repo
         self._orgs = organisation_repo
@@ -167,6 +201,8 @@ class ScheduleJobService:
         self._types = shift_type_repo
         self._managers = project_manager_repo
         self._now = now
+        self._overrides = override_repo
+        self._events = event_repo
 
     async def create(self, actor: User, data: dict[str, Any]) -> ScheduleJob:
         """Ask for a roster (Manager or Admin); the job is queued with the current trace, if any.
@@ -323,33 +359,74 @@ class ScheduleJobService:
             )
         return job
 
-    async def accept(self, actor: User, id: uuid.UUID) -> dict[str, int]:
-        """Store a proposal as draft shifts and assignments, all or nothing (Manager or Admin).
+    async def accept(
+        self,
+        actor: User,
+        id: uuid.UUID,
+        part: Mapping[str, Any] | None = None,
+        if_match: int | None = None,
+    ) -> dict[str, Any]:
+        """Store a proposal, or a part of it, as draft shifts and assignments (Manager or Admin).
+
+        A part names ``days`` (ISO dates), ``project_ids`` or ``assignments`` (``key`` and
+        ``user_id`` pairs); nothing named means everything still open (008 FR-003). One accept is
+        all or nothing; what it does not name stays open (FR-004).
 
         Locks, in order: the job; the organisation's row (its limits); the run's projects (every
         active one when the job named none); the shift types; every shift in the run's
-        surroundings; every staff account, in id order. Then the problem is built again and its
-        fingerprint compared, so nothing it used can change between the check and the writes
-        (research G9, G10). While it runs, staff sign-ins wait on their own rows; accepting is rare
-        and short, and this is what makes the check exact. An existing draft keeps its id and
-        headcount and gets the proposal's people; a new slot becomes a new draft. Nothing is
-        published.
+        surroundings; every staff account, in id order. Then the problem is built again (research
+        G9, G10). When its fingerprint still matches, nothing the proposal was made from has
+        changed and the part is stored. Otherwise the part is checked on its own (008 research
+        P9): none of its drafts may have changed since the proposal, and it may break no rule on
+        today's roster that the working copy does not already override. An existing draft keeps
+        its id and headcount and gets the proposal's people; a new slot becomes a new draft; a
+        person's override becomes a rule override on the new assignment. Nothing is published.
 
         Returns:
-            How many shifts were created and updated, and assignments added and removed.
+            How many shifts were created and updated, and assignments added and removed; the
+            working copy's new ``version``; and the proposal's ``state``.
 
         Raises:
-            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
             NotFoundError: Not in the organisation (HTTP 404).
-            ConflictError: ``schedule.not_ready``, ``schedule.proposal_closed`` or
-                ``schedule.proposal_out_of_date`` (HTTP 409); nothing changes.
+            PreconditionFailedError: ``schedule.version_stale`` (HTTP 412).
+            ConflictError: ``schedule.not_ready``, ``schedule.proposal_closed``,
+                ``schedule.nothing_to_accept``, ``schedule.proposal_out_of_date`` or
+                ``schedule.part_out_of_date`` (HTTP 409); nothing changes.
         """
         job = await self._open(actor, id)
+        check_version(job, if_match)
         org_id = actor.organization_id
         org = await self._orgs.get_by_id(org_id)
         if org is None:
             raise NotFoundError(resource="Organisation", id=org_id)
-        proposal = job.result or {"slots": []}
+        work = proposal_copy.of(job.current, job.result)
+        part = part or {}
+        chosen = proposal_copy.selected(
+            work,
+            days=part.get("days", ()),
+            project_ids=part.get("project_ids", ()),
+            pairs=[(a["key"], a["user_id"]) for a in part.get("assignments", ())],
+        )
+        if not chosen:
+            if any(part.get(k) for k in ("days", "project_ids", "assignments")):
+                raise ConflictError(
+                    code="schedule.nothing_to_accept",
+                    detail="Nothing the part names is still open in the proposal.",
+                )
+            # Nothing left to write (the proposal matches the roster): accepting closes it, as
+            # before 008.
+            job.version += 1
+            await self._jobs.decide(job, "accepted", actor.id, self._now())
+            await self.record(job, "accepted", {"part": {}}, actor=actor, version=job.version)
+            return {
+                "shifts_created": 0,
+                "shifts_updated": 0,
+                "assignments_added": 0,
+                "assignments_removed": 0,
+                "version": job.version,
+                "state": "accepted",
+            }
         run_ids = [uuid.UUID(p) for p in job.project_ids]
         # Lock everything the fingerprint covers, in the order the other paths take these locks
         # (an assignment locks its shift, then its user), before rebuilding (research G9): the
@@ -365,69 +442,253 @@ class ScheduleJobService:
         await self._shifts.lock_between(org_id, *window)
         await self._users.lock_staff(org_id)
         built = await self._inputs.build(org_id, job.first_day, job.last_day, run_ids)
-        if built.fingerprint != job.fingerprint:
+        named = any(part.get(k) for k in ("days", "project_ids", "assignments"))
+        untouched = job.version == 0 and not proposal_copy.any_accepted(work) and not named
+        if untouched and built.fingerprint != job.fingerprint:
+            # The whole of an untouched proposal, as before 008: any change refuses it.
             raise ConflictError(
                 code="schedule.proposal_out_of_date",
                 detail="Something the proposal was made from has changed; generate it again.",
             )
+        if not untouched:
+            # Anything else is judged on today's roster, even when the fingerprint still matches:
+            # it does not cover people placed by hand who were not candidates (their shifts
+            # elsewhere, their entries, whether they are active), nor a part that takes one pair
+            # of a slot and leaves another.
+            placed = await self._people(org_id, {p for who in chosen.values() for p in who})
+            judged = await self._inputs.build(
+                org_id, job.first_day, job.last_day, run_ids, also=set(placed)
+            )
+            await self._check_part(org.timezone, judged, work, chosen, placed)
 
-        counts = dict.fromkeys(
+        counts: dict[str, Any] = dict.fromkeys(
             ("shifts_created", "shifts_updated", "assignments_added", "assignments_removed"), 0
         )
         slots = {s.key: s for s in built.problem.slots}
         new_shifts: list[dict[str, Any]] = []
         new_people: list[dict[str, Any]] = []
-        for item in proposal["slots"]:
-            chosen = [uuid.UUID(p) for p in item["assigned"]]
-            if item["shift_id"] is not None:
-                shift_id = uuid.UUID(item["shift_id"])
-                now_on = set(built.problem.current.get(item["key"], ()))
-                leaving = sorted(now_on - set(chosen), key=str)
-                joining = [p for p in chosen if p not in now_on]
+        overrides: list[dict[str, Any]] = []
+        for slot in work["slots"]:
+            take = chosen.get(slot["key"])
+            if not take:
+                continue
+            adding, dropping = proposal_copy.open_pairs(slot)
+            joining = sorted(adding & take)
+            leaving = sorted(dropping & take)
+            if slot["shift_id"] is not None:
+                shift_id = uuid.UUID(slot["shift_id"])
                 counts["assignments_removed"] += await self._assignments.remove_people(
-                    shift_id, leaving
+                    shift_id, [uuid.UUID(p) for p in leaving]
                 )
-                if leaving or joining:
-                    counts["shifts_updated"] += 1
-                    # A changed staffing is a changed shift: its roster ETag moves, so a reader's
-                    # If-Match goes stale and "changed since publish" sees it (R84).
-                    await self._shifts.touch(shift_id, org_id)
+                counts["shifts_updated"] += 1
+                # A changed staffing is a changed shift: its roster ETag moves, so a reader's
+                # If-Match goes stale and "changed since publish" sees it (R84).
+                await self._shifts.touch(shift_id, org_id)
             else:
-                slot = slots[item["key"]]
+                known = slots.get(slot["key"])
                 shift_id = uuid.uuid4()
                 new_shifts.append(
                     {
                         "id": shift_id,
-                        "project_id": slot.project_id,
-                        "shift_type_id": slot.shift_type_id,
-                        "starts_at": slot.starts_at,
-                        "ends_at": slot.ends_at,
-                        "headcount": slot.headcount,
+                        "project_id": uuid.UUID(slot["project_id"]),
+                        "shift_type_id": uuid.UUID(slot["shift_type_id"]),
+                        "starts_at": known.starts_at
+                        if known
+                        else datetime.fromisoformat(slot["starts_at"]),
+                        "ends_at": known.ends_at
+                        if known
+                        else datetime.fromisoformat(slot["ends_at"]),
+                        # Today's need: the part check refuses one whose headcount changed (R5).
+                        "headcount": known.headcount if known else slot["headcount"],
                     }
                 )
-                joining = chosen
+                slot["shift_id"] = str(shift_id)
                 counts["shifts_created"] += 1
-            new_people += [
-                {"shift_id": shift_id, "user_id": p, "assigned_by": actor.id, "source": "generated"}
-                for p in joining
-            ]
+            by_person = {p["user_id"]: p for p in slot["people"]}
+            for person in joining:
+                entry = by_person[person]
+                assignment_id = uuid.uuid4()
+                new_people.append(
+                    {
+                        "id": assignment_id,
+                        "shift_id": shift_id,
+                        "user_id": uuid.UUID(person),
+                        "assigned_by": actor.id,
+                        "source": "manual" if entry["by"] == "person" else "generated",
+                    }
+                )
+                if entry.get("override"):
+                    for code in entry["override"]["codes"]:
+                        overrides.append(
+                            {
+                                "assignment_id": assignment_id,
+                                "warning_code": code,
+                                "reason": entry["override"]["reason"],
+                                "created_by": actor.id,
+                            }
+                        )
+            slot["stored"] = sorted((set(slot["stored"]) | set(joining)) - set(leaving))
         await self._shifts.create_many(org_id, new_shifts)
         await self._assignments.create_many(org_id, new_people)
+        if self._overrides is not None:
+            for row in overrides:
+                await self._overrides.create(org_id, row)
         counts["assignments_added"] = len(new_people)
-        await self._jobs.decide(job, "accepted", actor.id, self._now())
-        return counts
+        job.current = work
+        job.version += 1
+        state = "accepted" if proposal_copy.is_settled(work) else "open"
+        if state == "accepted":
+            await self._jobs.decide(job, "accepted", actor.id, self._now())
+        else:
+            await self._jobs.save_copy(job)
+        await self.record(
+            job,
+            "accepted",
+            {"part": {k: v for k, v in part.items() if v}, **counts},
+            actor=actor,
+            version=job.version,
+        )
+        return {**counts, "version": job.version, "state": state}
 
-    async def discard(self, actor: User, id: uuid.UUID) -> ScheduleJob:
-        """Close an open proposal without storing it (Manager or Admin).
+    async def _people(self, org_id: uuid.UUID, ids: set[str]) -> dict[uuid.UUID, Employee]:
+        """The people a part places, as the rules see them: deleted or inactive is inactive (R2)."""
+        users = await self._users.get_many({uuid.UUID(p) for p in ids}, org_id) if ids else []
+        return {u.id: Employee(u.id, u.is_active and not u.is_deleted) for u in users}
+
+    async def _check_part(
+        self,
+        zone: str,
+        built: Built,
+        work: Mapping[str, Any],
+        chosen: Mapping[str, set[str]],
+        known: Mapping[uuid.UUID, Employee],
+    ) -> None:
+        """Refuse a part whose drafts changed, or that breaks a rule not overridden (research P9).
+
+        Raises:
+            ConflictError: ``schedule.part_out_of_date``, listing each slot, person and cause.
+        """
+        rebuilt = {s.key: s for s in built.problem.slots}
+        causes: list[dict[str, Any]] = []
+        for slot in work["slots"]:
+            if slot["key"] not in chosen:
+                continue
+            if slot["shift_id"] is None:
+                # A new slot: its need must still be one, of the same headcount, with no draft
+                # made in its place (R5).
+                need = rebuilt.get(slot["key"])
+                if need is None or need.headcount != slot["headcount"]:
+                    causes.append({"key": slot["key"], "date": slot["date"], "cause": "changed"})
+                continue
+            key = f"draft:{slot['shift_id']}"
+            now = rebuilt.get(key)
+            if now is None:
+                causes.append({"key": slot["key"], "date": slot["date"], "cause": "removed"})
+                continue
+            on_now = {str(p) for p in (*built.problem.current.get(key, ()), *now.kept)}
+            moved = (now.starts_at, now.ends_at) != (
+                datetime.fromisoformat(slot["starts_at"]),
+                datetime.fromisoformat(slot["ends_at"]),
+            )
+            if moved or on_now != {*slot["stored"], *slot.get("kept", [])}:
+                causes.append({"key": slot["key"], "date": slot["date"], "cause": "changed"})
+        if not causes:
+            for warning in self._part_breaks(zone, built, work, chosen, known):
+                causes.append(warning)
+        if causes:
+            raise ConflictError(
+                code="schedule.part_out_of_date",
+                detail="Part of what you chose changed since the proposal; nothing was accepted.",
+                errors=causes,
+            )
+
+    def _part_breaks(
+        self,
+        zone: str,
+        built: Built,
+        work: Mapping[str, Any],
+        chosen: Mapping[str, set[str]],
+        known: Mapping[uuid.UUID, Employee],
+    ) -> list[dict[str, Any]]:
+        """The rules the part would break on today's roster that the copy does not override."""
+        layout: dict[str, list[str]] = {}
+        for slot in work["slots"]:
+            stored = set(slot["stored"])
+            take = chosen.get(slot["key"], set())
+            adding, dropping = proposal_copy.open_pairs(slot)
+            layout[slot["key"]] = sorted((stored | (adding & take)) - (dropping & take))
+        shifts = proposal_copy.shifts(work, zone, layout)
+        ours = {s.id for s in shifts}
+        extra = proposal_copy.unlisted(built.problem, work, ours)
+        focus = {proposal_copy.shift_id_of(s) for s in work["slots"] if s["key"] in chosen}
+        found = validate(
+            focus=focus,
+            shifts=[*built.problem.fixed, *extra, *shifts],
+            entries=built.problem.entries,
+            employees=proposal_copy.everyone(
+                built.problem, [*built.problem.fixed, *extra, *shifts], known
+            ),
+            settings=built.problem.settings,
+        )
+        return proposal_copy.unexcused(found, work, chosen)
+
+    async def discard(self, actor: User, id: uuid.UUID, if_match: int | None = None) -> ScheduleJob:
+        """Close an open proposal without storing what is still open (Manager or Admin).
+
+        A proposal with parts accepted closes as ``partly_accepted``; those parts stay drafts
+        (008 FR-005).
 
         Raises:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
             NotFoundError: Not in the organisation (HTTP 404).
+            PreconditionFailedError: ``schedule.version_stale`` (HTTP 412).
             ConflictError: ``schedule.not_ready`` or ``schedule.proposal_closed`` (HTTP 409).
         """
         job = await self._open(actor, id)
-        await self._jobs.decide(job, "discarded", actor.id, self._now())
+        check_version(job, if_match)
+        work = proposal_copy.of(job.current, job.result)
+        state = "partly_accepted" if proposal_copy.any_accepted(work) else "discarded"
+        await self._jobs.decide(job, state, actor.id, self._now())
+        await self.record(job, "discarded", {"state": state}, actor=actor, version=job.version)
         return job
+
+    async def record(
+        self,
+        job: ScheduleJob,
+        kind: str,
+        body: dict[str, Any],
+        *,
+        actor: User | None = None,
+        version: int | None = None,
+    ) -> None:
+        """Add a step to the run's record (008 FR-030), when the record is wired."""
+        if self._events is not None:
+            await self._events.append(
+                job.organization_id,
+                job.id,
+                kind,
+                self._now(),
+                body,
+                actor_id=actor.id if actor else None,
+                version=version,
+            )
+
+    async def save(self, job: ScheduleJob) -> None:
+        """Write a locked job's working copy and version (008, ADR 020)."""
+        await self._jobs.save_copy(job)
+
+    async def open_for(self, actor: User, id: uuid.UUID) -> ScheduleJob:
+        """The job, locked, if ``actor`` may still change its proposal (see ``_open``)."""
+        return await self._open(actor, id)
+
+    async def require_scope_of(self, actor: User, job: ScheduleJob) -> None:
+        """Refuse unless ``actor`` may act on every project ``job`` covers (007 T108)."""
+        if actor.role == UserRole.admin:
+            return
+        covered = [uuid.UUID(p) for p in job.project_ids] or [
+            p.id for p in await self._inputs.active_projects(job.organization_id, None)
+        ]
+        await self._require_scope(actor, covered)
 
     # ------------------------------------------------------------------ the worker's steps
 

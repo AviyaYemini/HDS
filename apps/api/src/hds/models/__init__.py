@@ -22,6 +22,7 @@ from hds.models.refresh_token import RefreshToken
 from hds.models.roster_extras import PublishEvent, RuleOverride, WeekTemplate
 from hds.models.saved_view import SavedView
 from hds.models.schedule_job import ScheduleJob
+from hds.models.schedule_job_event import ScheduleJobEvent
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
@@ -58,6 +59,7 @@ __all__ = [
     "project_shift_types",
     "SubmissionWindow",
     "ScheduleJob",
+    "ScheduleJobEvent",
     "StaffingNeed",
     "AvailabilityEntry",
     "AvailabilitySubmission",

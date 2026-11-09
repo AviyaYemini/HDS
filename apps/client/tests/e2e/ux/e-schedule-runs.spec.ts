@@ -8,7 +8,7 @@
  */
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-import { LANGUAGES, PREVIEWS_ON, addDays, apiAs, at, checkA11y, ok, signIn, siteDay, sundayOf } from "./support";
+import { LANGUAGES, addDays, apiAs, at, checkA11y, ok, signIn, siteDay, sundayOf } from "./support";
 
 async function needsSomething(admin: APIRequestContext): Promise<string> {
   const projects = await ok<{ items: { id: string; name: string }[] }>(admin.get("/api/v1/projects"));
@@ -59,7 +59,6 @@ for (const language of LANGUAGES) {
     await expect(label).toBeVisible({ timeout: 90_000 });
     await expect(label).toHaveText(language === "he" ? /אופטימלי|הטוב ביותר שנמצא/ : /Optimal|Best found in \d+ s/);
     await expect(page.getByTestId("run-filled")).toContainText("/");
-    if (PREVIEWS_ON) await expect(page.getByTestId("preview-proposal-diff")).toBeVisible();
     await checkA11y(page, `run (${language})`);
     await page.getByTestId("action-discard").click();
     await expect(page.getByTestId("action-accept")).toHaveCount(0);

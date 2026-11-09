@@ -119,8 +119,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def handle_conflict(request: Request, exc: ConflictError) -> JSONResponse:
         """Answer 409, naming the offending request field when the service knows it."""
-        extra = {"field": exc.field} if exc.field else None
-        return _problem(409, "Conflict", exc.detail, exc.code, request, extra)
+        extra: dict[str, Any] = {"field": exc.field} if exc.field else {}
+        if exc.errors:
+            extra["errors"] = exc.errors
+        return _problem(409, "Conflict", exc.detail, exc.code, request, extra or None)
 
     @app.exception_handler(PreconditionFailedError)
     async def handle_precondition(request: Request, exc: PreconditionFailedError) -> JSONResponse:
@@ -143,8 +145,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(DomainValidationError)
     async def handle_validation(request: Request, exc: DomainValidationError) -> JSONResponse:
-        """Answer 422 for a business-rule violation raised by a service."""
-        return _problem(422, "Unprocessable Entity", exc.detail, exc.code, request)
+        """Answer 422 for a business-rule violation raised by a service, with its rule breaks."""
+        extra = {"errors": exc.errors} if exc.errors else None
+        return _problem(422, "Unprocessable Entity", exc.detail, exc.code, request, extra)
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation(

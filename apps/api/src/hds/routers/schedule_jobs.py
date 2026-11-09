@@ -6,16 +6,18 @@ Layer: routers. Delegates to ``ScheduleJobService``; HTTP only. Managers and Adm
 import base64
 import uuid
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from hds.core.config import get_settings
+from hds.core.deps import ProposalIfMatch as IfMatch
+from hds.core.deps import proposal_version as version_of
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
-from hds.core.types import StrictDate
+from hds.core.types import StrictDate, text
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
 from hds.services.idempotency import IdempotencyService
@@ -24,8 +26,8 @@ from hds.wiring import idempotency, schedule_jobs
 
 router = APIRouter(prefix="/api/v1", tags=["schedule jobs"])
 
-Status = Literal["queued", "running", "succeeded", "failed"]
-ProposalState = Literal["open", "accepted", "discarded", "expired"]
+Status = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+ProposalState = Literal["open", "accepted", "discarded", "expired", "partly_accepted"]
 
 
 class JobCreateRequest(BaseModel):
@@ -312,38 +314,67 @@ async def read_job(
 
 
 class AcceptAnswer(BaseModel):
-    """What accepting wrote to the roster, as drafts."""
+    """What accepting wrote to the roster, as drafts, and the proposal after it (008)."""
 
     shifts_created: int
     shifts_updated: int
     assignments_added: int
     assignments_removed: int
+    version: int
+    state: Literal["open", "accepted"]
+
+
+class PartPair(BaseModel):
+    """One person on one slot of the proposal."""
+
+    key: Annotated[str, text(200, min_length=1)]
+    user_id: uuid.UUID
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AcceptRequest(BaseModel):
+    """The part to accept: days, projects or assignments; nothing named accepts all still open."""
+
+    days: list[StrictDate] = Field(default_factory=list, max_length=31)
+    project_ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
+    assignments: list[PartPair] = Field(default_factory=list, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post(
     "/schedule-jobs/{id}/accept",
     response_model=AcceptAnswer,
-    summary="Accept a proposal",
+    summary="Accept a proposal, or part of it",
     description=(
-        "Manager or Admin. Store the proposal as draft shifts and assignments, all or nothing; "
-        "nothing is published. An existing draft keeps its id and headcount. Refused with 409 "
-        "when the job has no proposal (`schedule.not_ready`), the proposal was accepted, "
-        "discarded or has expired (`schedule.proposal_closed`), or anything it was made from has "
-        "changed since (`schedule.proposal_out_of_date`); nothing changes then. A Manager who "
-        "does not manage every project of the run, now, is refused the whole of it with 403 "
+        "Manager or Admin. Store the proposal, or the part the body names (`days`, `project_ids` "
+        "or `assignments`; nothing named accepts everything still open), as draft shifts and "
+        "assignments, all or nothing; nothing is published, and what is not named stays open "
+        "(008 FR-003, FR-004). An existing draft keeps its id and headcount. Refused with 409 "
+        "when the job has no proposal (`schedule.not_ready`), the proposal is closed "
+        "(`schedule.proposal_closed`), nothing named is still open (`schedule.nothing_to_accept`), "
+        "an untouched proposal was made from something that has changed "
+        "(`schedule.proposal_out_of_date`), or the part's own drafts changed or it would break a "
+        "rule the proposal does not override (`schedule.part_out_of_date`, each in `errors`); "
+        "nothing changes then. 412 (`schedule.version_stale`) for a stale `If-Match`. A Manager "
+        "who does not manage every project of the run, now, is refused the whole of it with 403 "
         "(`roster.project_not_managed`, 007 T108)."
     ),
 )
 async def accept_job(
     id: uuid.UUID,
+    body: AcceptRequest | None = None,
+    if_match: str | None = IfMatch,
     current_user: User = Depends(require_manager),
     svc: ScheduleJobService = Depends(schedule_jobs),
 ) -> AcceptAnswer:
-    """Accept a proposal.
+    """Accept a proposal, or part of it.
 
-    Manager or Admin. Its shifts and assignments become drafts, all or nothing.
+    Manager or Admin. What it names becomes drafts, all or nothing.
     """
-    return AcceptAnswer(**await svc.accept(current_user, id))
+    part = body.model_dump(mode="json") if body is not None else None
+    return AcceptAnswer(**await svc.accept(current_user, id, part, version_of(if_match)))
 
 
 @router.post(
@@ -351,7 +382,10 @@ async def accept_job(
     response_model=JobRead,
     summary="Discard a proposal",
     description=(
-        "Manager or Admin. Close the proposal without storing it. Refused with 409 when the job "
+        "Manager or Admin. Close the proposal without storing what is still open of it; a "
+        "proposal with parts accepted closes as `partly_accepted`, and those parts stay drafts "
+        "(008 FR-005). 412 (`schedule.version_stale`) for a stale `If-Match`. Refused with 409 "
+        "when the job "
         "has no proposal (`schedule.not_ready`) or it is already closed "
         "(`schedule.proposal_closed`); with 403 (`roster.project_not_managed`) for a Manager who "
         "does not manage every project of the run (007 T108)."
@@ -359,12 +393,13 @@ async def accept_job(
 )
 async def discard_job(
     id: uuid.UUID,
+    if_match: str | None = IfMatch,
     current_user: User = Depends(require_manager),
     svc: ScheduleJobService = Depends(schedule_jobs),
 ) -> Response:
-    """Discard a proposal.
+    """Discard a proposal, or what is still open of it.
 
-    Manager or Admin. It can no longer be accepted.
+    Manager or Admin. It can no longer be accepted; parts already accepted stay drafts.
     """
-    job = await svc.discard(current_user, id)
+    job = await svc.discard(current_user, id, version_of(if_match))
     return JSONResponse(job_read(job, svc).model_dump(mode="json", by_alias=True))

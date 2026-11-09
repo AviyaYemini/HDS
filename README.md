@@ -4,15 +4,16 @@ HDS is a workforce, client and project administration system for an organisation
 staffs sites with employees. Managers and Admins manage employees, groups, qualifications,
 clients, sites and projects; Employees maintain their own profile; Clients see only their own
 projects. Employees submit their availability and see their published shifts; Managers generate a
-roster across every active project and accept it as drafts, and Admins adjust it by hand with rule
-warnings, all judged by the pure `hds.scheduling` package.
+roster across their projects, review it as a change and accept it whole or in parts, and adjust the
+roster by hand with rule warnings (Admins everywhere, Managers on the projects they manage), all
+judged by the pure `hds.scheduling` package.
 
 This repository is a monorepo:
 
 | Path | What it holds |
 | --- | --- |
-| [`apps/api`](apps/api/README.md) | The Python (FastAPI) backend: the only part with working features today |
-| `apps/client` | The Expo app (iOS, Android, web): sign-in, My availability, My shifts |
+| [`apps/api`](apps/api/README.md) | The Python (FastAPI) backend |
+| `apps/client` | The Expo app (iOS, Android, web) in Hebrew and English: My work for employees; the roster, schedule runs, admin screens and reports for managers and admins; the client view |
 | `packages/api-client` | TypeScript API client, generated from the OpenAPI document; never edited by hand |
 | [`infra`](infra/README.md) | Docker Compose, the API and web images, pinned versions |
 | [`docs`](docs/README.md) | Product spec, API reference, architecture guide and ADRs |

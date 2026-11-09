@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable, Coroutine, Mapping
 from typing import Any
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from hds.core.authz import ensure_self_or_manager
 from hds.core.capabilities import Capability, has
 from hds.core.config import get_settings
 from hds.core.database import get_unit_of_work
-from hds.core.exceptions import AuthError, ForbiddenError
+from hds.core.exceptions import AuthError, ForbiddenError, PreconditionFailedError
 from hds.core.security import decode_access_token
 from hds.models.user import User
 from hds.repositories.user import UserRepository
@@ -256,3 +256,32 @@ async def get_current_user_or_self(
     """
     ensure_self_or_manager(user, id)
     return user
+
+
+# A proposal's working copy is written against the version read (008 research P8, ADR 020).
+ProposalIfMatch = Header(
+    default=None,
+    alias="If-Match",
+    max_length=16,
+    description=(
+        "The proposal's `version` as read; a stale one is refused with 412 "
+        "(`schedule.version_stale`)."
+    ),
+)
+
+
+def proposal_version(header: str | None) -> int | None:
+    """The version an ``If-Match`` names; one that is not a version is stale by definition.
+
+    Raises:
+        PreconditionFailedError: ``schedule.version_stale`` for a value that is not a version.
+    """
+    if header is None:
+        return None
+    value = header.strip().strip('"')
+    if not value.isdigit():
+        raise PreconditionFailedError(
+            code="schedule.version_stale",
+            detail="The proposal changed since you read it; read it again.",
+        )
+    return int(value)

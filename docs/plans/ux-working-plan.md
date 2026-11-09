@@ -1,7 +1,8 @@
 # UX working plan
 
 **Status:** Proposed. Written on 2026-11-07 from the owner's decision to "apply all" of the UX
-research, with Option B as the design language. Everything here beyond the original product spec
+research, with Option B as the design language. Feature 007 shipped in five pull requests (#15 to
+#20, merged by 2026-11-08); feature 008 is in progress (section 10). Everything here beyond the original product spec
 is Proposed. Under the working agreement it goes through the Spec Kit stages before any code is
 written.
 
@@ -117,8 +118,8 @@ Each feature is a Spec Kit feature with its stored prompt in
 
 | Feature | Prompt | What | Rows | Depends on |
 | --- | --- | --- | --- | --- |
-| **007 UX foundation and redesign** | `06-ux-redesign` | The design system, role shells, the employee app, the roster, admin screens, reports, the client shell, and previews of everything below | N1–N12, S1–S19, S21, E1–E4, E6–E12, E15–E16, A1–A14, A19, D1–D13, X1–X17, C1, C6, AS9 | the harness PR, this plan |
-| 008 Auto-scheduler review | `07-auto-scheduler-review` | Proposal as a diff, partial and in-place acceptance, a reason and a fix for every empty slot, progress, fairness | AS1–AS8, AS10–AS13 | 007 D |
+| 007 UX foundation and redesign (done, #15 to #20) | `06-ux-redesign` | The design system, role shells, the employee app, the roster, admin screens, reports, the client shell, and previews of everything below | N1–N12, S1–S19, S21, E1–E4, E6–E12, E15–E16, A1–A14, A19, D1–D13, X1–X17, C1, C6, AS9 | the harness PR, this plan |
+| **008 Auto-scheduler review** (in progress) | `07-auto-scheduler-review` | Proposal as a diff, partial and in-place acceptance, a reason and a fix for every empty slot, progress, fairness | AS1–AS8, AS10–AS13 | 007 D |
 | 009 Client portal | `08-client-portal` | Billing breakdown, requests, coverage counts, client home, the monthly e-mail, several users per client | C2–C5, C7–C9, NT6 | 007 B |
 | 010 Notifications and native builds | `09-notifications` | Inbox, push, preferences, reminders before deadlines and shifts, store builds | NT1–NT5, NT7, MOB rows | 007 B |
 | 011 Hours worked | `10-hours-worked` | Reporting and confirming worked hours, "I can't make it"; clock-in later | E13, E18 (later), EMP-2 | 007 C |
@@ -276,7 +277,9 @@ accessibility adviser. Nothing in 007 to 016 depends on the answer except the wa
 ## 9. Who does what
 
 The owner's split (2026-11-07): **Fable 5.1 builds the UI, and everything else is the
-implementer session's.**
+implementer session's.** Superseded on 2026-11-08: one session builds both, backend and client,
+for the rest of 007 and from 008 on; tasks carry no [UI] or [CORE] mark. The split below is kept
+as the record of how 007 began.
 
 - **The implementer session** (the owner's CLI session):
   - creates the 007 branch and runs the Spec Kit stages: specify, clarify, plan, tasks and
@@ -310,12 +313,14 @@ The brief for the Fable session, once tasks.md exists:
 
 ## 10. Next steps
 
-1. The owner pushes and merges the harness PR (`chore/harness-fast-prs`). 007's tasks stage needs
-   its new group close, so the 007 branch merges main after that.
-2. The implementer session creates the 007 branch from this plan's commit and runs specify,
-   clarify and plan. Tasks and analyze follow once the harness PR is on main. The plan ships with
-   007's first pull request.
-3. Once tasks.md exists, the owner starts the Fable 5.1 session with the brief above.
-4. The owner sends L1 to L18 for legal review.
-5. Feature 006's Group M (PR 5) goes ahead whenever the owner has time. It doesn't touch the
-   client, so it can run alongside 007.
+As of 2026-11-08:
+
+1. Feature 007 is done: all five pull requests are merged (#15 to #20).
+2. Feature 008, the auto-scheduler review, runs as four pull requests
+   ([tasks.md](../../specs/008-auto-scheduler-review/tasks.md)). PR 1 (review as a change, partial
+   accept, editing) is ready to push; PRs 2 to 4 (empty-slot reasons and fixes; steering,
+   trade-offs and fairness; best so far, the run record and one flow) follow it.
+3. The owner sends L1 to L18 for legal review; feature 017 waits for it.
+4. Feature 006's Group M (PR 5) goes ahead whenever the owner says.
+5. Training and security projects must not mix (the owner, 2026-11-08): shift types per kind of
+   project and project teams come in a later feature, after 008.

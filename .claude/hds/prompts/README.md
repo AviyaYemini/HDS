@@ -12,7 +12,7 @@ Stages with no stored prompt (`/speckit-clarify`, `/speckit-tasks`, `/speckit-an
 | 4 | 04-pay-reports | Pay forecast and basic reports | specify, plan |
 | 5 | 05-deploy | Deployment and operations | specify, plan |
 | 6 | 06-ux-redesign | UX foundation and redesign (feature 007) | specify, plan |
-| 7 | 07-auto-scheduler-review | Auto-scheduler review (008) | specify (stub) |
+| 7 | 07-auto-scheduler-review | Auto-scheduler review (008) | specify, plan |
 | 8 | 08-client-portal | Client portal (009) | specify (stub) |
 | 9 | 09-notifications | Notifications and native builds (010) | specify (stub) |
 | 10 | 10-hours-worked | Hours worked (011) | specify (stub) |
@@ -23,7 +23,7 @@ Stages with no stored prompt (`/speckit-clarify`, `/speckit-tasks`, `/speckit-an
 | 15 | 15-requests | Requests: absences, swaps, open shifts (016) | specify (stub) |
 | 16 | 16-pay-compliance | Pay compliance, after legal review (017) | specify (stub) |
 
-Folders 06 to 16 come from the [UX working plan](../../../docs/plans/ux-working-plan.md). The stubs (07 to 16) are drafts: review each with the owner, and add its plan prompt, before running it.
+Folders 06 to 16 come from the [UX working plan](../../../docs/plans/ux-working-plan.md). 07 was reviewed with the owner and has its plan prompt (2026-11-08). The stubs (08 to 16) are drafts: review each with the owner, and add its plan prompt, before running it.
 
 New features: copy this skeleton into a new folder `17-<name>/specify.md`:
 

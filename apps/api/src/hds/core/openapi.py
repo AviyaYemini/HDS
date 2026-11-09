@@ -86,6 +86,9 @@ _CONFLICTS = {
     ("/api/v1/shifts/{id}/assignments", "post"),
     ("/api/v1/schedule-jobs/{id}/accept", "post"),
     ("/api/v1/schedule-jobs/{id}/discard", "post"),
+    ("/api/v1/schedule-jobs/{id}/proposal", "get"),
+    ("/api/v1/schedule-jobs/{id}/edits", "post"),
+    ("/api/v1/schedule-jobs/{id}/edits/undo", "post"),
     ("/me/availability-submissions", "post"),
     ("/api/v1/assignments/{id}/overrides", "post"),
     ("/api/v1/projects/{id}/week-templates", "post"),
@@ -103,6 +106,11 @@ _PRECONDITIONS = {
     ("/api/v1/shifts/{id}/assignments", "post"),
     ("/api/v1/assignments/{id}", "patch"),
     ("/api/v1/assignments/{id}", "delete"),
+    # A proposal's working copy, by its version (008 research P8).
+    ("/api/v1/schedule-jobs/{id}/accept", "post"),
+    ("/api/v1/schedule-jobs/{id}/discard", "post"),
+    ("/api/v1/schedule-jobs/{id}/edits", "post"),
+    ("/api/v1/schedule-jobs/{id}/edits/undo", "post"),
 }
 # Signed-in operations open to every role, with no other refusal, so they never answer 403.
 _NEVER_FORBIDDEN = {

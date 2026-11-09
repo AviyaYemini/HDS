@@ -6,6 +6,7 @@ status mapping lives in ``hds.core.error_handler``.
 """
 
 import uuid
+from typing import Any
 
 
 class AuthError(Exception):
@@ -60,32 +61,44 @@ class NotFoundError(Exception):
 class ConflictError(Exception):
     """The request clashes with current state, e.g. duplicate email or last admin (HTTP 409)."""
 
-    def __init__(self, code: str, detail: str, field: str | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        detail: str,
+        field: str | None = None,
+        errors: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Create the error.
 
         Args:
             code: Stable error code such as ``users.email_taken``.
             detail: English explanation for the response body.
             field: Request field that caused the conflict, if one does.
+            errors: The items that conflict, each with its own code or cause, when there are
+                several (008: each day of a part that changed).
         """
         self.code = code
         self.detail = detail
         self.field = field
+        self.errors = errors
         super().__init__(detail)
 
 
 class DomainValidationError(Exception):
     """A business rule rejected otherwise well-formed input (HTTP 422)."""
 
-    def __init__(self, code: str, detail: str) -> None:
+    def __init__(self, code: str, detail: str, errors: list[dict[str, Any]] | None = None) -> None:
         """Create the error.
 
         Args:
             code: Stable error code such as ``validation.rate_not_positive``.
             detail: English explanation for the response body.
+            errors: The rule breaks behind the refusal, when the caller needs them (008: the
+                warnings an edit must give a reason for).
         """
         self.code = code
         self.detail = detail
+        self.errors = errors
         super().__init__(detail)
 
 

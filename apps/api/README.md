@@ -247,5 +247,13 @@ Each is in the contract and in [`docs/hds-api.md`](../../docs/hds-api.md):
 - Saved views (`/me/saved-views`, migration 033) and the work log's key figures.
 - The organisation's contact card (`/organisation/contact`).
 
+### Added for the auto-scheduler review (feature 008, Proposed)
+
+- A proposal's working copy and the run record (migration 034; ADR 020): `GET
+  /schedule-jobs/{id}/proposal` reads it as a change to the roster, `POST .../edits` and
+  `.../edits/undo` change it under its version (`If-Match`), and `POST .../accept` takes a part.
+- `services/proposal_copy.py` holds the copy's shape and its pairs; `services/proposal.py` the
+  edits and undo; `repositories/schedule_job_event.py` the record, which only grows.
+
 The e2e runs start the schedule worker beside the API with `SCHEDULE_TIME_LIMIT_SECONDS=5`, so a
 queued run is solved within a test (`apps/client/playwright.config.ts`, `scripts/ops/e2e_ux.sh`).

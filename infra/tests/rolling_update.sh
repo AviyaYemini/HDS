@@ -236,6 +236,16 @@ load_pid=$!
 sleep 10
 token=$(sign_in)
 today=$(date -u +%Y-%m-%d)
+# made: the id of a new item, POSTed as the Admin. A run needs an active project to schedule (007,
+# schedule.no_projects), and the new organisation has none: a site, a client and a project first.
+made() {
+    curl -fsS -H 'Host: hds.localhost' -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+        --data "$2" "http://127.0.0.1:$PORT/api/v1/$1" | jq -r .id
+}
+site=$(made sites '{"name": "Rolling Site", "address": "1 Rolling Street", "timezone": "Asia/Jerusalem"}')
+client=$(made clients "{\"name\": \"Rolling Client\", \"contract_start\": \"$today\"}")
+project=$(made projects "{\"client_id\": \"$client\", \"site_id\": \"$site\", \"name\": \"Rolling Project\", \"type\": \"security\", \"billing_rate\": \"100.00\", \"start_date\": \"$today\"}")
+[ -n "$project" ] && [ "$project" != null ] || fail "the project to schedule could not be made"
 job=$(curl -fsS -H 'Host: hds.localhost' -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
     --data "{\"from\": \"$today\", \"to\": \"$today\", \"solver\": \"greedy\"}" \
     http://127.0.0.1:$PORT/api/v1/schedule-jobs | jq -r .id)
