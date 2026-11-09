@@ -5,65 +5,31 @@
  * in a sheet. The status banner, Review and Submit, Undo, Copy last week, absences as bands and the
  * holidays follow the spec; the test ids are in contracts/ui-routes.md ("My work test ids").
  */
-import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 
 import { ApiError, call, codeOf, useErrorText } from "../../../api/errors";
 import { useSession } from "../../../api/SessionContext";
 import { useOnline } from "../../../connectivity";
-import { Button, EmptyState, InlineBanner, PageTitle, Sheet, SkeletonRows, StatusChip, Txt, focusRing, showToast, type ChipStatus, type PressState } from "../../../design/components";
+import { Button, EmptyState, InlineBanner, PageTitle, Sheet, SkeletonRows, StatusChip, Txt, showToast, type ChipStatus } from "../../../design/components";
 import { Screen } from "../../../design/components/Screen";
-import { useKeyboardMode } from "../../../design/focus";
 import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { component } from "../../../design/theme/theme.generated";
 import { webProps } from "../../../design/web";
-import { DEFAULT_TIME_ZONE, addDays, dateOf, endOfWeek, formatNumericDate, formatNumericRange, formatShortNumericRange, formatTime, holidaysBetween, startOfWeek, todayIn, weekdayNames } from "../../../locale";
-import { useLoad } from "../../useLoad";
-import type { PendingChange } from "./draftQueue";
-import {
-  ALL_DAY,
-  CYCLE,
-  absencesOn,
-  cellEntry,
-  copyPlan,
-  daysOfWeek,
-  editable,
-  initialWeek,
-  nextState,
-  pickWindow,
-  planCellChange,
-  reviewRows,
-  statusAfterChange,
-  targetKey,
-  weeksOf,
-  type CellKey,
-  type CellState,
-  type Change,
-  type Entry,
-  type Mark,
-  type PlannedCall,
-  type Submission,
-  Serial,
-  CellLedger,
-} from "./model";
+import { DEFAULT_TIME_ZONE, dateOf, formatNumericDate, formatNumericRange, formatShortNumericRange, formatTime, holidaysBetween, todayIn, weekdayNames } from "../../../locale";
+import { ALL_DAY, CYCLE, absencesOn, cellEntry, copyPlan, daysOfWeek, editable, initialWeek, nextState, planCellChange, reviewRows, statusAfterChange, targetKey, weeksOf, type CellKey, type CellState, type Change, type Entry, type Submission, Serial, CellLedger } from "./model";
+import { Cell, STATE_CHIP } from "./Cell";
+import { lightTap, successTap } from "./haptics";
+import { useAvailabilityData } from "./useAvailabilityData";
 import { usePendingQueue } from "./usePendingQueue";
 
-const STATE_CHIP: Record<CellState, ChipStatus> = { unmarked: "neutral", open: "success", close: "warning", blocked: "danger" };
 const STATUS_CHIP: Record<Submission["status"], ChipStatus> = { not_submitted: "warning", draft: "info", submitted: "success", locked: "neutral" };
 
 const keyOf = (key: CellKey) => `${key.date}|${key.shiftType}`;
 
-function lightTap(): void {
-  if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-}
-
-function successTap(): void {
-  if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-}
 
 /** The grid's scroll frame on the web: a keyboard can reach and scroll it even when every cell is locked (axe: scrollable-region-focusable). */
 const GRID_FRAME_ROLE = "region";
@@ -78,25 +44,7 @@ export function AvailabilityScreen() {
   const userId = session.user?.id ?? "";
   const today = todayIn(DEFAULT_TIME_ZONE);
 
-  const setup = useLoad(async () => {
-    const [windows, types] = await Promise.all([
-      call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: addDays(today, -60) } } })),
-      call(session.api.GET("/api/v1/shift-types")),
-    ]);
-    return { windows: windows.items, types: types.items.filter((type) => type.is_active) };
-  });
-  const window = useMemo(() => (setup.data ? pickWindow(setup.data.windows, askedWindow) : null), [setup.data, askedWindow]);
-  const shiftTypes = setup.data?.types ?? [];
-
-  const range = window ? { from: addDays(startOfWeek(window.starts_on), -7), to: endOfWeek(window.ends_on) } : null;
-  const entries = useLoad(
-    async () => (range ? (await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: range } }))).items : []),
-    [range?.from, range?.to, userId],
-  );
-  const submission = useLoad(
-    async () => (window ? call(session.api.GET("/me/availability-submissions", { params: { query: { window_id: window.id } } })) : null),
-    [window?.id],
-  );
+  const { setup, window, shiftTypes, entries, submission, readEntries, runPlan, sendPending } = useAvailabilityData(askedWindow, userId, today);
 
   const [week, setWeek] = useState<string | null>(null);
   const shownWeek = week ?? (window ? initialWeek(window, today) : null);
@@ -114,58 +62,12 @@ export function AvailabilityScreen() {
   // The cell writes in flight, one after another, and a fresh reading of the entries for each.
   const [writes] = useState(() => new Serial());
   const [ledger] = useState(() => new CellLedger<CellState, Change>());
-  const readEntries = useCallback(
-    async (): Promise<Entry[]> =>
-      range ? (await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: range } }))).items : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the range's two dates are the dependency
-    [range?.from, range?.to, userId, session],
-  );
-
-  /** Run a plan's calls in order. */
-  const runPlan = useCallback(
-    async (calls: readonly PlannedCall[]): Promise<void> => {
-      for (const step of calls) {
-        if (step.call === "create") {
-          await call(
-            session.api.POST("/api/v1/employees/{id}/constraints", {
-              params: { path: { id: userId } },
-              body: { kind: step.kind, starts_on: step.starts_on, ends_on: step.ends_on, shift_type_id: step.shift_type_id, weekday: step.weekday },
-            }),
-          );
-        } else if (step.call === "update") {
-          const body: { kind?: Mark; starts_on?: string; ends_on?: string } = {};
-          if (step.kind) body.kind = step.kind;
-          if (step.starts_on) body.starts_on = step.starts_on;
-          if (step.ends_on) body.ends_on = step.ends_on;
-          await call(session.api.PATCH("/api/v1/constraints/{id}", { params: { path: { id: step.id } }, body }));
-        } else {
-          await call(session.api.DELETE("/api/v1/constraints/{id}", { params: { path: { id: step.id } } }));
-        }
-      }
-    },
-    [session.api, userId],
-  );
 
   const reload = useCallback(async (): Promise<void> => {
     await Promise.all([entries.reload(), submission.reload()]);
     setStatus(null);
   }, [entries, submission]);
 
-  // A saved change is sent against the server's entries of that day, read afresh, so it lands right
-  // however the week changed meanwhile (R49, R50).
-  const sendPending = useCallback(
-    async (change: PendingChange): Promise<void> => {
-      if (!window) return;
-      try {
-        const fresh = await call(session.api.GET("/api/v1/employees/{id}/constraints", { params: { path: { id: userId }, query: { from: change.key.date, to: change.key.date } } }));
-        await runPlan(planCellChange(fresh.items, change.key, change.state, window));
-      } catch (failure) {
-        if (failure instanceof ApiError && failure.status === 0) throw Object.assign(new Error("unreachable"), { retry: true });
-        throw failure;
-      }
-    },
-    [window, session.api, userId, runPlan],
-  );
   const dropOverride = useCallback((key: CellKey) => {
     setOverrides((map) => {
       const next = new Map(map);
@@ -573,37 +475,6 @@ export function AvailabilityScreen() {
   );
 }
 
-function Cell({ cellKey, state, label, disabled, onPress, onLongPress }: { cellKey: CellKey; state: CellState; label: string; disabled: boolean; onPress: () => void; onLongPress: () => void }) {
-  const { colors } = useTheme();
-  const keyboard = useKeyboardMode();
-  const { t } = useTranslation();
-  const marked = state !== "unmarked";
-  const tone = marked ? colors.status[STATE_CHIP[state] as "success" | "warning" | "danger"] : colors.text.secondary;
-  return (
-    <Pressable
-      role="button"
-      testID="availability-cell"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      aria-disabled={disabled}
-      disabled={disabled}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      {...webProps({ dataSet: { date: cellKey.date, shiftType: cellKey.shiftType, state } })}
-      style={(pressState) => [
-        styles.cell,
-        { borderColor: marked ? tone : colors.border.subtle, backgroundColor: marked ? colors.bg.selected : colors.bg.canvas },
-        disabled ? styles.cellDisabled : null,
-        (pressState as PressState).hovered || pressState.pressed ? { borderColor: colors.border.strong } : null,
-        keyboard && (pressState as PressState).focused ? focusRing(colors.focus.ring) : null,
-      ]}
-    >
-      <Txt role="eyebrow" style={{ color: tone }} numberOfLines={1}>
-        {t(`availability.state_short.${state}`)}
-      </Txt>
-    </Pressable>
-  );
-}
 
 const styles = StyleSheet.create({
   banner: { gap: 10, padding: 16, borderWidth: 1 },
@@ -621,8 +492,6 @@ const styles = StyleSheet.create({
   headRow: { minHeight: 44 },
   dayCol: { width: 92, padding: 6, justifyContent: "center", gap: 1 },
   cellCol: { flex: 1, padding: 6, justifyContent: "center", alignItems: "center" },
-  cell: { flex: 1, minWidth: 0, minHeight: component.target.phone, margin: 2, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  cellDisabled: { opacity: 0.6 },
   band: { flex: 1, margin: 3, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 },
   rules: { gap: 8, padding: 14, borderWidth: 1 },
   legend: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

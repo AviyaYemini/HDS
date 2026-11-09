@@ -10,6 +10,14 @@ import { addDays, dateOf } from "../../locale";
 export type Shift = components["schemas"]["ShiftRead"];
 export type Assignment = components["schemas"]["AssignmentRead"];
 export type Warning = components["schemas"]["WarningRead"];
+/** Someone who can be placed on a shift. */
+export type Person = { id: string; full_name: string };
+/** Someone already on another shift at a shift's time (008 T042f). */
+export type BusyOn = components["schemas"]["BusyAnswer"]["items"][number];
+/** A shift's "Find someone" ranking (008 FR-034). */
+export type Cover = components["schemas"]["Cover"];
+/** Who hears of a manual edit (008 T042g). */
+export type Alert = components["schemas"]["AssignRequest"]["alert"];
 
 /** The seven site dates of the week starting on Sunday `week`. */
 export function weekDays(week: string): string[] {

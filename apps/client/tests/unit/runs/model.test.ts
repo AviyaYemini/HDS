@@ -72,7 +72,7 @@ test("the types offered, so the default never mixes training and security", () =
 
 describe("fromPreset (FR-032)", () => {
   it("keeps a coming week, starts this one today, and moves a past one to next week", () => {
-    const { fromPreset } = jest.requireActual<typeof import("../../../src/screens/runs/RunsScreen")>("../../../src/screens/runs/RunsScreen");
+    const { fromPreset } = jest.requireActual<typeof import("../../../src/screens/runs/model")>("../../../src/screens/runs/model");
     expect(fromPreset("2027-06-13", "2027-06-09")).toEqual({ start: "2027-06-13", end: "2027-06-19" });
     expect(fromPreset("2027-06-06", "2027-06-09")).toEqual({ start: "2027-06-09", end: "2027-06-12" });
     expect(fromPreset("2027-05-30", "2027-06-09").start >= "2027-06-09").toBe(true);

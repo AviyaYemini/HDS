@@ -5,7 +5,8 @@
  */
 import type { components } from "@hds/api-client";
 
-import { addDays, startOfWeek } from "../../locale";
+import type { Chip, Controls } from "./steering";
+import { addDays, compareDates, presetRange, startOfWeek, type DateRange } from "../../locale";
 
 export type Job = components["schemas"]["JobRead"];
 export type JobSummary = components["schemas"]["JobSummary"];
@@ -118,4 +119,31 @@ export function digest(text: string): string {
 /** The project types among `projects`, in a fixed order (security, then training). */
 export function typesOf(projects: readonly { type: string }[]): string[] {
   return [...new Set(projects.map((p) => p.type))].sort();
+}
+
+/** A project the generate form may offer: its name and type (training and security don't mix). */
+export interface Offered {
+  id: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * The roster's week as a run's range, never starting before today, as the date field allows: this
+ * week from today on, or next week when the whole week has passed (FR-032).
+ */
+export function fromPreset(week: string, today: string): DateRange {
+  const end = addDays(week, 6);
+  if (compareDates(end, today) < 0) return presetRange("next-week", today);
+  return { start: compareDates(week, today) < 0 ? today : week, end };
+}
+
+/** A run to run again (FR-019, FR-021a): its range, projects, controls and chips, and its id. */
+export interface Again {
+  id: string;
+  from: string;
+  to: string;
+  project_ids: string[];
+  controls: Controls;
+  chips: Chip[];
 }

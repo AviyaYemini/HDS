@@ -58,7 +58,9 @@ left holding the screen, and its parts move beside it in the screen's folder.
 
 Rules for the split:
 - A hook holds the data calls and state, and a view only renders.
-- A folder's parts are imported through its `index.ts`.
+- A folder's screens are imported through its `index.ts`, by the routes. Roster and runs import each
+  other's pure helpers (`model.ts`, `review.ts`, `rosterHref`) from the module itself, not the index,
+  so the two folders never import each other's index in a cycle.
 - Nothing moves into `design/`.
 - One commit per screen, so each can be checked on its own.
 

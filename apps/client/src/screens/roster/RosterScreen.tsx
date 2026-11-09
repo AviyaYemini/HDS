@@ -7,33 +7,32 @@
  * projects they manage (`roster.edit:project`); others read.
  */
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
-import { ApiError, call, codeOf, useErrorText } from "../../api/errors";
-import { useSession } from "../../api/SessionContext";
+import { useErrorText } from "../../api/errors";
 import { useCapabilities } from "../../capabilities";
 import { previewsEnabled } from "../../config/previews";
-import type { components } from "@hds/api-client";
-
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SegmentedControl, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
-import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
-import { useLoad } from "../useLoad";
-import { numbersOf as coverNumbers, reasonKey } from "../runs/review";
-import { ProjectChooser, rosterHref } from "./ProjectChooser";
-import { barGeometry, cellOf, coverage, groupWarnings, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
-
-type Person = { id: string; full_name: string };
+import { AssignSheet } from "./AssignSheet";
+import { Block } from "./Block";
+import { PersonSheet } from "./PersonSheet";
+import { ProjectChooser } from "./ProjectChooser";
+import { PublishSheet } from "./PublishSheet";
+import { WarningSheet } from "./WarningSheet";
+import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
+import { useCopyNextWeek } from "./useCopyNextWeek";
+import { useAssignInputs, useRosterData } from "./useRosterData";
+import { useRosterEdits } from "./useRosterEdits";
 
 export function RosterScreen() {
   const { t, i18n } = useTranslation();
   const params = useLocalSearchParams<{ project?: string; week?: string; day?: string; all?: string }>();
-  const session = useSession();
   const capabilities = useCapabilities();
   const errorText = useErrorText();
   const { colors, isDesktop } = useTheme();
@@ -46,229 +45,25 @@ export function RosterScreen() {
   const publishable = project !== null && capabilities.hasOnProject("roster.publish:project", project);
   const runnable = project !== null && capabilities.has("schedule.generate") && editable;
 
-  const types = useLoad(
-    async () => (project ? (await call(session.api.GET("/api/v1/projects/{id}/shift-types", { params: { path: { id: project } } }))).items : []),
-    [project],
-  );
-  // Every page of the week's shifts, so a busy week is never cut short.
-  const shifts = useLoad(async () => {
-    if (!project) return [];
-    const all: Shift[] = [];
-    let cursor: string | null = null;
-    do {
-      const query: { from: string; to: string; project_id: string; limit: number; cursor?: string } = { from: week, to: addDays(week, 6), project_id: project, limit: 200 };
-      if (cursor) query.cursor = cursor;
-      const page: { items: Shift[]; next_cursor?: string | null } = await call(session.api.GET("/api/v1/shifts", { params: { query } }));
-      all.push(...page.items);
-      cursor = page.next_cursor ?? null;
-    } while (cursor);
-    return all;
-  }, [project, week]);
-  const people = useLoad(async () => {
-    const found = await call(session.api.GET("/api/v1/employees", { params: { query: { is_active: true } } }));
-    return found.items.filter((u) => u.role !== "client").map((u): Person => ({ id: u.id, full_name: u.full_name }));
-  }, []);
-
-  const [warnings, setWarnings] = useState<Map<string, Warning[]>>(() => new Map());
-  const [history, setHistory] = useState<RosterChange[]>([]);
-  const [stale, setStale] = useState(false);
+  const { types, shifts, people, nameOf } = useRosterData(project, week);
   const [assignTo, setAssignTo] = useState<Shift | null>(null);
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
-  /** How many of next week's drafts a copy would replace, while the manager is asked (FR-033). */
-  const [copyReplaces, setCopyReplaces] = useState<number | null>(null);
   // Replacing someone on a shift opens the assign sheet with them named (T042f).
   const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
   const [note, setNote] = useState("");
   const [alert, setAlert] = useState<Alert>("none");
-  // Who is already on another shift at the sheet's shift's time, in any project (T042f).
-  // "Find someone" (008 FR-034): the shift's ranked list, as a proposal's "who else could cover".
-  const ranked = useLoad(
-    async () =>
-      assignTo ? await call(session.api.GET("/api/v1/shifts/{id}/cover", { params: { path: { id: assignTo.id } } })) : null,
-    [assignTo?.id],
-  );
-  const busy = useLoad(
-    async () =>
-      assignTo
-        ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: assignTo.id } } }))).items
-        : [],
-    [assignTo?.id],
-  );
+  const { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert, onBreaks: setWarningsOf });
+  const { copyReplaces, setCopyReplaces, copyToNextWeek } = useCopyNextWeek(project, week);
+  const { ranked, busy, projectName } = useAssignInputs(assignTo);
 
-  // Names from the roster read itself (deactivated people included); the active list fills the rest.
-  const names = useMemo(() => {
-    const known = new Map((people.data ?? []).map((p) => [p.id, p.full_name]));
-    for (const shift of shifts.data ?? []) for (const a of shift.assignments) if (a.full_name) known.set(a.user_id, a.full_name);
-    return known;
-  }, [people.data, shifts.data]);
-  const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? "") : ""), [names]);
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
   const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
   // The shift whose warnings are open, as read last: its assignments are the ones an override needs.
   const warningShift = warningsOf ? ((shifts.data ?? []).find((s) => s.id === warningsOf.id) ?? warningsOf) : null;
-
-  /** Run one roster change; a stale read (412) shows the banner and the latest version. */
-  const change = async (run: () => Promise<{ shift_etag: string; warnings: Warning[] } | null>, shiftId: string): Promise<boolean> => {
-    try {
-      const answer = await run();
-      if (answer) setWarnings((map) => new Map(map).set(shiftId, answer.warnings.filter((w) => w.shift_ids.includes(shiftId))));
-      setStale(false);
-      await shifts.reload();
-      return true;
-    } catch (failure) {
-      if (failure instanceof ApiError && failure.status === 412) {
-        setStale(true);
-        await shifts.reload();
-      } else {
-        showToast(errorText(codeOf(failure)), { tone: "warning" });
-      }
-      return false;
-    }
-  };
-
-  const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true): Promise<string | null> => {
-    let created: string | null = null;
-    let breaks = false;
-    const done = await change(async () => {
-      const answer = await call(
-        session.api.POST("/api/v1/shifts/{id}/assignments", {
-          params: { path: { id: shift.id }, header: { "If-Match": shift.etag } },
-          body: {
-            user_id: userId,
-            ...(times?.starts_at ? { starts_at: times.starts_at, ends_at: times.ends_at } : {}),
-            alert: record ? alert : "none",
-            ...(record && note.trim() ? { note: note.trim() } : {}),
-          },
-        }),
-      );
-      created = answer.assignment.id;
-      breaks = answer.warnings.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id));
-      return answer;
-    }, shift.id);
-    // The assignment is made; any rule it breaks is then named in a dialog that only informs
-    // (T042d). Only for a choice made now, never for undo re-making an assignment.
-    if (done && breaks && record) setWarningsOf(shift);
-    if (done && record && created) setHistory((h) => [...h, { kind: "assigned", assignmentId: created!, shiftId: shift.id, userId }]);
-    return done ? created : null;
-  };
-
-  /** Take someone off; the shift's new etag on success (a replace assigns with it, R40), else null. */
-  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<string | null> => {
-    const before = shift.assignments.find((a) => a.id === assignmentId);
-    let etag: string | null = null;
-    const done = await change(async () => {
-      const answer = await call(
-        session.api.DELETE("/api/v1/assignments/{id}", {
-          params: { path: { id: assignmentId }, header: { "If-Match": shift.etag }, query: { alert: record ? alert : "none" } },
-        }),
-      );
-      etag = answer.shift_etag;
-      return answer;
-    }, shift.id);
-    if (done && record && before) {
-      setHistory((h) => [
-        ...h,
-        { kind: "unassigned", shiftId: shift.id, userId: before.user_id, starts_at: before.own_times ? before.starts_at : null, ends_at: before.own_times ? before.ends_at : null },
-      ]);
-    }
-    return done ? etag : null;
-  };
-
-  /**
-   * Copy the week shown to the next one and open it (008 FR-033). A dry run first: when the copy
-   * would replace drafts next week already holds, the manager is asked before any is replaced.
-   */
-  const copyToNextWeek = async (confirmed = false) => {
-    if (!project) return;
-    const copy = (dry_run: boolean) =>
-      call(
-        session.api.POST("/api/v1/projects/{id}/copy-week", {
-          params: { path: { id: project } },
-          body: { from_week: week, to_week: addDays(week, 7), on_conflict: "overwrite", dry_run },
-        }),
-      );
-    try {
-      if (!confirmed) {
-        const plan = await copy(true);
-        const replaced = plan.changes.filter((c) => c.action === "replace").length;
-        if (replaced > 0) {
-          setCopyReplaces(replaced);
-          return;
-        }
-      }
-      setCopyReplaces(null);
-      await copy(false);
-      router.push(rosterHref(project, addDays(week, 7)) as never);
-    } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
-    }
-  };
-
-  /** Lock an assignment, so later runs keep it, or unlock it (008 FR-018). */
-  const lockAssignment = async (assignmentId: string, on: boolean) => {
-    try {
-      const path = { params: { path: { id: assignmentId } } };
-      await call(on ? session.api.PUT("/api/v1/assignments/{id}/lock", path) : session.api.DELETE("/api/v1/assignments/{id}/lock", path));
-      await shifts.reload();
-    } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
-    }
-  };
   const lockedNow = personOn ? !!personOn.shift.assignments.find((a) => a.id === personOn.assignmentId)?.locked : false;
-
-  /** Move an assignment to ``shift``, or swap it with ``swapWith`` there, in one step (T042f). */
-  const move = async (assignmentId: string, userId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
-    try {
-      const answer = await call(
-        session.api.POST("/api/v1/assignments/{id}/move", {
-          params: { path: { id: assignmentId } },
-          body: { to_shift_id: shift.id, ...(swapWith ? { swap_with: swapWith } : {}), alert: record ? alert : "none", ...(record && note.trim() ? { note: note.trim() } : {}) },
-        }),
-      );
-      const found = answer.warnings as Warning[];
-      setWarnings((map) => {
-        const next = new Map(map);
-        for (const id of [fromShiftId, shift.id]) next.set(id, found.filter((w) => w.shift_ids.includes(id)));
-        return next;
-      });
-      await shifts.reload();
-      if (record) {
-        setHistory((h) => [...h, { kind: "moved", assignmentId, shiftId: shift.id, fromShiftId, swapWith }]);
-        if (found.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id))) setWarningsOf(shift);
-      }
-      return true;
-    } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
-      return false;
-    }
-  };
-
-  // A step leaves the history only once its request has succeeded; re-creating an assignment
-  // gives it a new id, which earlier steps for that person then follow (R88).
-  const undo = async () => {
-    const last = history[history.length - 1];
-    if (!last) return;
-    if (last.kind === "moved") {
-      // Back to the shift it came from (in any project), swapping again when it was a swap.
-      const back = { id: last.fromShiftId } as Shift;
-      if (await move(last.assignmentId, "", last.shiftId, back, last.swapWith, false)) setHistory((h) => h.slice(0, -1));
-      return;
-    }
-    const shift = shifts.data?.find((s) => s.id === last.shiftId);
-    if (!shift) return;
-    if (last.kind === "assigned") {
-      if (await unassign(shift, last.assignmentId, false)) setHistory((h) => h.slice(0, -1));
-      return;
-    }
-    const id = await assign(shift, last.userId, { starts_at: last.starts_at, ends_at: last.ends_at }, false);
-    if (id === null) return;
-    setHistory((h) =>
-      h.slice(0, -1).map((step) => (step.kind === "assigned" && step.shiftId === last.shiftId && step.userId === last.userId ? { ...step, assignmentId: id } : step)),
-    );
-  };
 
   if (!project) {
     return (
@@ -319,7 +114,7 @@ export function RosterScreen() {
           />
         ) : null}
       </PageTitle>
-      {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={() => setStale(false)} /> : null}
+      {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={dismissStale} /> : null}
       {previewsEnabled ? (
         <EmptyState testID="preview-cost-strip" icon="wallet" badge={t("preview.badge")} title={t("preview.cost_strip_title")} body={t("preview.cost_strip_body")} feature={t("preview.comes_with", { feature: "011" })} />
       ) : null}
@@ -374,8 +169,9 @@ export function RosterScreen() {
       <AssignSheet
         shift={assignTo}
         people={people.data ?? []}
-        busy={busy.data ?? []}
-        ranked={ranked.data}
+        busy={busy}
+        ranked={ranked}
+        projectName={projectName}
         replacing={replacing ? nameOf(replacing.userId) : null}
         note={note}
         alert={alert}
@@ -409,41 +205,37 @@ export function RosterScreen() {
           })();
         }}
       />
-      <Sheet open={personOn !== null} onClose={() => setPersonOn(null)} title={nameOf(personOn?.userId ?? null)} testID="person-sheet">
-        <AlertChoice value={alert} onChange={setAlert} />
-        <Button variant="secondary" icon="close" label={t("roster.unassign")} testID="action-unassign" onPress={() => {
+      <PersonSheet
+        open={personOn !== null}
+        name={nameOf(personOn?.userId ?? null)}
+        locked={lockedNow}
+        alert={alert}
+        onAlert={setAlert}
+        onClose={() => setPersonOn(null)}
+        onUnassign={() => {
           const target = personOn!;
           setPersonOn(null);
           void unassign(target.shift, target.assignmentId).then(() => setAlert("none"));
-        }} />
-        {personOn ? (
-          <Button
-            variant="secondary"
-            icon="lock"
-            label={lockedNow ? t("roster.unlock") : t("roster.lock")}
-            testID="action-lock"
-            onPress={() => {
-              const target = personOn;
-              setPersonOn(null);
-              void lockAssignment(target.assignmentId, !lockedNow);
-            }}
-          />
-        ) : null}
-        <Button variant="secondary" icon="people" label={t("roster.replace")} testID="action-replace" onPress={() => {
+        }}
+        onLock={() => {
+          const target = personOn!;
+          setPersonOn(null);
+          void lockAssignment(target.assignmentId, !lockedNow);
+        }}
+        onReplace={() => {
           const target = personOn!;
           setPersonOn(null);
           setReplacing(target);
           setAssignTo(target.shift);
-        }} />
-      </Sheet>
+        }}
+      />
       <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
-        const id = warningsOf!.id;
-        setWarnings((map) => new Map(map).set(id, (map.get(id) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
+        dropWarning(warningsOf!.id, code, employee);
         setWarningsOf(null);
       }} />
       <PublishSheet open={publishing} project={project} first={week} last={addDays(week, 6)} onClose={() => setPublishing(false)} onPublished={async () => {
         setPublishing(false);
-        setHistory([]);
+        clearHistory();
         await shifts.reload();
         // After a publish, the next step is next week (008 FR-033): copy this week's shifts there,
         // replacing only drafts, never a published shift, once the manager agrees, and open it.
@@ -464,392 +256,14 @@ export function RosterScreen() {
   );
 }
 
-
-/** Extra hours draw past the block's edge by design (US3); the overflow check (FR-079) allows it. */
-const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
-
-function Block({
-  shift,
-  editable,
-  warnings,
-  nameOf,
-  onOpenSeat,
-  onPerson,
-  onWarnings,
-}: {
-  shift: Shift;
-  editable: boolean;
-  warnings: Warning[];
-  nameOf: (id: string) => string;
-  onOpenSeat: () => void;
-  onPerson: (assignmentId: string, userId: string) => void;
-  onWarnings: () => void;
-}) {
-  const { t } = useTranslation();
-  const { colors } = useTheme();
-  const { filled, required, open } = coverage(shift);
-  return (
-    <Pressable
-      testID="roster-block"
-      {...webProps({ dataSet: { shiftId: shift.id, status: shift.status, editable: String(editable) } })}
-      onPress={editable ? onOpenSeat : undefined}
-      style={[styles.block, { borderColor: shift.status === "published" ? colors.border.strong : colors.accent.default, backgroundColor: colors.bg.surface }]}
-    >
-      <View style={styles.blockHead}>
-        <Txt role="meta" numeric>
-          {/* formatTimeRange marks a later end with "+1" itself, inside the isolate. */}
-          {formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}
-        </Txt>
-        <Txt role="meta" numeric testID="block-coverage">
-          {`${filled}/${required}`}
-        </Txt>
-        {warnings.length > 0 ? (
-          <Pressable testID="block-warning-badge" role="button" accessibilityLabel={t("roster.warnings", { count: warnings.length })} onPress={onWarnings} style={[styles.badge, { backgroundColor: colors.status.warning }]}>
-            <Txt role="meta" style={{ color: colors.inverse.text }}>
-              {String(warnings.length)}
-            </Txt>
-          </Pressable>
-        ) : null}
-      </View>
-      {shift.assignments.map((a) => {
-        const bar = barGeometry(shift, a);
-        return (
-          <Pressable
-            key={a.id}
-            testID="block-person"
-            {...webProps({ dataSet: { userId: a.user_id, ownTimes: String(a.own_times), locked: String(!!a.locked) } })}
-            onPress={() => onPerson(a.id, a.user_id)}
-            disabled={!editable}
-            style={styles.person}
-          >
-            <View style={styles.nameRow}>
-              {/* A lock later runs keep, shown to every Manager and Admin who sees the roster (FR-018). */}
-              {a.locked ? <Icon name="lock" size={12} color={colors.text.secondary} label={t("roster.locked")} testID="person-locked" /> : null}
-              <Txt role="meta" numberOfLines={1}>
-                {nameOf(a.user_id)}
-              </Txt>
-            </View>
-            <View style={styles.track}>
-              <View
-                testID="person-bar"
-                {...OVERHANG}
-                style={[styles.bar, { backgroundColor: colors.accent.default, marginStart: `${bar.offset}%`, width: `${bar.width}%` }]} />
-            </View>
-          </Pressable>
-        );
-      })}
-      {Array.from({ length: open }, (_, i) => (
-        <Pressable key={`seat-${i}`} testID="empty-seat" role="button" accessibilityLabel={t("roster.empty_seat")} onPress={editable ? onOpenSeat : undefined} disabled={!editable} style={[styles.seat, { borderColor: colors.border.subtle }]}>
-          <Txt role="meta" tone="secondary">
-            {t("roster.empty_seat")}
-          </Txt>
-        </Pressable>
-      ))}
-    </Pressable>
-  );
-}
-
-type BusyOn = components["schemas"]["BusyAnswer"]["items"][number];
-type Cover = components["schemas"]["Cover"];
-type Alert = components["schemas"]["AssignRequest"]["alert"];
-
-/** Who hears of a manual edit: everyone on the roster, the people it affects, or no one (T042g). */
-function AlertChoice({ value, onChange }: { value: Alert; onChange: (value: Alert) => void }) {
-  const { t } = useTranslation();
-  return (
-    <SegmentedControl
-      label={t("roster.alert_label")}
-      value={value}
-      onChange={onChange}
-      options={[
-        { value: "none", label: t("roster.alert_none") },
-        { value: "affected", label: t("roster.alert_affected") },
-        { value: "everyone", label: t("roster.alert_everyone") },
-      ]}
-      testID="edit-alert"
-    />
-  );
-}
-
-function AssignSheet({
-  shift,
-  people,
-  busy,
-  ranked,
-  replacing,
-  note,
-  alert,
-  onNote,
-  onAlert,
-  onClose,
-  onChoose,
-}: {
-  shift: Shift | null;
-  people: Person[];
-  busy: BusyOn[];
-  /** The shift's "Find someone" ranking (FR-034), when read; until then, by name. */
-  ranked: Cover | null;
-  /** The name of the person being replaced, when the sheet replaces someone (T042f). */
-  replacing: string | null;
-  note: string;
-  alert: Alert;
-  onNote: (note: string) => void;
-  onAlert: (alert: Alert) => void;
-  onClose: () => void;
-  onChoose: (userId: string, how: "assign" | "move", busyOn: BusyOn | null) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const [query, setQuery] = useState("");
-  // Someone already on another shift then, chosen: the sheet asks what to do (T042f).
-  const [pick, setPick] = useState<{ person: Person; on: BusyOn } | null>(null);
-  const taken = new Set(shift?.assignments.map((a) => a.user_id) ?? []);
-  const busyBy = new Map(busy.map((b) => [b.user_id, b]));
-  // Search by any part of the name, ignoring case and accents (T042c). Later the list shows only the
-  // project's own or qualified people, and search still finds everyone.
-  const wanted = fold(query, i18n.language);
-  // Ranked as "who else could cover" when the ranking is in: free people first, best first; by
-  // name until then, and for anyone the ranking leaves out.
-  const rank = new Map((ranked?.options ?? []).map((o, i) => [o.user_id, i]));
-  const why = new Map((ranked?.options ?? []).map((o) => [o.user_id, o]));
-  const options = people
-    .filter((p) => !taken.has(p.id) && (wanted === "" || fold(p.full_name, i18n.language).includes(wanted)))
-    .sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9) || a.full_name.localeCompare(b.full_name, i18n.language));
-  const reasonOf = (id: string): string | null => {
-    const o = why.get(id);
-    if (!o) return null;
-    if (o.free) return t(o.close ? "review.cover_would_rather_not" : "review.cover_free");
-    const numbers = coverNumbers(o, i18n.language);
-    return [t(reasonKey(o.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ");
-  };
-  const close = () => {
-    setQuery("");
-    setPick(null);
-    onClose();
-  };
-  const choose = (person: Person) => {
-    const on = busyBy.get(person.id);
-    if (on) {
-      setPick({ person, on });
-      return;
-    }
-    setQuery("");
-    onChoose(person.id, "assign", null);
-  };
-  const done = (how: "assign" | "move") => {
-    const chosen = pick!;
-    setPick(null);
-    setQuery("");
-    onChoose(chosen.person.id, how, chosen.on);
-  };
-  const title = replacing ? t("roster.replace_title", { person: replacing }) : t("roster.assign_title");
-  return (
-    <Sheet open={shift !== null} onClose={close} title={title} testID="assign-sheet">
-      {pick ? (
-        <View style={styles.warning} testID="assign-busy-choice">
-          <Txt role="body">
-            {pick.on.starts_at && pick.on.ends_at
-              ? t("roster.busy_at", { person: pick.person.full_name, time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
-              : t("roster.busy_then", { person: pick.person.full_name })}
-          </Txt>
-          {pick.on.movable ? (
-            <Button
-              variant="primary"
-              label={replacing ? t("roster.swap_with", { person: pick.person.full_name, other: replacing }) : t("roster.move_here", { person: pick.person.full_name })}
-              onPress={() => done("move")}
-              testID="action-busy-move"
-            />
-          ) : null}
-          <Button variant="secondary" label={t("roster.keep_both", { person: pick.person.full_name })} onPress={() => done("assign")} testID="action-busy-keep" />
-          <Button variant="quiet" label={t("common.cancel")} onPress={() => setPick(null)} testID="action-busy-cancel" />
-        </View>
-      ) : (
-        <>
-          <TextField label={t("roster.assign_search")} value={query} onChangeText={setQuery} testID="assign-search" autoFocus />
-          {options.length === 0 ? (
-            <Txt role="body" tone="secondary" testID="assign-none">
-              {t("roster.assign_none")}
-            </Txt>
-          ) : null}
-          {options.map((person) => (
-            <View key={person.id} style={styles.option}>
-              <Button variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id, busy: String(busyBy.has(person.id)) } }} onPress={() => choose(person)} />
-              {busyBy.has(person.id) ? (
-                <Txt role="meta" tone="warning" testID="assign-busy">
-                  {t("roster.busy_mark")}
-                </Txt>
-              ) : null}
-              {reasonOf(person.id) ? (
-                <Txt role="meta" tone={why.get(person.id)?.free ? "secondary" : "warning"} testID="assign-reason">
-                  {reasonOf(person.id)}
-                </Txt>
-              ) : null}
-            </View>
-          ))}
-        </>
-      )}
-      {/* A word to the person placed, shown on their own shift page, and who hears of it (T042g). */}
-      <TextField label={t("roster.note_label")} value={note} onChangeText={onNote} maxLength={500} testID="edit-note" />
-      <AlertChoice value={alert} onChange={onAlert} />
-      {previewsEnabled ? (
-        <EmptyState testID="preview-qualification-expiry" icon="star" badge={t("preview.badge")} title={t("preview.qualification_expiry_title")} body={t("preview.qualification_expiry_body")} feature={t("preview.comes_with", { feature: "014" })} />
-      ) : null}
-    </Sheet>
-  );
-}
-
-/** ``text`` for matching: lower case, accents and Hebrew points removed, spaces squeezed. */
-function fold(text: string, language: string): string {
-  return text.normalize("NFD").replace(/[\u0300-\u036f\u0591-\u05c7]/g, "").toLocaleLowerCase(language).replace(/\s+/g, " ").trim();
-}
-
-/** The text that says a warning's numbers, when the rule sends them. */
-function numbersOf(w: Warning): string | null {
-  const values = w.values ?? {};
-  if ("rest_hours" in values) return "roster.warning.rest";
-  if ("maximum_hours" in values) return "roster.warning.weekly";
-  return null;
-}
-
-function WarningSheet({ shift, warnings, nameOf, onClose, onOverridden }: { shift: Shift | null; warnings: Warning[]; nameOf: (id: string) => string; onClose: () => void; onOverridden: (code: string, employee: string | null) => void }) {
-  const { t } = useTranslation();
-  const session = useSession();
-  const errorText = useErrorText();
-  const [overriding, setOverriding] = useState<Warning | null>(null);
-  const [reason, setReason] = useState("");
-  const confirm = async () => {
-    if (!shift || !overriding) return;
-    const assignment = shift.assignments.find((a) => a.user_id === overriding.employee_id);
-    if (!assignment) return;
-    try {
-      await call(session.api.POST("/api/v1/assignments/{id}/overrides", { params: { path: { id: assignment.id } }, body: { warning_code: overriding.code, reason } }));
-      onOverridden(overriding.code, overriding.employee_id);
-      setOverriding(null);
-      setReason("");
-    } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
-    }
-  };
-  return (
-    <Sheet
-      open={shift !== null}
-      onClose={onClose}
-      title={t("roster.warnings_title")}
-      testID="warning-detail"
-      footer={<Button variant="primary" label={t("roster.warnings_ok")} onPress={onClose} testID="action-warnings-ok" />}
-    >
-      {/* One row per person and rule, however many shifts it clashes with; one override each. */}
-      {groupWarnings(warnings, (w) => w.employee_id ?? null).map(({ first: w, values }) => (
-        <View key={`${w.employee_id ?? "shift"}-${w.code}`} style={styles.warning} testID="warning-row">
-          <Txt role="label">{w.employee_id ? nameOf(w.employee_id) : t("roster.the_shift")}</Txt>
-          <Txt role="body">{t(w.code)}</Txt>
-          {numbersOf(w)
-            ? values.map((v) => (
-                // The rule and the numbers, in the UI's language (FR-041).
-                <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
-                  {t(numbersOf(w)!, v)}
-                </Txt>
-              ))
-            : null}
-          {w.employee_id ? <Button variant="secondary" label={t("roster.override")} testID="action-override" onPress={() => setOverriding(w)} /> : null}
-        </View>
-      ))}
-      {overriding ? (
-        <View style={styles.warning}>
-          <TextField label={t("roster.override_reason")} value={reason} onChangeText={setReason} testID="override-reason" />
-          <Button variant="primary" label={t("roster.confirm_override")} disabled={reason.trim() === ""} onPress={() => void confirm()} testID="action-confirm-override" />
-        </View>
-      ) : null}
-    </Sheet>
-  );
-}
-
-function PublishSheet({ open, project, first, last, onClose, onPublished }: { open: boolean; project: string; first: string; last: string; onClose: () => void; onPublished: () => Promise<void> }) {
-  const { t } = useTranslation();
-  const session = useSession();
-  const errorText = useErrorText();
-  const [notify, setNotify] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const preview = useLoad(
-    async () => (open ? call(session.api.GET("/api/v1/projects/{id}/publish-preview", { params: { path: { id: project }, query: { from: first, to: last } } })) : null),
-    [open, project, first],
-  );
-  const publish = async () => {
-    setBusy(true);
-    try {
-      await call(session.api.POST("/api/v1/projects/{id}/publish", { params: { path: { id: project } }, body: { from: first, to: last, notify } }));
-      await onPublished();
-    } catch (failure) {
-      showToast(errorText(codeOf(failure)), { tone: "warning" });
-    } finally {
-      setBusy(false);
-    }
-  };
-  const counts = preview.data;
-  return (
-    <Sheet open={open} onClose={onClose} title={t("roster.publish_title")} testID="publish-review">
-      {counts === null ? (
-        <SkeletonRows rows={3} />
-      ) : (
-        <View style={styles.counts}>
-          <Count label={t("roster.review_shifts")} value={counts.shifts} testID="review-shifts" />
-          <Count label={t("roster.review_people")} value={counts.people} testID="review-people" />
-          <Count label={t("roster.review_unfilled")} value={counts.unfilled} testID="review-unfilled" />
-          <Count label={t("roster.review_warnings")} value={counts.open_warnings} testID="review-warnings" />
-        </View>
-      )}
-      <View role="radiogroup" accessibilityLabel={t("roster.notify_label")} style={styles.radios}>
-        <Radio checked={notify} label={t("roster.notify_everyone")} testID="notify-everyone" onPress={() => setNotify(true)} />
-        <Radio checked={!notify} label={t("roster.publish_silently")} testID="publish-silently" onPress={() => setNotify(false)} />
-      </View>
-      <Button variant="primary" icon="check" label={t("roster.confirm_publish")} busy={busy} disabled={counts === null} onPress={() => void publish()} testID="action-confirm-publish" />
-    </Sheet>
-  );
-}
-
-function Count({ label, value, testID }: { label: string; value: number; testID: string }) {
-  return (
-    <View style={styles.count}>
-      <Txt role="meta" tone="secondary">
-        {label}
-      </Txt>
-      <Txt role="section" numeric testID={testID}>
-        {String(value)}
-      </Txt>
-    </View>
-  );
-}
-
-function Radio({ checked, label, testID, onPress }: { checked: boolean; label: string; testID: string; onPress: () => void }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable role="radio" aria-checked={checked} accessibilityLabel={label} testID={testID} onPress={onPress} style={[styles.radio, { borderColor: checked ? colors.accent.default : colors.border.subtle }]}>
-      <Txt role="label">{label}</Txt>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   week: { flexDirection: "row", gap: 8 },
   day: { width: 168, borderWidth: 1, padding: 6, gap: 6 },
   dayHead: { paddingBottom: 4 },
   row: { gap: 6, minHeight: 40 },
-  block: { borderWidth: 1, borderStartWidth: 3, padding: 6, gap: 4 },
-  blockHead: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "space-between" },
-  badge: { minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
-  person: { gap: 2, minHeight: 32, justifyContent: "center" },
-  track: { height: 6, overflow: "visible" },
-  bar: { height: 6 },
-  seat: { minHeight: 32, borderWidth: 1, borderStyle: "dashed", alignItems: "center", justifyContent: "center" },
   continuation: { borderWidth: 1, borderStyle: "dashed", padding: 6 },
   agenda: { gap: 16 },
   agendaDay: { gap: 8 },
-  warning: { gap: 4, paddingVertical: 6 },
-  counts: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  count: { gap: 2, minWidth: 96 },
-  radios: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  radio: { minHeight: 44, borderWidth: 1, paddingHorizontal: 12, justifyContent: "center" },
 });
