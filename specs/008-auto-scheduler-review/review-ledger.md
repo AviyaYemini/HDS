@@ -18,3 +18,4 @@ count.
 | R8 | /code-review (PR 1) | `apps/client/src/screens/runs/review.ts:76`: the client's "part accepted" differed from the server's, so a half-accepted changed mark stayed editable and every edit there failed | fixed |
 | R9 | /code-review (PR 1) | `apps/api/src/hds/routers/schedule_jobs.py:345`: `IfMatch` and `version_of` defined twice, one router importing another | fixed |
 | R10 | /code-review (PR 1) | `apps/api/src/hds/services/proposal.py:167`: undo read the whole run record each time, under the job's lock | fixed |
+| R11 | CI (PR 1) | `apps/api/tests/contract/unprovable_operations.json`: Schemathesis sent undo a made-up `If-Match` and counted the correct 412 `schedule.version_stale` as a valid request refused (ST202); undo is on the list now, and the accept, discard and edit entries name the 412 too | fixed |

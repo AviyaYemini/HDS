@@ -258,14 +258,14 @@
       "path": "/api/v1/schedule-jobs/{id}/accept",
       "operation_id": "accept_job_api_v1_schedule_jobs__id__accept_post",
       "suites": ["pytest", "cli"],
-      "reason": "accepting depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108)"
+      "reason": "accepting depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108); an If-Match that is not the stored version is answered 412 schedule.version_stale (008 FR-007)"
     },
     {
       "method": "POST",
       "path": "/api/v1/schedule-jobs/{id}/discard",
       "operation_id": "discard_job_api_v1_schedule_jobs__id__discard_post",
       "suites": ["pytest", "cli"],
-      "reason": "discarding depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108)"
+      "reason": "discarding depends on stored state: the job must have an open proposal (409 schedule.not_ready or schedule.proposal_closed), and a Manager must manage every project of the run at the time (403 roster.project_not_managed, 007 T108); an If-Match that is not the stored version is answered 412 schedule.version_stale (008 FR-007)"
     },
     {
       "method": "POST",
@@ -279,7 +279,14 @@
       "path": "/api/v1/schedule-jobs/{id}/edits",
       "operation_id": "edit_proposal_api_v1_schedule_jobs__id__edits_post",
       "suites": ["pytest", "cli"],
-      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) and the stored roster (a rule break needs override_reason), which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid or schedule.override_reason_required (008 FR-008 to FR-010)"
+      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) and the stored roster (a rule break needs override_reason), which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid or schedule.override_reason_required (008 FR-008 to FR-010); an If-Match that is not the stored version is answered 412 schedule.version_stale"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedule-jobs/{id}/edits/undo",
+      "operation_id": "undo_edit_api_v1_schedule_jobs__id__edits_undo_post",
+      "suites": ["pytest", "cli"],
+      "reason": "undoing depends on the stored run record: there must be an edit not yet undone whose shifts have no part accepted since (409 schedule.nothing_to_undo), and an If-Match that is not the stored version is answered 412 schedule.version_stale (008 FR-011, FR-007)"
     }
   ]
 }
