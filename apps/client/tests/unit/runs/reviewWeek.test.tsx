@@ -46,12 +46,32 @@ const review = (version: number, people: string[]) => ({
   no_availability: [],
 });
 
+const COVER = `/api/v1/schedule-jobs/${JOB}/slots/${encodeURIComponent(KEY)}/cover`;
+const option = (user_id: string, extra: Record<string, unknown> = {}) => ({
+  user_id,
+  free: true,
+  code: null,
+  have: null,
+  need: null,
+  week_minutes: null,
+  slot_minutes: null,
+  limit: null,
+  close: false,
+  open: true,
+  minutes: 480,
+  nights: 0,
+  weekends: 0,
+  ...extra,
+});
+const cover = (...options: ReturnType<typeof option>[]) => ({ key: KEY, options, totals: { people: 2, minutes: 480, nights: 0, weekends: 0 } });
+
 const job = { id: JOB, from: "2027-06-06", to: "2027-06-12", status: "succeeded", proposal_state: "open" } as unknown as Job;
 const names = { projects: new Map([[PROJECT, "North Gate"]]), types: new Map(), people: new Map([[ANN, "Ann"], [BEN, "Ben"]]) };
 
 test("a break asks for a reason, and keeping it sends the reason with the same edit", async () => {
   const api = new FakeApi();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
+  api.on("GET", COVER, json(200, cover(option(BEN))));
   api.on(
     "POST",
     `/api/v1/schedule-jobs/${JOB}/edits`,
@@ -101,4 +121,53 @@ test("staff kept on a draft the run could not place are shown, and not offered f
   expect(screen.getByText("Ben")).toBeTruthy();
   // Ann is the proposal's, so her name is a button that opens the edits; Ben's is text only.
   expect(screen.getAllByTestId("review-person")).toHaveLength(1);
+});
+
+
+test("who else could cover: free people with their load, then a rule with its numbers in words", async () => {
+  const api = new FakeApi();
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [])));
+  api.on(
+    "GET",
+    COVER,
+    json(200, cover(option(BEN), option(ANN, { free: false, code: "schedule.minimum_rest", have: 540, need: 660 }))),
+  );
+  api.on("POST", `/api/v1/schedule-jobs/${JOB}/edits`, json(200, { proposal: review(1, [ANN]), warnings: [] }));
+  const session = await signedIn(api);
+  await renderWith(session, <ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} />);
+
+  await act(async () => {
+    fireEvent.press(await screen.findByTestId("action-review-assign"));
+  });
+
+  const options = await screen.findAllByTestId("review-assign-option");
+  expect(options.map((o) => o.props.accessibilityLabel ?? "")).toHaveLength(2);
+  expect(screen.getByText("Free then")).toBeTruthy();
+  expect(screen.getByText("Rest between shifts · 9 h rest, needs 11 h")).toBeTruthy();
+  expect(screen.getAllByText("After it: 8 h, 0 nights, 0 weekend shifts (average 4 h)")).toHaveLength(2);
+  await act(async () => {
+    fireEvent.press(screen.getByText("Assign Ann anyway"));
+  });
+  expect(api.calls("POST", `/api/v1/schedule-jobs/${JOB}/edits`).map((c) => c.body)).toEqual([{ op: "assign", key: KEY, user_id: ANN }]);
+});
+
+test("when who else could cover cannot be read, the staff are still offered, with a retry (R24)", async () => {
+  const api = new FakeApi();
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
+  api.on("GET", COVER, json(503, { type: "x", title: "x", status: 503, code: "errors.unavailable" }), json(200, cover(option(BEN))));
+  const session = await signedIn(api);
+  await renderWith(session, <ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} />);
+
+  await act(async () => {
+    fireEvent.press(await screen.findByTestId("action-review-assign"));
+  });
+
+  // Ann is on the slot already; Ben is offered from the staff list, and the retry reads the list.
+  expect(await screen.findByText("Ben")).toBeTruthy();
+  expect(screen.queryByTestId("review-cover-option")).toBeNull();
+  await act(async () => {
+    fireEvent.press(screen.getByText("Try again"));
+  });
+  expect(await screen.findByTestId("review-cover-option")).toBeTruthy();
+  expect(api.calls("GET", COVER)).toHaveLength(2);
 });

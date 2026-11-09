@@ -7,7 +7,7 @@
  * a reason before it is kept. Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -25,13 +25,17 @@ import {
   breaksOf,
   hasOpen,
   menuFor,
+  hours,
   numbersKey,
+  numbersOf,
   openDaysAndProjects,
   openMarks,
   pairsOf,
   partOfPairs,
+  reasonKey,
   slotsByDay,
   type AcceptPart,
+  type Cover,
   type Edit,
   type EditWarning,
   type Pair,
@@ -74,6 +78,23 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const [moving, setMoving] = useState<{ from: PersonOn; swap: boolean } | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState("");
+  // Who else could cover the slot being assigned to (FR-014): read each time the sheet opens on a
+  // slot, since the working copy changes with every edit.
+  const [fetched, setFetched] = useState<{ key: string; version: number; attempt: number; data: Cover | null; error: unknown } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const shownVersion = review?.version ?? loaded.data?.version ?? -1;
+  useEffect(() => {
+    if (assignTo === null) return;
+    let live = true;
+    call(session.api.GET("/api/v1/schedule-jobs/{id}/slots/{key}/cover", { params: { path: { id: job.id, key: assignTo.key } } }))
+      .then((data) => live && setFetched({ key: assignTo.key, version: shownVersion, attempt, data, error: null }))
+      .catch((error: unknown) => live && setFetched({ key: assignTo.key, version: shownVersion, attempt, data: null, error }));
+    return () => {
+      live = false;
+    };
+  }, [assignTo, job.id, session.api, shownVersion, attempt]);
+  // The answer for the slot open now, read on the version shown; anything else is still loading.
+  const cover = assignTo && fetched?.key === assignTo.key && fetched.version === shownVersion && fetched.attempt === attempt ? fetched : null;
 
   if (loaded.error && !shown) {
     return <InlineBanner tone="warning" title={errorText(loaded.error)} action={{ label: t("common.retry"), onPress: loaded.reload }} />;
@@ -369,19 +390,62 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
           </View>
         ) : assignTo ? (
           <View testID="review-assign-sheet" style={styles.panel}>
-            {people
-              .filter((p) => !assignTo.people.some((q) => q.user_id === p.id))
-              .map((person) => (
-                <Button
-                  key={person.id}
-                  variant="quiet"
-                  icon="user"
-                  label={person.full_name}
-                  testID="review-assign-option"
-                  web={{ dataSet: { userId: person.id } }}
-                  onPress={() => void send({ op: "assign", key: assignTo.key, user_id: person.id })}
-                />
-              ))}
+            {assignTo.places > 0 ? <EmptyReasons review={shown} slot={assignTo} name={name} /> : null}
+            <Txt role="label" heading={3}>
+              {t("review.cover_title")}
+            </Txt>
+            {cover?.error ? (
+              // The ranked list could not be read: say so, offer it again, and still let the
+              // manager pick from the staff, the rules then checked by the edit itself (R24).
+              <View style={styles.panel}>
+                <InlineBanner tone="warning" title={errorText(codeOf(cover.error))} action={{ label: t("common.retry"), onPress: () => setAttempt((n) => n + 1) }} />
+                {people
+                  .filter((p) => !assignTo.people.some((q) => q.user_id === p.id))
+                  .map((person) => (
+                    <Button
+                      key={person.id}
+                      variant="quiet"
+                      icon="user"
+                      label={person.full_name}
+                      testID="review-assign-option"
+                      web={{ dataSet: { userId: person.id } }}
+                      onPress={() => void send({ op: "assign", key: assignTo.key, user_id: person.id })}
+                    />
+                  ))}
+              </View>
+            ) : !cover?.data ? (
+              <SkeletonRows rows={3} />
+            ) : (
+              cover.data.options.map((option) => {
+                const numbers = numbersOf(option, i18n.language);
+                const totals = cover.data!.totals;
+                return (
+                  <View key={option.user_id} style={styles.option} testID="review-cover-option" {...webProps({ dataSet: { userId: option.user_id, free: String(option.free) } })}>
+                    <Button
+                      variant="quiet"
+                      icon="user"
+                      label={option.free ? name(option.user_id) : t("review.assign_anyway_person", { person: name(option.user_id) })}
+                      testID="review-assign-option"
+                      web={{ dataSet: { userId: option.user_id, free: String(option.free) } }}
+                      onPress={() => void send({ op: "assign", key: assignTo.key, user_id: option.user_id })}
+                    />
+                    <Txt role="meta" tone={option.free ? "secondary" : "warning"}>
+                      {option.free
+                        ? t(option.close ? "review.cover_would_rather_not" : "review.cover_free")
+                        : [t(reasonKey(option.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ")}
+                    </Txt>
+                    <Txt role="meta" tone="secondary" numeric>
+                      {t("review.cover_load", {
+                        hours: hours(option.minutes, i18n.language),
+                        nights: option.nights,
+                        weekends: option.weekends,
+                        average_hours: hours(totals.people > 0 ? totals.minutes / totals.people : 0, i18n.language),
+                      })}
+                    </Txt>
+                  </View>
+                );
+              })
+            )}
           </View>
         ) : personOn ? (
           <View testID="review-person-sheet" style={styles.panel}>
@@ -393,6 +457,45 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
       </Sheet>
     </View>
   );
+}
+
+/** Why a slot of the run stayed empty, from the run's own reasons, with the people they name. */
+function EmptyReasons({ review, slot, name }: { review: Review; slot: ReviewSlot; name: (id: string) => string }) {
+  const { t, i18n } = useTranslation();
+  const gap = (review.unfilled as unknown as RunGap[]).find((u) => u.key === slot.key);
+  if (!gap) return null;
+  return (
+    <View testID="review-why-empty" style={styles.panel}>
+      <Txt role="label" heading={3}>
+        {t("review.why_empty")}
+      </Txt>
+      {gap.reasons.map((reason) => {
+        const words = t(reasonKey(reason.code, (key) => i18n.exists(key)));
+        return (
+          <View key={reason.code}>
+            <Txt role="meta" tone="secondary">
+              {reason.employees > 0 ? t("runs.reason", { reason: words, count: reason.employees }) : words}
+            </Txt>
+            {(reason.people ?? []).map((person) => {
+              const numbers = numbersOf(person, i18n.language);
+              return (
+                <Txt key={person.user_id} role="meta" tone="secondary" numeric>
+                  {numbers ? t("runs.person_numbers", { person: name(person.user_id), numbers: t(numbers.key, numbers.values) }) : name(person.user_id)}
+                </Txt>
+              );
+            })}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/** One empty slot of the run as the job stores it (the review sends it as it is). */
+interface RunGap {
+  key: string;
+  places: number;
+  reasons: { code: string; employees: number; people?: ({ user_id: string } & Parameters<typeof numbersOf>[0])[] }[];
 }
 
 interface BlockProps {
@@ -488,6 +591,7 @@ function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, 
 }
 
 const styles = StyleSheet.create({
+  option: { gap: 2 },
   weeks: { gap: 16 },
   bar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   week: { gap: 12 },

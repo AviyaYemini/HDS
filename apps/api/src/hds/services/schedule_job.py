@@ -131,7 +131,25 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
             {
                 "key": u.key,
                 "places": u.places,
-                "reasons": [{"code": r.code, "employees": r.employees} for r in u.reasons],
+                "reasons": [
+                    {
+                        "code": r.code,
+                        "employees": r.employees,
+                        "people": [
+                            {
+                                "user_id": str(b.user_id),
+                                "code": b.code,
+                                "have": b.have,
+                                "need": b.need,
+                                "week_minutes": b.week_minutes,
+                                "slot_minutes": b.slot_minutes,
+                                "limit": b.limit,
+                            }
+                            for b in r.people
+                        ],
+                    }
+                    for r in u.reasons
+                ],
             }
             for u in result.unfilled
         ],

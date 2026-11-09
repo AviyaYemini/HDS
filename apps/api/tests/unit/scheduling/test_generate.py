@@ -43,9 +43,12 @@ def run(made: Problem, solver: str = "cpsat") -> Result:
 
 
 def reasons(result: Result, key: str) -> tuple[Reason, ...]:
-    """The reasons given for the slot ``key``."""
+    """The reasons given for the slot ``key``, as codes and counts.
+
+    The people they name are 008's, tested in test_explanations.py.
+    """
     (found,) = [u for u in result.unfilled if u.key == key]
-    return found.reasons
+    return tuple(Reason(r.code, r.employees) for r in found.reasons)
 
 
 def hours(result: Result) -> dict[object, float]:

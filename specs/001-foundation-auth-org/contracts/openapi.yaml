@@ -1747,6 +1747,50 @@ components:
         next_cursor:
           type: [string, "null"]
 
+    Cover:
+      type: object
+      description: Who else could cover one slot of a proposal, best first (008 FR-014, FR-016).
+      required: [key, options, totals]
+      properties:
+        key: {type: string}
+        options:
+          type: array
+          items:
+            type: object
+            description: >-
+              One person, free or with the rule that keeps them off it. Rest gives have and need,
+              the weekly maximum week_minutes, slot_minutes and limit, all in minutes; close and
+              open say a "would rather not" or an "I can" covers it; minutes, nights and weekends
+              are what they would work in the range after it.
+            required: [user_id, free, code, have, need, week_minutes, slot_minutes, limit, close, open, minutes, nights, weekends]
+            properties:
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+              free: {type: boolean}
+              code:
+                type: [string, "null"]
+                enum: [schedule.unavailable, schedule.overlap, schedule.minimum_rest, schedule.weekly_maximum, null]
+              have: {type: [integer, "null"]}
+              need: {type: [integer, "null"]}
+              week_minutes: {type: [integer, "null"]}
+              slot_minutes: {type: [integer, "null"]}
+              limit: {type: [integer, "null"]}
+              close: {type: boolean}
+              open: {type: boolean}
+              minutes: {type: integer}
+              nights: {type: integer}
+              weekends: {type: integer}
+        totals:
+          type: object
+          description: >-
+            The active staff's count and total minutes, nights and weekend shifts in the range,
+            before the pick; each total over people is the average an option is set against.
+          required: [people, minutes, nights, weekends]
+          properties:
+            people: {type: integer}
+            minutes: {type: integer}
+            nights: {type: integer}
+            weekends: {type: integer}
+
     Proposal:
       type: object
       description: Who works each slot, what stays empty and why, and what it changes; employees by id only.
@@ -1786,6 +1830,24 @@ components:
                       type: string
                       enum: [schedule.unavailable, schedule.overlap, schedule.minimum_rest, schedule.weekly_maximum, schedule.needed_elsewhere, schedule.no_active_employee]
                     employees: {type: integer}
+                    people:
+                      description: >-
+                        For minimum rest and the weekly maximum, each person excluded, with the
+                        numbers, in minutes (008 FR-013): the rest they would have and the rest
+                        needed, or the minutes already worked that week, the slot's and the limit.
+                        Absent in results made before 008's PR 2.
+                      type: array
+                      items:
+                        type: object
+                        required: [user_id, code]
+                        properties:
+                          user_id: {$ref: "#/components/schemas/UUIDv4"}
+                          code: {type: string, enum: [schedule.minimum_rest, schedule.weekly_maximum]}
+                          have: {type: [integer, "null"]}
+                          need: {type: [integer, "null"]}
+                          week_minutes: {type: [integer, "null"]}
+                          slot_minutes: {type: [integer, "null"]}
+                          limit: {type: [integer, "null"]}
         employees:
           type: array
           items:
@@ -4804,6 +4866,50 @@ paths:
           $ref: "#/components/responses/Conflict"
         "412":
           $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/slots/{key}/cover:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+
+    get:
+      operationId: proposals_cover
+      summary: Who else could cover a slot (Manager+)
+      description: >
+        Every active staff member not on the proposal's slot, whatever project or kind of project
+        they work on, judged over all their shifts in every project, the roster's drafts and the
+        working copy (008 FR-014). Free people first, ranked by no "would rather not", then the
+        fewest nights, minutes and weekend shifts after it, then name; people who would break a
+        rule follow, with the rule and its numbers. Codes and numbers only, never pay, a site or
+        another project's shift (FR-016). 404 for a slot not in the proposal; 409
+        schedule.not_ready.
+      tags: [Proposals]
+      responses:
+        "200":
+          description: The options, best first, and the staff's totals they are set against.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cover"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

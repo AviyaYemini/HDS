@@ -19,12 +19,13 @@ open.
 
 import copy
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
 from hds.scheduling import Employee, Problem, RuleWarning, ShiftSlot
 from hds.scheduling.engine import slot_id
+from hds.scheduling.problem import Slot
 
 Copy = dict[str, Any]
 SlotCopy = dict[str, Any]
@@ -182,6 +183,23 @@ def as_shift(slot: Mapping[str, Any], zone: str) -> ShiftSlot:
         zone=zone,
         headcount=slot["headcount"],
         assigned=on,
+    )
+
+
+def as_slot(slot: Mapping[str, Any], zone: str, night_types: Collection[uuid.UUID]) -> Slot:
+    """The copy's slot as a solver's ``Slot`` (people apart), for "who else could cover"."""
+    type_id = uuid.UUID(slot["shift_type_id"])
+    return Slot(
+        key=slot["key"],
+        shift_id=uuid.UUID(slot["shift_id"]) if slot.get("shift_id") else None,
+        project_id=uuid.UUID(slot["project_id"]),
+        shift_type_id=type_id,
+        starts_at=datetime.fromisoformat(slot["starts_at"]),
+        ends_at=datetime.fromisoformat(slot["ends_at"]),
+        zone=slot.get("zone") or zone,
+        headcount=slot["headcount"],
+        night=type_id in night_types,
+        kept=tuple(uuid.UUID(p) for p in slot.get("kept", [])),
     )
 
 

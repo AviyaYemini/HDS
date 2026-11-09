@@ -125,6 +125,7 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("GET", "/api/v1/schedule-jobs/{id}/proposal"): MGR,
     ("POST", "/api/v1/schedule-jobs/{id}/edits"): MGR,
     ("POST", "/api/v1/schedule-jobs/{id}/edits/undo"): MGR,
+    ("GET", "/api/v1/schedule-jobs/{id}/slots/{key}/cover"): MGR,
     # pay settings, special days, managers on projects and pay to date (005 FR-001 to FR-022)
     ("GET", "/api/v1/organisation/pay-settings"): MGR,
     ("PATCH", "/api/v1/organisation/pay-settings"): ADMIN,
@@ -186,7 +187,12 @@ def test_matrix_covers_every_operation_in_the_openapi_document() -> None:
 def _check(env: RoleEnv, principal: str, op: tuple[str, str], ids: Any, body: Any) -> None:
     method, path = op
     allowed = MATRIX[op]
-    params = {"id": str(ids[0]), "user_id": str(ids[1]), "template_id": str(ids[0])}
+    params = {
+        "id": str(ids[0]),
+        "user_id": str(ids[1]),
+        "template_id": str(ids[0]),
+        "key": f"draft:{ids[1]}",
+    }
     status, code = env.call(principal, method, path, body, params)
     where = f"{principal} {method} {path} -> {status} {code!r}"
 

@@ -492,9 +492,23 @@ jobs:
       # difference from the committed copy (Constitution V).
       - run: pnpm api-client:check
 
+  # The Playwright specs in four shards at once, each with its own API, worker and PostgreSQL: one
+  # after another they took about 27 minutes. The accessibility sweep (h-a11y-sweep.spec.ts) is two
+  # thirds of that time, so each shard takes one of its four themes, and Playwright's --shard splits
+  # every other spec in four. About 6.5 minutes of tests each; together the shards run exactly the
+  # tests the one job ran. Rebalance by moving themes, never by dropping one.
   client-e2e:
-    name: Client e2e (Playwright on the web build, with the RTL smoke test)
+    name: Client e2e ${{ matrix.shard }} of 4
     runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one failure does not hide another.
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: 1, theme: light }
+          - { shard: 2, theme: dark }
+          - { shard: 3, theme: high-contrast-light }
+          - { shard: 4, theme: high-contrast-dark }
     services:
       postgres:
         image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
@@ -526,11 +540,38 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: apps/client
-      - run: pnpm e2e
+      # The web build both steps below test, as `pnpm e2e` makes it, on its own: a failed build
+      # stops the shard here instead of failing every test after it.
+      - name: The web build
+        id: build
+        run: EXPO_PUBLIC_API_URL=http://localhost:8100 EXPO_PUBLIC_PREVIEWS=1 pnpm exec expo export --platform web --output-dir dist
+        working-directory: apps/client
+      - name: Every spec but the sweep, shard ${{ matrix.shard }} of 4
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4 --grep-invert "every screen passes axe"
+        working-directory: apps/client
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/specs
+      # Run even when the step above failed, so both report, but only on a build that worked. The
+      # sweep's titles end "<theme>: every screen passes axe ...", so ", light:" never matches the
+      # high-contrast one.
+      - name: The accessibility sweep, ${{ matrix.theme }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm exec playwright test tests/e2e/ux/h-a11y-sweep.spec.ts --grep ", ${{ matrix.theme }}:"
+        working-directory: apps/client
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sweep
+      # A theme added to the sweep but to no shard above would never run: none may be left over.
+      - name: Every sweep test is in a shard
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        run: |
+          left=$(E2E_EXTERNAL_API=1 pnpm exec playwright test --list tests/e2e/ux/h-a11y-sweep.spec.ts \
+            --grep-invert ", (light|dark|high-contrast-light|high-contrast-dark):" | grep -c ' › ' || true)
+          [ "$left" = 0 ] || { echo "::error::$left sweep tests are in no shard; give their theme one"; exit 1; }
         working-directory: apps/client
       # The same specs against a build made without previews: no preview address may resolve
-      # (specs/007-ux-redesign FR-069, T025). Only the tests tagged @previews-off run here.
+      # (specs/007-ux-redesign FR-069, T025). Only the tests tagged @previews-off run here, once.
       - name: Previews switched off
+        if: matrix.shard == 1
         run: |
           EXPO_PUBLIC_API_URL=http://localhost:8100 pnpm exec expo export --platform web --output-dir dist
           PREVIEWS=0 pnpm exec playwright test --project=ux-desktop --grep @previews-off
@@ -538,8 +579,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: apps/client/playwright-report/
+
+  # The one check to require for the shards above, under the name the single job had, so the
+  # ruleset is unchanged: it passes only when every shard passed.
+  client-e2e-result:
+    name: Client e2e (Playwright on the web build, with the RTL smoke test)
+    needs: client-e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.client-e2e.result }}
+        run: |
+          echo "the e2e shards: $RESULT"
+          [ "$RESULT" = success ]
 
   # The base's release upgraded to the head's on k3d, under signed-in load, with Flux's signature
   # check and the web build on the upgraded cluster (specs/006 T059, FR-017, FR-019, FR-020).

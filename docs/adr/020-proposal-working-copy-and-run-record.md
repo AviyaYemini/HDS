@@ -21,13 +21,18 @@ Admin edit a proposal before accepting it, accept it in parts, lock assignments 
   and accept; a write that sends it in `If-Match` is refused with 412 when it is stale, so two
   managers never overwrite each other. The header is optional, as on the roster: a write without it
   is not guarded, and the app always sends it.
-- **A part is re-checked, not fingerprinted.** When the whole fingerprint no longer matches, a part is
-  still accepted if none of its drafts changed and it breaks no rule on today's roster that the
-  working copy does not already override. A per-day fingerprint would miss the weekly maximum and
-  the rest rule, which cross days.
-- **The record only grows.** `schedule_job_events` holds one row per step (created, finished,
-  stopped, edited, undone, locked, overridden, accepted, discarded and so on), with actor, time and
-  the working copy's version. Its repository can only insert and read, and a database trigger
+- **A part is re-checked, not fingerprinted.** Any accept but the whole of an untouched proposal is
+  judged on today's roster, whether the fingerprint matches or not (it leaves out people placed by
+  hand who were not candidates): a part is accepted if none of its drafts changed, their times
+  included; each of its new slots still has its staffing need, with the same headcount; and it
+  breaks no rule that the working copy does not already override. The whole of an untouched
+  proposal is refused, as before 008, when the fingerprint no longer matches. An accept with
+  nothing left open writes nothing and only closes the proposal as accepted, whatever changed
+  since. A per-day fingerprint would miss the weekly maximum and the rest rule, which cross days.
+- **The record only grows.** `schedule_job_events` holds one row per step, with actor, time and
+  the working copy's version. From PR 1 it holds edits, undos, overrides (a reason given to keep
+  a rule break), accepts and discards; the run's own steps (created, finished, stopped) and locks
+  join it in later groups of 008 (PR 3 and PR 4). Its repository can only insert and read, and a database trigger
   refuses UPDATE and DELETE. Each edit's step holds the people of the slots it touched before it,
   so undo restores them from the record and adds an `undone` step: there is no second history.
 

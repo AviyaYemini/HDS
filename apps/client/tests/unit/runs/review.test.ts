@@ -3,7 +3,7 @@
  * T016): slots by day, open pairs, the days and projects still open, a changed mark's two pairs,
  * what a person's menu may offer, and the breaks an edit was refused for.
  */
-import { breaksOf, hasOpen, menuFor, openDaysAndProjects, openMarks, pairsOf, partOfPairs, slotsByDay, type Review, type ReviewSlot } from "../../../src/screens/runs/review";
+import { breaksOf, hasOpen, hours, menuFor, numbersOf, openDaysAndProjects, openMarks, pairsOf, partOfPairs, reasonKey, slotsByDay, type Review, type ReviewSlot } from "../../../src/screens/runs/review";
 
 const A = "00000000-0000-0000-0000-00000000000a";
 const B = "00000000-0000-0000-0000-00000000000b";
@@ -71,4 +71,39 @@ test("the breaks an edit was refused for come from the problem's errors", () => 
   expect(breaksOf(problem)).toEqual([{ key: "late", user_id: A, code: "warnings.blocked", values: {}, excused: false }]);
   expect(breaksOf({ code: "x" })).toEqual([]);
   expect(breaksOf(null)).toEqual([]);
+});
+
+describe("a rule's numbers in words (008 FR-013)", () => {
+  test("rest gives the rest they would have and the rest needed, in hours", () => {
+    expect(numbersOf({ code: "schedule.minimum_rest", have: 540, need: 660 }, "en")).toEqual({ key: "runs.numbers.rest", values: { have: "9", need: "11" } });
+  });
+
+  test("the weekly maximum gives the week's hours, the slot's and the cap", () => {
+    expect(numbersOf({ code: "schedule.weekly_maximum", week_minutes: 2880, slot_minutes: 450, limit: 2880 }, "en")).toEqual({
+      key: "runs.numbers.weekly",
+      values: { worked: "48", more: "7.5", limit: "48" },
+    });
+  });
+
+  test("other rules, or missing numbers, give none", () => {
+    expect(numbersOf({ code: "schedule.overlap" }, "en")).toBeNull();
+    expect(numbersOf({ code: "schedule.minimum_rest", have: null, need: 660 }, "en")).toBeNull();
+  });
+
+  test("hours keep one decimal place at most", () => {
+    expect(hours(500, "en")).toBe("8.3");
+    expect(hours(0, "en")).toBe("0");
+  });
+
+  test("a code this build does not know reads as another rule", () => {
+    const known = new Set(["runs.reasons.overlap"]);
+    expect(reasonKey("schedule.overlap", (k) => known.has(k))).toBe("runs.reasons.overlap");
+    expect(reasonKey("schedule.new_rule", (k) => known.has(k))).toBe("runs.reasons.other");
+  });
+});
+
+test("a rest just short of the minimum never reads as meeting it (R26)", () => {
+  expect(numbersOf({ code: "schedule.minimum_rest", have: 599, need: 600 }, "en")).toEqual({ key: "runs.numbers.rest", values: { have: "9.9", need: "10" } });
+  expect(hours(599, "en", "down")).toBe("9.9");
+  expect(hours(601, "en", "up")).toBe("10.1");
 });

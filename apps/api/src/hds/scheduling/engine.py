@@ -15,8 +15,11 @@ from typing import Literal
 from . import greedy
 from .eligibility import Roster, fill, worked_minutes
 from .problem import (
+    MINIMUM_REST,
     NO_ACTIVE_EMPLOYEE,
     REASON_CODES,
+    WEEKLY_MAXIMUM,
+    Blocked,
     Changes,
     EmployeeSummary,
     Problem,
@@ -207,6 +210,7 @@ def _unfilled(
             found.append(Unfilled(slot.key, places, (Reason(NO_ACTIVE_EMPLOYEE, 0),)))
             continue
         counts: Counter[str] = Counter()
+        named: dict[str, list[Blocked]] = {}
         for p in people:
             if p in on:
                 continue
@@ -214,7 +218,15 @@ def _unfilled(
             if code is None:  # the repair pass leaves no free candidate behind
                 raise SolverError(f"{p} could take an empty place on {slot.key}")
             counts[code] += 1
-        reasons = tuple(Reason(c, counts[c]) for c in REASON_CODES if counts[c])
+            if code in (MINIMUM_REST, WEEKLY_MAXIMUM):
+                found_detail = roster.detail(p, slot, code)
+                if found_detail is not None:
+                    named.setdefault(code, []).append(found_detail)
+        reasons = tuple(
+            Reason(c, counts[c], tuple(sorted(named.get(c, ()), key=lambda b: str(b.user_id))))
+            for c in REASON_CODES
+            if counts[c]
+        )
         # Every active candidate is already on the slot: there is no one else to give it to.
         found.append(Unfilled(slot.key, places, reasons or (Reason(NO_ACTIVE_EMPLOYEE, 0),)))
     return tuple(found)

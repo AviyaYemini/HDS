@@ -103,11 +103,33 @@ class Problem:
 
 
 @dataclass(frozen=True)
+class Blocked:
+    """One person a rule keeps off a slot, with the numbers that show it (008 FR-013, research P10).
+
+    Minimum rest gives the rest they would have and the rest needed (``have``, ``need``); the weekly
+    maximum gives the minutes they already work that week, the slot's and the limit
+    (``week_minutes``, ``slot_minutes``, ``limit``). All in minutes; the rest are ``None``.
+    """
+
+    user_id: uuid.UUID
+    code: str
+    have: int | None = None
+    need: int | None = None
+    week_minutes: int | None = None
+    slot_minutes: int | None = None
+    limit: int | None = None
+
+
+@dataclass(frozen=True)
 class Reason:
-    """One reason places stayed empty, and how many candidates it excluded."""
+    """One reason places stayed empty, and how many candidates it excluded.
+
+    For minimum rest and the weekly maximum, ``people`` names each of them with the numbers.
+    """
 
     code: str
     employees: int
+    people: tuple[Blocked, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 
@@ -116,6 +116,50 @@ class EditAnswer(BaseModel):
 
     proposal: Review
     warnings: list[Warning]
+
+
+class CoverOption(BaseModel):
+    """One person who could cover the slot, or the rule that keeps them off it (FR-014, FR-016).
+
+    ``free`` people break no rule there; otherwise ``code`` names the rule, with the numbers for
+    rest (``have``, ``need``) and the weekly maximum (``week_minutes``, ``slot_minutes``,
+    ``limit``), in minutes. ``close`` and ``open``: a "would rather not" or an "I can" covers it.
+    ``minutes``, ``nights`` and ``weekends``: what they would work in the run's range after it.
+    """
+
+    user_id: uuid.UUID
+    free: bool
+    code: str | None
+    have: int | None
+    need: int | None
+    week_minutes: int | None
+    slot_minutes: int | None
+    limit: int | None
+    close: bool
+    open: bool
+    minutes: int
+    nights: int
+    weekends: int
+
+
+class CoverTotals(BaseModel):
+    """The active staff's count and total minutes, nights and weekend shifts, before the pick.
+
+    Each total over ``people`` is the average an option's numbers are set against.
+    """
+
+    people: int
+    minutes: int
+    nights: int
+    weekends: int
+
+
+class Cover(BaseModel):
+    """Who else could cover one slot of a proposal, best first."""
+
+    key: str
+    options: list[CoverOption]
+    totals: CoverTotals
 
 
 class EditRequest(BaseModel):
@@ -231,3 +275,31 @@ async def undo_edit(
     """
     job, view = await svc.undo(current_user, id, version_of(if_match))
     return answer(review(job, svc.state(job), view), job.version)
+
+
+@router.get(
+    "/schedule-jobs/{id}/slots/{key}/cover",
+    response_model=Cover,
+    summary="Who else could cover a slot",
+    description=(
+        "Manager or Admin, of every project in the run. Every active staff member not on the "
+        "proposal's slot `key`, whatever project or kind of project they work on, judged over all "
+        "their shifts in every project, the roster's drafts and the working copy. People free come "
+        'first: no "would rather not" on it, then the fewest nights, minutes and weekend shifts '
+        "after it, then name; people who would break a rule follow, with the rule and its numbers. "
+        "Codes and numbers only: never pay, a site or another project's shift (008 FR-014, "
+        "FR-016). 404 for a slot not in the proposal; 409 (`schedule.not_ready`) before the job "
+        "has one."
+    ),
+)
+async def cover_slot(
+    id: uuid.UUID,
+    key: Annotated[str, Path(max_length=200)],
+    current_user: User = Depends(require_manager),
+    svc: ProposalService = Depends(proposals),
+) -> Cover:
+    """Who else could cover a slot.
+
+    Manager or Admin, of every project in the run.
+    """
+    return Cover(**await svc.cover(current_user, id, key))

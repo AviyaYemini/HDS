@@ -95,22 +95,23 @@ it across every project.
 
 ### Tests first
 
-- [ ] T020 [P] [US3] Example tests in `apps/api/tests/unit/scheduling/test_explanations.py`: one week per reason code; rest and weekly maximum name each person with `have`, `need`, `week_minutes`, `slot_minutes`, `limit`; counts still add up to every candidate not on the slot (FR-013)
-- [ ] T021 [P] [US3] Hypothesis property in `apps/api/tests/property/test_cover.py`: every option marked free can be placed without breaking a rule across all projects, and every option not free names a rule that placing them breaks (SC-004)
-- [ ] T022 [P] [US3] Service and API tests: cover answers carry only codes and numbers, never pay, a site, or another project's shift (FR-016), in `apps/api/tests/unit/services/test_cover_visibility.py`. Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
-- [ ] T023 [P] [US3] Playwright spec `apps/client/tests/e2e/ux/j-empty-slots.spec.ts`: the slot panel's reasons and numbers; cover list order; picking a free person; "Assign anyway" with a reason
+- [x] T020 [P] [US3] Example tests in `apps/api/tests/unit/scheduling/test_explanations.py`: one week per reason code; rest and weekly maximum name each person with `have`, `need`, `week_minutes`, `slot_minutes`, `limit`; counts still add up to every candidate not on the slot (FR-013)
+- [x] T021 [P] [US3] Hypothesis property in `apps/api/tests/property/test_cover.py`: every option marked free can be placed without breaking a rule across all projects, and every option not free names a rule that placing them breaks (SC-004)
+- [x] T022 [P] [US3] Service and API tests (built as integration tests in `apps/api/tests/integration/test_proposal_cover.py`, which drive the real service): cover answers carry only codes and numbers, never pay, a site, or another project's shift (FR-016). Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
+- [x] T023 [P] [US3] Playwright spec `apps/client/tests/e2e/ux/j-empty-slots.spec.ts`: the slot panel's reasons and numbers; cover list order; picking a free person; "Assign anyway" with a reason
 
 ### Implementation
 
-- [ ] T024 [US3] `Roster.detail` in `apps/api/src/hds/scheduling/eligibility.py`; `Blocked` and `Reason.people` in `scheduling/problem.py`; `_unfilled` in `scheduling/engine.py` fills them (research P10)
-- [ ] T025 [US3] `scheduling/cover.py`: `options(problem, assigned, key)` ranked as research P11, across every project and kind (FR-014)
-- [ ] T026 [US3] Contract first for `GET /schedule-jobs/{id}/slots/{key}/cover`; `ProposalService.cover` builds the problem with the working copy; router; regenerate the client
-- [ ] T027 [US3] Client `SlotPanel` in `apps/client/src/screens/runs/`: reasons with counts, named people with numbers, the empty-slot list on the review, "Who else could cover" with reasons in words, picking places the person as an edit (FR-015); "Assign anyway" through the override sheet
-- [ ] T028 [P] [US3] Locale keys for every reason, number format and cover reason; `docs/hds-api.md`
+- [x] T024 [US3] `Roster.detail` in `apps/api/src/hds/scheduling/eligibility.py`; `Blocked` and `Reason.people` in `scheduling/problem.py`; `_unfilled` in `scheduling/engine.py` fills them (research P10)
+- [x] T025 [US3] `scheduling/cover.py`: `options(problem, assigned, key)` ranked as research P11, across every project and kind (FR-014)
+- [x] T026 [US3] Contract first for `GET /schedule-jobs/{id}/slots/{key}/cover`; `ProposalService.cover` builds the problem with the working copy; router; regenerate the client
+- [x] T027 [US3] Client `SlotPanel` in `apps/client/src/screens/runs/`: reasons with counts, named people with numbers, the empty-slot list on the review, "Who else could cover" with reasons in words, picking places the person as an edit (FR-015); "Assign anyway" through the override sheet
+- [x] T028 [P] [US3] Locale keys for every reason, number format and cover reason; `docs/hds-api.md`
+- [ ] T028a CI (owner, 2026-11-09): the client e2e job, about 27 minutes, runs as four shards at once, each with its own PostgreSQL, like the database shards: each takes one theme of the accessibility sweep and a quarter of every other spec (`--shard`); the job's old name stays as the one required check over them, and a check fails on a sweep test in no shard
 
 ### Close
 
-- [ ] T029 Close group B as the template says. Mutants (≤ 3, who can see what): cover including another project's shift id or site in its answer; cover answering a Manager for a run they don't fully manage; the free check skipping shifts outside the run's projects. Commit `feat(scheduling): explain every empty slot and offer who else could cover (…)`. **PR 2 ready**: once-per-PR steps
+- [x] T029 Close group B as the template says (done 2026-11-09: the three mutants below all failed the cover tests; scoped `make ci-local` green; /code-review R24 to R33, eight fixed and two won't-fix). Mutants (≤ 3, who can see what): cover including another project's shift id or site in its answer; cover answering a Manager for a run they don't fully manage; the free check skipping shifts outside the run's projects. Commit `feat(scheduling): explain every empty slot and offer who else could cover (…)`. **PR 2 ready**: once-per-PR steps
 
 ---
 
@@ -139,6 +140,13 @@ what it guarantees, what it traded off, and how fair it is.
 - [ ] T040 [US4] Client: the run form's two controls and `ChipEditor` (chips in words, edit, remove; max 20), lock marks and lock and unlock on the roster and in the proposal, "Run again" from a proposal
 - [ ] T041 [US5] Client: the guarantee line (FR-023), `SummaryPanel` in words (FR-024), `FairnessPanel` (FR-025), all following edits at once (FR-026)
 - [ ] T042 [P] [US4] Locale keys for controls, chips, guarantees, the summary and fairness; `docs/hds-api.md`
+- [ ] T042a [US3] Review (owner, 2026-11-09): show no week row, and no day, that holds no slot of the run; a run's dates outside its weeks' slots (the calendar weeks before the range) add nothing. `weeksOf` in `apps/client/src/screens/runs/model.ts` keeps only the weeks with a slot; desktop columns keep the days of those weeks
+- [ ] T042b [US3] Review (owner, 2026-11-09): at the top of the review, the slots the run left with empty places, highlighted in red (with an icon and words, never colour alone): each opens its slot in the week, scrolled to and focused, with "Who else could cover" open on it (FR-014, FR-015); an RNTL test and a step in `j-empty-slots.spec.ts`
+- [ ] T042c Roster (owner, 2026-11-09): the roster's "Assign to the shift" sheet gets a search field over every active staff member, by name, so an open seat is filled without scrolling the whole list. Later (project teams, with 015's qualifications): the list shows only the people attached to the project or qualified for it, and search still finds anyone
+- [ ] T042d Roster (owner, 2026-11-09): an assignment that breaks a rule (two shifts back to back, 16 hours without rest, the weekly maximum…) still goes through, and a dialog then names each break in words with its numbers, never blocking; it closes with one button and focus goes back where it was
+- [ ] T042e Roster (owner, 2026-11-09): Publish on a week with no drafts showed a sheet of zeros (every shift there was already published, so nothing was to publish). With nothing to publish, Publish is disabled with the reason in words ("Every shift this week is already published"), and the sheet never opens on zeros
+- [ ] T042f Roster (owner, 2026-11-09): choosing someone already on an overlapping shift says so, naming that shift as far as the editor may see it, and offers: swap, when the seat is held (the two trade places); transfer, when the seat is empty (they move, and their first shift loses them); or keep both, with the overlap warning (never a block). Swap and transfer are offered only when the editor may change both shifts; otherwise only the warning. Each is one step, undone as one. Later: a stand-by role may hold overlapping shifts with no warning at all
+- [ ] T042g Roster (owner, 2026-11-09): a manual edit may carry a note, shown at once on the newly assigned employee's own shift page; and a choice of who is alerted: everyone on the edited roster, only the people the edit affects, or no one. 008 records the note and the choice with the edit, as publish records its notify choice; feature 010 delivers the alerts
 
 ### Close
 

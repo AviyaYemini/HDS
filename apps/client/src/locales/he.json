@@ -813,5 +813,14 @@
   "schedule.nothing_to_undo": "אין עריכה לביטול.",
   "schedule.edit_invalid": "השינוי הזה לא מתאים להצעה.",
   "schedule.override_reason_required": "השינוי הזה עובר על כלל. יש לכתוב סיבה כדי להשאיר אותו.",
-  "review.chosen_pair": "נבחר: השינוי של {{person}}"
+  "review.chosen_pair": "נבחר: השינוי של {{person}}",
+  "runs.person_numbers": "{{person}}: {{numbers}}",
+  "runs.numbers.rest": "{{have}} ש׳ מנוחה, נדרשות {{need}} ש׳",
+  "runs.numbers.weekly": "{{worked}} ש׳ השבוע, ועוד {{more}} ש׳, מעל התקרה של {{limit}} ש׳",
+  "review.why_empty": "למה נשאר ריק כשההרצה נעשתה",
+  "review.cover_title": "אפשרויות כיסוי",
+  "review.cover_free": "ללא התנגשות",
+  "review.cover_would_rather_not": "ללא התנגשות, אבל עדיף שלא",
+  "review.assign_anyway_person": "שיבוץ {{person}} בכל זאת",
+  "review.cover_load": "אחרי השיבוץ: {{hours}} ש׳, {{nights}} לילות, {{weekends}} משמרות סוף שבוע (ממוצע {{average_hours}} ש׳)"
 }

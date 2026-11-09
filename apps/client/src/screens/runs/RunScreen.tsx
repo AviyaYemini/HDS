@@ -24,6 +24,7 @@ import { useLoad } from "../useLoad";
 import { rosterHref } from "../roster/ProjectChooser";
 import { HonestyLabel } from "./HonestyLabel";
 import { ReviewWeek } from "./ReviewWeek";
+import { numbersOf, reasonKey } from "./review";
 import { STATUS_TONE, coveredText, elapsedNow, filled, isActive, projectsOf, runProgress, type Job, type Names } from "./model";
 
 const POLL_MS = 1000;
@@ -146,10 +147,7 @@ function useNames(): Names & { staff: { id: string; full_name: string }[] } {
 function Proposal({ job, names }: { job: Job; names: Names }) {
   const { t, i18n } = useTranslation();
   // A code this build does not know yet still reads as a reason.
-  const reasonText = (code: string) => {
-    const key = `runs.reasons.${code.replace(/^schedule\./, "")}`;
-    return i18n.exists(key) ? t(key) : t("runs.reasons.other");
-  };
+  const reasonText = (code: string) => t(reasonKey(code, (key) => i18n.exists(key)));
   const { colors } = useTheme();
   const proposal = job.proposal;
   if (proposal === null) return null;
@@ -188,9 +186,21 @@ function Proposal({ job, names }: { job: Job; names: Names }) {
                   {t("runs.places_empty", { count: gap.places })}
                 </Txt>
                 {gap.reasons.map((reason) => (
-                  <Txt key={reason.code} role="meta" tone="secondary">
-                    {reason.employees > 0 ? t("runs.reason", { reason: reasonText(reason.code), count: reason.employees }) : reasonText(reason.code)}
-                  </Txt>
+                  <View key={reason.code} testID="unfilled-reason" {...webProps({ dataSet: { code: reason.code } })}>
+                    <Txt role="meta" tone="secondary">
+                      {reason.employees > 0 ? t("runs.reason", { reason: reasonText(reason.code), count: reason.employees }) : reasonText(reason.code)}
+                    </Txt>
+                    {/* Rest and the weekly maximum name each person, with the numbers (008 FR-013). */}
+                    {(reason.people ?? []).map((person) => {
+                      const numbers = numbersOf(person, i18n.language);
+                      const who = names.people.get(person.user_id) ?? t("runs.unknown_person");
+                      return (
+                        <Txt key={person.user_id} role="meta" tone="secondary" numeric testID="unfilled-person" {...webProps({ dataSet: { userId: person.user_id } })}>
+                          {numbers ? t("runs.person_numbers", { person: who, numbers: t(numbers.key, numbers.values) }) : who}
+                        </Txt>
+                      );
+                    })}
+                  </View>
                 ))}
               </View>
             );
