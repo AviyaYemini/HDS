@@ -11,22 +11,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import {
-  Button,
-  EmptyState,
-  InlineBanner,
-  PageTitle,
-  SearchablePicker,
-  Sheet,
-  SidePanel,
-  SkeletonRows,
-  Table,
-  TextField,
-  Txt,
-  showToast,
-  type Column,
-  type SortDirection,
-} from "../../design/components";
+import { Button, EmptyState, InlineBanner, PageTitle, Sheet, SidePanel, Table, TextField, Txt, showToast, type Column, type SortDirection } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { Icon, type IconName } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
@@ -34,6 +19,7 @@ import { webProps } from "../../design/web";
 import { hold } from "../../design/heldActions";
 import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
+import { PhoneList } from "./PhoneList";
 import { fromViewQuery, readState, searched, sorted, toParams, viewQuery, type TableState } from "./tableState";
 
 export interface PanelArgs<Row> {
@@ -75,113 +61,6 @@ export interface AdminTableProps<Row> {
 
 type Saved = { id: string; name: string; query: string };
 
-/** A column's value as text (every admin column renders text, so a phone can show it in a line). */
-function cellText<Row>(column: Column<Row>, row: Row): string {
-  const value = column.render ? column.render(row) : (row as Record<string, unknown>)[column.key];
-  return typeof value === "string" || typeof value === "number" ? String(value) : "";
-}
-
-/**
- * Below the phone breakpoint an admin list is a list (R166, the reviewer's ruling): each row's first
- * column is its title and the others a second line that wraps; sorting is a "Sort by" control above
- * it. Nothing runs off the side or is cut.
- */
-function PhoneList<Row>({
-  columns,
-  rows,
-  loading,
-  keyOf,
-  sort,
-  onSort,
-  onOpen,
-  emptyText,
-  selecting = false,
-  selected,
-  onToggle,
-}: {
-  columns: readonly Column<Row>[];
-  rows: readonly Row[];
-  loading: boolean;
-  keyOf: (row: Row) => string;
-  sort: TableState["sort"];
-  onSort: (key: string, direction: SortDirection) => void;
-  onOpen: (row: Row) => void;
-  emptyText: string;
-  /** In Select mode a tap selects a row instead of opening it (the bulk-action bar). */
-  selecting?: boolean;
-  selected?: ReadonlySet<string>;
-  onToggle?: (row: Row) => void;
-}) {
-  const { t } = useTranslation();
-  const { colors } = useTheme();
-  const sortable = columns.filter((c) => c.sortable);
-  const [first, ...rest] = columns;
-  const direction: SortDirection = sort?.direction ?? "asc";
-  return (
-    <View style={styles.phone}>
-      {sortable.length > 0 ? (
-        <View style={styles.sortRow}>
-          <SearchablePicker
-            label={t("admin.sort_by")}
-            items={sortable.map((c) => ({ id: c.key, label: c.title }))}
-            value={sort?.key ?? null}
-            onChange={(key) => onSort(key, direction)}
-            placeholder={t("admin.sort_none")}
-            testID="sort-by"
-            style={styles.sortPick}
-          />
-          <Button
-            variant="secondary"
-            icon={direction === "asc" ? "sort-asc" : "sort-desc"}
-            label={direction === "asc" ? t("admin.sort_asc") : t("admin.sort_desc")}
-            disabled={!sort}
-            onPress={() => sort && onSort(sort.key, direction === "asc" ? "desc" : "asc")}
-            testID="sort-direction"
-          />
-        </View>
-      ) : null}
-      {loading ? (
-        <SkeletonRows rows={6} />
-      ) : rows.length === 0 ? (
-        <Txt role="body" tone="secondary">
-          {emptyText}
-        </Txt>
-      ) : (
-        <View role="list" style={styles.list}>
-          {rows.map((row) => (
-            <Pressable
-              key={keyOf(row)}
-              role={selecting ? "checkbox" : "listitem"}
-              testID="table-row"
-              {...webProps({ dataSet: { id: keyOf(row) } })}
-              {...(selecting ? { "aria-checked": selected?.has(keyOf(row)) ?? false, accessibilityState: { checked: selected?.has(keyOf(row)) ?? false } } : {})}
-              onPress={() => (selecting ? onToggle?.(row) : onOpen(row))}
-              style={({ pressed }) => [
-                styles.item,
-                { borderBottomColor: colors.border.subtle },
-                pressed || (selecting && selected?.has(keyOf(row))) ? { backgroundColor: colors.bg.selected } : null,
-              ]}
-            >
-              <View style={styles.itemHead}>
-                {selecting ? (
-                  <View style={[styles.checkbox, { borderColor: colors.border.strong }, selected?.has(keyOf(row)) ? { backgroundColor: colors.accent.default } : null]}>
-                    {selected?.has(keyOf(row)) ? <Icon name="check" size={14} color={colors.bg.canvas} /> : null}
-                  </View>
-                ) : null}
-                <Txt role="label" style={styles.itemTitle}>
-                  {first ? cellText(first, row) : ""}
-                </Txt>
-              </View>
-              <Txt role="meta" tone="secondary">
-                {rest.map((c) => cellText(c, row)).filter((v) => v && v !== "—").join(" · ")}
-              </Txt>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
 
 /** The pause after typing before the search reaches the address. */
 const SEARCH_PAUSE_MS = 250;
@@ -635,11 +514,6 @@ export function AdminTable<Row>({
 const styles = StyleSheet.create({
   tabsFrame: { flexGrow: 0 },
   tabsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  phone: { gap: 12 },
-  sortRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8 },
-  sortPick: { flexGrow: 1, flexShrink: 1, flexBasis: 180 },
-  list: { gap: 0 },
-  item: { gap: 2, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1 },
   tabs: { gap: 4 },
   tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderBottomWidth: 2 },
   tools: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
@@ -649,8 +523,6 @@ const styles = StyleSheet.create({
   bulkBar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, padding: 8, borderWidth: 1 },
   bulkCount: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
   checkbox: { width: 22, height: 22, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  itemTitle: { flexGrow: 1, flexShrink: 1 },
   page: { gap: 16 },
   pageHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   pageTitle: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
