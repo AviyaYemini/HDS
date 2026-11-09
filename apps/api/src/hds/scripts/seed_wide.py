@@ -23,12 +23,15 @@ organisation, enough that every screen from 001 to 008 has something to show:
     Edits:      a few manual assignments that break a rule, some kept with a recorded reason
     Views:      saved views on the staff and projects tables
 
-Deterministic: a fixed random seed and ids drawn from it, and every date relative to the day
-it runs. Running it again adds nothing: the layer is skipped when its first account exists,
-whole or after a run that stopped (``make wipe`` starts over). The holidays are a fixed table
-that runs to October 2028. Needs the base seed first, and
-writes through the services wherever the app does, so it never runs against production: the
-accounts share the published dev password.
+Repeatable: a fixed random seed and ids drawn from it, and every date relative to the day it runs,
+so the same day gives the same people, settings and availability. Who works which shift is the
+scheduler's choice, which can settle an equal choice differently in another database. Each step
+skips what is there already: a run that stopped part-way is picked up where it stopped, and a run
+on a finished layer adds nothing. A week another availability window already covers keeps that
+window. The holidays are a fixed table that runs to October 2028.
+
+Needs the base seed first, and writes through the services wherever the app does. Never run it
+against production: the accounts share the published dev password.
 
 Layer: scripts. May use services, repositories and models; MUST NOT import routers.
 """
@@ -43,15 +46,19 @@ from typing import Any
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from hds.models.availability import AvailabilityEntry
 from hds.models.client import Client
 from hds.models.group import Group, user_groups
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectType
 from hds.models.project_manager import ProjectManager
 from hds.models.qualification import Qualification, user_qualifications
+from hds.models.saved_view import SavedView
+from hds.models.schedule_job import ScheduleJob
 from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
+from hds.models.special_day import SpecialDay
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 from hds.repositories.saved_view import SavedViewRepository
@@ -250,6 +257,8 @@ QUALIFICATIONS = ("רישיון נשק", "מדריך קליעה", "מאבטח מ
 EMPLOYEES = 40
 MANAGERS = 4
 PAST_WEEKS = 4
+HAND_NOTE = "כיסוי ברגע האחרון"
+"""The note on the seed's hand placements, which shows they were made."""
 
 
 def _next_id(rng: random.Random) -> uuid.UUID:
@@ -273,6 +282,42 @@ async def _layer_exists(db: AsyncSession, org: Organisation) -> bool:
         select(User.id).where(User.organisation_id == org.id, User.email == MARKER)
     )
     return found.first() is not None
+
+
+async def _load_records(db: AsyncSession, org: Organisation) -> dict[str, Any]:
+    """The records a run before this one made, to pick up where it stopped."""
+
+    async def users(pattern: str) -> list[User]:
+        found = await db.execute(
+            select(User)
+            .where(User.organisation_id == org.id, User.email.like(pattern))
+            .order_by(User.email)
+        )
+        return list(found.scalars())
+
+    names = [entry[0] for entry in PROJECTS]
+    found = await db.execute(
+        select(Project).where(
+            Project.organisation_id == org.id,
+            Project.name.in_(names),
+            Project.is_deleted.is_(False),
+        )
+    )
+    by_name = {p.name: p for p in found.scalars()}
+    return {
+        "staff": await users("staff%@hds.test"),
+        "managers": await users("mgr%@hds.test"),
+        "projects": [by_name[name] for name in names],
+        "types": await _active_types(db, org),
+    }
+
+
+async def _active_types(db: AsyncSession, org: Organisation) -> dict[str, ShiftType]:
+    """The organisation's active shift types, by name."""
+    found = await db.execute(
+        select(ShiftType).where(ShiftType.organisation_id == org.id, ShiftType.is_active.is_(True))
+    )
+    return {t.name: t for t in found.scalars()}
 
 
 def _user(
@@ -396,16 +441,7 @@ async def _records(
                 insert(user_qualifications).values(user_id=person.id, qualification_id=qual.id)
             )
 
-    types = {
-        t.name: t
-        for t in (
-            await db.execute(
-                select(ShiftType).where(
-                    ShiftType.organisation_id == org.id, ShiftType.is_active.is_(True)
-                )
-            )
-        ).scalars()
-    }
+    types = await _active_types(db, org)
     projects = []
     for index, (name, kind, client_at, site_at, rate, needs) in enumerate(PROJECTS):
         project = Project(
@@ -462,17 +498,34 @@ async def _settings(
         )
         days = special_days(db)
         horizon = today + datetime.timedelta(days=365)
-        for iso, name in HOLIDAYS:
-            day = datetime.date.fromisoformat(iso)
-            if today <= day <= horizon:
-                await days.create_organisation_day(
-                    admin, {"day": day, "name": name, "rate_pct": decimal.Decimal("150.00")}
-                )
+        wanted = [
+            (datetime.date.fromisoformat(iso), name, decimal.Decimal("150.00"))
+            for iso, name in HOLIDAYS
+            if today <= datetime.date.fromisoformat(iso) <= horizon
+        ]
         # A company day inside the published weeks, so the pay report shows a premium.
-        company_day = _sunday_of(today) - datetime.timedelta(days=12)
-        await days.create_organisation_day(
-            admin, {"day": company_day, "name": "יום החברה", "rate_pct": decimal.Decimal("125.00")}
+        wanted.append(
+            (
+                _sunday_of(today) - datetime.timedelta(days=12),
+                "יום החברה",
+                decimal.Decimal("125.00"),
+            )
         )
+        there = set(
+            (
+                await db.execute(
+                    select(SpecialDay.day).where(
+                        SpecialDay.organisation_id == admin.organisation_id,
+                        SpecialDay.project_id.is_(None),
+                    )
+                )
+            ).scalars()
+        )
+        for day, name, rate in wanted:
+            if day not in there:  # a day already there, the developer's or an earlier run's, stays
+                await days.create_organisation_day(
+                    admin, {"day": day, "name": name, "rate_pct": rate}
+                )
         await db.commit()
 
 
@@ -541,19 +594,33 @@ async def _availability(
     rng: random.Random,
     this_week: datetime.date,
 ) -> None:
-    """Windows from four weeks back to next week; the past submitted, next week mostly so."""
+    """Windows from four weeks back to next week; the past submitted, next week mostly so.
+
+    A week another window already covers, even in part, uses that window: windows never overlap.
+    Only a window this seed made itself, and still open, is marked by the people; any other is
+    entered for them by the Admin, who may enter anyone's availability at any time.
+    """
+    marked_by_people: set[uuid.UUID] = set()
     async with factory() as db:
-        windows: dict[datetime.date, SubmissionWindow] = {}
+        windows: list[tuple[datetime.date, SubmissionWindow]] = []
         for offset in range(-PAST_WEEKS, 2):
             first = this_week + datetime.timedelta(weeks=offset)
+            last = first + datetime.timedelta(days=6)
             found = (
-                await db.execute(
-                    select(SubmissionWindow).where(
-                        SubmissionWindow.organisation_id == org.id,
-                        SubmissionWindow.starts_on == first,
+                (
+                    await db.execute(
+                        select(SubmissionWindow)
+                        .where(
+                            SubmissionWindow.organisation_id == org.id,
+                            SubmissionWindow.starts_on <= last,
+                            SubmissionWindow.ends_on >= first,
+                        )
+                        .order_by(SubmissionWindow.starts_on)
                     )
                 )
-            ).scalar_one_or_none()
+                .scalars()
+                .first()
+            )
             if found is None:
                 # Next week's deadline is its first morning, so it is open now; the rest closed.
                 deadline = datetime.datetime.combine(
@@ -565,22 +632,34 @@ async def _availability(
                     id=_next_id(rng),
                     organisation_id=org.id,
                     starts_on=first,
-                    ends_on=first + datetime.timedelta(days=6),
+                    ends_on=last,
                     deadline=deadline,
                 )
                 db.add(found)
-            windows[first] = found
+                if offset == 1:
+                    marked_by_people.add(found.id)
+            windows.append((first, found))
         await db.commit()
 
-    for first, window in windows.items():
-        upcoming = first > this_week
+    for first, window in windows:
         async with factory() as db:
+            entered = (
+                await db.execute(
+                    select(AvailabilityEntry.id).where(
+                        AvailabilityEntry.user_id == staff[0].id,
+                        AvailabilityEntry.starts_on >= first,
+                        AvailabilityEntry.starts_on <= first + datetime.timedelta(days=6),
+                    )
+                )
+            ).first()
+            if entered is not None:
+                continue  # this week was entered by an earlier run
+            by_people = window.id in marked_by_people
             entries, submissions = availability_service(db), submission_service(db)
             for person in staff:
-                for entry in _entries(rng, first, types, busy=upcoming):
-                    # Next week is marked by each person; the past was entered for them.
-                    await entries.add_entry(person if upcoming else admin, person.id, entry)
-                if upcoming:
+                for entry in _entries(rng, first, types, busy=first > this_week):
+                    await entries.add_entry(person if by_people else admin, person.id, entry)
+                if by_people:
                     if rng.random() < 0.85:  # the rest are late
                         await submissions.submit(person, window.id)
                 elif rng.random() < 0.95:
@@ -596,25 +675,51 @@ async def _week(
     *,
     publish: bool,
 ) -> uuid.UUID:
-    """Generate a week for the wide projects with the greedy solver; accept and publish it."""
+    """Generate a week for the wide projects with the greedy solver; accept and publish it.
+
+    A run an earlier seed made for the week is picked up where it stopped.
+    """
+    ids = [str(p.id) for p in projects]
     async with factory() as db:
-        job = await job_service(db).create(
-            admin,
-            {
-                "first_day": first,
-                "last_day": first + datetime.timedelta(days=6),
-                "project_ids": [p.id for p in projects],
-                "solver": "greedy",
-            },
-        )
-        await db.commit()
-        job_id = job.id
+        earlier = [
+            job
+            for job in (
+                await db.execute(
+                    select(ScheduleJob)
+                    .where(
+                        ScheduleJob.organisation_id == admin.organisation_id,
+                        ScheduleJob.first_day == first,
+                        ScheduleJob.status.in_(("queued", "running", "succeeded")),
+                    )
+                    .order_by(ScheduleJob.created_at)
+                )
+            ).scalars()
+            if sorted(job.project_ids) == sorted(ids)
+        ]
+        if earlier:
+            job_id = earlier[-1].id
+        else:
+            job = await job_service(db).create(
+                admin,
+                {
+                    "first_day": first,
+                    "last_day": first + datetime.timedelta(days=6),
+                    "project_ids": [p.id for p in projects],
+                    "solver": "greedy",
+                },
+            )
+            await db.commit()
+            job_id = job.id
     while await run_once(factory) is not None:
         pass
     if publish:
         async with factory() as db:
-            await job_service(db).accept(admin, job_id)
-            await db.commit()
+            state = (
+                await db.execute(select(ScheduleJob.proposal_state).where(ScheduleJob.id == job_id))
+            ).scalar_one()
+            if state == "open":
+                await job_service(db).accept(admin, job_id)
+                await db.commit()
         async with factory() as db:
             roster = roster_service_for(db)
             for project in projects:
@@ -634,6 +739,10 @@ async def _manual_edits(
     Each puts someone on their own morning's project on the night before it, so the roster names
     the rule it breaks (too little rest, or a day they blocked or would rather not work).
     """
+    async with factory() as db:
+        done = await db.execute(select(Assignment.id).where(Assignment.note == HAND_NOTE).limit(1))
+        if done.first() is not None:
+            return  # placed by an earlier run
     starts = datetime.datetime.combine(this_week, datetime.time(), SITE_ZONE)
     ends = starts + datetime.timedelta(days=7)
     async with factory() as db:
@@ -679,7 +788,7 @@ async def _manual_edits(
     for index, (night, person) in enumerate(pairs):
         async with factory() as db:
             judged = await roster_service_for(db).assign(
-                admin, night.id, person, note="כיסוי ברגע האחרון", alert="none"
+                admin, night.id, person, note=HAND_NOTE, alert="none"
             )
             await db.commit()
         broken = [w for w in judged.warnings if w.get("employee_id") == person]
@@ -694,6 +803,9 @@ async def _manual_edits(
 async def _views(factory: async_sessionmaker[AsyncSession], admin: User, manager: User) -> None:
     """Saved views on the admin tables."""
     async with factory() as db:
+        made = await db.execute(select(SavedView.id).where(SavedView.user_id == admin.id).limit(1))
+        if made.first() is not None:
+            return  # saved by an earlier run
         views = SavedViewService(SavedViewRepository(db))
         await views.save(admin, "admin_staff", "לפי תפקיד", "sort=role%3Aasc")
         await views.save(admin, "admin_projects", "הדרכות", "q=%D7%94%D7%93%D7%A8%D7%9B%D7%AA")
@@ -704,51 +816,54 @@ async def _views(factory: async_sessionmaker[AsyncSession], admin: User, manager
 async def seed_wide(
     factory: async_sessionmaker[AsyncSession], today: datetime.date | None = None
 ) -> bool:
-    """Add the wider data to the base seed's organisation; whether anything was added.
+    """Add the wider data to the base seed's organisation, or finish a run that stopped.
+
+    Each step skips what is there already, so a run that stopped part-way is picked up where it
+    stopped, and a run on a finished layer adds nothing. Each step draws from its own seeded
+    generator, so a resumed layer is the same as one laid in one go.
 
     Args:
         factory: Sessions on the database the base seed filled.
         today: The day the data is laid around; today at the site when not given.
 
     Returns:
-        False when the layer was there already (nothing is added), True otherwise.
+        True when the layer's records were made by this run, False when an earlier run made them.
     """
     today = today or datetime.datetime.now(SITE_ZONE).date()
     this_week = _sunday_of(today)
-    rng = random.Random(RANDOM_SEED)
+
+    def rng(step: str) -> random.Random:
+        """The seeded generator of one step, so a resumed run draws as a whole one would."""
+        return random.Random(f"{RANDOM_SEED}:{step}")
+
     async with factory() as db:
         org = (
             await db.execute(select(Organisation).where(Organisation.name == "HDS Dev"))
         ).scalar_one()
-        if await _layer_exists(db, org):
-            # Whole, or in part after a run that stopped: either way nothing is added, and a run
-            # that stopped stays visible rather than failing every later start.
-            print("Wide data exists (or a run of it stopped): nothing added.")
-            print("To lay it again around today: make wipe && make up")
-            return False
         admin = (await db.execute(select(User).where(User.email == "admin@hds.test"))).scalar_one()
-        records = await _records(db, org, rng, today, admin.password_hash)
-        await db.commit()
-    print("Wide records created: people, clients, sites, projects")
+        fresh = not await _layer_exists(db, org)
+        if fresh:
+            records = await _records(db, org, rng("records"), today, admin.password_hash)
+            await db.commit()
+            print("Wide records created: people, clients, sites, projects")
+        else:
+            records = await _load_records(db, org)
+            print("Wide records exist: finishing anything an earlier run left")
     await _settings(factory, admin, records, today)
     print("Needs, pay and special days set")
     types = [records["types"][name] for name in ("morning", "afternoon", "night")]
-    await _availability(factory, org, admin, records["staff"], types, rng, this_week)
+    await _availability(
+        factory, org, admin, records["staff"], types, rng("availability"), this_week
+    )
     print("Availability entered and submitted")
     for offset in range(-PAST_WEEKS, 1):
-        await _week(
-            factory,
-            admin,
-            records["projects"],
-            this_week + datetime.timedelta(weeks=offset),
-            publish=True,
-        )
+        week = this_week + datetime.timedelta(weeks=offset)
+        await _week(factory, admin, records["projects"], week, publish=True)
     print("Past weeks and this week generated and published")
-    await _week(
-        factory, admin, records["projects"], this_week + datetime.timedelta(weeks=1), publish=False
-    )
+    next_week = this_week + datetime.timedelta(weeks=1)
+    await _week(factory, admin, records["projects"], next_week, publish=False)
     print("Next week left as a proposal to review")
     await _manual_edits(factory, admin, records["projects"], this_week)
     await _views(factory, admin, records["managers"][0])
     print("Manual edits and saved views added")
-    return True
+    return fresh

@@ -79,8 +79,10 @@ e2e specs use only the base data above.
   this week. Each placement breaks a rule (too little rest, a blocked day, a wish not to work
   then), and two of them are kept with a recorded reason. A few saved views sit on the staff and projects tables.
 
-It is laid around the day it is first loaded, and the same day always gives the same data.
-Running it again adds nothing, so the data ages with the database: after a week or two, "this
+It is laid around the day it is first loaded. The same day gives the same people, settings and
+availability, and the rosters are made from them by the scheduler.
+Running it again finishes anything a run that stopped left, and otherwise adds nothing, so the
+data ages with the database: after a week or two, "this
 week" is in the past and the run to review has expired. To lay it around today again, run
 `make wipe && make up`. To load it outside Docker, run
 `uv run python -m hds.scripts.seed_dev --wide`. Its holidays come from a fixed table that runs

@@ -56,6 +56,17 @@ from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 
 
+async def _seed_id(session: AsyncSession, model: Any, key: str) -> uuid.UUID:
+    """The id of the seeded record named by ``key``: derived from it, so two fresh databases agree.
+
+    The scheduler breaks ties by the smallest id, so stable ids keep its inputs the same from one
+    fresh database to the next. A record renamed since it was seeded keeps its id; a new one then
+    takes a random id rather than clash with it.
+    """
+    derived = uuid.uuid5(SEED_NAMESPACE, key)
+    return uuid.uuid4() if await session.get(model, derived) is not None else derived
+
+
 async def _get_or_create(
     session: AsyncSession,
     model: Any,
@@ -70,14 +81,9 @@ async def _get_or_create(
     obj = result.scalar_one_or_none()
     if obj is not None:
         return obj, False
-    # The id follows from what the record is, so two fresh databases give the people the same
-    # ids, and the scheduler's ties (broken by the smallest id) fall the same way (seed_wide's
-    # repeatability). A record renamed since it was seeded keeps that id; a new one then takes a
-    # random id rather than clash with it.
+    # The id follows from what the record is (_seed_id).
     key = f"{model.__tablename__}:{sorted((k, str(v)) for k, v in filters.items())}"
-    derived = uuid.uuid5(SEED_NAMESPACE, key)
-    taken = await session.get(model, derived) is not None
-    obj = model(id=uuid.uuid4() if taken else derived, **{**filters, **defaults})
+    obj = model(id=await _seed_id(session, model, key), **{**filters, **defaults})
     session.add(obj)
     await session.flush()
     return obj, True
@@ -117,7 +123,7 @@ async def _project(
         print(f"Project exists: {name}")
         return project
     project = Project(
-        id=uuid.uuid4(),
+        id=await _seed_id(db, Project, f"projects:{org.id}:{name}"),
         organisation_id=org.id,
         client_id=client.id,
         site_id=site.id,
@@ -155,7 +161,7 @@ async def _shift(
     if found.first() is not None:
         return
     shift = Shift(
-        id=uuid.uuid4(),
+        id=await _seed_id(db, Shift, f"shifts:{project.id}:{kind.id}:{starts_at.isoformat()}"),
         organisation_id=project.organisation_id,
         project_id=project.id,
         shift_type_id=kind.id,
@@ -170,7 +176,7 @@ async def _shift(
     for person in people:
         db.add(
             Assignment(
-                id=uuid.uuid4(),
+                id=await _seed_id(db, Assignment, f"assignments:{shift.id}:{person.id}"),
                 organisation_id=project.organisation_id,
                 shift_id=shift.id,
                 user_id=person.id,
