@@ -52,6 +52,18 @@ async function assign(admin: APIRequestContext, s: Shift, who: Me, hours?: [numb
   await ok(admin.post(`/api/v1/shifts/${s.id}/assignments`, { data }), 201);
 }
 
+/** Close the warning dialog when a change broke a rule; it only informs (T042d). */
+async function dismissWarnings(page: Page): Promise<void> {
+  const shown = await page
+    .getByTestId("warning-detail")
+    .waitFor({ state: "visible", timeout: 1_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (shown) await page.getByTestId("action-warnings-ok").click();
+}
+
 /**
  * Choose someone in the assign sheet. A person already on another shift then makes the sheet ask
  * what to do (T042f); these tests keep them on both, as the roster did before.
@@ -290,6 +302,7 @@ for (const language of LANGUAGES) {
       await option.click();
       await sheet.getByTestId("action-busy-move").click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
+      await dismissWarnings(page);
       expect(await onShift(b)).not.toContain(guard.id);
 
       // Undo moves them back, in one step.
@@ -305,6 +318,7 @@ for (const language of LANGUAGES) {
       await sheet.locator(`[data-testid="assign-option"][data-user-id="${guard.id}"]`).click();
       await sheet.getByTestId("action-busy-move").click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
+      await dismissWarnings(page);
       await expect.poll(() => onShift(b)).toContain(other.id);
       await checkA11y(page, `roster after a swap (${language})`);
 
@@ -316,6 +330,7 @@ for (const language of LANGUAGES) {
       await page.getByTestId("action-replace").click();
       await sheet.locator(`[data-testid="assign-option"][data-user-id="${free.id}"]`).click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${free.id}"]`)).toBeVisible();
+      await dismissWarnings(page);
       await expect(page.getByTestId("banner-roster-changed")).toHaveCount(0);
     });
 

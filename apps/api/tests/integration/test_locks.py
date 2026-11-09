@@ -254,6 +254,8 @@ async def test_a_rerun_holds_a_proposal_lock_and_accepting_writes_it_locked(
 
     rerun = await solved(async_client, admin, project_ids=[project["id"]], based_on=first["id"])
     again = next(s for s in rerun["proposal"]["slots"] if s["key"] == slot["key"])
+    found = (await async_client.get(f"{JOBS}/{rerun['id']}/fairness", headers=admin)).json()
+    assert found["locks"] == 1  # counted once, not as held and as locked (R47)
     accepted = await async_client.post(f"{JOBS}/{rerun['id']}/accept", headers=admin)
 
     assert person in again["assigned"] and person not in again["kept"]

@@ -1605,6 +1605,23 @@ components:
         weekday: {type: [integer, "null"], minimum: 0, maximum: 6}
         shift_type_id: {type: [string, "null"], format: uuid}
 
+    ChipState:
+      type: object
+      description: >-
+        A chip of the run and whether the proposal meets it now (008 FR-021, FR-022). Its own
+        schema: Chip forbids other properties, so it cannot be extended with allOf (R52).
+      required: [kind, user_id, state]
+      properties:
+        kind: {type: string, enum: [max_shifts, max_nights, max_hours, keep_on, keep_off, prefer]}
+        user_id: {$ref: "#/components/schemas/UUIDv4"}
+        count: {type: [integer, "null"]}
+        project_id: {type: [string, "null"], format: uuid}
+        site_id: {type: [string, "null"], format: uuid}
+        weekday: {type: [integer, "null"]}
+        shift_type_id: {type: [string, "null"], format: uuid}
+        state: {type: string, enum: [met, not_met, not_applying]}
+        cause: {type: [string, "null"], enum: [coverage, conflict, fixed, null]}
+
     Fairness:
       type: object
       description: >-
@@ -1649,13 +1666,7 @@ components:
         chips:
           type: array
           items:
-            allOf:
-              - $ref: "#/components/schemas/Chip"
-              - type: object
-                required: [state]
-                properties:
-                  state: {type: string, enum: [met, not_met, not_applying]}
-                  cause: {type: [string, "null"], enum: [coverage, conflict, fixed, null]}
+            $ref: "#/components/schemas/ChipState"
         overridden: {type: integer, description: Assignments kept despite a rule by a person's reason (FR-023).}
         locks: {type: integer, description: Locked assignments the proposal keeps (FR-018).}
 

@@ -221,7 +221,8 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   // Bring the slot into view behind the sheet, then open its "Who else could cover" (T042b).
   const openSlot = (slot: ReviewSlot) => {
     if (typeof document !== "undefined") {
-      document.querySelector(`[data-slot-key="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center" });
+      // The slot's block, not the strip's own button, which carries the same key (R50).
+      document.querySelector(`[data-testid="proposal-block"][data-slot-key="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center" });
     }
     setAssignTo(slot);
   };

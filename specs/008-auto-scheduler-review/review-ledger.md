@@ -54,3 +54,10 @@ count.
 | R44 | /code-review (PR 3) | `apps/api/src/hds/services/proposal.py:401`: moving or swapping someone in the review dropped their lock; it goes with them. A lock made on the roster shows in the review as kept and is undone on the roster, where it was set | fixed |
 | R45 | /code-review (PR 3) | `apps/api/src/hds/services/roster.py:695`: locking twice moved the shift's etag, so other editors' saves were refused; only a real change moves it | fixed |
 | R46 | /code-review (PR 3) | `apps/api/src/hds/scheduling/fairness.py:145`: the trade-offs worked out the panel again; they take the one already made | fixed |
+| R47 | CodeRabbit (PR 23) | `apps/api/src/hds/services/proposal.py:292`: a rerun's held lock was counted twice (in `locks_kept` and as locked in the copy); the held ones are taken out of `locks_kept` | fixed |
+| R48 | CodeRabbit (PR 23) | `apps/api/src/hds/services/roster.py:697`: lock decided on a read made before the shift's lock, which a move could have changed; it reads the assignment again under the lock and refuses one that moved | fixed |
+| R49 | CodeRabbit (PR 23) | `apps/api/src/hds/services/roster.py:777`: move's second read could come from the session, not the database; it reads fresh | fixed |
+| R50 | CodeRabbit (PR 23) | `apps/client/src/screens/runs/ReviewWeek.tsx:224`: the empty-slot strip scrolled to its own button, which carries the same key; it scrolls to the slot's block | fixed |
+| R51 | CodeRabbit (PR 23) | `apps/client/src/screens/runs/RunsScreen.tsx:288`: a failed read of the run to run again opened a plain form, dropping its chips and locks; it says so, with a retry | fixed |
+| R52 | CodeRabbit (PR 23) | `specs/001-foundation-auth-org/contracts/openapi.yaml:1658`: the fairness answer's chips extended `Chip`, which forbids other properties, so no item could validate; `ChipState` is its own schema | fixed |
+| R53 | CI (PR 23) | `apps/client/tests/e2e/ux/k-steering.spec.ts`, `d-roster.spec.ts`: the steering spec still looked for a rerun's lock under `kept` (R37 made it the rerun's own), and the roster spec's undo was blocked by the warning dialog a move can open; both follow the behaviour now | fixed |

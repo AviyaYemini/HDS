@@ -452,6 +452,15 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
                 .values(locked_by=by, locked_at=at)
             )
 
+    async def fresh(self, id: uuid.UUID, org_id: uuid.UUID) -> Assignment | None:
+        """The assignment as stored now, not as the session last loaded it."""
+        result = await self.session.execute(
+            select(Assignment)
+            .where(Assignment.id == id, Assignment.organization_id == org_id)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def on_shift(self, shift_id: uuid.UUID) -> list[Assignment]:
         """The assignments on one shift, read from the database (a caller holds its lock)."""
         result = await self.session.execute(

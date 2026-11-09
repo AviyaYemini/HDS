@@ -277,7 +277,10 @@ export function RunsScreen() {
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.runs")}>
         {creating ? null : <Button variant="primary" icon="plus" label={t("runs.new")} onPress={() => setCreating(true)} testID="action-new-run" />}
       </PageTitle>
-      {!creating ? null : projects.error ? (
+      {!creating ? null : params.again && again.error ? (
+        // The earlier run could not be read: say so, never a plain form that drops its chips (R51).
+        <InlineBanner tone="warning" testID="banner-run-again" title={errorText(again.error)} action={{ label: t("common.retry"), onPress: () => void again.reload() }} />
+      ) : projects.error ? (
         // A failed read of the projects says so, with a way to try again (CodeRabbit, PR 20).
         <InlineBanner tone="warning" title={errorText(projects.error)} action={{ label: t("common.retry"), onPress: () => void projects.reload() }} />
       ) : projects.offered === null || (params.again && again.data === null && !again.error) ? (

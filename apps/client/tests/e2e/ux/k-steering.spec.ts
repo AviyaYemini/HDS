@@ -95,8 +95,9 @@ LANGUAGES.forEach((language, index) => {
     await expect(page.getByTestId("run-chip")).toHaveCount(1);
     const rerun = await ok<{ id: string }>(manager.post("/api/v1/schedule-jobs", { data: { from: first, to: addDays(first, 4), project_ids: [project], based_on: job.id } }), 202);
     await finished(manager, rerun.id);
-    const again = await ok<{ proposal: { slots: { key: string; kept: string[] }[] } }>(manager.get(`/api/v1/schedule-jobs/${rerun.id}`));
-    expect(again.proposal.slots.find((s) => s.key === slot.key)!.kept).toContain(person);
+    // The rerun holds the locked person as its own, so accepting writes them to the roster (R37).
+    const again = await ok<{ proposal: { slots: { key: string; assigned: string[] }[] } }>(manager.get(`/api/v1/schedule-jobs/${rerun.id}`));
+    expect(again.proposal.slots.find((s) => s.key === slot.key)!.assigned).toContain(person);
 
     await ok(manager.post(`/api/v1/schedule-jobs/${job.id}/discard`));
     await ok(manager.post(`/api/v1/schedule-jobs/${rerun.id}/discard`));

@@ -289,7 +289,11 @@ class ProposalService:
             ],
             "overridden": sum(1 for p in people if p.get("override")),
             # The locks the run kept from the roster, and those set in the proposal since.
-            "locks": int(work.get("locks_kept", 0)) + sum(1 for p in people if p.get("locked")),
+            # The run's locks from the roster, less those a rerun held (they are the copy's own,
+            # marked locked), and every lock in the copy now (R47).
+            "locks": int(work.get("locks_kept", 0))
+            - sum(len(s.get("locked", [])) for s in work["slots"])
+            + sum(1 for p in people if p.get("locked")),
         }
 
     async def _copy_problem(

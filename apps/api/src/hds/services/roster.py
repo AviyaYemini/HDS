@@ -684,6 +684,10 @@ class RosterService:
             raise NotFoundError(resource="Assignment", id=id)
         shift = await self._locked_shift(actor, assignment.shift_id)
         await self._require_edit(actor, shift.project_id)
+        # Read again under the shift's lock: a move or another lock may have changed it (R48).
+        assignment = await self._assignments.fresh(id, actor.organization_id)
+        if assignment is None or assignment.shift_id != shift.id:
+            raise NotFoundError(resource="Assignment", id=id)
         changed = (assignment.locked_at is None) == on
         if changed:
             assignment = await self._assignments.update(
@@ -771,8 +775,8 @@ class RosterService:
         source, target = locked[moving.shift_id], locked[to_shift_id]
         await self._require_edit(actor, source.project_id)
         await self._require_edit(actor, target.project_id)
-        # Read again under the locks: another request may have changed them while this one waited.
-        moving = await self._assignments.get_by_id(assignment_id, org)
+        # Read again under the locks, from the database: another request may have moved it (R49).
+        moving = await self._assignments.fresh(assignment_id, org)
         if moving is None or moving.shift_id != source.id:
             raise NotFoundError(resource="Assignment", id=assignment_id)
         on_target = {a.user_id: a for a in await self._assignments.on_shift(target.id)}
