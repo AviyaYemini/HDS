@@ -13,7 +13,7 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 ## PR 2: client structure
 
 - [ ] S11 Roster: the screen keeps its layout; its sheets, rows and data calls move beside it
-- [ ] S12 Admin: one file per screen
+- [x] S12 Admin: one file per screen
 - [ ] S13 Runs: the review, the run page and the run list lose their parts and hooks to files of their own
 - [ ] S14 Admin table, availability and account split the same way
 - [ ] S15 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text

@@ -7,7 +7,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import * as Router from "expo-router";
 
 import type { Me } from "../../../src/api/session";
-import { ClientsScreen, PaySettingsScreen, ProjectsScreen, StaffScreen, StaffingNeedsScreen } from "../../../src/screens/admin/AdminScreens";
+import { ClientsScreen, PaySettingsScreen, ProjectsScreen, StaffScreen, StaffingNeedsScreen } from "../../../src/screens/admin";
 import { ConfirmLeave, hasUnsaved, mayLeaveFor, resetUnsaved } from "../../../src/design/unsaved";
 import { ToastHost } from "../../../src/design/components";
 import { dropHeld } from "../../../src/design/heldActions";
