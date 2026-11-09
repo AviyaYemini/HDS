@@ -81,3 +81,13 @@ test("a failed look waits for the next one", async () => {
   await look(5_000);
   expect(screen.getByTestId("toast-run-finished")).toBeTruthy();
 });
+
+test("a run pushed off the newest page by others is read by itself, and its end told", async () => {
+  const others = Array.from({ length: 20 }, (_, i) => job(`7777777${i.toString(16)}-7777-4777-8777-777777777777`, "running", "someone"));
+  const api = new FakeApi()
+    .on("GET", JOBS, page(job(RUN, "running")), page(...others))
+    .on("GET", `${JOBS}/${RUN}`, json(200, job(RUN, "succeeded")));
+  await mount(api);
+  await look(5_000);
+  expect(screen.getByTestId("toast-run-finished")).toBeTruthy();
+});

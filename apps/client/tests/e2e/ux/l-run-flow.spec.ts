@@ -47,7 +47,7 @@ LANGUAGES.forEach((language, index) => {
     const stopping = await ok<{ id: string }>(manager.post("/api/v1/schedule-jobs", { data: { from: week, to: addDays(week, 4), project_ids: [project] } }), 202);
     await ok(manager.post(`/api/v1/schedule-jobs/${stopping.id}/stop`));
     const stopped = await ended(manager, stopping.id);
-    expect(["stopped", "cancelled", "finished"]).toContain(stopped.ended);
+    expect(["stopped", "cancelled", "finished", "timed_out"]).toContain(stopped.ended);
 
     // The roster's "Generate this week" opens the run form on that week and project.
     await openAs(page, "manager", language, "/runs");

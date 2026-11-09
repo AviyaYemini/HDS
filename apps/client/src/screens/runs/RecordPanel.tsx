@@ -30,17 +30,31 @@ function detail(step: Step, t: (key: string, values?: Record<string, unknown>) =
   return null;
 }
 
-export function RecordPanel({ jobId, name }: { jobId: string; name: (id: string) => string }) {
+interface Props {
+  jobId: string;
+  /** Changes whenever the run moves, so the record is read again from its start (FR-030). */
+  stamp?: string;
+  name: (id: string) => string;
+}
+
+export function RecordPanel({ jobId, stamp = "", name }: Props) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const session = useSession();
   const errorText = useErrorText();
   const first = useLoad(
     async () => call(session.api.GET("/api/v1/schedule-jobs/{id}/record", { params: { path: { id: jobId }, query: { limit: PAGE } } })),
-    [jobId],
+    [jobId, stamp],
   );
   const [more, setMore] = useState<Step[]>([]);
   const [after, setAfter] = useState<number | null | undefined>(undefined);
+  // A new read starts over: the pages read past the first belong to the old one.
+  const [readFor, setReadFor] = useState(stamp);
+  if (readFor !== stamp) {
+    setReadFor(stamp);
+    setMore([]);
+    setAfter(undefined);
+  }
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 

@@ -948,5 +948,9 @@
   "runs.record_detail.op.edit": "An edit",
   "roster.published": "Published.",
   "roster.copy_next_week": "Copy to next week",
+  "roster.copy_replaces_one": "Next week already has a draft at one of these times. Copying replaces it; published shifts stay.",
+  "roster.copy_replaces_other": "Next week already has drafts at {{count}} of these times. Copying replaces them; published shifts stay.",
+  "roster.copy_replaces": "Next week already has drafts at {{count}} of these times. Copying replaces them; published shifts stay.",
+  "roster.copy_replace": "Copy and replace",
   "roster.generate_week": "Generate this week"
 }

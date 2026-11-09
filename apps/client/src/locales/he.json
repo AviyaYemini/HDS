@@ -948,5 +948,9 @@
   "runs.record_detail.op.edit": "עריכה",
   "roster.published": "פורסם.",
   "roster.copy_next_week": "העתקה לשבוע הבא",
+  "roster.copy_replaces_one": "בשבוע הבא כבר יש טיוטה באחד מהמועדים האלה. ההעתקה תחליף אותה; משמרות שפורסמו יישארו.",
+  "roster.copy_replaces_other": "בשבוע הבא כבר יש טיוטות ב-{{count}} מהמועדים האלה. ההעתקה תחליף אותן; משמרות שפורסמו יישארו.",
+  "roster.copy_replaces": "בשבוע הבא כבר יש טיוטות ב-{{count}} מהמועדים האלה. ההעתקה תחליף אותן; משמרות שפורסמו יישארו.",
+  "roster.copy_replace": "העתקה והחלפה",
   "roster.generate_week": "הפקת השבוע הזה"
 }

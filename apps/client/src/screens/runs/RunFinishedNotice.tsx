@@ -1,8 +1,9 @@
 /**
  * The in-app notice when a run someone started finishes (specs/008-auto-scheduler-review FR-029):
  * wherever they are in the app, a toast says so and opens the proposal. No push or e-mail; those
- * come with feature 010. It reads the person's runs every 5 s while one of theirs is queued or
- * running, and every 30 s otherwise, in the background (no loading bar).
+ * come with feature 010. It reads the newest runs every 5 s while one of theirs is queued or
+ * running, and every 30 s otherwise, in the background (no loading bar); one of theirs seen running
+ * and since pushed off that page is read by itself.
  */
 import { usePathname, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
@@ -38,6 +39,13 @@ export function RunFinishedNotice() {
       try {
         const page = await call(session.quiet.GET("/api/v1/schedule-jobs", { params: { query: { limit: 20 } } }));
         const mine = page.items.filter((job) => job.requested_by === me);
+        // A run of theirs seen running that newer runs pushed off the page is read by itself, so
+        // its end is still told.
+        const onPage = new Set(page.items.map((job) => job.id));
+        const gone = [...(active.current ?? [])].filter((id) => !onPage.has(id));
+        for (const id of gone) {
+          mine.push(await call(session.quiet.GET("/api/v1/schedule-jobs/{id}", { params: { path: { id } } })));
+        }
         const running = new Set(mine.filter((job) => job.status === "queued" || job.status === "running").map((job) => job.id));
         if (active.current !== null) {
           for (const job of mine) {

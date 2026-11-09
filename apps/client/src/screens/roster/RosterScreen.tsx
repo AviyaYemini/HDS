@@ -76,6 +76,8 @@ export function RosterScreen() {
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
+  /** How many of next week's drafts a copy would replace, while the manager is asked (FR-033). */
+  const [copyReplaces, setCopyReplaces] = useState<number | null>(null);
   // Replacing someone on a shift opens the assign sheet with them named (T042f).
   const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
@@ -175,16 +177,30 @@ export function RosterScreen() {
     return done ? etag : null;
   };
 
-  /** Copy the week shown to the next one and open it (008 FR-033). */
-  const copyToNextWeek = async () => {
+  /**
+   * Copy the week shown to the next one and open it (008 FR-033). A dry run first: when the copy
+   * would replace drafts next week already holds, the manager is asked before any is replaced.
+   */
+  const copyToNextWeek = async (confirmed = false) => {
     if (!project) return;
-    try {
-      await call(
+    const copy = (dry_run: boolean) =>
+      call(
         session.api.POST("/api/v1/projects/{id}/copy-week", {
           params: { path: { id: project } },
-          body: { from_week: week, to_week: addDays(week, 7), on_conflict: "overwrite", dry_run: false },
+          body: { from_week: week, to_week: addDays(week, 7), on_conflict: "overwrite", dry_run },
         }),
       );
+    try {
+      if (!confirmed) {
+        const plan = await copy(true);
+        const replaced = plan.changes.filter((c) => c.action === "replace").length;
+        if (replaced > 0) {
+          setCopyReplaces(replaced);
+          return;
+        }
+      }
+      setCopyReplaces(null);
+      await copy(false);
       router.push(rosterHref(project, addDays(week, 7)) as never);
     } catch (failure) {
       showToast(errorText(codeOf(failure)), { tone: "warning" });
@@ -430,13 +446,20 @@ export function RosterScreen() {
         setHistory([]);
         await shifts.reload();
         // After a publish, the next step is next week (008 FR-033): copy this week's shifts there,
-        // replacing only drafts, never a published shift, and open it.
+        // replacing only drafts, never a published shift, once the manager agrees, and open it.
         showToast(t("roster.published"), {
           tone: "success",
           action: { label: t("roster.copy_next_week"), onPress: () => void copyToNextWeek() },
           testID: "toast-published",
         });
       }} />
+      <Sheet open={copyReplaces !== null} onClose={() => setCopyReplaces(null)} title={t("roster.copy_next_week")} testID="copy-confirm">
+        <Txt role="body">{t("roster.copy_replaces", { count: copyReplaces ?? 0 })}</Txt>
+        <View style={styles.actions}>
+          <Button variant="primary" label={t("roster.copy_replace")} onPress={() => void copyToNextWeek(true)} testID="action-confirm-copy" />
+          <Button label={t("common.cancel")} onPress={() => setCopyReplaces(null)} testID="action-cancel-copy" />
+        </View>
+      </Sheet>
     </Screen>
   );
 }
@@ -806,6 +829,7 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },

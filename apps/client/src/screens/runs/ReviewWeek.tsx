@@ -54,6 +54,8 @@ interface Props {
   people: { id: string; full_name: string }[];
   /** After an accept or a discard, so the page reads the job again. */
   onDecided: () => void;
+  /** Hears the proposal's version as it moves with each edit, so the record can follow (FR-030). */
+  onVersion?: (version: number) => void;
 }
 
 interface PersonOn {
@@ -63,7 +65,7 @@ interface PersonOn {
 
 type Pending = { edit: Edit; breaks: EditWarning[] };
 
-export function ReviewWeek({ job, names, people, onDecided }: Props) {
+export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) {
   const { t, i18n } = useTranslation();
   const { colors, isDesktop } = useTheme();
   const session = useSession();
@@ -88,6 +90,9 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const [fetched, setFetched] = useState<{ key: string; version: number; attempt: number; data: Cover | null; error: unknown } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const shownVersion = review?.version ?? loaded.data?.version ?? -1;
+  useEffect(() => {
+    if (shownVersion >= 0) onVersion?.(shownVersion);
+  }, [shownVersion, onVersion]);
   useEffect(() => {
     if (assignTo === null) return;
     let live = true;

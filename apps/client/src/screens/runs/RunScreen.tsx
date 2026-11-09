@@ -282,6 +282,9 @@ export function RunScreen() {
   const job = reading?.job ?? null;
   const names = useNames();
   useRunBar(reading);
+  // The record reads again whenever the run moves: its state, a Stop, a decision or an edit (FR-030).
+  const [version, setVersion] = useState(-1);
+  const stamp = job ? `${job.status}:${job.ended ?? ""}:${String(job.stop_requested)}:${job.proposal_state ?? ""}:${version}` : "";
 
   return (
     <Screen testID="screen-run">
@@ -342,9 +345,9 @@ export function RunScreen() {
               <Txt role="label">{t("runs.run_again")}</Txt>
             </LinkPressable>
           ) : null}
-          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} /> : null}
+          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
           {/* Every run's record, once it has one (FR-030). */}
-          <RecordPanel jobId={job.id} name={(person) => names.people.get(person) ?? t("runs.unknown_person")} />
+          <RecordPanel jobId={job.id} stamp={stamp} name={(person) => names.people.get(person) ?? t("runs.unknown_person")} />
         </View>
       )}
     </Screen>
