@@ -84,7 +84,7 @@ describe("AvailabilityScreen", () => {
 
     expect(tuesdayMorning().props.accessibilityLabel).toContain("Available");
     await fireEvent.press(tuesdayMorning());
-    await waitFor(() => expect(tuesdayMorning().props.accessibilityLabel).toContain("Would like to work"));
+    await waitFor(() => expect(tuesdayMorning().props.accessibilityLabel).toContain("Want to work"));
     await waitFor(() => expect(entries).toHaveLength(1));
     expect(entries[0]).toMatchObject({ kind: "open", shift_type_id: "morning", starts_on: "2026-11-17" });
     await waitFor(() => expect(screen.getByText("Draft")).toBeTruthy());
@@ -108,7 +108,7 @@ describe("AvailabilityScreen", () => {
     await waitFor(() => expect(entries[0]?.kind).toBe("close"));
     await fireEvent.press(await screen.findByTestId("action-undo"));
     await waitFor(() => expect(entries[0]?.kind).toBe("open"));
-    await waitFor(() => expect(tuesdayMorning().props.accessibilityLabel).toContain("Would like to work"));
+    await waitFor(() => expect(tuesdayMorning().props.accessibilityLabel).toContain("Want to work"));
   });
 
   it("reviews and submits, and a change afterwards is a draft again (FR-014, FR-015)", async () => {
@@ -147,7 +147,7 @@ describe("AvailabilityScreen, changes that land right (R55, R57)", () => {
     entries.push({ id: "a1", kind: "open", shift_type_id: null, starts_on: "2026-11-17", ends_on: "2026-11-17" });
     await renderWith(await signedIn(api), <AvailabilityScreen />);
     await screen.findByTestId("availability-banner");
-    expect(tuesdayMorning().props.accessibilityLabel).toContain("Would like to work");
+    expect(tuesdayMorning().props.accessibilityLabel).toContain("Want to work");
     // open → close on an inherited cell changes the all-day entry itself.
     await fireEvent.press(tuesdayMorning());
     await waitFor(() => expect(entries).toEqual([expect.objectContaining({ id: "a1", kind: "close", shift_type_id: null })]));

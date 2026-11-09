@@ -378,7 +378,7 @@
   "availability.no_window_title": "No submission window yet",
   "availability.no_window_body": "When your manager opens a window, this is where you mark your availability.",
   "availability.state.unmarked": "Available",
-  "availability.state.open": "Would like to work",
+  "availability.state.open": "Want to work",
   "availability.state.close": "Would rather not",
   "availability.state.blocked": "Can't work",
   "availability.state_short.unmarked": "–",

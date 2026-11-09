@@ -58,7 +58,8 @@ async def test_guards_elsewhere_are_offered_free_or_with_the_rule_they_break(
     admin = await headers_for(async_client, "admin")
     guarded = await staffed_project(async_client, admin)
     trainer_project = await add_project(async_client, admin, "Academy")
-    free = await employee(async_client, admin, "Free Guard")
+    # Two free guards: the run may place either on the one place, so one is always left to offer.
+    guards = [await employee(async_client, admin, f"Free Guard {n}") for n in (1, 2)]
     busy = await employee(async_client, admin, "Busy Trainer")
     taken = (await add_shift(async_client, admin, trainer_project, SUNDAY))["shift"]
     assert (await assign(async_client, admin, taken["id"], busy)).status_code == 201
@@ -71,6 +72,7 @@ async def test_guards_elsewhere_are_offered_free_or_with_the_rule_they_break(
     assert answer.status_code == 200, answer.text
     body = answer.json()
     by = {o["user_id"]: o for o in body["options"]}
+    free = next(g for g in guards if g in by)
     assert by[free]["free"] is True and by[free]["code"] is None
     assert by[busy]["free"] is False and by[busy]["code"] == "schedule.overlap"
     assert [o["free"] for o in body["options"]] == sorted(
