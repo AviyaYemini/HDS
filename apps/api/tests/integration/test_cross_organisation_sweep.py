@@ -624,6 +624,12 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/edits/undo"),  # type: ignore[union-attr]
         ),
     ],
+    "GET /api/v1/schedule-jobs/{id}/slots/{key}/cover": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/slots/need:x/cover"),  # type: ignore[union-attr]
+        ),
+    ],
     "POST /api/v1/schedule-jobs": [
         Case(
             "foreign project id: refused as not active here, revealing nothing",

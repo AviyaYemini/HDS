@@ -13,6 +13,7 @@ A slot with a part accepted is a draft now and is edited on the roster.
 
 import uuid
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +25,8 @@ from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling import Employee, RuleWarning, validate
+from hds.scheduling import cover as covering
+from hds.scheduling.engine import slot_id
 from hds.services import proposal_copy
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService, check_version
@@ -183,6 +186,81 @@ class ProposalService:
             job, "undone", {"edit": str(last.id)}, actor=actor, version=job.version
         )
         return job, view(work)
+
+    async def cover(self, actor: User, id: uuid.UUID, key: str) -> dict[str, Any]:
+        """Who else could cover slot ``key`` of the proposal (FR-014, FR-016, research P11).
+
+        Every active staff member not on it, judged over all their shifts in every project, the
+        roster's drafts and the working copy: free people first, then those who would break a
+        rule, with the rule and numbers; and the averages their numbers are set against. Codes,
+        numbers and ids only: never pay, a site, or another project's shift.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: Not in the organisation, or no slot ``key`` (HTTP 404).
+            ConflictError: ``schedule.not_ready`` when the job has no proposal (HTTP 409).
+        """
+        job, _ = await self.read(actor, id)
+        work = proposal_copy.of(job.current, job.result)
+        if proposal_copy.find(work, key) is None:
+            raise NotFoundError(resource="Slot", id=slot_id(key))
+        org = await self._orgs.get_by_id(job.organization_id)
+        if org is None:
+            raise NotFoundError(resource="Organisation", id=job.organization_id)
+        staff = await self._users.staff_of(job.organization_id)
+        built = await self._inputs.build(
+            job.organization_id,
+            job.first_day,
+            job.last_day,
+            [uuid.UUID(p) for p in job.project_ids],
+            also={u.id for u in staff},
+        )
+        base = built.problem
+        slots = tuple(
+            proposal_copy.as_slot(s, org.timezone, base.night_types) for s in work["slots"]
+        )
+        ours = {proposal_copy.shift_id_of(s) for s in work["slots"]}
+        # Drafts made by hand since the run are fixed shifts here, as the edit's check sees them.
+        extra = proposal_copy.unlisted(base, work, ours)
+        problem = replace(
+            base,
+            slots=slots,
+            fixed=(*base.fixed, *extra),
+            candidates=tuple(Employee(u.id, True) for u in staff),
+            current={},
+        )
+        assigned = {
+            s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
+        }
+        names = {u.id: u.full_name for u in staff}
+        found = covering.options(problem, assigned, key, names)
+        minutes, nights, weekends = covering.averages(problem, assigned)
+        return {
+            "key": key,
+            "options": [
+                {
+                    "user_id": o.user_id,
+                    "free": o.code is None,
+                    "code": o.code,
+                    "have": o.detail.have if o.detail else None,
+                    "need": o.detail.need if o.detail else None,
+                    "week_minutes": o.detail.week_minutes if o.detail else None,
+                    "slot_minutes": o.detail.slot_minutes if o.detail else None,
+                    "limit": o.detail.limit if o.detail else None,
+                    "close": o.close,
+                    "open": o.open,
+                    "minutes": o.minutes,
+                    "nights": o.nights,
+                    "weekends": o.weekends,
+                }
+                for o in found
+            ],
+            "average": {
+                "minutes": round(minutes, 1),
+                "nights": round(nights, 2),
+                "weekends": round(weekends, 2),
+            },
+        }
 
     async def _staff(self, org_id: uuid.UUID, ids: set[uuid.UUID]) -> dict[uuid.UUID, Employee]:
         """The people an edit places, as the rules see them.

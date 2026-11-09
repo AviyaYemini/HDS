@@ -1086,6 +1086,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/schedule-jobs/{id}/slots/{key}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who else could cover a slot
+         * @description Manager or Admin, of every project in the run. Every active staff member not on the proposal's slot `key`, whatever project or kind of project they work on, judged over all their shifts in every project, the roster's drafts and the working copy. People free come first: no "would rather not" on it, then the fewest nights, minutes and weekend shifts after it, then name; people who would break a rule follow, with the rule and its numbers. Codes and numbers only: never pay, a site or another project's shift (008 FR-014, FR-016). 404 for a slot not in the proposal; 409 (`schedule.not_ready`) before the job has one.
+         */
+        get: operations["cover_slot_api_v1_schedule_jobs__id__slots__key__cover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shift-types": {
         parameters: {
             query?: never;
@@ -2047,6 +2067,69 @@ export interface components {
             unchanged: number;
         };
         /**
+         * Cover
+         * @description Who else could cover one slot of a proposal, best first.
+         */
+        Cover: {
+            average: components["schemas"]["CoverAverage"];
+            /** Key */
+            key: string;
+            /** Options */
+            options: components["schemas"]["CoverOption"][];
+        };
+        /**
+         * CoverAverage
+         * @description The staff's average minutes, nights and weekend shifts in the range, before the pick.
+         */
+        CoverAverage: {
+            /** Minutes */
+            minutes: number;
+            /** Nights */
+            nights: number;
+            /** Weekends */
+            weekends: number;
+        };
+        /**
+         * CoverOption
+         * @description One person who could cover the slot, or the rule that keeps them off it (FR-014, FR-016).
+         *
+         *     ``free`` people break no rule there; otherwise ``code`` names the rule, with the numbers for
+         *     rest (``have``, ``need``) and the weekly maximum (``week_minutes``, ``slot_minutes``,
+         *     ``limit``), in minutes. ``close`` and ``open``: a "would rather not" or an "I can" covers it.
+         *     ``minutes``, ``nights`` and ``weekends``: what they would work in the run's range after it.
+         */
+        CoverOption: {
+            /** Close */
+            close: boolean;
+            /** Code */
+            code: string | null;
+            /** Free */
+            free: boolean;
+            /** Have */
+            have: number | null;
+            /** Limit */
+            limit: number | null;
+            /** Minutes */
+            minutes: number;
+            /** Need */
+            need: number | null;
+            /** Nights */
+            nights: number;
+            /** Open */
+            open: boolean;
+            /** Slot Minutes */
+            slot_minutes: number | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Week Minutes */
+            week_minutes: number | null;
+            /** Weekends */
+            weekends: number;
+        };
+        /**
          * Coverage
          * @description Places filled over places needed, for one day of one project (FR-002).
          */
@@ -2276,7 +2359,7 @@ export interface components {
         };
         /**
          * Excluded
-         * @description A person minimum rest or the weekly maximum kept off a slot, with the numbers (008 FR-013).
+         * @description A person rest or the weekly maximum kept off a slot, with the numbers (008 FR-013).
          */
         Excluded: {
             /** Code */
@@ -9839,6 +9922,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    cover_slot_api_v1_schedule_jobs__id__slots__key__cover_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cover"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
