@@ -98,7 +98,7 @@ it across every project.
 - [x] T020 [P] [US3] Example tests in `apps/api/tests/unit/scheduling/test_explanations.py`: one week per reason code; rest and weekly maximum name each person with `have`, `need`, `week_minutes`, `slot_minutes`, `limit`; counts still add up to every candidate not on the slot (FR-013)
 - [x] T021 [P] [US3] Hypothesis property in `apps/api/tests/property/test_cover.py`: every option marked free can be placed without breaking a rule across all projects, and every option not free names a rule that placing them breaks (SC-004)
 - [x] T022 [P] [US3] Service and API tests (built as integration tests in `apps/api/tests/integration/test_proposal_cover.py`, which drive the real service): cover answers carry only codes and numbers, never pay, a site, or another project's shift (FR-016). Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
-- [ ] T023 [P] [US3] Playwright spec `apps/client/tests/e2e/ux/j-empty-slots.spec.ts`: the slot panel's reasons and numbers; cover list order; picking a free person; "Assign anyway" with a reason
+- [x] T023 [P] [US3] Playwright spec `apps/client/tests/e2e/ux/j-empty-slots.spec.ts`: the slot panel's reasons and numbers; cover list order; picking a free person; "Assign anyway" with a reason
 
 ### Implementation
 
