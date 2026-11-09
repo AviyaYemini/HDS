@@ -147,7 +147,8 @@ def _body_references_ids(operation: dict[str, Any], schemas: dict[str, Any]) -> 
     for media in content.values():
         ref = media.get("schema", {}).get("$ref", "")
         props = schemas.get(ref.rsplit("/", 1)[-1], {}).get("properties", {})
-        if any(name.endswith("_id") or name == "ids" for name in props):
+        # ``based_on`` names an earlier run (008 FR-019): a missing one is a 404 too (R54).
+        if any(name.endswith("_id") or name in ("ids", "based_on") for name in props):
             return True
     return False
 
