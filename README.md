@@ -55,6 +55,33 @@ availability window (closed) and one four weeks ahead (open), this week's roster
 draft week four weeks ahead. Running it again adds nothing in the same week, and that week's own
 windows and shifts in a later one (`apps/api/src/hds/scripts/seed_dev.py`).
 
+### The wider development data
+
+`make up` also loads a wider layer on top (`seed_dev --wide`,
+`apps/api/src/hds/scripts/seed_wide.py`), so every screen has something to show. The tests and the
+e2e specs use only the base data above.
+
+- **People:** 40 employees (`staff01@hds.test` to `staff40@hds.test`), 4 managers
+  (`mgr1@hds.test` to `mgr4@hds.test`) and a client user for each of 4 clients (`client1@hds.test`
+  to `client4@hds.test`). All have the same password, invented Israeli names, hourly rates, groups
+  and qualifications.
+- **Work:** 4 invented client companies, 6 sites and 8 projects (5 security, 3 training), each with
+  its shift types, staffing needs and two managers.
+- **Pay:** one project has its own rest-day premium. The coming year's Israeli holidays are special
+  days, and a company day inside the published weeks shows a premium in pay.
+- **Availability:** windows from four weeks back to next week. The past weeks were submitted for
+  the people. Next week's was marked by the people themselves, and a few haven't submitted yet.
+- **Rosters:** the four past weeks and this one were made by the scheduler, then accepted and
+  published through the app's own services. Pay and hours follow from them as in production.
+- **A run to review:** next week, when most people are on reserve duty from Thursday, is left as a
+  proposal with its empty places and their reasons.
+- **Hand edits and views:** three hand placements this week break a rest rule, two of them kept
+  with a recorded reason. A few saved views sit on the staff and projects tables.
+
+It is laid around today, so it never goes stale, and the same day always gives the same data.
+Running it again adds nothing. To load it outside Docker, run
+`uv run python -m hds.scripts.seed_dev --wide`.
+
 The other targets:
 
 ```bash

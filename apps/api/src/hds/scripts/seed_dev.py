@@ -191,9 +191,7 @@ async def _window(
     print(f"Window {'created' if created else 'exists'}: {window.starts_on} to {window.ends_on}")
 
 
-async def seed(
-    wide: bool = False, factory: async_sessionmaker[AsyncSession] | None = None
-) -> None:
+async def seed(wide: bool = False, factory: async_sessionmaker[AsyncSession] | None = None) -> None:
     """Create the development data set, skipping anything that already exists.
 
     Safe to run repeatedly: each record is looked up first. Writes to the database named by

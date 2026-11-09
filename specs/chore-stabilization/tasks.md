@@ -22,5 +22,5 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 
 - [x] S21 The wider records: people, managers, clients, sites, projects of both types, groups, qualifications, shift types, needs, pay settings, special days
 - [x] S22 Availability history and an open window; published past weeks and the current one through the scheduler and the services; a ready proposal; manual edits with overrides
-- [ ] S23 Tests (every published shift passes validate; a re-run adds nothing) and the README section
+- [x] S23 Tests (every published shift passes validate; a re-run adds nothing) and the README section
 - [ ] S24 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
