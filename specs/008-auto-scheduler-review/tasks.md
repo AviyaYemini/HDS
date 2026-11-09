@@ -140,6 +140,8 @@ what it guarantees, what it traded off, and how fair it is.
 - [ ] T040 [US4] Client: the run form's two controls and `ChipEditor` (chips in words, edit, remove; max 20), lock marks and lock and unlock on the roster and in the proposal, "Run again" from a proposal
 - [ ] T041 [US5] Client: the guarantee line (FR-023), `SummaryPanel` in words (FR-024), `FairnessPanel` (FR-025), all following edits at once (FR-026)
 - [ ] T042 [P] [US4] Locale keys for controls, chips, guarantees, the summary and fairness; `docs/hds-api.md`
+- [ ] T042a [US3] Review (owner, 2026-11-09): show no week row, and no day, that holds no slot of the run; a run's dates outside its weeks' slots (the calendar weeks before the range) add nothing. `weeksOf` in `apps/client/src/screens/runs/model.ts` keeps only the weeks with a slot; desktop columns keep the days of those weeks
+- [ ] T042b [US3] Review (owner, 2026-11-09): at the top of the review, the slots the run left with empty places, highlighted in red (with an icon and words, never colour alone): each opens its slot in the week, scrolled to and focused, with "Who else could cover" open on it (FR-014, FR-015); an RNTL test and a step in `j-empty-slots.spec.ts`
 
 ### Close
 
