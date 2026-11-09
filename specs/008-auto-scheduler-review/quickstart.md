@@ -1,7 +1,10 @@
 # Quickstart: Auto-scheduler review
 
-How to see each pull request working, on the dev stack (`make up`, then the seeded organisation:
-`admin@hds.test`, a Manager of North Gate, 30 employees, two projects of each kind).
+How to see each pull request working, on the dev stack (`make up`, signed in as `admin@hds.test`).
+The dev seed is small (two employees, two security projects), so first give the steps something
+to work on: a few more employees with availability for next week, a need on each project (Projects,
+Staffing needs), and a draft or two on next week's roster with people on them. The e2e spec
+`apps/client/tests/e2e/ux/i-proposal-review.spec.ts` builds such a week through the API.
 
 1. **Review and edit (PR 1).** As the Admin, generate next week for every project. Open the run:
    the week shows added, changed, removed and unchanged marks with counts. Swap two people; move one

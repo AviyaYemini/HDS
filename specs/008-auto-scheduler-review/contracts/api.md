@@ -2,7 +2,7 @@
 
 Added to `specs/001-foundation-auth-org/contracts/openapi.yaml` first (Constitution V), all under
 `/api/v1`, all additive. Every operation: Manager or Admin only (403 `users.manager_required`); a
-Manager only on runs whose projects they all manage (403 `schedule.not_your_projects`, as 007);
+Manager only on runs whose projects they all manage (403 `roster.project_not_managed`, as 007);
 another organisation's job is 404. Errors are RFC 9457 problems with a `code`.
 
 ## Changed
@@ -19,7 +19,7 @@ another organisation's job is 404. Errors are RFC 9457 problems with a `code`.
 | Operation | Purpose | Answers | PR |
 | --- | --- | --- | --- |
 | `GET /schedule-jobs/{id}/proposal` | the working copy over the roster: each assignment marked `added`, `changed`, `removed` or `unchanged`, with `by`, `locked`, `override`, `accepted`; counts per mark; per day and project filled over needed; `ETag` = version | 200 | 1 |
-| `POST /schedule-jobs/{id}/edits` | one edit: `{op: assign\|unassign\|move\|swap\|lock\|unlock, key, user_id, to_key?, other_user_id?, override_reason?}`; `If-Match` | 200 with the new proposal and its `warnings`; 422 `schedule.override_reason_required` with the warnings; 422 `warnings.employee_inactive`; 412 `schedule.version_stale`; 409 `schedule.proposal_closed` | 1 |
+| `POST /schedule-jobs/{id}/edits` | one edit: `{op: assign\|unassign\|move\|swap, key, user_id, to_key?, other_user_id?, override_reason?}`; `If-Match` | 200 with the new proposal and its `warnings`; 422 `schedule.override_reason_required` with the warnings; 422 `warnings.employee_inactive`; 412 `schedule.version_stale`; 409 `schedule.proposal_closed`. `lock` and `unlock` join `op` in PR 3 | 1 |
 | `POST /schedule-jobs/{id}/edits/undo` | undo the last edit; `If-Match` | 200; 409 `schedule.nothing_to_undo` | 1 |
 | `GET /schedule-jobs/{id}/slots/{key}/cover` | who else could cover that slot in the working copy, ranked (codes and numbers only) | 200 | 2 |
 | `GET /schedule-jobs/{id}/fairness` | the fairness rows and averages, and the trade-off counts | 200 | 3 |

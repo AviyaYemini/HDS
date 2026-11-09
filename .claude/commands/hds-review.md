@@ -5,7 +5,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Read, Edit
 
 Run once per pull request, when the branch is ready to push; a group's close has no review (the owner's working rules of 2026-11-08).
 
-Review the uncommitted changes and the commits on this branch (`git diff HEAD`, `git status`, `git log main..HEAD` if a main branch exists) against `.specify/memory/constitution.md` and `docs/hds-spec.md`.
+Review the uncommitted changes and the commits on this branch (`git diff HEAD`, `git status`, and, if a main branch exists, `git log main..HEAD` and `git diff main...HEAD`, the committed changes themselves) against `.specify/memory/constitution.md` and `docs/hds-spec.md`.
 
 Check each of the ten constitution principles and report only violations, each with file, line and the fix. Also check:
 - every endpoint touched enforces the role rules (Employee, Manager, Admin, Client) and has an allowed and a forbidden test;

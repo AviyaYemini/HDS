@@ -70,7 +70,10 @@ Decisions for 008's plan. Each gives the decision, why, and what else was weighe
   later stage, keeps the best values reached, runs the repair pass and `validate` as usual, and marks
   the result not optimal and stopped. The worker passes a `progress` that writes to the job at most
   every 2 s (from the solver's thread, through the event loop), and a `should_stop` that reads a flag
-  the worker refreshes from the job's `stop_requested_at` every 2 s. Before any result, Stop is
+  the worker refreshes from the job's `stop_requested_at` every 2 s. A solution callback runs only
+  when a solution is found, so it cannot see a Stop before the first one or between them: the
+  worker also watches the flag on its own and calls `stop_search` on the running solver itself
+  (CP-SAT allows that from another thread), so Stop lands within 5 s whatever the solver is doing. Before any result, Stop is
   Cancel: the job ends as cancelled, with no proposal.
 - **Rationale**: plain callables keep the package pure; the 2 s rhythm meets SC-007.
 - **Alternatives**: a separate progress table (rejected: one row per job is enough).

@@ -18,8 +18,9 @@ Admin edit a proposal before accepting it, accept it in parts, lock assignments 
   marked as the solver's or a person's, locked or not, overridden (with the warning and reason) or
   not, and accepted or not.
 - **A version guards the working copy.** `schedule_jobs.version` grows with every edit, undo, lock
-  and accept; each write sends it in `If-Match` and is refused with 412 when it is stale, so two
-  managers never overwrite each other.
+  and accept; a write that sends it in `If-Match` is refused with 412 when it is stale, so two
+  managers never overwrite each other. The header is optional, as on the roster: a write without it
+  is not guarded, and the app always sends it.
 - **A part is re-checked, not fingerprinted.** When the whole fingerprint no longer matches, a part is
   still accepted if none of its drafts changed and it breaks no rule on today's roster that the
   working copy does not already override. A per-day fingerprint would miss the weekly maximum and
