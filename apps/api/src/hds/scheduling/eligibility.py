@@ -102,9 +102,9 @@ class Roster:
     def _booking(self, slot: Slot, fixed: bool = False) -> Booking:
         return Booking(slot.key, slot.starts_at, slot.ends_at, slot.day, self._week(slot), fixed)
 
-    def book(self, person: uuid.UUID, slot: Slot) -> None:
-        """Put ``person`` on ``slot``."""
-        self._booked.setdefault(person, {})[slot.key] = self._booking(slot)
+    def book(self, person: uuid.UUID, slot: Slot, fixed: bool = False) -> None:
+        """Put ``person`` on ``slot``; ``fixed`` counts it as a fixed shift, not a choice."""
+        self._booked.setdefault(person, {})[slot.key] = self._booking(slot, fixed=fixed)
 
     def unbook(self, person: uuid.UUID, slot: Slot) -> None:
         """Take ``person`` off ``slot``."""
