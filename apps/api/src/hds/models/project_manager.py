@@ -22,7 +22,7 @@ class ProjectManager(Base):
 
     __tablename__ = "project_managers"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(

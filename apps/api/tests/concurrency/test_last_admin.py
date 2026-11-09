@@ -27,7 +27,7 @@ PASSWORD = "Dev1234!"
 async def second_admin(db: AsyncSession, first: User) -> User:
     other = User(
         id=uuid.uuid4(),
-        organization_id=first.organization_id,
+        organisation_id=first.organisation_id,
         email="admin2@hds.test",
         password_hash=hash_password(PASSWORD),
         full_name="Second Admin",

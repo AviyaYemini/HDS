@@ -15,7 +15,7 @@ from hds.services.organisation_contact import OrganisationContactService, check_
 
 def _user(role: UserRole) -> User:
     user = MagicMock(spec=User)
-    user.role, user.organization_id = role, uuid.uuid4()
+    user.role, user.organisation_id = role, uuid.uuid4()
     return user
 
 
@@ -41,7 +41,7 @@ async def test_an_admin_changes_and_clears_fields() -> None:
     orgs = AsyncMock()
     admin = _user(UserRole.admin)
     await OrganisationContactService(orgs).change(admin, {"contact_phone": None})
-    orgs.update_contact.assert_awaited_once_with(admin.organization_id, {"contact_phone": None})
+    orgs.update_contact.assert_awaited_once_with(admin.organisation_id, {"contact_phone": None})
 
 
 def test_opening_hours_refuse_a_repeated_weekday() -> None:

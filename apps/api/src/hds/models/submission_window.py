@@ -28,7 +28,7 @@ class SubmissionWindow(TimestampedBase):
 
     __tablename__ = "submission_windows"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     starts_on: Mapped[date] = mapped_column(Date, nullable=False)
@@ -43,7 +43,7 @@ class SubmissionWindow(TimestampedBase):
         CheckConstraint("ends_on >= starts_on", name="ck_submission_windows_dates"),
         # PostgreSQL only; the SQLite unit-test schema has no ranges, so it skips this.
         ExcludeConstraint(
-            ("organization_id", "="),
+            ("organisation_id", "="),
             (text("daterange(starts_on, ends_on, '[]')"), "&&"),
             name="ex_submission_windows_overlap",
             using="gist",

@@ -124,7 +124,7 @@ class InvitationService:
             await self._user_repo.release_connection()
             placeholder = await passwords.hash_password(str(uuid.uuid4()))
             account, created = await self._user_repo.create_if_absent(
-                actor.organization_id,
+                actor.organisation_id,
                 {
                     "email": email,
                     "full_name": email,
@@ -147,7 +147,7 @@ class InvitationService:
                 )
             account = current
             # The address was already taken (possibly a moment ago by a concurrent request).
-            if account.organization_id != actor.organization_id or account.is_active:
+            if account.organisation_id != actor.organisation_id or account.is_active:
                 raise ConflictError(
                     code="users.duplicate_email",
                     detail=f"Email '{email}' is already in use.",
@@ -168,7 +168,7 @@ class InvitationService:
                 )
             if account.role != role:
                 guard_client_role(account)
-                await self._user_repo.update(account.id, account.organization_id, role=role)
+                await self._user_repo.update(account.id, account.organisation_id, role=role)
             await self._token_repo.cancel_for_user(account.id)
 
         raw, token_hash = generate_refresh_token()
@@ -229,7 +229,7 @@ class InvitationService:
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
         user = await self._user_repo.update(
             token.user_id,
-            owner.organization_id,
+            owner.organisation_id,
             password_hash=password_hash,
             is_active=True,
             activated_at=datetime.now(UTC),
@@ -405,7 +405,7 @@ class InvitationService:
             raise AuthError(code="auth.token_used", detail="This token has already been used.")
         await self._user_repo.update(
             token.user_id,
-            owner.organization_id,
+            owner.organisation_id,
             password_hash=password_hash,
         )
         # A reset means the old credentials may be compromised: sign out every device.

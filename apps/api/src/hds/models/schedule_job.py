@@ -43,7 +43,7 @@ class ScheduleJob(TimestampedBase):
 
     __tablename__ = "schedule_jobs"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     requested_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -111,5 +111,5 @@ class ScheduleJob(TimestampedBase):
             name="ck_schedule_jobs_ended",
         ),
         Index("idx_schedule_jobs_status_created", "status", "created_at"),
-        Index("idx_schedule_jobs_org_created", "organization_id", "created_at"),
+        Index("idx_schedule_jobs_org_created", "organisation_id", "created_at"),
     )

@@ -127,7 +127,7 @@ class ProposalService:
                     detail="Part of this shift is accepted; change it on the roster.",
                 )
         people = {uuid.UUID(p) for who in touched.values() for p in who}
-        known = await self._staff(actor.organization_id, people)
+        known = await self._staff(actor.organisation_id, people)
         inactive = sorted(str(p) for p, e in known.items() if not e.is_active)
         if inactive:
             raise DomainValidationError(
@@ -174,7 +174,7 @@ class ProposalService:
         """
         job = await self._jobs.open_for(actor, id)
         check_version(job, if_match)
-        last = await self._events.last_edit_not_undone(job.organization_id, job.id)
+        last = await self._events.last_edit_not_undone(job.organisation_id, job.id)
         if last is None:
             raise ConflictError(code="schedule.nothing_to_undo", detail="There is no edit to undo.")
         work = proposal_copy.of(job.current, job.result)
@@ -212,7 +212,7 @@ class ProposalService:
         work = proposal_copy.of(job.current, job.result)
         if proposal_copy.find(work, key) is None:
             raise NotFoundError(resource="Slot", id=slot_id(key))
-        staff = await self._users.staff_of(job.organization_id)
+        staff = await self._users.staff_of(job.organisation_id)
         base = await self._copy_problem(job, work, also={u.id for u in staff})
         problem = replace(base, candidates=tuple(Employee(u.id, True) for u in staff))
         assigned = {
@@ -269,11 +269,11 @@ class ProposalService:
 
         Drafts made by hand since the run are fixed shifts here, as the edit's check sees them.
         """
-        org = await self._orgs.get_by_id(job.organization_id)
+        org = await self._orgs.get_by_id(job.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=job.organization_id)
+            raise NotFoundError(resource="Organisation", id=job.organisation_id)
         built = await self._inputs.build(
-            job.organization_id,
+            job.organisation_id,
             job.first_day,
             job.last_day,
             [uuid.UUID(p) for p in job.project_ids],
@@ -309,13 +309,13 @@ class ProposalService:
         known: Mapping[uuid.UUID, Employee],
     ) -> list[RuleWarning]:
         """The warnings on the touched slots, with every shift of their people in every project."""
-        org = await self._orgs.get_by_id(job.organization_id)
+        org = await self._orgs.get_by_id(job.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=job.organization_id)
+            raise NotFoundError(resource="Organisation", id=job.organisation_id)
         # Today's limits, as accepting judges them, so an edit and its accept never disagree (R6);
         # and the people placed, candidates or not, with all their shifts and entries (R4).
         built = await self._inputs.build(
-            job.organization_id,
+            job.organisation_id,
             job.first_day,
             job.last_day,
             [uuid.UUID(p) for p in job.project_ids],

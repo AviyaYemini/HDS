@@ -66,7 +66,7 @@ async def test_it_creates_the_organisation_and_one_admin(
     async with factory() as session:
         admin = await UserRepository(session).get_by_email("a@example.com")
         assert admin is not None
-        org = await OrganisationRepository(session).get_by_id(admin.organization_id)
+        org = await OrganisationRepository(session).get_by_id(admin.organisation_id)
         assert org is not None
         assert (org.name, org.timezone) == ("Acme", "Asia/Jerusalem")
         assert await passwords.verify_password(PASSWORD, admin.password_hash)

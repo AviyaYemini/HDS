@@ -55,18 +55,18 @@ class Mine:
 
 @pytest_asyncio.fixture
 async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     client = Client(
-        id=uuid.uuid4(), organization_id=org_id, name="My Client", contract_start=date.today()
+        id=uuid.uuid4(), organisation_id=org_id, name="My Client", contract_start=date.today()
     )
     site = Site(
-        id=uuid.uuid4(), organization_id=org_id, name="My Site", address="x", timezone="UTC"
+        id=uuid.uuid4(), organisation_id=org_id, name="My Site", address="x", timezone="UTC"
     )
-    group = Group(id=uuid.uuid4(), organization_id=org_id, name="My Group")
-    qualification = Qualification(id=uuid.uuid4(), organization_id=org_id, name="My Qual")
+    group = Group(id=uuid.uuid4(), organisation_id=org_id, name="My Group")
+    qualification = Qualification(id=uuid.uuid4(), organisation_id=org_id, name="My Qual")
     portal_user = User(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         email="portal@hds.test",
         password_hash=hash_password(PASSWORD),
         full_name="My Portal",
@@ -77,7 +77,7 @@ async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
     await test_db.flush()
     project = Project(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         client_id=client.id,
         site_id=site.id,
         name="My Project",
@@ -89,7 +89,7 @@ async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
     test_db.add(project)
     await test_db.flush()
     shift_type = (
-        (await test_db.execute(select(ShiftType).where(ShiftType.organization_id == org_id)))
+        (await test_db.execute(select(ShiftType).where(ShiftType.organisation_id == org_id)))
         .scalars()
         .first()
     )
@@ -99,7 +99,7 @@ async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
     )
     shift = Shift(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         project_id=project.id,
         shift_type_id=shift_type.id,
         starts_at=datetime(2027, 6, 7, 4, tzinfo=UTC),

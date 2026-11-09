@@ -97,7 +97,7 @@ async def add_portal_users(db: AsyncSession, org_id: uuid.UUID) -> tuple[uuid.UU
     """A client with one active portal user and one pending one holding a link."""
     client = Client(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         name="Acme",
         contract_start=datetime.now(UTC).date(),
     )
@@ -107,7 +107,7 @@ async def add_portal_users(db: AsyncSession, org_id: uuid.UUID) -> tuple[uuid.UU
     db.add(
         User(
             id=uuid.uuid4(),
-            organization_id=org_id,
+            organisation_id=org_id,
             client_id=client_id,
             email="active.portal@hds.test",
             password_hash=hash_password(PASSWORD),
@@ -118,7 +118,7 @@ async def add_portal_users(db: AsyncSession, org_id: uuid.UUID) -> tuple[uuid.UU
     )
     pending = User(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         client_id=client_id,
         email="pending.portal@hds.test",
         password_hash=hash_password(PASSWORD),
@@ -148,7 +148,7 @@ async def add_portal_users(db: AsyncSession, org_id: uuid.UUID) -> tuple[uuid.UU
 async def test_deactivating_a_client_skips_its_pending_portal_users(
     async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
-    client_id, link = await add_portal_users(test_db, seed_users["admin"].organization_id)
+    client_id, link = await add_portal_users(test_db, seed_users["admin"].organisation_id)
     headers = await headers_for(async_client)
 
     before = await updated_at(test_db, "pending.portal@hds.test")

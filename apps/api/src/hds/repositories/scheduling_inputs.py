@@ -66,7 +66,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
             select(Project.id, Project.start_date, Project.end_date, Site.timezone, Project.site_id)
             .join(Site, Site.id == Project.site_id)
             .where(
-                Project.organization_id == org_id,
+                Project.organisation_id == org_id,
                 Project.status == ProjectStatus.active,
                 Project.is_deleted.is_(False),
             )
@@ -102,7 +102,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
                 .join(Project, Project.id == Shift.project_id)
                 .join(Site, Site.id == Project.site_id)
                 .where(
-                    Shift.organization_id == org_id,
+                    Shift.organisation_id == org_id,
                     Shift.starts_at < end,
                     Shift.ends_at > start,
                 )
@@ -157,7 +157,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         offered = (
             select(AvailabilityEntry.user_id)
             .where(
-                AvailabilityEntry.organization_id == org_id,
+                AvailabilityEntry.organisation_id == org_id,
                 AvailabilityEntry.kind == "open",
                 AvailabilityEntry.starts_on <= last,
                 AvailabilityEntry.ends_on >= first,
@@ -167,7 +167,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         result = await self.session.execute(
             select(User)
             .where(
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),
                 (User.role == UserRole.employee)

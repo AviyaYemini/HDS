@@ -28,7 +28,7 @@ Read = Callable[[User], Awaitable[Any]]
 def actor(role: UserRole = UserRole.manager) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.role = role
     return user
 
@@ -104,7 +104,7 @@ async def test_a_list_is_scoped_to_the_organisation(read: Any) -> None:
 
     await read(repo, caller)
 
-    repo.list_by_org.assert_awaited_once_with(caller.organization_id)
+    repo.list_by_org.assert_awaited_once_with(caller.organisation_id)
 
 
 @pytest.mark.parametrize("is_active", [True, False, None])
@@ -114,7 +114,7 @@ async def test_the_client_list_keeps_its_filter(is_active: bool | None) -> None:
 
     await clients(repo).list_clients(caller, is_active)
 
-    repo.list_by_org.assert_awaited_once_with(caller.organization_id, is_active)
+    repo.list_by_org.assert_awaited_once_with(caller.organisation_id, is_active)
 
 
 async def test_a_clients_users_are_scoped_to_the_organisation() -> None:
@@ -123,7 +123,7 @@ async def test_a_clients_users_are_scoped_to_the_organisation() -> None:
 
     await clients(repo).list_client_users(caller, ID)
 
-    repo.list_users.assert_awaited_once_with(ID, caller.organization_id)
+    repo.list_users.assert_awaited_once_with(ID, caller.organisation_id)
 
 
 @pytest.mark.parametrize("name", SCOPED_READS)
@@ -134,7 +134,7 @@ async def test_an_id_of_another_organisation_answers_not_found(name: str) -> Non
     with pytest.raises(NotFoundError):
         await MANAGER_READS[name](repo)(caller)
 
-    repo.get_by_id.assert_awaited_once_with(ID, caller.organization_id)
+    repo.get_by_id.assert_awaited_once_with(ID, caller.organisation_id)
 
 
 async def test_a_clients_users_are_not_listed_when_it_is_missing() -> None:

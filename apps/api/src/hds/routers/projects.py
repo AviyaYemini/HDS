@@ -27,7 +27,7 @@ class ProjectRead(BaseModel):
     """A project; ``billing_rate`` is a decimal string, never a float."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     client_id: uuid.UUID
     site_id: uuid.UUID
     name: str
@@ -98,7 +98,7 @@ async def list_projects(
     the account has no client. Employees receive 403.
     """
     projects = await svc.list_projects(
-        org_id=current_user.organization_id,
+        org_id=current_user.organisation_id,
         current_user=current_user,
         status=status,
         client_id=client_id,
@@ -157,7 +157,7 @@ async def get_project(
     403 `projects.access_denied`), and 404 if the account has no client. Employees receive 403.
     """
     return await svc.get_project(
-        id=id, org_id=current_user.organization_id, current_user=current_user
+        id=id, org_id=current_user.organisation_id, current_user=current_user
     )
 
 

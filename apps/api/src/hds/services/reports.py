@@ -256,9 +256,9 @@ class ReportsService:
         self._clients = client_repo
 
     async def _organisation(self, actor: User) -> Organisation:
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return org
 
     async def _in_range(
@@ -272,7 +272,7 @@ class ReportsService:
         starts_from, starts_before = utc_window(first, last)
         scope = scope or Scope()
         found = await self._shifts.worked_in_range(
-            org_id=actor.organization_id,
+            org_id=actor.organisation_id,
             starts_from=starts_from,
             starts_before=starts_before,
             now=now,
@@ -326,7 +326,7 @@ class ReportsService:
         scope = Scope()
         whole_project = False
         if project_id is not None:
-            project = await self._projects.get_by_id(project_id, actor.organization_id)
+            project = await self._projects.get_by_id(project_id, actor.organisation_id)
             if project is None:
                 raise NotFoundError(resource="Project", id=project_id)
             if first is None:
@@ -334,11 +334,11 @@ class ReportsService:
                 first, whole_project = project.start_date, True
             scope = Scope(project_ids=[project_id])
         elif site_id is not None:
-            if await self._sites.get_by_id(site_id, actor.organization_id) is None:
+            if await self._sites.get_by_id(site_id, actor.organisation_id) is None:
                 raise NotFoundError(resource="Site", id=site_id)
             scope = Scope(site_id=site_id)
         elif group_id is not None:
-            if await self._groups.get_by_id(group_id, actor.organization_id) is None:
+            if await self._groups.get_by_id(group_id, actor.organisation_id) is None:
                 raise NotFoundError(resource="Group", id=group_id)
             scope = Scope(user_ids=await self._groups.member_ids(group_id))
         if first is None:  # only a project has a start of its own
@@ -351,7 +351,7 @@ class ReportsService:
         names = {
             p.id: p.name
             for p in await self._projects.get_many(
-                actor.organization_id, {s.project_id for s in shifts}
+                actor.organisation_id, {s.project_id for s in shifts}
             )
         }
         totals: dict[tuple[uuid.UUID, uuid.UUID], list[ReportShift]] = defaultdict(list)
@@ -401,7 +401,7 @@ class ReportsService:
         shifts = await self._in_range(actor, first, last, now)
         project_ids = {s.project_id for s in shifts}
         projects = {
-            p.id: p for p in await self._projects.get_many(actor.organization_id, project_ids)
+            p.id: p for p in await self._projects.get_many(actor.organisation_id, project_ids)
         }
         visible = await self._visible(actor, projects.values())
         # Only the report's own clients, deleted ones too: the work was done (code review, PR 5).
@@ -409,7 +409,7 @@ class ReportsService:
             {
                 c.id: c.name
                 for c in await self._clients.get_many(
-                    actor.organization_id, {p.client_id for p in projects.values()}
+                    actor.organisation_id, {p.client_id for p in projects.values()}
                 )
             }
             if group_by == "client"
@@ -417,7 +417,7 @@ class ReportsService:
         )
         paid_shifts = [s for s in shifts if s.project_id in visible]
         days = (
-            await self._days.for_projects(actor.organization_id, visible, *spanned(paid_shifts))
+            await self._days.for_projects(actor.organisation_id, visible, *spanned(paid_shifts))
             if paid_shifts
             else []
         )

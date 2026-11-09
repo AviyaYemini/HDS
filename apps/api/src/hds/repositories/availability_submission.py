@@ -27,7 +27,7 @@ class AvailabilitySubmissionRepository(BaseRepository[AvailabilitySubmission]):
         """The submission of ``user_id`` for ``window_id``, if they have submitted."""
         result = await self.session.execute(
             select(AvailabilitySubmission).where(
-                AvailabilitySubmission.organization_id == org_id,
+                AvailabilitySubmission.organisation_id == org_id,
                 AvailabilitySubmission.window_id == window_id,
                 AvailabilitySubmission.user_id == user_id,
             )
@@ -44,7 +44,7 @@ class AvailabilitySubmissionRepository(BaseRepository[AvailabilitySubmission]):
         if not window_ids or (user_ids is not None and not user_ids):
             return []
         query = select(AvailabilitySubmission).where(
-            AvailabilitySubmission.organization_id == org_id,
+            AvailabilitySubmission.organisation_id == org_id,
             AvailabilitySubmission.window_id.in_(list(window_ids)),
         )
         if user_ids is not None:
@@ -69,7 +69,7 @@ class AvailabilitySubmissionRepository(BaseRepository[AvailabilitySubmission]):
         """
         values = {
             "id": uuid.uuid4(),
-            "organization_id": org_id,
+            "organisation_id": org_id,
             "window_id": window_id,
             "user_id": user_id,
             "submitted_at": submitted_at,
@@ -112,7 +112,7 @@ class AvailabilitySubmissionRepository(BaseRepository[AvailabilitySubmission]):
         await self.session.execute(
             update(AvailabilitySubmission)
             .where(
-                AvailabilitySubmission.organization_id == org_id,
+                AvailabilitySubmission.organisation_id == org_id,
                 AvailabilitySubmission.window_id == window_id,
                 AvailabilitySubmission.user_id == user_id,
             )

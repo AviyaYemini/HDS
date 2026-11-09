@@ -50,7 +50,7 @@ def verifications(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def account(*, is_active: bool = True) -> User:
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.organization_id = uuid.uuid4()
+    user.organisation_id = uuid.uuid4()
     user.password_hash = HASH
     user.role = UserRole.employee
     user.is_active = is_active

@@ -224,11 +224,11 @@ async def test_a_full_queue_refuses_on_every_hashing_path_and_changes_nothing(
 ) -> None:
     headers = await admin_headers(async_client)
     employee = seed_users["employee"].id
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     pending = uuid.uuid4()
     await test_db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active) VALUES (:i, :o, 'pending@hds.test', 'h', 'P', "
             "CAST('employee' AS user_role), false)"
         ),

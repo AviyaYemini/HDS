@@ -49,10 +49,10 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
         engine = create_async_engine(migrated_test_db, poolclass=NullPool)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
-            org_id = (await session.execute(select(User.organization_id).limit(1))).scalar_one()
+            org_id = (await session.execute(select(User.organisation_id).limit(1))).scalar_one()
             shift_type = (
                 await session.execute(
-                    select(ShiftType.id).where(ShiftType.organization_id == org_id).limit(1)
+                    select(ShiftType.id).where(ShiftType.organisation_id == org_id).limit(1)
                 )
             ).scalar_one()
             password_hash = hash_password("Dev1234!")
@@ -60,7 +60,7 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
             session.add_all(
                 User(
                     id=person,
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     email=f"year{i}@perf.test",
                     password_hash=password_hash,
                     full_name=f"Worker {i:03d}",
@@ -70,9 +70,9 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
                 )
                 for i, person in enumerate(people)
             )
-            client = Client(organization_id=org_id, name="Year Client", contract_start=FIRST)
+            client = Client(organisation_id=org_id, name="Year Client", contract_start=FIRST)
             site = Site(
-                organization_id=org_id, name="Year Site", address="1 St", timezone="Asia/Jerusalem"
+                organisation_id=org_id, name="Year Site", address="1 St", timezone="Asia/Jerusalem"
             )
             session.add_all([client, site])
             await session.flush()
@@ -80,7 +80,7 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
             session.add_all(
                 Project(
                     id=pid,
-                    organization_id=org_id,
+                    organisation_id=org_id,
                     client_id=client.id,
                     site_id=site.id,
                     name=f"Year Project {i:02d}",
@@ -103,7 +103,7 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
                         shifts.append(
                             {
                                 "id": shift_id,
-                                "organization_id": org_id,
+                                "organisation_id": org_id,
                                 "project_id": projects[n % PROJECTS],
                                 "shift_type_id": shift_type,
                                 "starts_at": start,
@@ -116,7 +116,7 @@ def year(role_env: RoleEnv, migrated_test_db: str) -> Seeded:
                         assignments.append(
                             {
                                 "id": uuid.uuid4(),
-                                "organization_id": org_id,
+                                "organisation_id": org_id,
                                 "shift_id": shift_id,
                                 "user_id": person,
                             }

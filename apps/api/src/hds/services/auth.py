@@ -244,7 +244,7 @@ class AuthService:
         """
         return create_access_token(
             sub=user.id,
-            org=user.organization_id,
+            org=user.organisation_id,
             role=user.role,
             ttl_seconds=self._config.ACCESS_TOKEN_TTL_SECONDS,
             secret=self._config.JWT_SECRET_KEY.get_secret_value(),

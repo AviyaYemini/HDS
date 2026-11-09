@@ -64,7 +64,7 @@ class Project(TimestampedBase):
 
     __tablename__ = "projects"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), nullable=False)
@@ -111,7 +111,7 @@ class Project(TimestampedBase):
 
     __table_args__ = (
         CheckConstraint("billing_rate > 0", name="ck_projects_billing_rate_positive"),
-        Index("idx_projects_org", "organization_id"),
+        Index("idx_projects_org", "organisation_id"),
         Index("idx_projects_client", "client_id"),
         *pay_setting_checks("projects", optional=True),
     )

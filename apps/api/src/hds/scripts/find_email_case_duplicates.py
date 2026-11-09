@@ -59,7 +59,7 @@ async def _fetch_live_accounts() -> list[Row]:
     """Read id, organisation and address of every non-deleted account."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(User.id, User.organization_id, User.email).where(User.is_deleted.is_(False))
+            select(User.id, User.organisation_id, User.email).where(User.is_deleted.is_(False))
         )
         return [(i, o, e) for i, o, e in result.all()]
 

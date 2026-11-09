@@ -23,9 +23,9 @@ async def _headers(client: AsyncClient) -> dict[str, str]:
 
 @pytest.fixture
 async def ids(test_db: AsyncSession, seed_users: dict[str, User]) -> dict[str, uuid.UUID]:
-    org_id = seed_users["admin"].organization_id
-    client = Client(id=uuid.uuid4(), organization_id=org_id, name="C", contract_start=date.today())
-    site = Site(id=uuid.uuid4(), organization_id=org_id, name="S", address="a", timezone="UTC")
+    org_id = seed_users["admin"].organisation_id
+    client = Client(id=uuid.uuid4(), organisation_id=org_id, name="C", contract_start=date.today())
+    site = Site(id=uuid.uuid4(), organisation_id=org_id, name="S", address="a", timezone="UTC")
     test_db.add_all([client, site])
     await test_db.commit()
     return {"client_id": client.id, "site_id": site.id}

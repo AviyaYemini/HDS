@@ -257,7 +257,7 @@ async def seed_users(test_db: AsyncSession, seed_org: Organisation) -> dict[str,
     for role in UserRole:
         u = User(
             id=uuid.uuid4(),
-            organization_id=seed_org.id,
+            organisation_id=seed_org.id,
             email=f"{role.value}@hds.test",
             password_hash=hash_password("Dev1234!"),
             full_name=f"Test {role.value.title()}",
@@ -317,7 +317,7 @@ def role_env(migrated_test_db: str) -> Generator[RoleEnv, None, None]:
             for role in UserRole:
                 session.add(
                     User(
-                        organization_id=org.id,
+                        organisation_id=org.id,
                         email=f"{role.value}@matrix.test",
                         password_hash=hash_password("Dev1234!"),
                         full_name=role.value,

@@ -39,7 +39,7 @@ class RuleOverride(TimestampedBase):
 
     __tablename__ = "rule_overrides"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     assignment_id: Mapped[uuid.UUID] = mapped_column(
@@ -67,7 +67,7 @@ class WeekTemplate(TimestampedBase):
 
     __tablename__ = "week_templates"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -93,7 +93,7 @@ class PublishEvent(TimestampedBase):
 
     __tablename__ = "publish_events"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
@@ -107,7 +107,7 @@ class PublishEvent(TimestampedBase):
 
     __table_args__ = (
         CheckConstraint("shift_count >= 1", name="ck_publish_events_shift_count"),
-        Index("idx_publish_events_undelivered", "organization_id", "delivered_at"),
+        Index("idx_publish_events_undelivered", "organisation_id", "delivered_at"),
     )
 
 
@@ -126,7 +126,7 @@ class RosterEditEvent(TimestampedBase):
 
     __tablename__ = "roster_edit_events"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
@@ -146,5 +146,5 @@ class RosterEditEvent(TimestampedBase):
         CheckConstraint(
             "alert IN ('everyone', 'affected', 'none')", name="ck_roster_edit_events_alert"
         ),
-        Index("idx_roster_edit_events_undelivered", "organization_id", "delivered_at"),
+        Index("idx_roster_edit_events_undelivered", "organisation_id", "delivered_at"),
     )

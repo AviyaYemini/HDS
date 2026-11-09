@@ -30,9 +30,9 @@ class SchedulingSettingsService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return org
 
     async def change(self, actor: User, data: Mapping[str, int]) -> Organisation:
@@ -42,7 +42,7 @@ class SchedulingSettingsService:
             ForbiddenError: ``users.admin_required`` (HTTP 403).
         """
         ensure_role(actor, UserRole.admin)
-        org = await self._orgs.update_limits(actor.organization_id, data)
+        org = await self._orgs.update_limits(actor.organisation_id, data)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return org

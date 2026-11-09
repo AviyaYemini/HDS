@@ -54,7 +54,7 @@ async def test_an_empty_list_clears_the_managers(
 async def inactive_manager(db: AsyncSession, org_id: uuid.UUID) -> User:
     user = User(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         email="gone@hds.test",
         password_hash=hash_password("Dev1234!"),
         full_name="Gone Manager",
@@ -84,7 +84,7 @@ async def test_only_active_managers_and_admins_of_the_organisation_can_be_assign
         "unknown": uuid.uuid4(),
     }
     if who == "inactive":
-        ids[who] = (await inactive_manager(test_db, seed_users["admin"].organization_id)).id
+        ids[who] = (await inactive_manager(test_db, seed_users["admin"].organisation_id)).id
     url = project_managers(project["id"])
 
     answer = await async_client.put(

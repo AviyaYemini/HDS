@@ -72,7 +72,7 @@ async def shift_type_id(db: AsyncSession, org_id: uuid.UUID, name: str = "mornin
     """The id of one of the organisation's default shift types."""
     await db.rollback()
     found = await db.execute(
-        text("SELECT id FROM shift_types WHERE organization_id = :o AND name = :n"),
+        text("SELECT id FROM shift_types WHERE organisation_id = :o AND name = :n"),
         {"o": org_id, "n": name},
     )
     return str(found.scalar_one())

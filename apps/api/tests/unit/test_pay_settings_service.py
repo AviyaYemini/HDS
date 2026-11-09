@@ -27,7 +27,7 @@ ORG = uuid.uuid4()
 
 
 def person(role: UserRole) -> Any:
-    return SimpleNamespace(id=uuid.uuid4(), organization_id=ORG, role=role, is_active=True)
+    return SimpleNamespace(id=uuid.uuid4(), organisation_id=ORG, role=role, is_active=True)
 
 
 def organisation(**values: Any) -> Any:
@@ -53,7 +53,7 @@ def project(status: ProjectStatus = ProjectStatus.active, **values: Any) -> Any:
     row: dict[str, Any] = {column: None for columns in COLUMNS.values() for column in columns}
     return SimpleNamespace(
         id=uuid.uuid4(),
-        organization_id=ORG,
+        organisation_id=ORG,
         status=status,
         pay_enabled=True,
         managers_see_pay=False,

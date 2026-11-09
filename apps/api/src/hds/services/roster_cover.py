@@ -95,9 +95,9 @@ class RosterCoverService:
         # Over the shift's week, as a run's "Who else could cover" counts each person's hours,
         # nights and weekends over its period, so the ranking agrees with it (FR-034).
         first = week_start(shift.starts_at, zone)
-        staff = await self._users.staff_of(actor.organization_id)
+        staff = await self._users.staff_of(actor.organisation_id)
         built = await self._inputs.build(
-            actor.organization_id,
+            actor.organisation_id,
             first,
             first + timedelta(days=6),
             [shift.project_id],

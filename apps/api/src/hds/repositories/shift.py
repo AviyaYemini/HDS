@@ -78,7 +78,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
 
     async def create(self, org_id: uuid.UUID, data: dict[str, Any]) -> Shift:
         """Insert a draft shift and flush."""
-        shift = Shift(id=uuid.uuid4(), organization_id=org_id, **data)
+        shift = Shift(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(shift)
         await self.session.flush()
         return shift
@@ -92,7 +92,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         """
         await self.session.execute(
             select(Shift.id)
-            .where(Shift.organization_id == org_id, Shift.starts_at < end, Shift.ends_at > start)
+            .where(Shift.organisation_id == org_id, Shift.starts_at < end, Shift.ends_at > start)
             .order_by(Shift.id)
             .with_for_update(key_share=True)
         )
@@ -101,7 +101,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         """Insert many shifts in one statement; each row carries its own ``id``."""
         if rows:
             await self.session.execute(
-                insert(Shift), [{**row, "organization_id": org_id} for row in rows]
+                insert(Shift), [{**row, "organisation_id": org_id} for row in rows]
             )
 
     async def get_locked(self, id: uuid.UUID, org_id: uuid.UUID) -> Shift | None:
@@ -112,7 +112,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         """
         result = await self.session.execute(
             select(Shift)
-            .where(Shift.id == id, Shift.organization_id == org_id)
+            .where(Shift.id == id, Shift.organisation_id == org_id)
             .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
@@ -134,7 +134,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         """
         await self.session.execute(
             update(Shift)
-            .where(Shift.id == id, Shift.organization_id == org_id)
+            .where(Shift.id == id, Shift.organisation_id == org_id)
             .values(updated_at=func.now())
             .execution_options(synchronize_session=False)
         )
@@ -142,7 +142,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
     async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
         """Remove a shift; its assignments go with it (``ON DELETE CASCADE``)."""
         await self.session.execute(
-            delete(Shift).where(Shift.id == id, Shift.organization_id == org_id)
+            delete(Shift).where(Shift.id == id, Shift.organisation_id == org_id)
         )
         await self.session.flush()
 
@@ -211,7 +211,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             after: The ``(starts_at, id)`` of the last shift of the previous page.
             limit: The most shifts to return.
         """
-        stmt = select(Shift).where(Shift.organization_id == org_id)
+        stmt = select(Shift).where(Shift.organisation_id == org_id)
         if starts_from is not None:
             stmt = stmt.where(Shift.starts_at >= starts_from)
         if starts_before is not None:
@@ -244,7 +244,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         week, bulk edit).
         """
         stmt = select(Shift).where(
-            Shift.organization_id == org_id,
+            Shift.organisation_id == org_id,
             Shift.project_id == project_id,
             Shift.starts_at >= starts_from,
             Shift.starts_at < starts_before,
@@ -268,7 +268,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             How many shifts were published.
         """
         stmt = update(Shift).where(
-            Shift.organization_id == org_id,
+            Shift.organisation_id == org_id,
             Shift.project_id == project_id,
             Shift.status == "draft",
         )
@@ -305,7 +305,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             .join(Site, Site.id == Project.site_id)
             .join(ShiftType, ShiftType.id == Shift.shift_type_id)
             .where(
-                Shift.organization_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.status == "published",
                 Assignment.user_id == user_id,
                 Project.is_deleted.is_(False),
@@ -341,7 +341,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
             .join(Site, Site.id == Project.site_id)
             .join(ShiftType, ShiftType.id == Shift.shift_type_id)
             .where(
-                Shift.organization_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.id == shift_id,
                 Shift.status == "published",
                 Assignment.user_id == user_id,
@@ -370,7 +370,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         on_them = select(Assignment.shift_id).where(Assignment.user_id.in_(user_ids))
         result = await self.session.execute(
             select(Shift).where(
-                Shift.organization_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.id.in_(on_them),
                 Shift.starts_at < starts_before,
                 Shift.ends_at > ends_after,
@@ -391,7 +391,7 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
             ConflictError: ``assignments.duplicate`` (HTTP 409) when the employee is already on
                 the shift, also when another request assigned them at the same moment.
         """
-        assignment = Assignment(id=uuid.uuid4(), organization_id=org_id, **data)
+        assignment = Assignment(id=uuid.uuid4(), organisation_id=org_id, **data)
         try:
             async with self.session.begin_nested():
                 self.session.add(assignment)
@@ -423,7 +423,7 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
         if rows:
             await self.session.execute(
                 insert(Assignment),
-                [{"id": uuid.uuid4(), **row, "organization_id": org_id} for row in rows],
+                [{"id": uuid.uuid4(), **row, "organisation_id": org_id} for row in rows],
             )
 
     async def remove_people(self, shift_id: uuid.UUID, user_ids: Sequence[uuid.UUID]) -> int:
@@ -456,7 +456,7 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
         """The assignment as stored now, not as the session last loaded it."""
         result = await self.session.execute(
             select(Assignment)
-            .where(Assignment.id == id, Assignment.organization_id == org_id)
+            .where(Assignment.id == id, Assignment.organisation_id == org_id)
             .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
@@ -485,8 +485,8 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
             select(Assignment, Shift)
             .join(Shift, Shift.id == Assignment.shift_id)
             .where(
-                Assignment.organization_id == org_id,
-                Shift.organization_id == org_id,
+                Assignment.organisation_id == org_id,
+                Shift.organisation_id == org_id,
                 Shift.id != shift_id,
                 starts < end,
                 ends > start,
@@ -498,13 +498,13 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
     async def exists(self, id: uuid.UUID, org_id: uuid.UUID) -> bool:
         """Whether the assignment is still there, read from the database, not the session."""
         found = await self.session.execute(
-            select(Assignment.id).where(Assignment.id == id, Assignment.organization_id == org_id)
+            select(Assignment.id).where(Assignment.id == id, Assignment.organisation_id == org_id)
         )
         return found.first() is not None
 
     async def delete(self, id: uuid.UUID, org_id: uuid.UUID) -> None:
         """Remove an assignment of the organisation; nothing happens when it is not there."""
         await self.session.execute(
-            delete(Assignment).where(Assignment.id == id, Assignment.organization_id == org_id)
+            delete(Assignment).where(Assignment.id == id, Assignment.organisation_id == org_id)
         )
         await self.session.flush()

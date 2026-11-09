@@ -96,7 +96,7 @@ class UserRepository(OrgScopedRepository[User]):
         Returns:
             Users matching all given filters (AND).
         """
-        stmt = select(User).where(User.organization_id == org_id, User.is_deleted.is_(False))
+        stmt = select(User).where(User.organisation_id == org_id, User.is_deleted.is_(False))
         if search:
             needle = "%" + _escape_like(search) + "%"
             stmt = stmt.where(
@@ -146,7 +146,7 @@ class UserRepository(OrgScopedRepository[User]):
         result = await self.session.execute(
             select(User).where(
                 User.id == id,
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.is_deleted.is_(False),
             )
         )
@@ -164,7 +164,7 @@ class UserRepository(OrgScopedRepository[User]):
         if not ids:
             return []
         result = await self.session.execute(
-            select(User).where(User.id.in_(ids), User.organization_id == org_id)
+            select(User).where(User.id.in_(ids), User.organisation_id == org_id)
         )
         return list(result.scalars().all())
 
@@ -176,7 +176,7 @@ class UserRepository(OrgScopedRepository[User]):
         result = await self.session.execute(
             select(User)
             .where(
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),
                 User.role.in_([UserRole.employee, UserRole.manager, UserRole.admin]),
@@ -209,7 +209,7 @@ class UserRepository(OrgScopedRepository[User]):
         await self.session.execute(
             select(User.id)
             .where(
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),
                 User.role != UserRole.client,
@@ -259,7 +259,7 @@ class UserRepository(OrgScopedRepository[User]):
         """
         user = User(
             id=uuid.uuid4(),
-            organization_id=org_id,
+            organisation_id=org_id,
             **self._with_activation(data),
         )
         self.session.add(user)
@@ -289,7 +289,7 @@ class UserRepository(OrgScopedRepository[User]):
         """
         user = User(
             id=uuid.uuid4(),
-            organization_id=org_id,
+            organisation_id=org_id,
             **self._with_activation(data),
         )
         try:
@@ -366,7 +366,7 @@ class UserRepository(OrgScopedRepository[User]):
         result = await self.session.execute(
             select(User.id)
             .where(
-                User.organization_id == org_id,
+                User.organisation_id == org_id,
                 User.role == UserRole.admin,
                 User.is_active.is_(True),
                 User.is_deleted.is_(False),

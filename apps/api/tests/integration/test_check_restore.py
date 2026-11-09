@@ -110,10 +110,10 @@ async def test_only_the_last_month_of_shifts_is_counted(at_head: Scratch) -> Non
     await run(
         engine,
         """
-        INSERT INTO shifts (id, organization_id, project_id, shift_type_id, starts_at, ends_at,
+        INSERT INTO shifts (id, organisation_id, project_id, shift_type_id, starts_at, ends_at,
             headcount, status, created_at, updated_at)
-        SELECT gen_random_uuid(), p.organization_id, p.id,
-            (SELECT st.id FROM shift_types st WHERE st.organization_id = p.organization_id
+        SELECT gen_random_uuid(), p.organisation_id, p.id,
+            (SELECT st.id FROM shift_types st WHERE st.organisation_id = p.organisation_id
              ORDER BY st.name LIMIT 1),
             now() + d * interval '1 day', now() + d * interval '1 day' + interval '8 hours',
             1, 'draft', now(), now()

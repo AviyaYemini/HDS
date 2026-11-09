@@ -121,7 +121,7 @@ class AvailabilityService:
             ForbiddenError: For a Client account (HTTP 403).
         """
         ensure_role(actor, *STAFF_ROLES)
-        return await self._windows.covering(actor.organization_id, first, last)
+        return await self._windows.covering(actor.organisation_id, first, last)
 
     async def open_window(self, actor: User, data: dict[str, Any]) -> SubmissionWindow:
         """Open a window for a period of dates with a deadline (Manager or Admin).
@@ -142,10 +142,10 @@ class AvailabilityService:
                 code="windows.date_range_invalid",
                 detail="The window must not end before it starts.",
             )
-        return await self._windows.create(actor.organization_id, {**data, "created_by": actor.id})
+        return await self._windows.create(actor.organisation_id, {**data, "created_by": actor.id})
 
     async def _window(self, actor: User, id: uuid.UUID) -> SubmissionWindow:
-        window = await self._windows.get_by_id(id, actor.organization_id)
+        window = await self._windows.get_by_id(id, actor.organisation_id)
         if window is None:
             raise NotFoundError(resource="SubmissionWindow", id=id)
         return window
@@ -161,7 +161,7 @@ class AvailabilityService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         await self._window(actor, id)
-        return await self._windows.update(id, actor.organization_id, **data)
+        return await self._windows.update(id, actor.organisation_id, **data)
 
     async def remove_window(self, actor: User, id: uuid.UUID) -> None:
         """Remove a window (Manager or Admin); the entries submitted in it stay.
@@ -172,7 +172,7 @@ class AvailabilityService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         await self._window(actor, id)
-        await self._windows.delete(id, actor.organization_id)
+        await self._windows.delete(id, actor.organisation_id)
 
     # ---------------------------------------------------------------- entries
 
@@ -185,7 +185,7 @@ class AvailabilityService:
         ensure_role(actor, *STAFF_ROLES)
         if actor.role == UserRole.employee and actor.id != user_id:
             raise NotFoundError(resource="Employee", id=user_id)
-        target = await self._users.get_by_id(user_id, actor.organization_id)
+        target = await self._users.get_by_id(user_id, actor.organisation_id)
         if target is None or target.role == UserRole.client:
             raise NotFoundError(resource="Employee", id=user_id)
         if write and actor.id != user_id and actor.role != UserRole.admin:
@@ -205,7 +205,7 @@ class AvailabilityService:
             NotFoundError: Another employee's, asked by an Employee (HTTP 404).
         """
         await self._target(actor, user_id, write=False)
-        return await self._entries.for_user(actor.organization_id, user_id, first, last)
+        return await self._entries.for_user(actor.organisation_id, user_id, first, last)
 
     async def add_entry(
         self, actor: User, user_id: uuid.UUID, data: dict[str, Any]
@@ -238,13 +238,13 @@ class AvailabilityService:
         await self._users.lock_user(user_id)
         await self._require_window(actor, entry)
         await self._refuse_clash(actor, user_id, entry)
-        created = await self._entries.create(actor.organization_id, {**entry, "user_id": user_id})
+        created = await self._entries.create(actor.organisation_id, {**entry, "user_id": user_id})
         await self._after_admin_change(actor, user_id, None, entry)
         return created
 
     async def _entry(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
         ensure_role(actor, *STAFF_ROLES)
-        entry = await self._entries.get_by_id(id, actor.organization_id)
+        entry = await self._entries.get_by_id(id, actor.organisation_id)
         if entry is None:
             raise NotFoundError(resource="AvailabilityEntry", id=id)
         return entry
@@ -269,7 +269,7 @@ class AvailabilityService:
         await self._require_window(actor, old)
         await self._require_window(actor, new)
         await self._refuse_clash(actor, existing.user_id, new, exclude=id)
-        updated = await self._entries.update(id, actor.organization_id, **data)
+        updated = await self._entries.update(id, actor.organisation_id, **data)
         await self._after_admin_change(actor, existing.user_id, old, new)
         return updated
 
@@ -285,7 +285,7 @@ class AvailabilityService:
         existing = await self._fresh(actor, id)
         removed = {field: getattr(existing, field) for field in _ENTRY_FIELDS}
         await self._require_window(actor, removed)
-        await self._entries.delete(id, actor.organization_id)
+        await self._entries.delete(id, actor.organisation_id)
         await self._after_admin_change(actor, existing.user_id, removed, None)
 
     async def _after_admin_change(
@@ -305,7 +305,7 @@ class AvailabilityService:
 
     async def _fresh(self, actor: User, id: uuid.UUID) -> AvailabilityEntry:
         """Re-read an entry after its employee's row lock, or 404 if it went in the meantime."""
-        entry = await self._entries.get_by_id(id, actor.organization_id, fresh=True)
+        entry = await self._entries.get_by_id(id, actor.organisation_id, fresh=True)
         if entry is None:
             raise NotFoundError(resource="AvailabilityEntry", id=id)
         return entry
@@ -338,7 +338,7 @@ class AvailabilityService:
                 detail="The weekday never falls between the entry's first and last date.",
             )
         if entry["shift_type_id"] is not None:
-            found = await self._shift_types.get_by_id(entry["shift_type_id"], actor.organization_id)
+            found = await self._shift_types.get_by_id(entry["shift_type_id"], actor.organisation_id)
             if found is None:
                 raise NotFoundError(resource="ShiftType", id=entry["shift_type_id"])
             if not found.is_active:
@@ -360,7 +360,7 @@ class AvailabilityService:
         used: list[SubmissionWindow] = []
         cursor = first
         reached_last = False
-        for window in await self._windows.covering(actor.organization_id, first, last):
+        for window in await self._windows.covering(actor.organisation_id, first, last):
             if window.starts_on > cursor and _applies_between(
                 cursor, window.starts_on - timedelta(days=1), weekday
             ):
@@ -391,7 +391,7 @@ class AvailabilityService:
     ) -> None:
         """Refuse an entry that applies to a shift and date another of the employee's does."""
         others = await self._entries.for_user(
-            actor.organization_id, user_id, entry["starts_on"], entry["ends_on"], exclude
+            actor.organisation_id, user_id, entry["starts_on"], entry["ends_on"], exclude
         )
         if any(_clash(entry, other) for other in others):
             raise ConflictError(

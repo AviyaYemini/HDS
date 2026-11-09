@@ -28,7 +28,7 @@ class ClientRead(BaseModel):
     """A client and its contract dates."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     name: str
     contact_name: str | None = None
     contact_email: str | None = None
@@ -75,7 +75,7 @@ class ClientUserRead(BaseModel):
     """A client portal account."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     client_id: uuid.UUID | None = None
     email: str
     full_name: str

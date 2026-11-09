@@ -112,7 +112,7 @@ async def test_a_field_that_is_set_only_on_create_is_refused_on_a_change(
     if operation == "project":
         body = {"client_id": (await add_client(async_client, manager))["id"]}  # a real client
     else:
-        body = {"organization_id": created["organization_id"]}  # even its own value
+        body = {"organisation_id": created["organisation_id"]}  # even its own value
 
     refused = await async_client.patch(url, json=body, headers=manager)
 

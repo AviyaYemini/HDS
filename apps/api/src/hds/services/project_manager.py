@@ -36,9 +36,9 @@ class ProjectManagerService:
             NotFoundError: The project is not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+        if await self._projects.get_by_id(project_id, actor.organisation_id) is None:
             raise NotFoundError(resource="Project", id=project_id)
-        return await self._managers.members(actor.organization_id, project_id)
+        return await self._managers.members(actor.organisation_id, project_id)
 
     async def replace(
         self, actor: User, project_id: uuid.UUID, user_ids: Sequence[uuid.UUID]
@@ -53,13 +53,13 @@ class ProjectManagerService:
         """
         ensure_role(actor, UserRole.admin)
         wanted = list(dict.fromkeys(user_ids))
-        if not await self._projects.lock(project_id, actor.organization_id):
+        if not await self._projects.lock(project_id, actor.organisation_id):
             raise NotFoundError(resource="Project", id=project_id)
-        staff = await self._managers.staff_among(actor.organization_id, wanted)
+        staff = await self._managers.staff_among(actor.organisation_id, wanted)
         if set(wanted) - staff:
             raise DomainValidationError(
                 code="project_managers.not_staff",
                 detail="Only active Managers and Admins of the organisation can be assigned.",
             )
-        await self._managers.replace(actor.organization_id, project_id, wanted)
-        return await self._managers.members(actor.organization_id, project_id)
+        await self._managers.replace(actor.organisation_id, project_id, wanted)
+        return await self._managers.members(actor.organisation_id, project_id)

@@ -57,7 +57,7 @@ class ScheduleJobEvent(TimestampedBase):
     # The order the steps were written in; ``at`` alone ties within one transaction.
     seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schedule_jobs.id"), nullable=False)

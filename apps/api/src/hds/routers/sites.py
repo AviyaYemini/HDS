@@ -25,7 +25,7 @@ class SiteRead(BaseModel):
     """A site with its IANA time zone."""
 
     id: uuid.UUID
-    organization_id: uuid.UUID
+    organisation_id: uuid.UUID
     name: str
     address: str
     timezone: str

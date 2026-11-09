@@ -27,7 +27,7 @@ ORG = uuid.uuid4()
 
 def _user(role: UserRole = UserRole.employee) -> User:
     user = MagicMock(spec=User)
-    user.id, user.organization_id, user.role = uuid.uuid4(), ORG, role
+    user.id, user.organisation_id, user.role = uuid.uuid4(), ORG, role
     return user
 
 

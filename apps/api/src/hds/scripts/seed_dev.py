@@ -96,7 +96,7 @@ async def _project(
     """The live project ``name``, created when missing (a month back, so recent shifts fit)."""
     found = await db.execute(
         select(Project).where(
-            Project.organization_id == org.id,
+            Project.organisation_id == org.id,
             Project.name == name,
             Project.is_deleted.is_(False),
         )
@@ -107,7 +107,7 @@ async def _project(
         return project
     project = Project(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         client_id=client.id,
         site_id=site.id,
         name=name,
@@ -145,7 +145,7 @@ async def _shift(
         return
     shift = Shift(
         id=uuid.uuid4(),
-        organization_id=project.organization_id,
+        organisation_id=project.organisation_id,
         project_id=project.id,
         shift_type_id=kind.id,
         starts_at=starts_at,
@@ -160,7 +160,7 @@ async def _shift(
         db.add(
             Assignment(
                 id=uuid.uuid4(),
-                organization_id=project.organization_id,
+                organisation_id=project.organisation_id,
                 shift_id=shift.id,
                 user_id=person.id,
                 source="manual",
@@ -178,7 +178,7 @@ async def _window(
     window, created = await _get_or_create(
         db,
         SubmissionWindow,
-        {"organization_id": org.id, "starts_on": first, "ends_on": first + datetime.timedelta(6)},
+        {"organisation_id": org.id, "starts_on": first, "ends_on": first + datetime.timedelta(6)},
         {"deadline": deadline},
     )
     print(f"Window {'created' if created else 'exists'}: {window.starts_on} to {window.ends_on}")
@@ -212,7 +212,7 @@ async def seed() -> None:
         client_rec, created = await _get_or_create(
             db,
             Client,
-            {"organization_id": org.id, "name": "Seed Client"},
+            {"organisation_id": org.id, "name": "Seed Client"},
             {"contract_start": datetime.date.today(), "is_active": True, "is_deleted": False},
         )
         print(f"Client {'created' if created else 'exists'}: {client_rec.id}")
@@ -221,7 +221,7 @@ async def seed() -> None:
         site, created = await _get_or_create(
             db,
             Site,
-            {"organization_id": org.id, "name": "HQ Site"},
+            {"organisation_id": org.id, "name": "HQ Site"},
             {"address": "1 Rothschild Blvd, Tel Aviv", "timezone": "Asia/Jerusalem"},
         )
         print(f"Site {'created' if created else 'exists'}: {site.id}")
@@ -238,7 +238,7 @@ async def seed() -> None:
             u, created = await _get_or_create(
                 db,
                 User,
-                {"email": email, "organization_id": org.id},
+                {"email": email, "organisation_id": org.id},
                 {
                     "password_hash": hash_password("Dev1234!"),
                     "full_name": full_name,
@@ -256,7 +256,7 @@ async def seed() -> None:
         client_user, created = await _get_or_create(
             db,
             User,
-            {"email": "client@hds.test", "organization_id": org.id},
+            {"email": "client@hds.test", "organisation_id": org.id},
             {
                 "password_hash": hash_password("Dev1234!"),
                 "full_name": "Client User",
@@ -273,7 +273,7 @@ async def seed() -> None:
         group, created = await _get_or_create(
             db,
             Group,
-            {"organization_id": org.id, "name": "Night Shift"},
+            {"organisation_id": org.id, "name": "Night Shift"},
             {},
         )
         print(f"Group {'created' if created else 'exists'}: {group.id}")
@@ -297,7 +297,7 @@ async def seed() -> None:
         qual, created = await _get_or_create(
             db,
             Qualification,
-            {"organization_id": org.id, "name": "First Aid"},
+            {"organisation_id": org.id, "name": "First Aid"},
             {},
         )
         print(f"Qualification {'created' if created else 'exists'}: {qual.id}")
@@ -314,7 +314,7 @@ async def seed() -> None:
         if managing.scalar_one_or_none() is None:
             # The key is the pair, so no id (the generic helper would add one).
             db.add(
-                ProjectManager(organization_id=org.id, project_id=project.id, user_id=manager.id)
+                ProjectManager(organisation_id=org.id, project_id=project.id, user_id=manager.id)
             )
             await db.flush()
             print(f"Manager on project: {manager.email} on {project.name}")
@@ -325,7 +325,7 @@ async def seed() -> None:
             for k in (
                 await db.execute(
                     select(ShiftType).where(
-                        ShiftType.organization_id == org.id, ShiftType.is_active.is_(True)
+                        ShiftType.organisation_id == org.id, ShiftType.is_active.is_(True)
                     )
                 )
             ).scalars()

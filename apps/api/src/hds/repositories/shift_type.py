@@ -37,7 +37,7 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
         """Every shift type of the organisation, active first, then by start time and name."""
         result = await self.session.execute(
             select(ShiftType)
-            .where(ShiftType.organization_id == org_id)
+            .where(ShiftType.organisation_id == org_id)
             .order_by(ShiftType.is_active.desc(), ShiftType.starts_at_local, ShiftType.name)
         )
         return list(result.scalars().all())
@@ -49,7 +49,7 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
             ConflictError: ``shift_types.duplicate_name`` (HTTP 409), also when another request
                 took the name at the same moment.
         """
-        shift_type = ShiftType(id=uuid.uuid4(), organization_id=org_id, **data)
+        shift_type = ShiftType(id=uuid.uuid4(), organisation_id=org_id, **data)
         try:
             async with self.session.begin_nested():
                 self.session.add(shift_type)
@@ -83,7 +83,7 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
         """
         result = await self.session.execute(
             select(ShiftType)
-            .where(ShiftType.id == id, ShiftType.organization_id == org_id)
+            .where(ShiftType.id == id, ShiftType.organisation_id == org_id)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -93,7 +93,7 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
         """Share-lock every shift type of the organisation, so a retirement or change waits."""
         await self.session.execute(
             select(ShiftType.id)
-            .where(ShiftType.organization_id == org_id)
+            .where(ShiftType.organisation_id == org_id)
             .order_by(ShiftType.id)
             .with_for_update(read=True)
         )
@@ -108,7 +108,7 @@ class ShiftTypeRepository(OrgScopedRepository[ShiftType]):
             return []
         result = await self.session.execute(
             select(ShiftType)
-            .where(ShiftType.organization_id == org_id, ShiftType.id.in_(set(ids)))
+            .where(ShiftType.organisation_id == org_id, ShiftType.id.in_(set(ids)))
             .with_for_update(read=True)
             .execution_options(populate_existing=True)
         )

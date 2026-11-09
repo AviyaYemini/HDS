@@ -28,7 +28,7 @@ async def test_clients_filter_by_is_active(
         test_db.add(
             Client(
                 id=uuid.uuid4(),
-                organization_id=seed_org.id,
+                organisation_id=seed_org.id,
                 name=name,
                 contract_start=date.today(),
                 is_active=active,

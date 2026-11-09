@@ -28,7 +28,7 @@ class SiteRepository(OrgScopedRepository[Site]):
             org_id: The caller's organisation.
         """
         result = await self.session.execute(
-            select(Site).where(Site.organization_id == org_id).order_by(Site.name)
+            select(Site).where(Site.organisation_id == org_id).order_by(Site.name)
         )
         return list(result.scalars().all())
 
@@ -42,7 +42,7 @@ class SiteRepository(OrgScopedRepository[Site]):
         Returns:
             The persisted site.
         """
-        site = Site(id=uuid.uuid4(), organization_id=org_id, **data)
+        site = Site(id=uuid.uuid4(), organisation_id=org_id, **data)
         self.session.add(site)
         await self.session.flush()
         await self.session.refresh(site)

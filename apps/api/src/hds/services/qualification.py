@@ -37,7 +37,7 @@ class QualificationService:
             ForbiddenError: ``users.manager_required`` (HTTP 403).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        return await self._repo.list_by_org(actor.organization_id)
+        return await self._repo.list_by_org(actor.organisation_id)
 
     async def create_qualification(self, actor: User, name: str) -> Qualification:
         """Create a qualification with a name unique in the organisation.
@@ -54,13 +54,13 @@ class QualificationService:
             ConflictError: ``qualifications.duplicate_name`` (HTTP 409).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        existing = await self._repo.get_by_name_and_org(name, actor.organization_id)
+        existing = await self._repo.get_by_name_and_org(name, actor.organisation_id)
         if existing is not None:
             raise ConflictError(
                 code="qualifications.duplicate_name",
                 detail=f"A qualification named '{name}' already exists.",
             )
-        return await self._repo.create(actor.organization_id, name)
+        return await self._repo.create(actor.organisation_id, name)
 
     async def rename_qualification(
         self, actor: User, qual_id: uuid.UUID, new_name: str
@@ -81,16 +81,16 @@ class QualificationService:
             ConflictError: ``qualifications.duplicate_name`` (HTTP 409).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        qual = await self._repo.get_by_id(qual_id, actor.organization_id)
+        qual = await self._repo.get_by_id(qual_id, actor.organisation_id)
         if qual is None:
             raise NotFoundError(resource="Qualification", id=qual_id)
-        conflict = await self._repo.get_by_name_and_org(new_name, actor.organization_id)
+        conflict = await self._repo.get_by_name_and_org(new_name, actor.organisation_id)
         if conflict is not None and conflict.id != qual_id:
             raise ConflictError(
                 code="qualifications.duplicate_name",
                 detail=f"A qualification named '{new_name}' already exists.",
             )
-        return await self._repo.update(qual_id, actor.organization_id, name=new_name)
+        return await self._repo.update(qual_id, actor.organisation_id, name=new_name)
 
     async def delete_qualification(self, actor: User, qual_id: uuid.UUID) -> None:
         """Delete a qualification and its assignments; the employees are kept.
@@ -104,10 +104,10 @@ class QualificationService:
             NotFoundError: Not in the organisation (HTTP 404).
         """
         ensure_role(actor, *MANAGER_ROLES)
-        qual = await self._repo.get_by_id(qual_id, actor.organization_id)
+        qual = await self._repo.get_by_id(qual_id, actor.organisation_id)
         if qual is None:
             raise NotFoundError(resource="Qualification", id=qual_id)
-        await self._repo.delete(qual_id, actor.organization_id)
+        await self._repo.delete(qual_id, actor.organisation_id)
 
     async def replace_employee_qualifications(
         self, actor: User, user_id: uuid.UUID, qual_ids: list[uuid.UUID]
@@ -129,6 +129,6 @@ class QualificationService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         for qual_id in qual_ids:
-            if await self._repo.get_by_id(qual_id, actor.organization_id) is None:
+            if await self._repo.get_by_id(qual_id, actor.organisation_id) is None:
                 raise NotFoundError(resource="Qualification", id=qual_id)
         await self._repo.replace_user_qualifications(user_id, qual_ids)

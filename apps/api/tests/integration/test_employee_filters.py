@@ -30,7 +30,7 @@ async def _headers(client: AsyncClient, email: str = "manager@hds.test") -> dict
 def _user(org: Organisation, email: str, name: str, role: UserRole, **kw: object) -> User:
     return User(
         id=uuid.uuid4(),
-        organization_id=org.id,
+        organisation_id=org.id,
         email=email,
         full_name=name,
         role=role,
@@ -60,8 +60,8 @@ async def people(
         is_deleted=True,
         deleted_at=datetime.now(UTC),
     )
-    guards = Group(id=uuid.uuid4(), organization_id=seed_org.id, name="Guards")
-    aid = Qualification(id=uuid.uuid4(), organization_id=seed_org.id, name="First aid")
+    guards = Group(id=uuid.uuid4(), organisation_id=seed_org.id, name="Guards")
+    aid = Qualification(id=uuid.uuid4(), organisation_id=seed_org.id, name="First aid")
     test_db.add_all([alice, bob, carol, dave, guards, aid])
     await test_db.flush()
     for u in (alice, bob, dave):

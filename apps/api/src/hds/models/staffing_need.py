@@ -22,7 +22,7 @@ class StaffingNeed(TimestampedBase):
 
     __tablename__ = "staffing_needs"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     project_id: Mapped[uuid.UUID] = mapped_column(

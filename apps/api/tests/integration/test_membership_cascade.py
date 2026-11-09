@@ -23,8 +23,8 @@ _CASES = [
 async def _assign(
     session: AsyncSession, model: type, table: str, column: str, users: list[User]
 ) -> uuid.UUID:
-    org_id = users[0].organization_id
-    row = model(id=uuid.uuid4(), organization_id=org_id, name="Assigned")
+    org_id = users[0].organisation_id
+    row = model(id=uuid.uuid4(), organisation_id=org_id, name="Assigned")
     session.add(row)
     await session.commit()
     for user in users:

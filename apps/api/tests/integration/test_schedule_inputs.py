@@ -49,7 +49,7 @@ async def test_slots_come_from_the_needs_on_each_date_of_the_project(
     manager = await headers_for(async_client, "manager")
     await staffed_project(async_client, manager, needs={"morning": 1, "night": 2})
 
-    b = await built(seed_users["manager"].organization_id)
+    b = await built(seed_users["manager"].organisation_id)
 
     assert len(b.problem.slots) == 14
     nights = [s for s in b.problem.slots if s.night]
@@ -70,7 +70,7 @@ async def test_a_project_gets_slots_only_on_its_own_dates(
     )
     await test_db.commit()
 
-    b = await built(seed_users["manager"].organization_id)
+    b = await built(seed_users["manager"].organisation_id)
 
     assert days(b) == [date(2027, 6, 8), date(2027, 6, 9), date(2027, 6, 10)]
 
@@ -101,7 +101,7 @@ async def test_drafts_are_used_as_slots_and_published_shifts_stay_fixed(
         headers=admin,
     )
 
-    b = await built(seed_users["admin"].organization_id)
+    b = await built(seed_users["admin"].organisation_id)
 
     by_shift = {s.shift_id: s for s in b.problem.slots if s.shift_id}
     assert by_shift[uuid.UUID(monday["id"])].headcount == 3  # the draft's own headcount
@@ -128,7 +128,7 @@ async def test_the_surroundings_reach_the_weeks_touched_plus_the_minimum_rest(
     for shift in (near, far):
         await assign(async_client, admin, shift["id"], employee)
 
-    b = await built(seed_users["admin"].organization_id)
+    b = await built(seed_users["admin"].organisation_id)
 
     fixed = {s.id for s in b.problem.fixed}
     # Ends Saturday 23:00, an hour before the range: outside it, but within the 11-hour rest.
@@ -150,7 +150,7 @@ async def test_candidates_are_employees_and_staff_with_an_open_entry(
     draft = (await add_shift(async_client, admin, project, SUNDAY + timedelta(2)))["shift"]
     await assign(async_client, admin, draft["id"], seed_users["admin"].id)
 
-    b = await built(seed_users["admin"].organization_id)
+    b = await built(seed_users["admin"].organisation_id)
 
     ids = {c.id for c in b.problem.candidates}
     assert ids == {seed_users["employee"].id, seed_users["manager"].id}
@@ -163,7 +163,7 @@ async def test_candidates_are_employees_and_staff_with_an_open_entry(
     )
     await test_db.commit()
     assert seed_users["employee"].id not in {
-        c.id for c in (await built(seed_users["admin"].organization_id)).problem.candidates
+        c.id for c in (await built(seed_users["admin"].organisation_id)).problem.candidates
     }
 
 
@@ -172,7 +172,7 @@ async def test_the_fingerprint_is_stable_and_follows_every_input(
 ) -> None:
     admin = await headers_for(async_client, "admin")
     project = await staffed_project(async_client, admin)
-    org = seed_users["admin"].organization_id
+    org = seed_users["admin"].organisation_id
     employee = seed_users["employee"].id
     # An entry already, so the next one changes the entries alone, not who has none.
     already = await async_client.post(

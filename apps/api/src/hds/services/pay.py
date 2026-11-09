@@ -268,13 +268,13 @@ class PayService:
         """
         ensure_role(actor, *STAFF_ROLES)
         now = now or datetime.now(UTC)
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         text, first, last = month_bounds(month, org.timezone, now)
         starts_from, starts_before = utc_window(first, last)
         rows = await self._reports.own_ended_shifts(
-            org_id=actor.organization_id,
+            org_id=actor.organisation_id,
             user_id=actor.id,
             starts_from=starts_from,
             starts_before=starts_before,
@@ -287,7 +287,7 @@ class PayService:
         ]
         days = (
             await self._days.for_projects(
-                actor.organization_id, {r.project.id for r in rows}, *spanned(r.shift for r in rows)
+                actor.organisation_id, {r.project.id for r in rows}, *spanned(r.shift for r in rows)
             )
             if rows
             else []

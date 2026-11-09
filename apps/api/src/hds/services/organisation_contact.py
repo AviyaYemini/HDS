@@ -50,9 +50,9 @@ class OrganisationContactService:
 
     async def read(self, actor: User) -> Organisation:
         """The caller's organisation, for its contact columns (every role)."""
-        org = await self._orgs.get_by_id(actor.organization_id)
+        org = await self._orgs.get_by_id(actor.organisation_id)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return org
 
     async def change(self, actor: User, data: Mapping[str, Any]) -> Organisation:
@@ -66,7 +66,7 @@ class OrganisationContactService:
             raise ForbiddenError(code="users.admin_required", detail="Admin role required")
         if "opening_hours" in data:
             check_opening_hours(data["opening_hours"])
-        org = await self._orgs.update_contact(actor.organization_id, data)
+        org = await self._orgs.update_contact(actor.organisation_id, data)
         if org is None:
-            raise NotFoundError(resource="Organisation", id=actor.organization_id)
+            raise NotFoundError(resource="Organisation", id=actor.organisation_id)
         return org

@@ -65,7 +65,7 @@ async def run(fetch: Callable[[], Awaitable[list[Row]]]) -> int:
 async def _fetch_sites() -> list[Row]:
     """Read id, organisation and time zone of every site."""
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Site.id, Site.organization_id, Site.timezone))
+        result = await session.execute(select(Site.id, Site.organisation_id, Site.timezone))
         return [(i, o, z) for i, o, z in result.all()]
 
 

@@ -43,16 +43,16 @@ class Mine:
 
 @pytest.fixture
 async def mine(test_db: AsyncSession, seed_users: dict[str, User]) -> Mine:
-    org_id = seed_users["admin"].organization_id
+    org_id = seed_users["admin"].organisation_id
     m = Mine()
     m.client = Client(
-        id=uuid.uuid4(), organization_id=org_id, name="My Client", contract_start=date.today()
+        id=uuid.uuid4(), organisation_id=org_id, name="My Client", contract_start=date.today()
     )
     m.site = Site(
-        id=uuid.uuid4(), organization_id=org_id, name="My Site", address="x", timezone="UTC"
+        id=uuid.uuid4(), organisation_id=org_id, name="My Site", address="x", timezone="UTC"
     )
-    m.group = Group(id=uuid.uuid4(), organization_id=org_id, name="My Group")
-    m.qualification = Qualification(id=uuid.uuid4(), organization_id=org_id, name="My Qual")
+    m.group = Group(id=uuid.uuid4(), organisation_id=org_id, name="My Group")
+    m.qualification = Qualification(id=uuid.uuid4(), organisation_id=org_id, name="My Qual")
     test_db.add_all([m.client, m.site, m.group, m.qualification])
     await test_db.commit()
     return m

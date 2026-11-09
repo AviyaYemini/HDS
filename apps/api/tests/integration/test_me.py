@@ -74,7 +74,7 @@ _FORBIDDEN_SELF_FIELDS: dict[str, object] = {
     "role": "manager",
     "is_active": False,
     "is_deleted": True,
-    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "organisation_id": "00000000-0000-0000-0000-000000000001",
     "default_hourly_rate": "999.0000",
     "email": "hijack@hds.test",
     "password_hash": "x",

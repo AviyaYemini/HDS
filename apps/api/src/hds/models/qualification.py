@@ -36,7 +36,7 @@ class Qualification(TimestampedBase):
 
     __tablename__ = "qualifications"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -45,4 +45,4 @@ class Qualification(TimestampedBase):
         "User", secondary=user_qualifications, back_populates="qualifications"
     )
 
-    __table_args__ = (Index("uq_qualifications_org_name", "organization_id", "name", unique=True),)
+    __table_args__ = (Index("uq_qualifications_org_name", "organisation_id", "name", unique=True),)

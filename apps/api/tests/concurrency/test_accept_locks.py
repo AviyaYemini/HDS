@@ -36,7 +36,7 @@ async def test_accepts_staff_lock_does_not_deadlock_with_a_keyed_assignment(
     made = await add_shift(async_client, admin_headers, project, SUNDAY + timedelta(days=1))
     shift_id = uuid.UUID(made["shift"]["id"])
     admin = seed_users["admin"]
-    org = admin.organization_id
+    org = admin.organisation_id
     assigning, accepting = session_pair
 
     # A: the keyed assignment claims its key, share-locking the Admin's row through the key.

@@ -59,7 +59,7 @@ class ShiftTypeService:
             ForbiddenError: For a Client account (HTTP 403).
         """
         ensure_role(actor, *STAFF_ROLES)
-        return await self._types.list_for_org(actor.organization_id)
+        return await self._types.list_for_org(actor.organisation_id)
 
     async def add_type(self, actor: User, data: dict[str, Any]) -> ShiftType:
         """Add a shift type (Manager or Admin).
@@ -77,7 +77,7 @@ class ShiftTypeService:
         _refuse_equal_times(data["starts_at_local"], data["ends_at_local"])
         crosses = data["ends_at_local"] <= data["starts_at_local"]
         return await self._types.create(
-            actor.organization_id, {**data, "crosses_midnight": crosses}
+            actor.organisation_id, {**data, "crosses_midnight": crosses}
         )
 
     async def change_type(self, actor: User, id: uuid.UUID, data: dict[str, Any]) -> ShiftType:
@@ -91,7 +91,7 @@ class ShiftTypeService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         # Locked, so two changes at once cannot each compute crossing from stale times.
-        existing = await self._types.get_locked(id, actor.organization_id)
+        existing = await self._types.get_locked(id, actor.organisation_id)
         if existing is None:
             raise NotFoundError(resource="ShiftType", id=id)
         fields = dict(data)
@@ -104,10 +104,10 @@ class ShiftTypeService:
             # Under the type's row lock, which a staffing-need change share-locks, so no need is
             # added to a type being retired.
             await self._needs.remove_type(id)
-        return await self._types.update(id, actor.organization_id, **fields)
+        return await self._types.update(id, actor.organisation_id, **fields)
 
     async def _project(self, actor: User, project_id: uuid.UUID) -> None:
-        if await self._projects.get_by_id(project_id, actor.organization_id) is None:
+        if await self._projects.get_by_id(project_id, actor.organisation_id) is None:
             raise NotFoundError(resource="Project", id=project_id)
 
     async def project_types(self, actor: User, project_id: uuid.UUID) -> list[ShiftType]:
@@ -135,9 +135,9 @@ class ShiftTypeService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         # The project's row first, so two replacements of its set run one after the other.
-        if not await self._projects.lock(project_id, actor.organization_id):
+        if not await self._projects.lock(project_id, actor.organisation_id):
             raise NotFoundError(resource="Project", id=project_id)
-        found = {t.id: t for t in await self._types.share_lock(actor.organization_id, ids)}
+        found = {t.id: t for t in await self._types.share_lock(actor.organisation_id, ids)}
         for type_id in ids:
             if type_id not in found:
                 raise NotFoundError(resource="ShiftType", id=type_id)
@@ -147,7 +147,7 @@ class ShiftTypeService:
                 )
         # The types of the needs about to go are share-locked first, as replacing the needs does,
         # so this and a retirement of one of them lock in the same order.
-        await self._types.share_lock(actor.organization_id, await self._needs.types_of(project_id))
+        await self._types.share_lock(actor.organisation_id, await self._needs.types_of(project_id))
         await self._types.set_for_project(project_id, ids)
         await self._needs.keep_types(project_id, ids)
         return await self._types.for_project(project_id)

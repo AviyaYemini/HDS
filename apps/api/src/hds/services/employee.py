@@ -204,15 +204,15 @@ class EmployeeService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         if group_id is not None and not await self._group_repo.get_by_id(
-            group_id, actor.organization_id
+            group_id, actor.organisation_id
         ):
             raise NotFoundError(resource="Group", id=group_id)
         if qualification_id is not None and not await self._qualification_repo.get_by_id(
-            qualification_id, actor.organization_id
+            qualification_id, actor.organisation_id
         ):
             raise NotFoundError(resource="Qualification", id=qualification_id)
         return await self._user_repo.search(
-            actor.organization_id,
+            actor.organisation_id,
             search=search,
             role=role,
             is_active=is_active,
@@ -245,7 +245,7 @@ class EmployeeService:
         # Explicit whitelist: only these keys are ever passed on to the repository.
         changes = {key: data[key] for key in _ALLOWED_SELF_FIELDS if key in data}
         return await self._user_repo.update(
-            current_user.id, current_user.organization_id, **changes
+            current_user.id, current_user.organisation_id, **changes
         )
 
     # ── Reads ────────────────────────────────────────────────────────────────
@@ -298,7 +298,7 @@ class EmployeeService:
             NotFoundError: The user is not in the organisation (HTTP 404).
         """
         await self.get_employee(actor, id)
-        return await self._group_repo.get_groups_for_user(id, actor.organization_id)
+        return await self._group_repo.get_groups_for_user(id, actor.organisation_id)
 
     async def list_qualifications_of(self, actor: User, id: uuid.UUID) -> list[Qualification]:
         """List a user's qualifications, under the same rule as `get_employee`.
@@ -315,7 +315,7 @@ class EmployeeService:
             NotFoundError: The user is not in the organisation (HTTP 404).
         """
         await self.get_employee(actor, id)
-        return await self._qualification_repo.get_qualifications_for_user(id, actor.organization_id)
+        return await self._qualification_repo.get_qualifications_for_user(id, actor.organisation_id)
 
     # ── Manager operations ───────────────────────────────────────────────────
 
@@ -359,7 +359,7 @@ class EmployeeService:
         data["password_hash"] = await passwords.hash_password(initial_password)
         data["role"] = role
         # Hashing can take a while, so another request may have taken the address since the check.
-        user, created = await self._user_repo.create_if_absent(actor.organization_id, data)
+        user, created = await self._user_repo.create_if_absent(actor.organisation_id, data)
         if not created:
             raise ConflictError(
                 code="users.duplicate_email",
@@ -408,13 +408,13 @@ class EmployeeService:
                 role_changed = True
                 if target.role == UserRole.admin:
                     await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, actor.organization_id, **data)
+        updated = await self._user_repo.update(target_id, actor.organisation_id, **data)
         if role_changed:
             await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
             if data["role"] == UserRole.employee:
                 # A demoted Manager leaves their projects, so a later promotion shows no pay
                 # until an Admin assigns them again (005 FR-022).
-                await self._project_managers.remove_user(actor.organization_id, target_id)
+                await self._project_managers.remove_user(actor.organisation_id, target_id)
         return updated
 
     async def deactivate(self, actor: User, target_id: uuid.UUID) -> User:
@@ -453,7 +453,7 @@ class EmployeeService:
             )
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        updated = await self._user_repo.update(target_id, actor.organization_id, is_active=False)
+        updated = await self._user_repo.update(target_id, actor.organisation_id, is_active=False)
         await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(target_id)
         return updated
@@ -491,7 +491,7 @@ class EmployeeService:
             )
         if target.role == UserRole.client:
             client = (
-                await self._client_repo.get_by_id(target.client_id, actor.organization_id)
+                await self._client_repo.get_by_id(target.client_id, actor.organisation_id)
                 if target.client_id is not None
                 else None
             )
@@ -500,7 +500,7 @@ class EmployeeService:
                     code="users.client_inactive",
                     detail="This user's client is inactive or deleted; reactivate it first.",
                 )
-        return await self._user_repo.update(target_id, actor.organization_id, is_active=True)
+        return await self._user_repo.update(target_id, actor.organisation_id, is_active=True)
 
     async def soft_delete(self, actor: User, target_id: uuid.UUID) -> None:
         """Delete a user, keeping their history and freeing their email (Admin only).
@@ -521,14 +521,14 @@ class EmployeeService:
         target = await self._get_target(actor, target_id)
         if target.role == UserRole.admin:
             await self._guard_last_admin(target)
-        await self._user_repo.soft_delete(target_id, actor.organization_id)
+        await self._user_repo.soft_delete(target_id, actor.organisation_id)
         await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
         await self._link_repo.cancel_for_user(target_id)
 
     # ── Guards ───────────────────────────────────────────────────────────────
 
     async def _get_target(self, actor: User, target_id: uuid.UUID) -> User:
-        target = await self._user_repo.get_by_id(target_id, actor.organization_id)
+        target = await self._user_repo.get_by_id(target_id, actor.organisation_id)
         if target is None:
             raise NotFoundError(resource="User", id=target_id)
         return target
@@ -559,7 +559,7 @@ class EmployeeService:
             return
         # Locks the Admins until the request ends, so a simultaneous removal waits and then sees
         # the result of this one (FR-211).
-        admins = await self._user_repo.lock_active_admins(target.organization_id)
+        admins = await self._user_repo.lock_active_admins(target.organisation_id)
         if len(admins) <= 1:
             raise ConflictError(
                 code="users.last_admin",

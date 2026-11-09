@@ -30,7 +30,7 @@ async def make_account(db: AsyncSession, org_id: uuid.UUID, *, active: bool, tag
     user_id = uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO users (id, organization_id, email, password_hash, full_name, role, "
+            "INSERT INTO users (id, organisation_id, email, password_hash, full_name, role, "
             "is_active, activated_at) VALUES (:i, :o, :e, 'x', 'Racer', CAST('employee' AS "
             "user_role), :a, :t)"
         ),
@@ -85,7 +85,7 @@ async def test_exactly_one_of_two_simultaneous_redemptions_wins_every_round(
     active: bool,
     password_field: str,
 ) -> None:
-    org_id = seed_users["employee"].organization_id
+    org_id = seed_users["employee"].organisation_id
     for n in range(ROUNDS):
         user_id = await make_account(test_db, org_id, active=active, tag=f"{purpose}{n}")
         raw = f"{purpose}-link-{uuid.uuid4().hex}"

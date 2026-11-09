@@ -32,7 +32,7 @@ class Group(TimestampedBase):
 
     __tablename__ = "groups"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organisations.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -41,4 +41,4 @@ class Group(TimestampedBase):
         "User", secondary=user_groups, back_populates="groups"
     )
 
-    __table_args__ = (Index("uq_groups_org_name", "organization_id", "name", unique=True),)
+    __table_args__ = (Index("uq_groups_org_name", "organisation_id", "name", unique=True),)

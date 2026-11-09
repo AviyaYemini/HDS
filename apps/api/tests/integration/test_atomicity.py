@@ -141,7 +141,7 @@ async def add_portal_user_with_pending_link(
     """A client with an active portal user who also holds an unused password-reset link."""
     client = Client(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         name="Portal Client",
         contract_start=datetime.now(UTC).date(),
     )
@@ -149,7 +149,7 @@ async def add_portal_user_with_pending_link(
     await db.flush()
     portal = User(
         id=uuid.uuid4(),
-        organization_id=org_id,
+        organisation_id=org_id,
         client_id=client.id,
         email="portal@hds.test",
         password_hash=hash_password(PASSWORD),
@@ -183,7 +183,7 @@ async def test_a_failed_client_deactivation_leaves_the_portal_users_and_their_li
     last_step_fails: pytest.MonkeyPatch,
 ) -> None:
     client, portal, link_hash = await add_portal_user_with_pending_link(
-        test_db, seed_users["admin"].organization_id
+        test_db, seed_users["admin"].organisation_id
     )
     portal_id, client_id = portal.id, client.id
     admin = await sign_in(async_client, "admin@hds.test")

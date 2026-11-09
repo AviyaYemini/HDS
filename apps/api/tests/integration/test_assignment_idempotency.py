@@ -31,7 +31,7 @@ async def other_admin(
 ) -> dict[str, str]:
     test_db.add(
         User(
-            organization_id=seed_users["admin"].organization_id,
+            organisation_id=seed_users["admin"].organisation_id,
             email="second-admin@hds.test",
             password_hash=hash_password("Dev1234!"),
             full_name="Second Admin",

@@ -69,7 +69,7 @@ class StaffingNeedRepository(OrgScopedRepository[StaffingNeed]):
         if items:
             await self.session.execute(
                 insert(StaffingNeed),
-                [{**item, "organization_id": org_id, "project_id": project_id} for item in items],
+                [{**item, "organisation_id": org_id, "project_id": project_id} for item in items],
             )
         await self.session.flush()
 

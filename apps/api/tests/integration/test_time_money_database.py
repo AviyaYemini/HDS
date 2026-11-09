@@ -85,15 +85,15 @@ async def test_database_rejects_non_positive_hourly_rate(
 async def test_database_rejects_non_positive_billing_rate(
     rate: Decimal, test_db: AsyncSession, seed_users: dict[str, User]
 ) -> None:
-    org_id = seed_users["admin"].organization_id
-    client = Client(id=uuid.uuid4(), organization_id=org_id, name="C", contract_start=date.today())
-    site = Site(id=uuid.uuid4(), organization_id=org_id, name="S", address="a", timezone="UTC")
+    org_id = seed_users["admin"].organisation_id
+    client = Client(id=uuid.uuid4(), organisation_id=org_id, name="C", contract_start=date.today())
+    site = Site(id=uuid.uuid4(), organisation_id=org_id, name="S", address="a", timezone="UTC")
     test_db.add_all([client, site])
     await test_db.commit()
     test_db.add(
         Project(
             id=uuid.uuid4(),
-            organization_id=org_id,
+            organisation_id=org_id,
             client_id=client.id,
             site_id=site.id,
             name="P",

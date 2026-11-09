@@ -33,7 +33,7 @@ class SavedViewService:
         """
         ensure_role(actor, *STAFF_ROLES)
         return await self._views.create(
-            actor.organization_id,
+            actor.organisation_id,
             {"user_id": actor.id, "screen": screen, "name": name, "query": query},
         )
 
