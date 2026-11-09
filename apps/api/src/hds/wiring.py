@@ -31,6 +31,7 @@ from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.roster_extras import (
     PublishEventRepository,
+    RosterEditEventRepository,
     RuleOverrideRepository,
     WeekTemplateRepository,
 )
@@ -95,6 +96,8 @@ def roster_service_for(db: AsyncSession) -> RosterService:
         organisation_repo=OrganisationRepository(db),
         project_manager_repo=ProjectManagerRepository(db),
         availability=submission_service(db),
+        edit_events=RosterEditEventRepository(db),
+        overrides=RuleOverrideRepository(db),
     )
 
 

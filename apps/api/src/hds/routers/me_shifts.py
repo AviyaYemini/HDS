@@ -93,10 +93,14 @@ class ShiftContact(BaseModel):
 
 
 class MyShiftDetail(MyShift):
-    """One of the caller's published shifts, with the site's address and who to contact."""
+    """One of the caller's published shifts, with the site's address and who to contact.
+
+    ``note`` is a word from whoever placed or moved them there, if any (008 T042g).
+    """
 
     site_address: str | None
     contacts: list[ShiftContact]
+    note: str | None = None
 
 
 @router.get(
@@ -129,6 +133,7 @@ async def my_shift(
         project=NamedRef(id=found.project_id, name=found.project_name),
         site=NamedRef(id=found.site_id, name=found.site_name),
         site_address=found.site_address,
+        note=found.note,
         contacts=[
             ShiftContact(full_name=m.full_name, phone=m.phone, email=m.email) for m in managers
         ],

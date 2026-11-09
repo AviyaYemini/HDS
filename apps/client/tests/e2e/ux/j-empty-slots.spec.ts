@@ -70,8 +70,10 @@ LANGUAGES.forEach((language, index) => {
     const key = read.slots.find((s) => s.date === monday)!.key;
     const block = page.locator(`[data-testid="proposal-block"][data-slot-key="${key}"]`);
 
-    // Who else could cover: the free first, then the guard, with the rule (FR-014).
-    await block.getByTestId("action-review-assign").click();
+    // The empty slots come first, in red; one opens who else could cover: the free first, then
+    // the guard, with the rule (FR-014, T042b).
+    await expect(page.getByTestId("review-empty")).toBeVisible();
+    await page.locator(`[data-testid="review-empty-slot"][data-slot-key="${key}"]`).click();
     const sheet = page.getByTestId("review-assign-sheet");
     await expect(sheet.getByTestId("review-why-empty")).toBeVisible();
     const options = sheet.getByTestId("review-cover-option");

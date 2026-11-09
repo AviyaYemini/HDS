@@ -28,6 +28,7 @@ class ActiveProject:
     start_date: date
     end_date: date | None
     zone: str
+    site_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,8 @@ class StoredShift:
     zone: str
     people: tuple[uuid.UUID, ...]
     own_times: tuple[tuple[uuid.UUID, datetime, datetime], ...] = ()
+    # The people locked on it (008 FR-018): a later run keeps them.
+    locked: tuple[uuid.UUID, ...] = ()
 
 
 class SchedulingInputRepository(BaseRepository[Shift]):
@@ -60,7 +63,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
     ) -> list[ActiveProject]:
         """The organisation's active, not deleted projects; only ``ids`` when given."""
         query = (
-            select(Project.id, Project.start_date, Project.end_date, Site.timezone)
+            select(Project.id, Project.start_date, Project.end_date, Site.timezone, Project.site_id)
             .join(Site, Site.id == Project.site_id)
             .where(
                 Project.organization_id == org_id,
@@ -71,7 +74,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         if ids is not None:
             query = query.where(Project.id.in_(list(ids)))
         result = await self.session.execute(query.order_by(Project.id))
-        return [ActiveProject(r[0], r[1], r[2], r[3]) for r in result.all()]
+        return [ActiveProject(r[0], r[1], r[2], r[3], r[4]) for r in result.all()]
 
     async def project_types(
         self, project_ids: Collection[uuid.UUID]
@@ -109,6 +112,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         ids = [shift.id for shift, _ in rows]
         people: dict[uuid.UUID, list[uuid.UUID]] = {i: [] for i in ids}
         own: dict[uuid.UUID, list[tuple[uuid.UUID, datetime, datetime]]] = {i: [] for i in ids}
+        locked: dict[uuid.UUID, list[uuid.UUID]] = {i: [] for i in ids}
         if ids:
             assigned = await self.session.execute(
                 select(
@@ -116,14 +120,17 @@ class SchedulingInputRepository(BaseRepository[Shift]):
                     Assignment.user_id,
                     Assignment.starts_at,
                     Assignment.ends_at,
+                    Assignment.locked_at,
                 )
                 .where(Assignment.shift_id.in_(ids))
                 .order_by(Assignment.user_id)
             )
-            for shift_id, user_id, starts_at, ends_at in assigned.all():
+            for shift_id, user_id, starts_at, ends_at, locked_at in assigned.all():
                 people[shift_id].append(user_id)
                 if starts_at is not None and ends_at is not None:
                     own[shift_id].append((user_id, starts_at, ends_at))
+                if locked_at is not None:
+                    locked[shift_id].append(user_id)
         return [
             StoredShift(
                 s.id,
@@ -136,6 +143,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
                 zone,
                 tuple(people[s.id]),
                 tuple(own[s.id]),
+                tuple(locked[s.id]),
             )
             for s, zone in rows
         ]

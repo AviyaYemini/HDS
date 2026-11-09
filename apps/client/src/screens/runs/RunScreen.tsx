@@ -283,6 +283,14 @@ export function RunScreen() {
               ))}
             </View>
           ) : null}
+          {job.status === "succeeded" ? (
+            // Run again: the form on this run's range, projects, controls and chips, starting from
+            // its proposal and keeping its locks (FR-019, FR-021a).
+            <LinkPressable href={`/runs?again=${job.id}`} testID="action-run-again" style={[styles.link, { borderColor: colors.accent.default }]}>
+              <Icon name="play" size={18} color={colors.text.primary} />
+              <Txt role="label">{t("runs.run_again")}</Txt>
+            </LinkPressable>
+          ) : null}
           {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} /> : null}
         </View>
       )}

@@ -19,6 +19,7 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange } from "../../locale";
 import { useLoad } from "../useLoad";
+import { FairnessPanel } from "./FairnessPanel";
 import { weeksOf, type Job, type Names } from "./model";
 import {
   MARK_ICON,
@@ -216,6 +217,15 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   };
 
   const byDay = slotsByDay(shown);
+  const empty = shown.slots.filter((slot) => slot.places > 0);
+  // Bring the slot into view behind the sheet, then open its "Who else could cover" (T042b).
+  const openSlot = (slot: ReviewSlot) => {
+    if (typeof document !== "undefined") {
+      // The slot's block, not the strip's own button, which carries the same key (R50).
+      document.querySelector(`[data-testid="proposal-block"][data-slot-key="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center" });
+    }
+    setAssignTo(slot);
+  };
   const { days: openDays, projects: openProjects } = openDaysAndProjects(shown);
   const anyOpen = open && hasOpen(shown);
   const showBar = open;
@@ -230,6 +240,32 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
         {marksText}
       </Txt>
       {problem ? <InlineBanner tone="warning" testID="review-problem" title={errorText(problem)} /> : null}
+      <FairnessPanel
+        jobId={job.id}
+        version={shown.version}
+        name={name}
+        place={(id) => names.projects.get(id) ?? ""}
+        type={(id) => names.types.get(id) ?? ""}
+      />
+      {empty.length > 0 ? (
+        // The slots left with empty places, first and in red with an icon and words; each opens
+        // its slot with "Who else could cover" (T042b, FR-014).
+        <InlineBanner tone="danger" title={t("review.empty_title", { count: empty.length })} testID="review-empty">
+          {empty.map((slot) => (
+            // Its words wrap at phone width, where a long place name would not fit on one line.
+            <Button
+              key={slot.key}
+              variant="quiet"
+              wrap
+              label={t("review.empty_slot", { place: placeName(slot), count: slot.places })}
+              disabled={!open || busy !== null}
+              onPress={() => openSlot(slot)}
+              testID="review-empty-slot"
+              web={{ dataSet: { slotKey: slot.key } }}
+            />
+          ))}
+        </InlineBanner>
+      ) : null}
       {showBar ? (
         <View style={styles.bar} testID="accept-bar">
           <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />
@@ -258,7 +294,10 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
           <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />
         </View>
       ) : null}
-      {weeksOf(job.from, job.to).map((days) => {
+      {/* Only the weeks that hold a slot of the run: calendar weeks with none add nothing (T042a). */}
+      {weeksOf(job.from, job.to)
+        .filter((days) => days.some((day) => byDay.has(day)))
+        .map((days) => {
         const visible = isDesktop ? days : days.filter((day) => byDay.has(day));
         return (
           <View key={days[0]} testID="proposal-week" style={[styles.week, isDesktop ? styles.weekRow : null]}>
@@ -452,6 +491,16 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
             <Button variant="secondary" icon="close" label={t("review.unassign")} testID="action-review-unassign" onPress={() => void send({ op: "unassign", key: personOn.slot.key, user_id: personOn.userId })} />
             <Button variant="secondary" icon="arrow-next" label={t("review.move")} testID="action-review-move" onPress={() => { setMoving({ from: personOn, swap: false }); setPersonOn(null); }} />
             <Button variant="secondary" icon="people" label={t("review.swap")} testID="action-review-swap" onPress={() => { setMoving({ from: personOn, swap: true }); setPersonOn(null); }} />
+            <Button
+              variant="secondary"
+              icon="lock"
+              label={personOn.slot.people.find((p) => p.user_id === personOn.userId)?.locked ? t("review.unlock") : t("review.lock")}
+              testID="action-review-lock"
+              onPress={() => {
+                const locked = personOn.slot.people.find((p) => p.user_id === personOn.userId)?.locked;
+                void send({ op: locked ? "unlock" : "lock", key: personOn.slot.key, user_id: personOn.userId });
+              }}
+            />
           </View>
         ) : null}
       </Sheet>
@@ -564,6 +613,15 @@ function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, 
                 {t("review.by_person")}
               </Txt>
             ) : null}
+            {who?.locked ? (
+              // Locked: later runs keep this person here (FR-018), in words beside the icon.
+              <View style={styles.lockMark} testID="mark-locked">
+                <Icon name="lock" size={12} color={colors.text.secondary} />
+                <Txt role="meta" tone="secondary">
+                  {t("review.locked")}
+                </Txt>
+              </View>
+            ) : null}
             {who?.override ? (
               <Txt role="meta" tone="warning" testID="mark-override">
                 {t("review.overridden")}
@@ -591,6 +649,7 @@ function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, 
 }
 
 const styles = StyleSheet.create({
+  lockMark: { flexDirection: "row", alignItems: "center", gap: 4 },
   option: { gap: 2 },
   weeks: { gap: 16 },
   bar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },

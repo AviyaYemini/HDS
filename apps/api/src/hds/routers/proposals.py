@@ -163,9 +163,12 @@ class Cover(BaseModel):
 
 
 class EditRequest(BaseModel):
-    """One edit: assign, unassign, move or swap a person, with a reason to keep a rule break."""
+    """One edit of a person: assign, unassign, move, swap, lock or unlock.
 
-    op: Literal["assign", "unassign", "move", "swap"]
+    A rule break needs a reason to be kept; a lock marks someone later runs keep (008 FR-018).
+    """
+
+    op: Literal["assign", "unassign", "move", "swap", "lock", "unlock"]
     key: Annotated[str, text(200, min_length=1)]
     user_id: uuid.UUID
     to_key: Annotated[str, text(200, min_length=1)] | None = None
@@ -303,3 +306,90 @@ async def cover_slot(
     Manager or Admin, of every project in the run.
     """
     return Cover(**await svc.cover(current_user, id, key))
+
+
+class Share(BaseModel):
+    """One person's share of the range, and which of it stands out (008 FR-025)."""
+
+    user_id: uuid.UUID
+    minutes: int
+    nights: int
+    weekends: int
+    hours_outlier: bool
+    nights_outlier: bool
+    weekends_outlier: bool
+
+
+class Totals(BaseModel):
+    """The run's people and their totals; each total over ``people`` is its average."""
+
+    people: int
+    minutes: int
+    nights: int
+    weekends: int
+
+
+class Tradeoffs(BaseModel):
+    """What the proposal gave up, as counts the summary words (008 FR-024)."""
+
+    empty_places: int
+    open_wishes_missed: int
+    close_wishes_given: int
+    minutes_low: int
+    minutes_high: int
+    nights_low: int
+    nights_high: int
+    chips_not_met: int
+
+
+class ChipState(BaseModel):
+    """A chip of the run, and whether the proposal meets it now (008 FR-021, FR-022)."""
+
+    kind: str
+    user_id: uuid.UUID
+    count: int | None = None
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    weekday: int | None = None
+    shift_type_id: uuid.UUID | None = None
+    state: Literal["met", "not_met", "not_applying"]
+    cause: Literal["coverage", "conflict", "fixed"] | None = None
+
+
+class Fairness(BaseModel):
+    """How fair the proposal is, what it traded off, its chips, and what it keeps.
+
+    008 FR-023 to FR-026.
+    """
+
+    shares: list[Share]
+    totals: Totals
+    tradeoffs: Tradeoffs
+    chips: list[ChipState]
+    overridden: int
+    locks: int
+
+
+@router.get(
+    "/schedule-jobs/{id}/fairness",
+    response_model=Fairness,
+    summary="Fairness and trade-offs of a proposal",
+    description=(
+        "Manager or Admin, of every project in the run. Judged on the working copy, so it follows "
+        "every edit (008 FR-026): each person's hours (in minutes), nights and weekend shifts in "
+        "the range against the run's totals, with outliers; the trade-off counts; each chip met, "
+        "not met (with what prevented it) or no longer applying; how many assignments break a "
+        "rule by a person's override; and how many locks it keeps. Numbers only, never a score. "
+        "409 (`schedule.not_ready`) before the job has a proposal."
+    ),
+)
+async def fairness_of(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    svc: ProposalService = Depends(proposals),
+) -> Fairness:
+    """Fairness and trade-offs of a proposal.
+
+    Manager or Admin, of every project in the run.
+    """
+    return Fairness(**await svc.fairness(current_user, id))

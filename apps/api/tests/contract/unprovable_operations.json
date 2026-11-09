@@ -153,7 +153,7 @@
       "path": "/api/v1/schedule-jobs",
       "operation_id": "create_job_api_v1_schedule_jobs_post",
       "suites": ["pytest", "cli"],
-      "reason": "to >= from and at most 31 days span two fields (004 FR-005), answered 422 schedule.range_invalid; a project id must be an active project of the organisation, answered 422 schedule.project_not_active; a Manager may name only projects they manage, answered 403 roster.project_not_managed, and with none named needs a project of their own, answered 422 schedule.no_projects (007 T108)"
+      "reason": "to >= from and at most 31 days span two fields (004 FR-005), answered 422 schedule.range_invalid; a project id must be an active project of the organisation, answered 422 schedule.project_not_active; a Manager may name only projects they manage, answered 403 roster.project_not_managed, and with none named needs a project of their own, answered 422 schedule.no_projects (007 T108); 008: a chip must name a member of the organisation's staff (422 schedule.chip_invalid) and based_on an earlier run of the organisation (404), which depend on stored data"
     },
     {
       "method": "GET",

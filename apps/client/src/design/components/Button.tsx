@@ -48,6 +48,8 @@ export interface ButtonProps {
   busy?: boolean;
   /** Stretch to the container's width. */
   block?: boolean;
+  /** Let a long label wrap onto more lines instead of cutting it to one (a list of places). */
+  wrap?: boolean;
   testID?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
@@ -71,7 +73,8 @@ export function Button({
   disabled = false,
   disabledReason,
   busy = false,
-  block = false,
+  block,
+  wrap = false,
   testID,
   accessibilityLabel,
   accessibilityHint,
@@ -138,8 +141,8 @@ export function Button({
           role="label"
           tone="inherit"
           testID={variant === "link" ? testID : undefined}
-          style={[{ color }, underline ? styles.underline : null, variant === "link" ? styles.linkText : null]}
-          numberOfLines={1}
+          style={[{ color }, underline ? styles.underline : null, variant === "link" ? styles.linkText : null, wrap ? styles.wrap : null]}
+          numberOfLines={wrap ? undefined : 1}
         >
           {label}
         </Txt>
@@ -203,6 +206,7 @@ const styles = StyleSheet.create({
   block: { alignSelf: "stretch" },
   pressable: { alignSelf: "stretch" },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 20 },
+  wrap: { flexShrink: 1 },
   underline: { textDecorationLine: "underline" },
   linkText: { textDecorationLine: "none" },
   reason: { marginTop: 4 },

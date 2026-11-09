@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hds.core.database import get_unit_of_work
@@ -28,6 +28,7 @@ from hds.core.types import (
     Money,
     StrictDate,
     omittable,
+    text,
 )
 from hds.models.user import User
 from hds.repositories.idempotency_key import IdempotencyKeyRepository
@@ -72,6 +73,10 @@ class AssignmentRead(BaseModel):
     )
     active: bool | None = Field(
         default=None, description="Whether the person is still active; false for a deactivated one."
+    )
+    locked: bool = Field(
+        default=False,
+        description="Locked: later runs keep this assignment until it is unlocked (008 FR-018).",
     )
 
 
@@ -163,12 +168,62 @@ class ShiftUpdateRequest(ChangeRequest):
     pay_rate: Money | None = None
 
 
+Alert = Literal["everyone", "affected", "none"]
+"""Who hears of a manual edit: everyone on the edited roster, only the people it affects, or no
+one. 008 records the choice; feature 010 delivers it (T042g)."""
+
+
 class AssignRequest(BaseModel):
-    """The employee to put on the shift, and optionally their own times in it (007 FR-027)."""
+    """The employee to put on the shift, and optionally their own times in it (007 FR-027).
+
+    ``note`` is a word to them, shown on their own shift page; ``alert`` says who hears of it.
+    """
 
     user_id: uuid.UUID
     starts_at: IsoDateTime | None = None
     ends_at: IsoDateTime | None = None
+    note: Annotated[str, text(500, min_length=1)] | None = None
+    alert: Alert = "none"
+
+
+class MoveRequest(BaseModel):
+    """Where an assignment goes, and whom it swaps with there, if anyone (008 T042f)."""
+
+    to_shift_id: uuid.UUID
+    swap_with: uuid.UUID | None = None
+    note: Annotated[str, text(500, min_length=1)] | None = None
+    alert: Alert = "none"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MoveAnswer(BaseModel):
+    """The warnings both shifts have after a move, and their new ``etag``s."""
+
+    warnings: list[WarningRead]
+    shift_etags: dict[str, str]
+
+
+class BusyRead(BaseModel):
+    """Someone already on another shift then (008 T042f, FR-016).
+
+    The shift is named only when the editor may change it; ``movable`` says swap and transfer may
+    be offered.
+    """
+
+    user_id: uuid.UUID
+    assignment_id: uuid.UUID | None
+    shift_id: uuid.UUID | None
+    project_id: uuid.UUID | None
+    starts_at: datetime | None
+    ends_at: datetime | None
+    movable: bool
+
+
+class BusyAnswer(BaseModel):
+    """Everyone on another shift that overlaps this one, in any project."""
+
+    items: list[BusyRead]
 
 
 class AssignmentTimesRequest(BaseModel):
@@ -200,6 +255,7 @@ def _assignment(
         starts_at=a.starts_at if own else shift.starts_at,
         ends_at=a.ends_at if own else shift.ends_at,
         own_times=own,
+        locked=getattr(a, "locked_at", None) is not None,
         overrides=[
             OverrideRead(
                 warning_code=o.warning_code,
@@ -469,6 +525,8 @@ async def assign(
             starts_at=body.starts_at,
             ends_at=body.ends_at,
             expected=if_match,
+            note=body.note,
+            alert=body.alert,
         )
         shift = await svc.fresh_shift(current_user, id)
         answer = AssignmentAnswer(
@@ -494,12 +552,14 @@ async def assign(
     description=(
         "A Manager of the project, or an Admin. Take the employee off the shift; the answer "
         "lists the warnings the shift has left, for example too few people. A stale `If-Match` "
-        "is refused with 412 (`roster.changed`)."
+        "is refused with 412 (`roster.changed`). `alert` says who hears of it: everyone on the "
+        "edited roster, only the person removed, or no one (recorded for feature 010)."
     ),
 )
 async def unassign(
     id: uuid.UUID,
     if_match: str | None = IfMatch,
+    alert: Alert = Query(default="none"),
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> WarningsAnswer:
@@ -508,9 +568,73 @@ async def unassign(
     A Manager of the project, or an Admin. The answer lists the warnings the shift has left.
     """
     svc = roster_service(db)
-    shift_id, warnings = await svc.unassign_returning_shift(current_user, id, if_match)
+    shift_id, warnings = await svc.unassign_returning_shift(current_user, id, if_match, alert)
     shift = await svc.fresh_shift(current_user, shift_id)
     return WarningsAnswer(warnings=warnings, shift_etag=etag(shift))  # type: ignore[arg-type]
+
+
+@router.get(
+    "/shifts/{id}/busy",
+    response_model=BusyAnswer,
+    summary="Who is busy then",
+    description=(
+        "A Manager of the project, or an Admin. Everyone already on another shift that overlaps "
+        "this one, in any project, by the times they work it. The other shift (its id, project "
+        "and times, and the assignment) is named only when the caller may edit its roster; "
+        "`movable` then says swap and transfer may be offered (008 T042f)."
+    ),
+)
+async def busy(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> BusyAnswer:
+    """Who is busy then.
+
+    A Manager of the project, or an Admin.
+    """
+    found = await roster_service(db).busy(current_user, id)
+    return BusyAnswer(items=[BusyRead(**vars(b)) for b in found])
+
+
+@router.post(
+    "/assignments/{id}/move",
+    response_model=MoveAnswer,
+    summary="Move or swap an assignment",
+    description=(
+        "A Manager of both projects, or an Admin. Move the person to `to_shift_id` (a transfer: "
+        "their first shift loses them), or, with `swap_with` (an assignment on that shift), swap "
+        "the two in one step. The assignments keep their ids, so moving back undoes it; each takes "
+        "its new shift's times and drops the overrides it carried. 404 for an assignment, shift "
+        "or `swap_with` not found; 409 `assignments.duplicate` when someone would be on a shift "
+        "twice, `assignments.move_same_shift` for the shift they are on. The answer lists both "
+        "shifts' warnings and new `etag`s (008 T042f)."
+    ),
+)
+async def move(
+    id: uuid.UUID,
+    body: MoveRequest,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> MoveAnswer:
+    """Move or swap an assignment.
+
+    A Manager of both projects, or an Admin.
+    """
+    svc = roster_service(db)
+    moved = await svc.move(
+        current_user,
+        id,
+        body.to_shift_id,
+        swap_with=body.swap_with,
+        note=body.note,
+        alert=body.alert,
+    )
+    etags = {
+        str(sid): etag(await svc.fresh_shift(current_user, sid))
+        for sid in (moved.source_id, moved.target_id)
+    }
+    return MoveAnswer(warnings=moved.warnings, shift_etags=etags)  # type: ignore[arg-type]
 
 
 @router.patch(
@@ -545,4 +669,53 @@ async def change_assignment_times(
         assignment=_assignment(judged.record, shift),
         warnings=judged.warnings,  # type: ignore[arg-type]
         shift_etag=etag(shift),
+    )
+
+
+@router.put(
+    "/assignments/{id}/lock",
+    response_model=AssignmentAnswer,
+    summary="Lock an assignment",
+    description=(
+        "A Manager of the project, or an Admin. Later runs keep a locked assignment, count it "
+        "toward hours, nights, the weekly maximum and fairness, and say how many they kept, until "
+        "it is unlocked or removed (008 FR-018). Locking twice changes nothing."
+    ),
+)
+async def lock(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AssignmentAnswer:
+    """Lock an assignment.
+
+    A Manager of the project, or an Admin.
+    """
+    assignment, shift = await roster_service(db).lock(current_user, id, True)
+    return AssignmentAnswer(
+        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
+    )
+
+
+@router.delete(
+    "/assignments/{id}/lock",
+    response_model=AssignmentAnswer,
+    summary="Unlock an assignment",
+    description=(
+        "A Manager of the project, or an Admin. Later runs may change the assignment again "
+        "(008 FR-018). Unlocking what is not locked changes nothing."
+    ),
+)
+async def unlock(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AssignmentAnswer:
+    """Unlock an assignment.
+
+    A Manager of the project, or an Admin.
+    """
+    assignment, shift = await roster_service(db).lock(current_user, id, False)
+    return AssignmentAnswer(
+        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
     )

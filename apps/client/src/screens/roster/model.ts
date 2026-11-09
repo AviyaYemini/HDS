@@ -69,4 +69,6 @@ export function cellOf(day: string, shiftTypeId: string): string {
 /** One step the roster's Undo can take back (FR-037). */
 export type RosterChange =
   | { kind: "assigned"; assignmentId: string; shiftId: string; userId: string }
+  // A transfer or a swap (008 T042f): undone by moving the assignment back, swapping again.
+  | { kind: "moved"; assignmentId: string; shiftId: string; fromShiftId: string; swapWith: string | null }
   | { kind: "unassigned"; shiftId: string; userId: string; starts_at: string | null; ends_at: string | null };

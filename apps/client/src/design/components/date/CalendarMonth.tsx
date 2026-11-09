@@ -126,7 +126,7 @@ export function CalendarMonth({
         </Txt>
       )}
       <View role="grid" accessibilityLabel={formatMonthYear(month, i18n.language)} style={styles.grid}>
-        <View role="row" style={styles.row}>
+        <View role="row" style={[styles.row, isDesktop ? null : styles.rowPhone]}>
           {names.map((name, index) => (
             <View key={index} role="columnheader" accessibilityLabel={longNames[index]} style={[styles.cell, { width: size, height: 28 }]}>
               <Txt role="eyebrow" tone="secondary" style={styles.center}>
@@ -136,7 +136,7 @@ export function CalendarMonth({
           ))}
         </View>
         {rows.map((row, r) => (
-          <View key={r} role="row" style={styles.row}>
+          <View key={r} role="row" style={[styles.row, isDesktop ? null : styles.rowPhone]}>
             {row.map((date, c) => {
               if (!date) {
                 return <View key={`blank-${c}`} {...blankProps} aria-disabled style={[styles.cell, { width: size, height: size }]} />;
@@ -233,6 +233,8 @@ const styles = StyleSheet.create({
   title: { textAlign: "center" },
   grid: { gap: 2 },
   row: { flexDirection: "row", gap: 2 },
+  // On a phone the 44-pixel cells touch, so a month is 7 x 44 = 308 wide and fits a 310 column.
+  rowPhone: { gap: 0 },
   cell: { alignItems: "center", justifyContent: "center" },
   center: { textAlign: "center" },
   strong: { fontWeight: "600" },

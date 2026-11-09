@@ -58,6 +58,8 @@ class OwnShiftDetail(OwnShift):
     """One of an employee's published shifts with its site's address (007 FR-023, E11)."""
 
     site_address: str | None
+    # A word from whoever placed or moved them there (008 T042g).
+    note: str | None = None
 
 
 class ShiftRepository(OrgScopedRepository[Shift]):
@@ -332,6 +334,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
                 Site.id,
                 Site.name,
                 Site.address,
+                Assignment.note,
             )
             .join(Assignment, Assignment.shift_id == Shift.id)
             .join(Project, Project.id == Shift.project_id)
@@ -349,7 +352,7 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         if row is None:
             return None
         base = OwnShift(*row[:9])
-        return OwnShiftDetail(**vars(base), site_address=row[9])
+        return OwnShiftDetail(**vars(base), site_address=row[9], note=row[10])
 
     async def of_employees(
         self,
@@ -433,6 +436,64 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
             .returning(Assignment.id)
         )
         return len(result.all())
+
+    async def lock_people(
+        self, shift_id: uuid.UUID, user_ids: Collection[uuid.UUID], by: uuid.UUID, at: datetime
+    ) -> None:
+        """Lock the assignments of ``user_ids`` on a shift that are not locked yet (008 FR-018)."""
+        if user_ids:
+            await self.session.execute(
+                update(Assignment)
+                .where(
+                    Assignment.shift_id == shift_id,
+                    Assignment.user_id.in_(list(user_ids)),
+                    Assignment.locked_at.is_(None),
+                )
+                .values(locked_by=by, locked_at=at)
+            )
+
+    async def fresh(self, id: uuid.UUID, org_id: uuid.UUID) -> Assignment | None:
+        """The assignment as stored now, not as the session last loaded it."""
+        result = await self.session.execute(
+            select(Assignment)
+            .where(Assignment.id == id, Assignment.organization_id == org_id)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def on_shift(self, shift_id: uuid.UUID) -> list[Assignment]:
+        """The assignments on one shift, read from the database (a caller holds its lock)."""
+        result = await self.session.execute(
+            select(Assignment)
+            .where(Assignment.shift_id == shift_id)
+            .order_by(Assignment.id)
+            .execution_options(populate_existing=True)
+        )
+        return list(result.scalars())
+
+    async def overlapping(
+        self, org_id: uuid.UUID, shift_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[tuple[Assignment, Shift]]:
+        """Assignments on other shifts that overlap ``start`` to ``end``, in every project.
+
+        Each person counts by the times they work (their own times when set, 007 FR-027); shifts
+        that only touch do not overlap. For the roster's "already on another shift" (008 T042f).
+        """
+        starts = func.coalesce(Assignment.starts_at, Shift.starts_at)
+        ends = func.coalesce(Assignment.ends_at, Shift.ends_at)
+        result = await self.session.execute(
+            select(Assignment, Shift)
+            .join(Shift, Shift.id == Assignment.shift_id)
+            .where(
+                Assignment.organization_id == org_id,
+                Shift.organization_id == org_id,
+                Shift.id != shift_id,
+                starts < end,
+                ends > start,
+            )
+            .order_by(Shift.starts_at, Assignment.id)
+        )
+        return [(a, s) for a, s in result.tuples()]
 
     async def exists(self, id: uuid.UUID, org_id: uuid.UUID) -> bool:
         """Whether the assignment is still there, read from the database, not the session."""

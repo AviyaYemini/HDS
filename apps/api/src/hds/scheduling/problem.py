@@ -51,6 +51,7 @@ class Slot:
     headcount: int
     night: bool
     kept: tuple[uuid.UUID, ...] = ()
+    site_id: uuid.UUID | None = None
 
     @cached_property
     def day(self) -> date:
@@ -77,6 +78,58 @@ class Slot:
 
 
 @dataclass(frozen=True)
+class Controls:
+    """The run's two plain controls (008 FR-017, research P3); untouched, today's order.
+
+    ``keep_changes_small``: fewest changes against the starting point ranks right after the chips
+    ("Keep changes small"), or last ("Rebalance freely", today's order). ``wishes_strictly``: the
+    employees' open and close wishes rank before the balance of hours and nights ("strictly",
+    today's order), or after it ("gently"). Neither ever ranks above filling every place.
+    """
+
+    keep_changes_small: bool = False
+    wishes_strictly: bool = True
+
+
+CHIP_KINDS = ("max_shifts", "max_nights", "max_hours", "keep_on", "keep_off", "prefer")
+"""The manager's preferences for a run, each about one person (008 FR-020, research P5)."""
+
+
+@dataclass(frozen=True)
+class Chip:
+    """One preference for a run about one person, from a fixed set (008 FR-020).
+
+    ``max_shifts``, ``max_nights``: at most ``count`` in the range; ``max_hours``: at most
+    ``count`` hours. ``keep_on``: only on ``project_id`` or ``site_id``. ``keep_off``: never on
+    ``weekday`` (0 is Sunday) or ``shift_type_id``. ``prefer``: rather on ``weekday`` or
+    ``shift_type_id``. Chips weigh second, after filling every place, and never break a rule.
+    """
+
+    kind: str
+    user_id: uuid.UUID
+    count: int | None = None
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    weekday: int | None = None
+    shift_type_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class ChipResult:
+    """Whether a chip was met (008 FR-021, FR-022).
+
+    ``state`` is ``met``, ``not_met`` or ``not_applying`` (its person is not a candidate, or its
+    project is not in the run). A chip not met names its ``cause``: ``coverage`` (meeting it would
+    leave a place empty), ``conflict`` (another chip about the same person pulls the other way) or
+    ``fixed`` (a cap their shifts outside the run's choice already pass).
+    """
+
+    index: int
+    state: str
+    cause: str | None = None
+
+
+@dataclass(frozen=True)
 class Problem:
     """Everything a solver needs, and nothing it may change.
 
@@ -100,6 +153,16 @@ class Problem:
     current: Mapping[str, tuple[uuid.UUID, ...]] = field(default_factory=dict)
     night_types: frozenset[uuid.UUID] = frozenset()
     max_run: int = 6
+    # 008: the starting point for "fewest changes" and the solver's hints (research P6); the
+    # drafts (``current``) when None. A rerun from a proposal passes its working copy.
+    start: Mapping[str, tuple[uuid.UUID, ...]] | None = None
+    controls: Controls = field(default_factory=Controls)
+    chips: tuple[Chip, ...] = ()
+
+    @property
+    def starting(self) -> Mapping[str, tuple[uuid.UUID, ...]]:
+        """The starting point: ``start`` when given, else the drafts."""
+        return self.current if self.start is None else self.start
 
 
 @dataclass(frozen=True)
@@ -180,6 +243,7 @@ class Result:
     summary: tuple[EmployeeSummary, ...]
     changes: Changes
     optimal: bool
+    chips: tuple[ChipResult, ...] = ()
 
 
 class SolverError(RuntimeError):

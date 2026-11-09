@@ -1562,6 +1562,113 @@ components:
           type: string
           enum: [greedy, cpsat]
           default: cpsat
+        controls:
+          $ref: "#/components/schemas/RunControls"
+        chips:
+          description: Up to 20 preferences; absent with based_on copies that run's (008 FR-021a).
+          type: [array, "null"]
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Chip"
+        based_on:
+          description: An earlier run this one reruns, from its working copy and keeping its locks (FR-019).
+          oneOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+
+    RunControls:
+      type: object
+      additionalProperties: false
+      description: >-
+        The run's two plain controls (008 FR-017): "Keep changes small" (true) or "Rebalance
+        freely"; "would rather not" respected strictly, before the balance of hours and nights
+        (true), or gently, after it. Untouched, today's order.
+      properties:
+        keep_changes_small: {type: boolean, default: false}
+        wishes_strictly: {type: boolean, default: true}
+
+    Chip:
+      type: object
+      additionalProperties: false
+      required: [kind, user_id]
+      description: >-
+        One preference about one person (008 FR-020): max_shifts, max_nights and max_hours take
+        count; keep_on takes project_id or site_id; keep_off and prefer take weekday (0 is Sunday)
+        or shift_type_id. One without its value, or naming someone not on the staff, is 422
+        schedule.chip_invalid.
+      properties:
+        kind: {type: string, enum: [max_shifts, max_nights, max_hours, keep_on, keep_off, prefer]}
+        user_id: {$ref: "#/components/schemas/UUIDv4"}
+        count: {type: [integer, "null"], minimum: 0, maximum: 744}
+        project_id: {type: [string, "null"], format: uuid}
+        site_id: {type: [string, "null"], format: uuid}
+        weekday: {type: [integer, "null"], minimum: 0, maximum: 6}
+        shift_type_id: {type: [string, "null"], format: uuid}
+
+    ChipState:
+      type: object
+      description: >-
+        A chip of the run and whether the proposal meets it now (008 FR-021, FR-022). Its own
+        schema: Chip forbids other properties, so it cannot be extended with allOf (R52).
+      required: [kind, user_id, state]
+      properties:
+        kind: {type: string, enum: [max_shifts, max_nights, max_hours, keep_on, keep_off, prefer]}
+        user_id: {$ref: "#/components/schemas/UUIDv4"}
+        count: {type: [integer, "null"]}
+        project_id: {type: [string, "null"], format: uuid}
+        site_id: {type: [string, "null"], format: uuid}
+        weekday: {type: [integer, "null"]}
+        shift_type_id: {type: [string, "null"], format: uuid}
+        state: {type: string, enum: [met, not_met, not_applying]}
+        cause: {type: [string, "null"], enum: [coverage, conflict, fixed, null]}
+
+    Fairness:
+      type: object
+      description: >-
+        A proposal's fairness, trade-offs, chips and guarantees, judged on its working copy so it
+        follows every edit (008 FR-023 to FR-026). Numbers only, never a score; each total over
+        totals.people is its average.
+      required: [shares, totals, tradeoffs, chips, overridden, locks]
+      properties:
+        shares:
+          type: array
+          items:
+            type: object
+            required: [user_id, minutes, nights, weekends, hours_outlier, nights_outlier, weekends_outlier]
+            properties:
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+              minutes: {type: integer}
+              nights: {type: integer}
+              weekends: {type: integer}
+              hours_outlier: {type: boolean}
+              nights_outlier: {type: boolean}
+              weekends_outlier: {type: boolean}
+        totals:
+          type: object
+          required: [people, minutes, nights, weekends]
+          properties:
+            people: {type: integer}
+            minutes: {type: integer}
+            nights: {type: integer}
+            weekends: {type: integer}
+        tradeoffs:
+          type: object
+          required: [empty_places, open_wishes_missed, close_wishes_given, minutes_low, minutes_high, nights_low, nights_high, chips_not_met]
+          properties:
+            empty_places: {type: integer}
+            open_wishes_missed: {type: integer}
+            close_wishes_given: {type: integer}
+            minutes_low: {type: integer}
+            minutes_high: {type: integer}
+            nights_low: {type: integer}
+            nights_high: {type: integer}
+            chips_not_met: {type: integer}
+        chips:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChipState"
+        overridden: {type: integer, description: Assignments kept despite a rule by a person's reason (FR-023).}
+        locks: {type: integer, description: Locked assignments the proposal keeps (FR-018).}
 
     JobSummary:
       type: object
@@ -1643,7 +1750,7 @@ components:
       additionalProperties: false
       required: [op, key, user_id]
       properties:
-        op: {type: string, enum: [assign, unassign, move, swap]}
+        op: {type: string, enum: [assign, unassign, move, swap, lock, unlock]}
         key: {type: string, minLength: 1, maxLength: 200}
         user_id: {$ref: "#/components/schemas/UUIDv4"}
         to_key: {type: [string, "null"], minLength: 1, maxLength: 200}
@@ -2125,6 +2232,73 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ISODateTime"
             - type: "null"
+        note:
+          description: A word to the person placed, shown on their own shift page (008 T042g).
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 500
+        alert:
+          $ref: "#/components/schemas/EditAlert"
+
+    EditAlert:
+      description: >-
+        Who hears of a manual roster edit: everyone on the edited roster, only the people it
+        affects, or no one. 008 records the choice; feature 010 delivers it (T042g).
+      type: string
+      enum: [everyone, affected, none]
+      default: none
+
+    MoveRequest:
+      type: object
+      additionalProperties: false
+      required: [to_shift_id]
+      description: Where an assignment goes, and whom it swaps with there, if anyone (008 T042f).
+      properties:
+        to_shift_id: {$ref: "#/components/schemas/UUIDv4"}
+        swap_with:
+          description: An assignment on the target shift, to trade places with.
+          oneOf:
+            - $ref: "#/components/schemas/UUIDv4"
+            - type: "null"
+        note:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 500
+        alert:
+          $ref: "#/components/schemas/EditAlert"
+
+    MoveAnswer:
+      type: object
+      required: [warnings, shift_etags]
+      properties:
+        warnings:
+          type: array
+          items: {type: object}
+        shift_etags:
+          description: Each of the two shifts' new etag, by shift id.
+          type: object
+          additionalProperties: {type: string}
+
+    BusyAnswer:
+      type: object
+      required: [items]
+      description: >-
+        Everyone on another shift that overlaps this one, in any project. The other shift is named
+        only when the caller may edit its roster; movable says swap and transfer may be offered.
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [user_id, assignment_id, shift_id, project_id, starts_at, ends_at, movable]
+            properties:
+              user_id: {$ref: "#/components/schemas/UUIDv4"}
+              assignment_id: {type: [string, "null"], format: uuid}
+              shift_id: {type: [string, "null"], format: uuid}
+              project_id: {type: [string, "null"], format: uuid}
+              starts_at: {type: [string, "null"], format: date-time}
+              ends_at: {type: [string, "null"], format: date-time}
+              movable: {type: boolean}
 
     # ── Publishing and my shifts (003 Part 2) ─────────────────────────────────
 
@@ -2192,6 +2366,9 @@ components:
           required: [site_address, contacts]
           properties:
             site_address:
+              type: [string, "null"]
+            note:
+              description: A word from whoever placed or moved them there (008 T042g).
               type: [string, "null"]
             contacts:
               type: array
@@ -4569,6 +4746,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -4869,6 +5048,39 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /schedule-jobs/{id}/fairness:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: proposals_fairness
+      summary: Fairness and trade-offs of a proposal (Manager+)
+      description: >
+        Judged on the working copy, so it follows every edit (008 FR-023 to FR-026). 409
+        schedule.not_ready before the job has a proposal.
+      tags: [Proposals]
+      responses:
+        "200":
+          description: The proposal's fairness, trade-offs, chips and guarantees.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fairness"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /schedule-jobs/{id}/slots/{key}/cover:
     parameters:
       - name: id
@@ -5107,6 +5319,37 @@ paths:
           $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+  /shifts/{id}/busy:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: shifts_busy
+      summary: Who is busy then (a Manager of the project, or an Admin; 008 T042f)
+      description: >
+        Everyone already on another shift that overlaps this one, in any project, by the times
+        they work it. The other shift is named only when the caller may edit its roster.
+      tags: [Shifts]
+      responses:
+        "200":
+          description: The people busy then.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusyAnswer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /assignments/{id}:
     parameters:
       - name: id
@@ -5153,6 +5396,12 @@ paths:
       tags: [Shifts]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - name: alert
+          in: query
+          required: false
+          description: Who hears of it, recorded for feature 010 (008 T042g).
+          schema:
+            $ref: "#/components/schemas/EditAlert"
       responses:
         "200":
           description: The warnings the shift has left.
@@ -5168,6 +5417,100 @@ paths:
           $ref: "#/components/responses/NotFound"
         "412":
           $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /assignments/{id}/lock:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    put:
+      operationId: assignments_lock
+      summary: Lock an assignment (a Manager of the project, or an Admin; 008 FR-018)
+      description: >
+        Later runs keep it, count it toward hours, nights, the weekly maximum and fairness, and
+        say how many they kept, until it is unlocked or removed. Locking twice changes nothing.
+      tags: [Shifts]
+      responses:
+        "200":
+          description: The assignment, now locked, and its shift's etag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentAnswer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: assignments_unlock
+      summary: Unlock an assignment (a Manager of the project, or an Admin; 008 FR-018)
+      tags: [Shifts]
+      responses:
+        "200":
+          description: The assignment, now unlocked, and its shift's etag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentAnswer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /assignments/{id}/move:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: assignments_move
+      summary: Move or swap an assignment (a Manager of both projects, or an Admin; 008 T042f)
+      description: >
+        A transfer moves the person to to_shift_id and their first shift loses them; with
+        swap_with, the person there moves to the first shift in the same step. The assignments
+        keep their ids, so moving back undoes it; each takes its new shift's times and drops the
+        overrides it carried. 409 assignments.duplicate or assignments.move_same_shift.
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveRequest"
+      responses:
+        "200":
+          description: Both shifts' warnings and new etags.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveAnswer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

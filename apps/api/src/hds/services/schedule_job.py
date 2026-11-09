@@ -13,7 +13,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -39,6 +39,7 @@ from hds.repositories.shift import AssignmentRepository, ShiftRepository
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling import Employee, Result, generate, validate
+from hds.scheduling.problem import Chip, Controls
 from hds.services import proposal_copy
 from hds.services.schedule_inputs import Built, ScheduleInputService, surroundings
 
@@ -93,6 +94,10 @@ class Claim:
     settings: dict[str, int]
     lease_until: datetime | None = None
     trace_context: str | None = None
+    # 008: the run's controls and chips as stored, and the earlier run it reruns, if any.
+    controls: dict[str, Any] = field(default_factory=dict)
+    chips: tuple[dict[str, Any], ...] = ()
+    based_on_id: uuid.UUID | None = None
 
 
 def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
@@ -109,7 +114,16 @@ def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
 
 
 def proposal_json(built: Built, result: Result) -> dict[str, Any]:
-    """The stored form of a proposal (data-model.md ``result``)."""
+    """The stored form of a proposal (data-model.md ``result``).
+
+    The people a rerun held for the earlier proposal's locks (``built.held``) are stored as the
+    proposal's own, added where the drafts do not have them and marked locked (008 FR-019).
+    """
+    held = built.held
+    current = built.problem.current
+    added = [*result.changes.added] + [
+        (key, p) for key, people in held.items() for p in people if p not in current.get(key, ())
+    ]
     return {
         "slots": [
             {
@@ -117,13 +131,17 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
                 "shift_id": str(s.shift_id) if s.shift_id else None,
                 "zone": s.zone,
                 "project_id": str(s.project_id),
+                "site_id": str(s.site_id) if s.site_id else None,
                 "shift_type_id": str(s.shift_type_id),
                 "date": s.day.isoformat(),
                 "starts_at": s.starts_at.astimezone(UTC).isoformat(),
                 "ends_at": s.ends_at.astimezone(UTC).isoformat(),
                 "headcount": s.headcount,
-                "assigned": [str(p) for p in result.assigned.get(s.key, ())],
-                "kept": [str(p) for p in s.kept],
+                "assigned": [
+                    str(p) for p in (*result.assigned.get(s.key, ()), *held.get(s.key, ()))
+                ],
+                "kept": [str(p) for p in s.kept if p not in held.get(s.key, ())],
+                "locked": [str(p) for p in held.get(s.key, ())],
             }
             for s in built.problem.slots
         ],
@@ -164,15 +182,38 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
             for e in result.summary
         ],
         "no_availability": [str(p) for p in built.no_availability],
+        # How many locked assignments the run kept, which it states (008 FR-018).
+        "locks_kept": built.locks,
         "short_published": [
             {"shift_id": str(s.shift_id), "needed": s.needed, "assigned": s.assigned}
             for s in built.short_published
         ],
         "changes": {
-            "added": [{"key": k, "user_id": str(p)} for k, p in result.changes.added],
+            "added": [
+                {"key": k, "user_id": str(p)}
+                for k, p in sorted(added, key=lambda kp: (kp[0], str(kp[1])))
+            ],
             "removed": [{"key": k, "user_id": str(p)} for k, p in result.changes.removed],
         },
     }
+
+
+def stored_chip(stored: dict[str, Any]) -> Chip:
+    """A stored chip as the scheduling package takes it."""
+
+    def ref(name: str) -> uuid.UUID | None:
+        value = stored.get(name)
+        return uuid.UUID(str(value)) if value else None
+
+    return Chip(
+        kind=str(stored["kind"]),
+        user_id=uuid.UUID(str(stored["user_id"])),
+        count=stored.get("count"),
+        project_id=ref("project_id"),
+        site_id=ref("site_id"),
+        weekday=stored.get("weekday"),
+        shift_type_id=ref("shift_type_id"),
+    )
 
 
 class ScheduleJobService:
@@ -272,6 +313,16 @@ class ScheduleJobService:
         org = await self._orgs.get_by_id(actor.organization_id)
         if org is None:
             raise NotFoundError(resource="Organisation", id=actor.organization_id)
+        based_on = data.get("based_on")
+        chips = data.get("chips")
+        if based_on is not None:
+            # An earlier run of this organisation only; another's is not found (FR-035).
+            earlier = await self._jobs.get(based_on, actor.organization_id)
+            if earlier is None:
+                raise NotFoundError(resource="ScheduleJob", id=based_on)
+            if chips is None:
+                chips = list(earlier.chips or [])
+        chips = await self._checked_chips(actor, chips or [])
         return await self._jobs.create(
             actor.organization_id,
             {
@@ -280,6 +331,9 @@ class ScheduleJobService:
                 "last_day": last,
                 "project_ids": [str(i) for i in ids],
                 "solver": data.get("solver") or "cpsat",
+                "controls": dict(data.get("controls") or {}),
+                "chips": chips,
+                "based_on_id": based_on,
                 "settings": {
                     "min_rest_hours": org.min_rest_hours,
                     "max_weekly_hours": org.max_weekly_hours,
@@ -288,6 +342,53 @@ class ScheduleJobService:
                 "trace_context": current_traceparent(),
             },
         )
+
+    async def _checked_chips(
+        self, actor: User, chips: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """The chips, each with what its kind needs and naming staff of the organisation.
+
+        Staff deleted or deactivated since still pass: their chip no longer applies (FR-022).
+
+        Raises:
+            DomainValidationError: ``schedule.chip_invalid`` for a chip without its value, or
+                naming someone who is not staff of the organisation (HTTP 422).
+        """
+        needs = {
+            "max_shifts": ("count",),
+            "max_nights": ("count",),
+            "max_hours": ("count",),
+            "keep_on": ("project_id", "site_id"),
+            "keep_off": ("weekday", "shift_type_id"),
+            "prefer": ("weekday", "shift_type_id"),
+        }
+        people = {uuid.UUID(str(c["user_id"])) for c in chips}
+        staff = (
+            {
+                u.id
+                for u in await self._users.get_many(people, actor.organization_id)
+                # Anyone of the organisation's staff, even deleted or inactive since: such a chip is
+                # reported as no longer applying and never fails a run (FR-022, R42).
+                if u.role != UserRole.client
+            }
+            if people
+            else set()
+        )
+        for index, chip in enumerate(chips):
+            fields = needs.get(chip.get("kind", ""), ())
+            if not any(chip.get(f) is not None for f in fields):
+                raise DomainValidationError(
+                    code="schedule.chip_invalid",
+                    detail="A preference needs the value its kind asks for.",
+                    errors=[{"chip": index, "field": "value"}],
+                )
+            if uuid.UUID(str(chip["user_id"])) not in staff:
+                raise DomainValidationError(
+                    code="schedule.chip_invalid",
+                    detail="A preference must name a member of the organisation's staff.",
+                    errors=[{"chip": index, "field": "user_id"}],
+                )
+        return [{k: str(v) if isinstance(v, uuid.UUID) else v for k, v in c.items()} for c in chips]
 
     async def get(self, actor: User, id: uuid.UUID) -> ScheduleJob:
         """A job of the organisation (Manager or Admin).
@@ -433,7 +534,8 @@ class ScheduleJobService:
                     detail="Nothing the part names is still open in the proposal.",
                 )
             # Nothing left to write (the proposal matches the roster): accepting closes it, as
-            # before 008.
+            # before 008, writing only the locks set in the review.
+            await self._write_locks(work, None, actor)
             job.version += 1
             await self._jobs.decide(job, "accepted", actor.id, self._now())
             await self.record(job, "accepted", {"part": {}}, actor=actor, version=job.version)
@@ -533,6 +635,9 @@ class ScheduleJobService:
                         "user_id": uuid.UUID(person),
                         "assigned_by": actor.id,
                         "source": "manual" if entry["by"] == "person" else "generated",
+                        # A lock in the proposal reaches the roster with it (008 FR-018).
+                        "locked_by": actor.id if entry.get("locked") else None,
+                        "locked_at": self._now() if entry.get("locked") else None,
                     }
                 )
                 if entry.get("override"):
@@ -548,6 +653,8 @@ class ScheduleJobService:
             slot["stored"] = sorted((set(slot["stored"]) | set(joining)) - set(leaving))
         await self._shifts.create_many(org_id, new_shifts)
         await self._assignments.create_many(org_id, new_people)
+        # A lock set in the review on someone already on the draft reaches the roster too (R38).
+        await self._write_locks(work, None if not named else set(chosen), actor)
         if self._overrides is not None:
             for row in overrides:
                 await self._overrides.create(org_id, row)
@@ -567,6 +674,18 @@ class ScheduleJobService:
             version=job.version,
         )
         return {**counts, "version": job.version, "state": state}
+
+    async def _write_locks(
+        self, work: Mapping[str, Any], keys: set[str] | None, actor: User
+    ) -> None:
+        """Lock on the roster the people the copy locks on drafts (``keys``; every slot if None)."""
+        for slot in work["slots"]:
+            if not slot.get("shift_id") or (keys is not None and slot["key"] not in keys):
+                continue
+            locked = {uuid.UUID(p["user_id"]) for p in slot["people"] if p.get("locked")}
+            await self._assignments.lock_people(
+                uuid.UUID(slot["shift_id"]), locked, actor.id, self._now()
+            )
 
     async def _people(self, org_id: uuid.UUID, ids: set[str]) -> dict[uuid.UUID, Employee]:
         """The people a part places, as the rules see them: deleted or inactive is inactive (R2)."""
@@ -735,6 +854,9 @@ class ScheduleJobService:
             dict(job.settings),
             job.lease_until,
             job.trace_context,
+            dict(job.controls or {}),
+            tuple(job.chips or ()),
+            job.based_on_id,
         )
 
     async def build(self, claim: Claim) -> Built:
@@ -753,7 +875,49 @@ class ScheduleJobService:
         )
         if claim.project_ids and len(built.project_ids) != len(set(claim.project_ids)):
             raise JobFailedError("jobs.project_not_active")
-        return built
+        return await self._steered(claim, built)
+
+    async def _steered(self, claim: Claim, built: Built) -> Built:
+        """``built`` with the job's controls and chips, and a rerun's starting point and locks.
+
+        A rerun (``based_on``) starts from the earlier run's working copy, slot by slot, and keeps
+        the people locked in it as it keeps locks on the roster (008 FR-018, FR-019, research P2,
+        P6). A slot the earlier run did not have starts from the drafts.
+        """
+        problem = built.problem
+        start: dict[str, tuple[uuid.UUID, ...]] = dict(problem.current)
+        kept_more: dict[str, tuple[uuid.UUID, ...]] = {}
+        if claim.based_on_id is not None:
+            earlier = await self._jobs.get(claim.based_on_id, claim.organization_id)
+            if earlier is not None and earlier.result is not None:
+                work = proposal_copy.of(earlier.current, earlier.result)
+                candidates = {c.id for c in problem.candidates}
+                for slot in work["slots"]:
+                    locked = {p["user_id"] for p in slot["people"] if p.get("locked")}
+                    start[slot["key"]] = tuple(
+                        uuid.UUID(p) for p in proposal_copy.people(slot) if p not in locked
+                    )
+                    kept_more[slot["key"]] = tuple(
+                        uuid.UUID(p) for p in sorted(locked) if uuid.UUID(p) in candidates
+                    )
+        slots = tuple(
+            replace(s, kept=(*s.kept, *(p for p in kept_more.get(s.key, ()) if p not in s.kept)))
+            for s in problem.slots
+        )
+        steered = replace(
+            problem,
+            slots=slots,
+            start=start,
+            controls=Controls(**claim.controls),
+            chips=tuple(stored_chip(c) for c in claim.chips),
+        )
+        held = {
+            s.key: tuple(p for p in kept_more.get(s.key, ()) if p not in s.kept)
+            for s in problem.slots
+            if kept_more.get(s.key)
+        }
+        added = sum(len(v) for v in held.values())
+        return replace(built, problem=steered, locks=built.locks + added, held=held)
 
     async def succeed(self, claim: Claim, built: Built, result: Result) -> bool:
         """Store the proposal (worker); whether the job was still this run's. The caller commits."""

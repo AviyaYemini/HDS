@@ -98,6 +98,8 @@ export function ShiftDetailScreen() {
           <PageTitle eyebrow={[t("app.name"), t("shifts.title")]} title={formatLongDate(shiftDate(shift.data), i18n.language)}>
             <StatusChip status="neutral" label={shift.data.shift_type} />
           </PageTitle>
+          {/* A word from whoever placed or moved them here (008 T042g). */}
+          {shift.data.note ? <InlineBanner tone="info" title={t("shifts.note_title")} testID="shift-note"><Txt role="body">{shift.data.note}</Txt></InlineBanner> : null}
           <View style={[styles.facts, { borderColor: colors.border.subtle }]}>
             <Fact label={t("shifts.detail_time")} value={formatTimeRange(shift.data.starts_at, shift.data.ends_at, shift.data.timezone)} numeric />
             <Fact label={t("shifts.detail_project")} value={shift.data.project.name} />

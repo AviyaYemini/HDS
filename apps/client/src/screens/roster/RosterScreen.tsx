@@ -15,8 +15,11 @@ import { ApiError, call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { previewsEnabled } from "../../config/previews";
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
+import type { components } from "@hds/api-client";
+
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SegmentedControl, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
+import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
@@ -70,6 +73,19 @@ export function RosterScreen() {
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
+  // Replacing someone on a shift opens the assign sheet with them named (T042f).
+  const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
+  // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
+  const [note, setNote] = useState("");
+  const [alert, setAlert] = useState<Alert>("none");
+  // Who is already on another shift at the sheet's shift's time, in any project (T042f).
+  const busy = useLoad(
+    async () =>
+      assignTo
+        ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: assignTo.id } } }))).items
+        : [],
+    [assignTo?.id],
+  );
 
   // Names from the roster read itself (deactivated people included); the active list fills the rest.
   const names = useMemo(() => {
@@ -79,6 +95,9 @@ export function RosterScreen() {
   }, [people.data, shifts.data]);
   const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? "") : ""), [names]);
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
+  const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
+  // The shift whose warnings are open, as read last: its assignments are the ones an override needs.
+  const warningShift = warningsOf ? ((shifts.data ?? []).find((s) => s.id === warningsOf.id) ?? warningsOf) : null;
 
   /** Run one roster change; a stale read (412) shows the banner and the latest version. */
   const change = async (run: () => Promise<{ shift_etag: string; warnings: Warning[] } | null>, shiftId: string): Promise<boolean> => {
@@ -101,33 +120,89 @@ export function RosterScreen() {
 
   const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true): Promise<string | null> => {
     let created: string | null = null;
+    let breaks = false;
     const done = await change(async () => {
       const answer = await call(
         session.api.POST("/api/v1/shifts/{id}/assignments", {
           params: { path: { id: shift.id }, header: { "If-Match": shift.etag } },
-          body: { user_id: userId, ...(times?.starts_at ? { starts_at: times.starts_at, ends_at: times.ends_at } : {}) },
+          body: {
+            user_id: userId,
+            ...(times?.starts_at ? { starts_at: times.starts_at, ends_at: times.ends_at } : {}),
+            alert: record ? alert : "none",
+            ...(record && note.trim() ? { note: note.trim() } : {}),
+          },
         }),
       );
       created = answer.assignment.id;
+      breaks = answer.warnings.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id));
       return answer;
     }, shift.id);
+    // The assignment is made; any rule it breaks is then named in a dialog that only informs
+    // (T042d). Only for a choice made now, never for undo re-making an assignment.
+    if (done && breaks && record) setWarningsOf(shift);
     if (done && record && created) setHistory((h) => [...h, { kind: "assigned", assignmentId: created!, shiftId: shift.id, userId }]);
     return done ? created : null;
   };
 
-  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<boolean> => {
+  /** Take someone off; the shift's new etag on success (a replace assigns with it, R40), else null. */
+  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<string | null> => {
     const before = shift.assignments.find((a) => a.id === assignmentId);
-    const done = await change(
-      () => call(session.api.DELETE("/api/v1/assignments/{id}", { params: { path: { id: assignmentId }, header: { "If-Match": shift.etag } } })),
-      shift.id,
-    );
+    let etag: string | null = null;
+    const done = await change(async () => {
+      const answer = await call(
+        session.api.DELETE("/api/v1/assignments/{id}", {
+          params: { path: { id: assignmentId }, header: { "If-Match": shift.etag }, query: { alert: record ? alert : "none" } },
+        }),
+      );
+      etag = answer.shift_etag;
+      return answer;
+    }, shift.id);
     if (done && record && before) {
       setHistory((h) => [
         ...h,
         { kind: "unassigned", shiftId: shift.id, userId: before.user_id, starts_at: before.own_times ? before.starts_at : null, ends_at: before.own_times ? before.ends_at : null },
       ]);
     }
-    return done;
+    return done ? etag : null;
+  };
+
+  /** Lock an assignment, so later runs keep it, or unlock it (008 FR-018). */
+  const lockAssignment = async (assignmentId: string, on: boolean) => {
+    try {
+      const path = { params: { path: { id: assignmentId } } };
+      await call(on ? session.api.PUT("/api/v1/assignments/{id}/lock", path) : session.api.DELETE("/api/v1/assignments/{id}/lock", path));
+      await shifts.reload();
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+    }
+  };
+  const lockedNow = personOn ? !!personOn.shift.assignments.find((a) => a.id === personOn.assignmentId)?.locked : false;
+
+  /** Move an assignment to ``shift``, or swap it with ``swapWith`` there, in one step (T042f). */
+  const move = async (assignmentId: string, userId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
+    try {
+      const answer = await call(
+        session.api.POST("/api/v1/assignments/{id}/move", {
+          params: { path: { id: assignmentId } },
+          body: { to_shift_id: shift.id, ...(swapWith ? { swap_with: swapWith } : {}), alert: record ? alert : "none", ...(record && note.trim() ? { note: note.trim() } : {}) },
+        }),
+      );
+      const found = answer.warnings as Warning[];
+      setWarnings((map) => {
+        const next = new Map(map);
+        for (const id of [fromShiftId, shift.id]) next.set(id, found.filter((w) => w.shift_ids.includes(id)));
+        return next;
+      });
+      await shifts.reload();
+      if (record) {
+        setHistory((h) => [...h, { kind: "moved", assignmentId, shiftId: shift.id, fromShiftId, swapWith }]);
+        if (found.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id))) setWarningsOf(shift);
+      }
+      return true;
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+      return false;
+    }
   };
 
   // A step leaves the history only once its request has succeeded; re-creating an assignment
@@ -135,6 +210,12 @@ export function RosterScreen() {
   const undo = async () => {
     const last = history[history.length - 1];
     if (!last) return;
+    if (last.kind === "moved") {
+      // Back to the shift it came from (in any project), swapping again when it was a swap.
+      const back = { id: last.fromShiftId } as Shift;
+      if (await move(last.assignmentId, "", last.shiftId, back, last.swapWith, false)) setHistory((h) => h.slice(0, -1));
+      return;
+    }
     const shift = shifts.data?.find((s) => s.id === last.shiftId);
     if (!shift) return;
     if (last.kind === "assigned") {
@@ -180,7 +261,18 @@ export function RosterScreen() {
           <Txt role="label">{t("roster.all_projects")}</Txt>
         </LinkPressable>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
-        {publishable ? <Button variant="primary" icon="check" label={t("roster.publish")} onPress={() => setPublishing(true)} testID="action-publish" /> : null}
+        {publishable ? (
+          <Button
+            variant="primary"
+            icon="check"
+            label={t("roster.publish")}
+            onPress={() => setPublishing(true)}
+            // Nothing to publish when every shift of the week already is (T042e): say so, never a sheet of zeros.
+            disabled={!hasDrafts}
+            disabledReason={hasDrafts ? undefined : t("roster.nothing_to_publish")}
+            testID="action-publish"
+          />
+        ) : null}
       </PageTitle>
       {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={() => setStale(false)} /> : null}
       {previewsEnabled ? (
@@ -234,19 +326,71 @@ export function RosterScreen() {
         </View>
       )}
 
-      <AssignSheet shift={assignTo} people={people.data ?? []} onClose={() => setAssignTo(null)} onChoose={(userId) => {
-        const shift = assignTo!;
-        setAssignTo(null);
-        void assign(shift, userId);
-      }} />
+      <AssignSheet
+        shift={assignTo}
+        people={people.data ?? []}
+        busy={busy.data ?? []}
+        replacing={replacing ? nameOf(replacing.userId) : null}
+        note={note}
+        alert={alert}
+        onNote={setNote}
+        onAlert={setAlert}
+        onClose={() => {
+          setAssignTo(null);
+          setReplacing(null);
+          setNote("");
+        }}
+        onChoose={(userId, how, busyOn) => {
+          const shift = assignTo!;
+          const out = replacing;
+          setAssignTo(null);
+          setReplacing(null);
+          void (async () => {
+            if (how === "move" && busyOn?.assignment_id && busyOn.shift_id) {
+              // A swap trades places with the person being replaced; otherwise a transfer.
+              await move(busyOn.assignment_id, userId, busyOn.shift_id, shift, out ? out.assignmentId : null);
+            } else if (out) {
+              // The removal moved the shift's etag: assign with the new one, never a stale read (R40).
+              const etag = await unassign(out.shift, out.assignmentId);
+              if (etag === null) return;
+              await assign({ ...shift, etag }, userId);
+            } else {
+              await assign(shift, userId);
+            }
+            // A choice of who hears of it is for one edit, never carried to the next (R43).
+            setNote("");
+            setAlert("none");
+          })();
+        }}
+      />
       <Sheet open={personOn !== null} onClose={() => setPersonOn(null)} title={nameOf(personOn?.userId ?? null)} testID="person-sheet">
+        <AlertChoice value={alert} onChange={setAlert} />
         <Button variant="secondary" icon="close" label={t("roster.unassign")} testID="action-unassign" onPress={() => {
           const target = personOn!;
           setPersonOn(null);
-          void unassign(target.shift, target.assignmentId);
+          void unassign(target.shift, target.assignmentId).then(() => setAlert("none"));
+        }} />
+        {personOn ? (
+          <Button
+            variant="secondary"
+            icon="lock"
+            label={lockedNow ? t("roster.unlock") : t("roster.lock")}
+            testID="action-lock"
+            onPress={() => {
+              const target = personOn;
+              setPersonOn(null);
+              void lockAssignment(target.assignmentId, !lockedNow);
+            }}
+          />
+        ) : null}
+        <Button variant="secondary" icon="people" label={t("roster.replace")} testID="action-replace" onPress={() => {
+          const target = personOn!;
+          setPersonOn(null);
+          setReplacing(target);
+          setAssignTo(target.shift);
         }} />
       </Sheet>
-      <WarningSheet shift={warningsOf} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
+      <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
         const id = warningsOf!.id;
         setWarnings((map) => new Map(map).set(id, (map.get(id) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
         setWarningsOf(null);
@@ -313,14 +457,18 @@ function Block({
           <Pressable
             key={a.id}
             testID="block-person"
-            {...webProps({ dataSet: { userId: a.user_id, ownTimes: String(a.own_times) } })}
+            {...webProps({ dataSet: { userId: a.user_id, ownTimes: String(a.own_times), locked: String(!!a.locked) } })}
             onPress={() => onPerson(a.id, a.user_id)}
             disabled={!editable}
             style={styles.person}
           >
-            <Txt role="meta" numberOfLines={1}>
-              {nameOf(a.user_id)}
-            </Txt>
+            <View style={styles.nameRow}>
+              {/* A lock later runs keep, shown to every Manager and Admin who sees the roster (FR-018). */}
+              {a.locked ? <Icon name="lock" size={12} color={colors.text.secondary} label={t("roster.locked")} testID="person-locked" /> : null}
+              <Txt role="meta" numberOfLines={1}>
+                {nameOf(a.user_id)}
+              </Txt>
+            </View>
             <View style={styles.track}>
               <View
                 testID="person-bar"
@@ -341,20 +489,137 @@ function Block({
   );
 }
 
-function AssignSheet({ shift, people, onClose, onChoose }: { shift: Shift | null; people: Person[]; onClose: () => void; onChoose: (userId: string) => void }) {
+type BusyOn = components["schemas"]["BusyAnswer"]["items"][number];
+type Alert = components["schemas"]["AssignRequest"]["alert"];
+
+/** Who hears of a manual edit: everyone on the roster, the people it affects, or no one (T042g). */
+function AlertChoice({ value, onChange }: { value: Alert; onChange: (value: Alert) => void }) {
   const { t } = useTranslation();
-  const taken = new Set(shift?.assignments.map((a) => a.user_id) ?? []);
-  const options = people.filter((p) => !taken.has(p.id)).sort((a, b) => a.full_name.localeCompare(b.full_name));
   return (
-    <Sheet open={shift !== null} onClose={onClose} title={t("roster.assign_title")} testID="assign-sheet">
-      {options.map((person) => (
-        <Button key={person.id} variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id } }} onPress={() => onChoose(person.id)} />
-      ))}
+    <SegmentedControl
+      label={t("roster.alert_label")}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "none", label: t("roster.alert_none") },
+        { value: "affected", label: t("roster.alert_affected") },
+        { value: "everyone", label: t("roster.alert_everyone") },
+      ]}
+      testID="edit-alert"
+    />
+  );
+}
+
+function AssignSheet({
+  shift,
+  people,
+  busy,
+  replacing,
+  note,
+  alert,
+  onNote,
+  onAlert,
+  onClose,
+  onChoose,
+}: {
+  shift: Shift | null;
+  people: Person[];
+  busy: BusyOn[];
+  /** The name of the person being replaced, when the sheet replaces someone (T042f). */
+  replacing: string | null;
+  note: string;
+  alert: Alert;
+  onNote: (note: string) => void;
+  onAlert: (alert: Alert) => void;
+  onClose: () => void;
+  onChoose: (userId: string, how: "assign" | "move", busyOn: BusyOn | null) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const [query, setQuery] = useState("");
+  // Someone already on another shift then, chosen: the sheet asks what to do (T042f).
+  const [pick, setPick] = useState<{ person: Person; on: BusyOn } | null>(null);
+  const taken = new Set(shift?.assignments.map((a) => a.user_id) ?? []);
+  const busyBy = new Map(busy.map((b) => [b.user_id, b]));
+  // Search by any part of the name, ignoring case and accents (T042c). Later the list shows only the
+  // project's own or qualified people, and search still finds everyone.
+  const wanted = fold(query, i18n.language);
+  const options = people
+    .filter((p) => !taken.has(p.id) && (wanted === "" || fold(p.full_name, i18n.language).includes(wanted)))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, i18n.language));
+  const close = () => {
+    setQuery("");
+    setPick(null);
+    onClose();
+  };
+  const choose = (person: Person) => {
+    const on = busyBy.get(person.id);
+    if (on) {
+      setPick({ person, on });
+      return;
+    }
+    setQuery("");
+    onChoose(person.id, "assign", null);
+  };
+  const done = (how: "assign" | "move") => {
+    const chosen = pick!;
+    setPick(null);
+    setQuery("");
+    onChoose(chosen.person.id, how, chosen.on);
+  };
+  const title = replacing ? t("roster.replace_title", { person: replacing }) : t("roster.assign_title");
+  return (
+    <Sheet open={shift !== null} onClose={close} title={title} testID="assign-sheet">
+      {pick ? (
+        <View style={styles.warning} testID="assign-busy-choice">
+          <Txt role="body">
+            {pick.on.starts_at && pick.on.ends_at
+              ? t("roster.busy_at", { person: pick.person.full_name, time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
+              : t("roster.busy_then", { person: pick.person.full_name })}
+          </Txt>
+          {pick.on.movable ? (
+            <Button
+              variant="primary"
+              label={replacing ? t("roster.swap_with", { person: pick.person.full_name, other: replacing }) : t("roster.move_here", { person: pick.person.full_name })}
+              onPress={() => done("move")}
+              testID="action-busy-move"
+            />
+          ) : null}
+          <Button variant="secondary" label={t("roster.keep_both", { person: pick.person.full_name })} onPress={() => done("assign")} testID="action-busy-keep" />
+          <Button variant="quiet" label={t("common.cancel")} onPress={() => setPick(null)} testID="action-busy-cancel" />
+        </View>
+      ) : (
+        <>
+          <TextField label={t("roster.assign_search")} value={query} onChangeText={setQuery} testID="assign-search" autoFocus />
+          {options.length === 0 ? (
+            <Txt role="body" tone="secondary" testID="assign-none">
+              {t("roster.assign_none")}
+            </Txt>
+          ) : null}
+          {options.map((person) => (
+            <View key={person.id} style={styles.option}>
+              <Button variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id, busy: String(busyBy.has(person.id)) } }} onPress={() => choose(person)} />
+              {busyBy.has(person.id) ? (
+                <Txt role="meta" tone="warning" testID="assign-busy">
+                  {t("roster.busy_mark")}
+                </Txt>
+              ) : null}
+            </View>
+          ))}
+        </>
+      )}
+      {/* A word to the person placed, shown on their own shift page, and who hears of it (T042g). */}
+      <TextField label={t("roster.note_label")} value={note} onChangeText={onNote} maxLength={500} testID="edit-note" />
+      <AlertChoice value={alert} onChange={onAlert} />
       {previewsEnabled ? (
         <EmptyState testID="preview-qualification-expiry" icon="star" badge={t("preview.badge")} title={t("preview.qualification_expiry_title")} body={t("preview.qualification_expiry_body")} feature={t("preview.comes_with", { feature: "014" })} />
       ) : null}
     </Sheet>
   );
+}
+
+/** ``text`` for matching: lower case, accents and Hebrew points removed, spaces squeezed. */
+function fold(text: string, language: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f\u0591-\u05c7]/g, "").toLocaleLowerCase(language).replace(/\s+/g, " ").trim();
 }
 
 /** The text that says a warning's numbers, when the rule sends them. */
@@ -385,7 +650,13 @@ function WarningSheet({ shift, warnings, nameOf, onClose, onOverridden }: { shif
     }
   };
   return (
-    <Sheet open={shift !== null} onClose={onClose} title={t("roster.warnings_title")} testID="warning-detail">
+    <Sheet
+      open={shift !== null}
+      onClose={onClose}
+      title={t("roster.warnings_title")}
+      testID="warning-detail"
+      footer={<Button variant="primary" label={t("roster.warnings_ok")} onPress={onClose} testID="action-warnings-ok" />}
+    >
       {warnings.map((w, i) => (
         <View key={`${w.code}-${i}`} style={styles.warning}>
           <Txt role="label">{w.employee_id ? nameOf(w.employee_id) : t("roster.the_shift")}</Txt>
@@ -475,6 +746,8 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   week: { flexDirection: "row", gap: 8 },
   day: { width: 168, borderWidth: 1, padding: 6, gap: 6 },
