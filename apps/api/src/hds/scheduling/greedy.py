@@ -10,6 +10,7 @@ for the CP-SAT model and never claims to be optimal.
 import uuid
 from collections.abc import Mapping, Sequence
 
+from . import chips
 from .eligibility import Roster, fill
 from .problem import Problem, Slot
 
@@ -23,9 +24,11 @@ def solve(
 ) -> dict[str, list[uuid.UUID]]:
     """Fill the slots in start order, one place at a time, booking choices on ``roster``.
 
-    Each place goes to the candidate who may take it with, in order: no close preference, an open
-    preference, the fewest minutes so far, the fewest nights so far, holding it in the current
-    drafts, then the smallest id.
+    Each place goes to the candidate who may take it with, in order: the manager's chips least
+    against them (008 FR-021); holding it in the starting point when "Keep changes small"; then
+    no close preference and an open preference, and the fewest minutes and nights so far, wishes
+    first when "strictly" and balance first when "gently" (008 FR-017); holding it in the starting
+    point when "Rebalance freely" (today's order); then the smallest id.
 
     Args:
         problem: The problem.
@@ -41,16 +44,44 @@ def solve(
     night_count = dict(nights)
     chosen: dict[str, list[uuid.UUID]] = {s.key: [] for s in problem.slots}
 
+    controls = problem.controls
+    live = [c for c in problem.chips if chips.applies(c, problem)]
+    load = {i: chips.fixed_load(problem, c) for i, c in enumerate(live) if c.kind in chips.CAPS}
+
+    def against(p: uuid.UUID, slot: Slot) -> int:
+        """How far placing ``p`` on ``slot`` goes against their chips (a prefer counts -1)."""
+        cost = 0
+        for i, chip in enumerate(live):
+            if chip.user_id != p:
+                continue
+            if chip.kind in chips.CAPS:
+                cost += int(load[i] + chips.unit(chip, slot) > chips.cap_of(chip))
+            elif chip.kind == "keep_on":
+                cost += int(not chips.matches(chip, slot))
+            elif chip.kind == "keep_off":
+                cost += int(chips.matches(chip, slot))
+            else:
+                cost -= int(chips.matches(chip, slot))
+        return cost
+
     def rank(p: uuid.UUID, slot: Slot) -> tuple[object, ...]:
         wants, dislikes = roster.preference(p, slot)
-        holder = p in problem.current.get(slot.key, ())
-        return (dislikes, not wants, worked.get(p, 0), night_count.get(p, 0), not holder, str(p))
+        holder = p in problem.starting.get(slot.key, ())
+        wishes = (dislikes, not wants)
+        balance = (worked.get(p, 0), night_count.get(p, 0))
+        middle = wishes + balance if controls.wishes_strictly else balance + wishes
+        if controls.keep_changes_small:
+            return (against(p, slot), not holder, *middle, str(p))
+        return (against(p, slot), *middle, not holder, str(p))
 
-    # One slot at a time, so the night count moves with each choice as the minutes do.
+    # One slot at a time, so the night count and the caps move with each choice as minutes do.
     for slot in sorted(problem.slots, key=lambda s: (s.starts_at, s.key)):
         before = len(chosen[slot.key])
         fill([slot], roster, people, chosen, rank, worked)
-        if slot.night:
-            for p in chosen[slot.key][before:]:
+        for p in chosen[slot.key][before:]:
+            if slot.night:
                 night_count[p] = night_count.get(p, 0) + 1
+            for i, chip in enumerate(live):
+                if chip.user_id == p and i in load:
+                    load[i] += chips.unit(chip, slot)
     return chosen

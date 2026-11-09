@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Literal
 
-from . import greedy
+from . import chips, greedy
 from .eligibility import Roster, fill, worked_minutes
 from .problem import (
     MINIMUM_REST,
@@ -107,6 +107,8 @@ def generate(
         summary=_summary(problem, roster, assigned, people, minutes, nights),
         changes=_changes(problem, assigned),
         optimal=optimal,
+        # Judged against the fixed shifts alone: which slots a person could take at all.
+        chips=chips.judge(problem, Roster(problem), assigned),
     )
 
 
@@ -212,7 +214,8 @@ def _unfilled(
         counts: Counter[str] = Counter()
         named: dict[str, list[Blocked]] = {}
         for p in people:
-            if p in on:
+            # On it already, chosen or kept (a locked candidate): not someone it lacks.
+            if p in on or p in slot.kept:
                 continue
             code = roster.refusal(p, slot)
             if code is None:  # the repair pass leaves no free candidate behind

@@ -124,17 +124,17 @@ what it guarantees, what it traded off, and how fair it is.
 
 ### Tests first
 
-- [ ] T030 [P] [US4] Hypothesis properties in `apps/api/tests/property/test_steering.py`: for any locks, controls and chips, no hard rule is broken and every lock is kept (SC-005); a rerun from a result with nothing changed changes no assignment; chips never outrank filling a place
-- [ ] T031 [P] [US4] Example tests in `apps/api/tests/unit/scheduling/test_chips.py`: each chip kind met and not met, with its cause; contradictory chips both reported; a chip for an inactive person or a project outside the run marked as no longer applying (FR-020 to FR-022)
-- [ ] T032 [P] [US5] Example tests in `apps/api/tests/unit/scheduling/test_fairness.py`: averages, the outlier thresholds of research P12, weekend shifts on Friday and Saturday in the site's zone, locked and overridden assignments counted; trade-off counts
+- [x] T030 [P] [US4] Hypothesis properties in `apps/api/tests/property/test_steering.py`: for any locks, controls and chips, no hard rule is broken and every lock is kept (SC-005); a rerun from a result with nothing changed changes no assignment; chips never outrank filling a place
+- [x] T031 [P] [US4] Example tests in `apps/api/tests/unit/scheduling/test_chips.py`: each chip kind met and not met, with its cause; contradictory chips both reported; a chip for an inactive person or a project outside the run marked as no longer applying (FR-020 to FR-022)
+- [x] T032 [P] [US5] Example tests in `apps/api/tests/unit/scheduling/test_fairness.py`: averages, the outlier thresholds of research P12, weekend shifts on Friday and Saturday in the site's zone, locked and overridden assignments counted; trade-off counts
 - [ ] T033 [P] [US4] Integration tests in `apps/api/tests/integration/test_locks.py`: lock and unlock on the roster within the projects a person may edit (403 otherwise); a locked draft is kept by the next run; a lock goes with its removed assignment. Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
 - [ ] T034 [P] [US4] Playwright spec `apps/client/tests/e2e/ux/k-steering.spec.ts`: controls and chips on the form, lock marks, a rerun keeping locks, the guarantee line, the summary in words, the fairness panel's outliers by more than colour
 
 ### Implementation
 
 - [ ] T035 [US4] `Controls`, `Chip`, `Problem.start`, `Problem.controls`, `Problem.chips`, `Slot.site_id` in `scheduling/problem.py`; locks as `kept` (research P2); `Result.chips_met`
-- [ ] T036 [US4] CP-SAT goal order and chip terms in `scheduling/cpsat.py` (research P4, P5); hints from `start` (P6); greedy tie-breakers in `scheduling/greedy.py` (FR-017 to FR-019)
-- [ ] T037 [US5] `scheduling/fairness.py`: `panel` and `tradeoffs` (research P12)
+- [x] T036 [US4] CP-SAT goal order and chip terms in `scheduling/cpsat.py` (research P4, P5); hints from `start` (P6); greedy tie-breakers in `scheduling/greedy.py` (FR-017 to FR-019)
+- [x] T037 [US5] `scheduling/fairness.py`: `panel` and `tradeoffs` (research P12)
 - [ ] T038 [US4] Contract first: `POST /schedule-jobs` with `controls`, `chips`, `based_on`; `PUT`/`DELETE /assignments/{id}/lock`; `GET /schedule-jobs/{id}/fairness`; lock and unlock as edit ops; `unprovable_operations.json`
 - [ ] T039 [US4] Services: `ScheduleInputService.build` passes locks as kept, the starting point for a rerun, controls and chips; `RosterService.lock`/`unlock` with scope (FR-018); chips copied by `based_on` (FR-021a); routers; regenerate the client
 - [ ] T040 [US4] Client: the run form's two controls and `ChipEditor` (chips in words, edit, remove; max 20), lock marks and lock and unlock on the roster and in the proposal, "Run again" from a proposal

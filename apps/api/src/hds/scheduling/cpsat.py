@@ -4,10 +4,13 @@ Layer: scheduling (pure). The only module of the package that imports a third-pa
 CP-SAT solver of OR-Tools (research G2); it imports nothing from the application, a web framework, a
 database driver or the network (Constitution III), and ``import scheduling`` does not load it.
 
-The goals of spec FR-017 are solved one after another in one time budget: fill places, then
-preferences, then the hours spread, the nights spread, long runs and changes. Each stage keeps the
-best value of the ones before as a constraint and starts from their solution, so the order is
-strict. The result is optimal only when every stage was proven optimal.
+The goals are solved one after another in one time budget (004 FR-017, 008 research P4): fill
+places; the manager's chips; fewest changes when "Keep changes small"; the employees' wishes and
+the hours and nights spread, wishes first when "strictly" and spread first when "gently"; long
+runs; fewest changes when "Rebalance freely" (today's order). Each stage keeps the best value of
+the ones before as a constraint and starts from their solution, the first from the starting point
+(research P6), so the order is strict. The result is optimal only when every stage was proven
+optimal.
 """
 
 import math
@@ -18,6 +21,7 @@ from datetime import date, timedelta
 
 from ortools.sat.python import cp_model
 
+from . import chips
 from .eligibility import Roster, clash
 from .problem import Problem, Slot
 from .rules import week_start
@@ -28,8 +32,8 @@ def _seconds(length: timedelta) -> int:
     return math.ceil(length.total_seconds())
 
 
-# How the time budget is shared between the stages: filling places matters most.
-_SHARES = (4, 2, 1, 1, 1, 1)
+# How the time budget is shared between the stages: filling places matters most, chips next.
+_SHARE = {"filled": 4, "chips": 2}
 _DONE = (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
@@ -64,7 +68,8 @@ def solve(
         if s.places <= 0:
             continue
         for p in people:
-            if roster.refusal(p, s) is None:
+            # A person kept on the slot (a lock, research P2) holds a place already.
+            if p not in s.kept and roster.refusal(p, s) is None:
                 x[p, s.key] = model.new_bool_var(f"x_{p}_{s.key}")
     chosen: dict[str, list[uuid.UUID]] = {s.key: [] for s in problem.slots}
     if not x:
@@ -104,9 +109,13 @@ def solve(
             )
 
     stages = _goals(problem, roster, model, x, theirs, people, minutes, nights)
+    shares = [_SHARE.get(name, 1) for name, _, _ in stages]
     optimal = True
     values: dict[tuple[uuid.UUID, str], int] | None = None
-    for index, (expression, maximise) in enumerate(stages):
+    # The first stage starts from the starting point: the drafts, or a rerun's proposal (P6).
+    for (p, key), var in x.items():
+        model.add_hint(var, int(p in problem.starting.get(key, ())))
+    for index, (_, expression, maximise) in enumerate(stages):
         remaining = (deadline_ns - time.monotonic_ns()) / 1e9
         if remaining <= 0.01:
             optimal = False
@@ -120,7 +129,7 @@ def solve(
             for pair, var in x.items():
                 model.add_hint(var, values[pair])
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = remaining * _SHARES[index] / sum(_SHARES[index:])
+        solver.parameters.max_time_in_seconds = remaining * shares[index] / sum(shares[index:])
         solver.parameters.random_seed = 0
         if workers is not None:
             solver.parameters.num_workers = workers
@@ -151,8 +160,11 @@ def _goals(
     people: Sequence[uuid.UUID],
     minutes: Mapping[uuid.UUID, int],
     nights: Mapping[uuid.UUID, int],
-) -> list[tuple[cp_model.LinearExprT, bool]]:
-    """The six goals of spec FR-017, in order, each with whether it is maximised."""
+) -> list[tuple[str, cp_model.LinearExprT, bool]]:
+    """The goals in order, each named and with whether it is maximised (see the module docstring).
+
+    A stage with nothing to weigh (no chips that still apply) is left out.
+    """
     by_key = {s.key: s for s in problem.slots}
     filled = sum(x.values())
 
@@ -225,13 +237,59 @@ def _goals(
 
     changes = []
     for (p, key), var in x.items():
-        changes.append(1 - var if p in problem.current.get(key, ()) else var)
+        changes.append(1 - var if p in problem.starting.get(key, ()) else var)
 
-    return [
-        (filled, True),
-        (sum(preference), False),
-        (spread("hours", hours, worked_top), False),
-        (spread("nights", night_totals, night_top), False),
-        (sum(runs), False),
-        (sum(changes), False),
+    controls = problem.controls
+    wishes = ("wishes", sum(preference), False)
+    balance = [
+        ("hours", spread("hours", hours, worked_top), False),
+        ("nights", spread("nights", night_totals, night_top), False),
     ]
+    middle = [wishes, *balance] if controls.wishes_strictly else [*balance, wishes]
+    fewest = ("changes", sum(changes), False)
+    goals: list[tuple[str, cp_model.LinearExprT, bool]] = [("filled", filled, True)]
+    against = _chip_terms(problem, model, x, theirs)
+    if against is not None:
+        goals.append(("chips", against, False))
+    if controls.keep_changes_small:
+        goals.append(fewest)
+    goals += [*middle, ("runs", sum(runs), False)]
+    if not controls.keep_changes_small:
+        goals.append(fewest)
+    return goals
+
+
+def _chip_terms(
+    problem: Problem,
+    model: cp_model.CpModel,
+    x: Mapping[tuple[uuid.UUID, str], cp_model.IntVar],
+    theirs: Mapping[uuid.UUID, list[Slot]],
+) -> cp_model.LinearExprT | None:
+    """How far a choice goes against the chips that still apply, or None when there are none.
+
+    A cap adds its overflow (in shifts, nights or whole hours); ``keep_on`` and ``keep_off`` add
+    each slot given outside or inside what they name; ``prefer`` takes one off for each slot given
+    inside (research P5). Every chip weighs the same.
+    """
+    live = [c for c in problem.chips if chips.applies(c, problem)]
+    if not live:
+        return None
+    terms: list[cp_model.LinearExprT] = []
+    for i, chip in enumerate(live):
+        mine = [s for s in theirs.get(chip.user_id, ()) if (chip.user_id, s.key) in x]
+        if chip.kind in chips.CAPS:
+            already = chips.fixed_load(problem, chip)
+            load = already + sum(chips.unit(chip, s) * x[chip.user_id, s.key] for s in mine)
+            per = 60 if chip.kind == "max_hours" else 1
+            # The most the overflow can be: all of it, fixed shifts included, never infeasible.
+            top = (already + sum(chips.unit(chip, s) for s in mine)) // per + 1
+            over = model.new_int_var(0, top, f"chip_{i}_over")
+            model.add(over * per >= load - chips.cap_of(chip))
+            terms.append(over)
+        elif chip.kind == "keep_on":
+            terms += [x[chip.user_id, s.key] for s in mine if not chips.matches(chip, s)]
+        elif chip.kind == "keep_off":
+            terms += [x[chip.user_id, s.key] for s in mine if chips.matches(chip, s)]
+        else:
+            terms += [-x[chip.user_id, s.key] for s in mine if chips.matches(chip, s)]
+    return sum(terms)
