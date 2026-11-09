@@ -4,12 +4,11 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 
 ## PR 1: one spelling, "organisation"
 
-- [ ] S01 The exemption record (ADR 021): a one-step rename, against Constitution V and X, while nothing is deployed; `infra/tests/compat.sh` skips a base older than the rename revision
-- [ ] S02 Migration: rename every `organization_id` column, foreign key, constraint and index to the British spelling, with a working downgrade; models follow
-- [ ] S03 Repositories, services, routers, schemas, scripts and the API's tests follow; the API fields become `organisation_id`
-- [ ] S04 The 001 contract, the regenerated `packages/api-client`, and the client follow
-- [ ] S05 Docs and specs follow; `git grep -i organization` lists only third-party names and applied migrations
-- [ ] S06 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
+- [x] S01 The exemption record (ADR 021): a one-step rename, against Constitution V and X, while nothing is deployed; `infra/tests/compat.sh` skips a base older than the rename revision
+- [ ] S02 Migration 037: rename every `organization_id` column and foreign key, and the trigger function that names it, with a working downgrade; the models, repositories, services, routers, schemas, scripts and the API's tests follow in the same commit, since an attribute is renamed everywhere at once; the API fields become `organisation_id`
+- [ ] S03 The 001 contract, the regenerated `packages/api-client`, and the client follow
+- [ ] S04 Docs and specs follow; `git grep -i organization` lists only third-party names and applied migrations
+- [ ] S05 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
 
 ## PR 2: client structure
 

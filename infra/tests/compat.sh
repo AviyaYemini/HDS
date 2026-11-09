@@ -16,6 +16,8 @@
 #      this container's, not the shared server's. The tests migrate it to the head's revision first.
 #   4. After them, alembic_version must hold the head's revision.
 #
+# A base older than a revision in compat-exemptions.txt is not checked (ADR 021).
+#
 # Needs git, uv and Docker.
 set -eu
 
@@ -43,6 +45,17 @@ head_revision=$(cd apps/api && uv run --quiet alembic heads | sed -n 's/^\([^ ]*
 [ -n "$head_revision" ] || fail "the head's migration revision could not be read"
 base_revision=$(cd "$work/base/apps/api" && uv run --quiet alembic heads | sed -n 's/^\([^ ]*\) (head)$/\1/p')
 echo "base revision $base_revision, head revision $head_revision"
+
+# A rename recorded as exempt (ADR 021): the base predates it, so its code cannot run on the new
+# schema, and no release of that code exists. Once the revision is on main every base holds it.
+while read -r revision record; do
+    case "$revision" in ''|'#'*) continue ;; esac
+    if [ -f "apps/api/alembic/versions/$revision.py" ] \
+        && [ ! -f "$work/base/apps/api/alembic/versions/$revision.py" ]; then
+        printf '\ncompatibility: not checked; the base predates %s, exempt by %s\n' "$revision" "$record"
+        exit 0
+    fi
+done < infra/tests/compat-exemptions.txt
 
 say "the head's migrations in the base's place"
 versions="$work/base/apps/api/alembic/versions"
