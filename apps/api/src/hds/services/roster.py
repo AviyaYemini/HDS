@@ -700,6 +700,20 @@ class RosterService:
             await self._shifts.touch(shift.id, actor.organization_id)
         return assignment, await self.fresh_shift(actor, shift.id)
 
+    async def shift_to_edit(self, actor: User, shift_id: uuid.UUID) -> Shift:
+        """The shift, once ``actor`` may edit its project's roster (for "Find someone", FR-034).
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: The shift is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        shift = await self._shifts.get_by_id(shift_id, actor.organization_id)
+        if shift is None:
+            raise NotFoundError(resource="Shift", id=shift_id)
+        await self._require_edit(actor, shift.project_id)
+        return shift
+
     async def busy(self, actor: User, shift_id: uuid.UUID) -> list[Busy]:
         """Who is already on another shift that overlaps ``shift_id``, in any project (T042f).
 

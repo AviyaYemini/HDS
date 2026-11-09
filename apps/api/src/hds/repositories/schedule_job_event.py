@@ -76,6 +76,18 @@ class ScheduleJobEventRepository(BaseRepository[ScheduleJobEvent]):
         result = await self.session.execute(query)
         return list(result.scalars())
 
+    async def page(
+        self, org_id: uuid.UUID, job_id: uuid.UUID, after: int | None, limit: int
+    ) -> list[ScheduleJobEvent]:
+        """Up to ``limit`` steps of the run after ``after`` (a ``seq``), in the order written."""
+        query = select(ScheduleJobEvent).where(
+            ScheduleJobEvent.organization_id == org_id, ScheduleJobEvent.job_id == job_id
+        )
+        if after is not None:
+            query = query.where(ScheduleJobEvent.seq > after)
+        result = await self.session.execute(query.order_by(ScheduleJobEvent.seq).limit(limit))
+        return list(result.scalars())
+
     async def last_edit_not_undone(
         self, org_id: uuid.UUID, job_id: uuid.UUID
     ) -> ScheduleJobEvent | None:

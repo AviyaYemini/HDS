@@ -323,7 +323,7 @@ class ScheduleJobService:
             if chips is None:
                 chips = list(earlier.chips or [])
         chips = await self._checked_chips(actor, chips or [])
-        return await self._jobs.create(
+        job = await self._jobs.create(
             actor.organization_id,
             {
                 "requested_by": actor.id,
@@ -342,6 +342,21 @@ class ScheduleJobService:
                 "trace_context": current_traceparent(),
             },
         )
+        # The record starts with who ran it, the range, projects, controls and chips (FR-030).
+        await self.record(
+            job,
+            "created",
+            {
+                "from": first.isoformat(),
+                "to": last.isoformat(),
+                "project_ids": [str(i) for i in ids],
+                "controls": dict(data.get("controls") or {}),
+                "chips": chips,
+                "based_on": str(based_on) if based_on else None,
+            },
+            actor=actor,
+        )
+        return job
 
     async def _checked_chips(
         self, actor: User, chips: list[dict[str, Any]]
@@ -389,6 +404,57 @@ class ScheduleJobService:
                     errors=[{"chip": index, "field": "user_id"}],
                 )
         return [{k: str(v) if isinstance(v, uuid.UUID) else v for k, v in c.items()} for c in chips]
+
+    async def stop(self, actor: User, id: uuid.UUID) -> ScheduleJob:
+        """Stop a run (008 FR-028).
+
+        A queued one is cancelled at once; a running one ends with its best result so far, or
+        cancelled when it has none yet, within a few seconds. A Manager only on runs whose
+        projects they all manage (007 T108).
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: Not in the organisation (HTTP 404).
+            ConflictError: ``schedule.not_running`` for a run already over (HTTP 409).
+        """
+        job = await self.get(actor, id)
+        await self.require_scope_of(actor, job)
+        locked = await self._jobs.get_locked(id, actor.organization_id)
+        assert locked is not None, "get found it"
+        if locked.status == "queued":
+            await self._jobs.cancel_queued(locked.id, self._now())
+            await self.record(locked, "cancelled", {"before_any_result": True}, actor=actor)
+        elif locked.status == "running":
+            if locked.stop_requested_at is None:
+                await self._jobs.ask_stop(locked.id, self._now())
+                await self.record(locked, "stopped", {"asked": True}, actor=actor)
+        else:
+            raise ConflictError(code="schedule.not_running", detail="The run has already ended.")
+        refreshed = await self._jobs.get(id, actor.organization_id)
+        assert refreshed is not None
+        return refreshed
+
+    async def record_page(
+        self, actor: User, id: uuid.UUID, after: int | None, limit: int
+    ) -> list[Any]:
+        """A page of the run's record, oldest first (008 FR-030, FR-031).
+
+        An Admin reads every run's; a Manager, the runs whose projects they all manage.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: Not in the organisation (HTTP 404).
+        """
+        job = await self.get(actor, id)
+        await self.require_scope_of(actor, job)
+        if self._events is None:
+            return []
+        return await self._events.page(job.organization_id, job.id, after, limit)
+
+    async def recorded(self, claim: Claim, kind: str, body: dict[str, Any]) -> None:
+        """Add how a worker's run ended to its record (worker, FR-030)."""
+        if self._events is not None:
+            await self._events.append(claim.organization_id, claim.id, kind, self._now(), body)
 
     async def get(self, actor: User, id: uuid.UUID) -> ScheduleJob:
         """A job of the organisation (Manager or Admin).
@@ -919,8 +985,24 @@ class ScheduleJobService:
         added = sum(len(v) for v in held.values())
         return replace(built, problem=steered, locks=built.locks + added, held=held)
 
+    async def progress(self, claim: Claim, needed: int, filled: int | None) -> bool:
+        """Write the run's best so far (worker); whether Stop was asked. The caller commits.
+
+        008 FR-027: the places filled out of those needed, and when; FR-028: the stop flag.
+        """
+        values: dict[str, Any] = {"needed": needed}
+        if filled is not None:
+            values |= {"best_filled": filled, "progress_at": self._now()}
+        _, asked = await self._jobs.progress(claim.id, claim.attempt, values)
+        return asked
+
     async def succeed(self, claim: Claim, built: Built, result: Result) -> bool:
-        """Store the proposal (worker); whether the job was still this run's. The caller commits."""
+        """Store the proposal (worker); whether the job was still this run's. The caller commits.
+
+        ``ended`` says how: ``stopped`` by a person with the best so far, or ``finished``
+        (008 FR-028).
+        """
+        filled = sum(len(on) for on in result.assigned.values())
         return await self._jobs.finish(
             claim.id,
             claim.attempt,
@@ -931,7 +1013,18 @@ class ScheduleJobService:
                 "optimal": result.optimal,
                 "proposal_state": "open",
                 "finished_at": self._now(),
+                "ended": "stopped" if result.stopped else "finished",
+                "needed": sum(s.places for s in built.problem.slots),
+                "best_filled": filled,
             },
+        )
+
+    async def cancel(self, claim: Claim) -> bool:
+        """End a run stopped before it had any result: cancelled, no proposal (worker, FR-028)."""
+        return await self._jobs.finish(
+            claim.id,
+            claim.attempt,
+            {"status": "cancelled", "ended": "cancelled", "finished_at": self._now()},
         )
 
     async def release(self, claim: Claim) -> bool:
@@ -943,15 +1036,26 @@ class ScheduleJobService:
         return await self._jobs.finish(
             claim.id,
             claim.attempt,
-            {"status": "failed", "error_code": code, "finished_at": self._now()},
+            {"status": "failed", "error_code": code, "finished_at": self._now(), "ended": "failed"},
         )
 
 
-async def solve(claim: Claim, built: Built, time_limit: timedelta) -> Result:
-    """Run the solver in a thread, so the worker's event loop keeps its database connections."""
+async def solve(
+    claim: Claim,
+    built: Built,
+    time_limit: timedelta,
+    progress: Callable[[int, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> Result:
+    """Run the solver in a thread, so the worker's event loop keeps its database connections.
+
+    ``progress`` and ``should_stop`` are called from that thread (008 FR-027, FR-028).
+    """
     return await asyncio.to_thread(
         generate,
         built.problem,
         solver=claim.solver,  # type: ignore[arg-type]
         time_limit=time_limit,
+        progress=progress,
+        should_stop=should_stop,
     )

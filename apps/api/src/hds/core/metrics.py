@@ -125,7 +125,7 @@ class MetricsMiddleware:
 
 
 #: Every state a schedule job can be in, each always reported (a missing state reads as 0).
-JOB_STATES = ("queued", "running", "succeeded", "failed")
+JOB_STATES = ("queued", "running", "succeeded", "failed", "cancelled")
 
 _JOB_BUCKETS = (1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0)
 
@@ -161,7 +161,7 @@ class JobMetrics:
             self.jobs.labels(state=state).set(counts.get(state, 0))
 
     def observe(self, outcome: str, elapsed: timedelta) -> None:
-        """Record one finished job, ``succeeded`` or ``failed``, that took ``elapsed``."""
+        """Record one finished job, by its outcome, that took ``elapsed``."""
         self.duration.labels(outcome=outcome).observe(elapsed.total_seconds())
 
 

@@ -25,7 +25,7 @@ import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
 import { useLoad } from "../useLoad";
 import { ProjectChooser } from "./ProjectChooser";
-import { barGeometry, cellOf, coverage, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
+import { barGeometry, cellOf, coverage, groupWarnings, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
 
 type Person = { id: string; full_name: string };
 
@@ -657,16 +657,19 @@ function WarningSheet({ shift, warnings, nameOf, onClose, onOverridden }: { shif
       testID="warning-detail"
       footer={<Button variant="primary" label={t("roster.warnings_ok")} onPress={onClose} testID="action-warnings-ok" />}
     >
-      {warnings.map((w, i) => (
-        <View key={`${w.code}-${i}`} style={styles.warning}>
+      {/* One row per person and rule, however many shifts it clashes with; one override each. */}
+      {groupWarnings(warnings, (w) => w.employee_id ?? null).map(({ first: w, values }) => (
+        <View key={`${w.employee_id ?? "shift"}-${w.code}`} style={styles.warning} testID="warning-row">
           <Txt role="label">{w.employee_id ? nameOf(w.employee_id) : t("roster.the_shift")}</Txt>
           <Txt role="body">{t(w.code)}</Txt>
-          {numbersOf(w) ? (
-            // The rule and the numbers, in the UI's language (FR-041).
-            <Txt role="meta" tone="secondary" numeric>
-              {t(numbersOf(w)!, w.values ?? {})}
-            </Txt>
-          ) : null}
+          {numbersOf(w)
+            ? values.map((v) => (
+                // The rule and the numbers, in the UI's language (FR-041).
+                <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
+                  {t(numbersOf(w)!, v)}
+                </Txt>
+              ))
+            : null}
           {w.employee_id ? <Button variant="secondary" label={t("roster.override")} testID="action-override" onPress={() => setOverriding(w)} /> : null}
         </View>
       ))}

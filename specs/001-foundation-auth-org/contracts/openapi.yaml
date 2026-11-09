@@ -1622,6 +1622,24 @@ components:
         state: {type: string, enum: [met, not_met, not_applying]}
         cause: {type: [string, "null"], enum: [coverage, conflict, fixed, null]}
 
+    RunRecordPage:
+      type: object
+      required: [items, next_after]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [seq, kind, at, actor_id, version, body]
+            properties:
+              seq: {type: integer}
+              kind: {type: string, enum: [created, finished, stopped, cancelled, failed, edited, undone, locked, unlocked, overridden, accepted, discarded]}
+              at: {type: string, format: date-time}
+              actor_id: {type: [string, "null"], format: uuid}
+              version: {type: [integer, "null"]}
+              body: {type: object}
+        next_after: {type: [integer, "null"]}
+
     Fairness:
       type: object
       description: >-
@@ -5048,6 +5066,81 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /schedule-jobs/{id}/stop:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    post:
+      operationId: schedule_jobs_stop
+      summary: Stop a run (Manager+, of every project in it; 008 FR-028)
+      description: >
+        A queued run is cancelled at once; a running one ends within a few seconds with its best
+        result so far, labelled stopped, or cancelled with no proposal when it has none yet.
+        Asking twice changes nothing. 409 schedule.not_running for a run already over.
+      tags: [Schedule jobs]
+      responses:
+        "200":
+          description: The run, as it stands after the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /schedule-jobs/{id}/record:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: schedule_jobs_record
+      summary: A run's record (Manager+, of every project in it; 008 FR-030, FR-031)
+      description: >
+        Oldest first: who ran it and with what, how it ended, each edit, override, lock, accept
+        and discard, each with who and when. It only grows (ADR 020).
+      tags: [Schedule jobs]
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: The last seq already read.
+          schema: {type: integer, minimum: 0}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      responses:
+        "200":
+          description: A page of the record; next_after reads the next.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunRecordPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /schedule-jobs/{id}/fairness:
     parameters:
       - name: id
@@ -5319,6 +5412,38 @@ paths:
           $ref: "#/components/responses/PreconditionFailed"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+  /shifts/{id}/cover:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUIDv4"
+
+    get:
+      operationId: shifts_cover
+      summary: Find someone for a shift (a Manager of the project, or an Admin; 008 FR-034)
+      description: >
+        Every active staff member not on the shift, judged over all their shifts in every project
+        and the drafts, ranked as "Who else could cover" ranks them in a proposal. Codes and
+        numbers only: never pay, a site or another project's shift (FR-016).
+      tags: [Shifts]
+      responses:
+        "200":
+          description: The options, best first, and the staff's totals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cover"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /shifts/{id}/busy:
     parameters:
       - name: id

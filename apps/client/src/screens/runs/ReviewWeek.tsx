@@ -20,6 +20,7 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange } from "../../locale";
 import { useLoad } from "../useLoad";
 import { FairnessPanel } from "./FairnessPanel";
+import { groupWarnings } from "../roster/model";
 import { weeksOf, type Job, type Names } from "./model";
 import {
   MARK_ICON,
@@ -384,15 +385,18 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
       >
         {pending ? (
           <View testID="review-override-sheet" style={styles.panel}>
-            {pending.breaks.map((w, i) => (
-              <View key={`${w.code}-${i}`} style={styles.break} testID="review-break">
+            {/* One row per person and rule, as on the roster: one reason covers them all. */}
+            {groupWarnings(pending.breaks, (w) => w.user_id ?? null).map(({ first: w, values }) => (
+              <View key={`${w.user_id ?? "shift"}-${w.code}`} style={styles.break} testID="review-break">
                 <Txt role="label">{w.user_id ? name(w.user_id) : t("roster.the_shift")}</Txt>
                 <Txt role="body">{t(w.code)}</Txt>
-                {numbersKey(w.values) ? (
-                  <Txt role="meta" tone="secondary" numeric>
-                    {t(numbersKey(w.values)!, w.values)}
-                  </Txt>
-                ) : null}
+                {numbersKey(w.values)
+                  ? values.map((v) => (
+                      <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
+                        {t(numbersKey(v)!, v)}
+                      </Txt>
+                    ))
+                  : null}
               </View>
             ))}
             <TextField label={t("roster.override_reason")} value={reason} onChangeText={setReason} maxLength={500} testID="review-override-reason" />

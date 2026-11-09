@@ -133,6 +133,10 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("PUT", "/api/v1/assignments/{id}/lock"): MGR,
     ("DELETE", "/api/v1/assignments/{id}/lock"): MGR,
     ("GET", "/api/v1/schedule-jobs/{id}/fairness"): MGR,
+    # best so far and Stop, the run's record, Find someone (008 FR-027 to FR-034)
+    ("POST", "/api/v1/schedule-jobs/{id}/stop"): MGR,
+    ("GET", "/api/v1/schedule-jobs/{id}/record"): MGR,
+    ("GET", "/api/v1/shifts/{id}/cover"): MGR,
     # pay settings, special days, managers on projects and pay to date (005 FR-001 to FR-022)
     ("GET", "/api/v1/organisation/pay-settings"): MGR,
     ("PATCH", "/api/v1/organisation/pay-settings"): ADMIN,

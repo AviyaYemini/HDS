@@ -91,6 +91,7 @@ _CONFLICTS = {
     ("/api/v1/schedule-jobs/{id}/edits/undo", "post"),
     ("/api/v1/schedule-jobs/{id}/slots/{key}/cover", "get"),
     ("/api/v1/schedule-jobs/{id}/fairness", "get"),
+    ("/api/v1/schedule-jobs/{id}/stop", "post"),
     ("/api/v1/assignments/{id}/move", "post"),
     ("/me/availability-submissions", "post"),
     ("/api/v1/assignments/{id}/overrides", "post"),

@@ -179,6 +179,46 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
             )
         return released
 
+    async def progress(
+        self, id: uuid.UUID, attempt: int, values: Mapping[str, Any]
+    ) -> tuple[bool, bool]:
+        """Write a running job's best so far; whether it is still this run's, and Stop was asked.
+
+        Guarded as ``finish`` is: a run that lost its claim writes nothing (008 FR-027, FR-028).
+        """
+        result = await self.session.execute(
+            update(ScheduleJob)
+            .where(
+                ScheduleJob.id == id,
+                ScheduleJob.attempts == attempt,
+                ScheduleJob.status == "running",
+            )
+            .values(**values)
+            .returning(ScheduleJob.stop_requested_at)
+        )
+        row = result.first()
+        return row is not None, row is not None and row[0] is not None
+
+    async def cancel_queued(self, id: uuid.UUID, at: datetime) -> bool:
+        """Cancel a job no worker has claimed yet (008 FR-028); whether it was still queued."""
+        result = await self.session.execute(
+            update(ScheduleJob)
+            .where(ScheduleJob.id == id, ScheduleJob.status == "queued")
+            .values(status="cancelled", ended="cancelled", finished_at=at, lease_until=None)
+            .returning(ScheduleJob.id)
+        )
+        await self.session.flush()
+        return result.first() is not None
+
+    async def ask_stop(self, id: uuid.UUID, at: datetime) -> None:
+        """Mark a running job to stop; its worker reads the flag within a few seconds."""
+        await self.session.execute(
+            update(ScheduleJob)
+            .where(ScheduleJob.id == id, ScheduleJob.stop_requested_at.is_(None))
+            .values(stop_requested_at=at)
+        )
+        await self.session.flush()
+
     async def finish(self, id: uuid.UUID, attempt: int, values: Mapping[str, Any]) -> bool:
         """Record the end of the run that claimed ``id`` as attempt ``attempt``.
 
