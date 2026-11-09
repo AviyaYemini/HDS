@@ -827,6 +827,24 @@ CASES: dict[str, list[Case]] = {
             lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}"),  # type: ignore[union-attr]
         ),
     ],
+    "PUT /api/v1/assignments/{id}/lock": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}/lock"),  # type: ignore[union-attr]
+        ),
+    ],
+    "DELETE /api/v1/assignments/{id}/lock": [
+        Case(
+            "foreign assignment id",
+            lambda w: req(f"/api/v1/assignments/{w.theirs.assignment.id}/lock"),  # type: ignore[union-attr]
+        ),
+    ],
+    "GET /api/v1/schedule-jobs/{id}/fairness": [
+        Case(
+            "foreign job id",
+            lambda w: req(f"/api/v1/schedule-jobs/{w.theirs.job.id}/fairness"),  # type: ignore[union-attr]
+        ),
+    ],
     "GET /api/v1/shifts/{id}/busy": [
         Case(
             "foreign shift id",

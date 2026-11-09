@@ -74,6 +74,10 @@ class AssignmentRead(BaseModel):
     active: bool | None = Field(
         default=None, description="Whether the person is still active; false for a deactivated one."
     )
+    locked: bool = Field(
+        default=False,
+        description="Locked: later runs keep this assignment until it is unlocked (008 FR-018).",
+    )
 
 
 class ShiftRead(BaseModel):
@@ -251,6 +255,7 @@ def _assignment(
         starts_at=a.starts_at if own else shift.starts_at,
         ends_at=a.ends_at if own else shift.ends_at,
         own_times=own,
+        locked=getattr(a, "locked_at", None) is not None,
         overrides=[
             OverrideRead(
                 warning_code=o.warning_code,
@@ -664,4 +669,53 @@ async def change_assignment_times(
         assignment=_assignment(judged.record, shift),
         warnings=judged.warnings,  # type: ignore[arg-type]
         shift_etag=etag(shift),
+    )
+
+
+@router.put(
+    "/assignments/{id}/lock",
+    response_model=AssignmentAnswer,
+    summary="Lock an assignment",
+    description=(
+        "A Manager of the project, or an Admin. Later runs keep a locked assignment, count it "
+        "toward hours, nights, the weekly maximum and fairness, and say how many they kept, until "
+        "it is unlocked or removed (008 FR-018). Locking twice changes nothing."
+    ),
+)
+async def lock(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AssignmentAnswer:
+    """Lock an assignment.
+
+    A Manager of the project, or an Admin.
+    """
+    assignment, shift = await roster_service(db).lock(current_user, id, True)
+    return AssignmentAnswer(
+        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
+    )
+
+
+@router.delete(
+    "/assignments/{id}/lock",
+    response_model=AssignmentAnswer,
+    summary="Unlock an assignment",
+    description=(
+        "A Manager of the project, or an Admin. Later runs may change the assignment again "
+        "(008 FR-018). Unlocking what is not locked changes nothing."
+    ),
+)
+async def unlock(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> AssignmentAnswer:
+    """Unlock an assignment.
+
+    A Manager of the project, or an Admin.
+    """
+    assignment, shift = await roster_service(db).lock(current_user, id, False)
+    return AssignmentAnswer(
+        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
     )

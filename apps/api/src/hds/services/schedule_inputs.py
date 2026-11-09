@@ -56,6 +56,8 @@ class Built:
     no_availability: tuple[uuid.UUID, ...]
     short_published: tuple[ShortPublished, ...]
     fingerprint: str
+    # How many locked assignments the run keeps (008 FR-018: it says so).
+    locks: int = 0
 
 
 def _dates(first: date, last: date) -> list[date]:
@@ -154,9 +156,13 @@ class ScheduleInputService:
         current: dict[str, tuple[uuid.UUID, ...]] = {}
         short: list[ShortPublished] = []
         used_drafts: set[uuid.UUID] = set()
+        locks = 0
 
         def draft_slot(s: StoredShift) -> None:
-            """Make a stored draft a slot: its candidates are current, the rest are kept on it."""
+            """Make a stored draft a slot: its candidates are current, the rest are kept on it.
+
+            A locked candidate is kept too (008 FR-018, research P2): the run holds their place.
+            """
             key = f"draft:{s.id}"
             slots.append(
                 Slot(
@@ -169,11 +175,13 @@ class ScheduleInputService:
                     zone=s.zone,
                     headcount=s.headcount,
                     night=types[s.shift_type_id].crosses_midnight,
-                    kept=tuple(p for p in s.people if p not in candidates),
+                    kept=tuple(p for p in s.people if p not in candidates or p in s.locked),
                 )
             )
-            current[key] = tuple(p for p in s.people if p in candidates)
+            current[key] = tuple(p for p in s.people if p in candidates and p not in s.locked)
             used_drafts.add(s.id)
+            nonlocal locks
+            locks += sum(1 for p in s.people if p in s.locked)
 
         needs_by_project: dict[uuid.UUID, list[Any]] = defaultdict(list)
         for need in needs:
@@ -294,6 +302,7 @@ class ScheduleInputService:
             no_availability=no_availability,
             short_published=tuple(short),
             fingerprint=fingerprint(problem, ordered_ids, no_availability, short, in_use),
+            locks=locks,
         )
 
 

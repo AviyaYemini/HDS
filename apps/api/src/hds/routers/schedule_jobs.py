@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from hds.core.config import get_settings
 from hds.core.deps import ProposalIfMatch as IfMatch
@@ -30,13 +30,55 @@ Status = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ProposalState = Literal["open", "accepted", "discarded", "expired", "partly_accepted"]
 
 
+class Controls(BaseModel):
+    """The run's two plain controls (008 FR-017); untouched, today's order.
+
+    ``keep_changes_small``: "Keep changes small" (true) or "Rebalance freely" (false).
+    ``wishes_strictly``: respect "would rather not" strictly, before the balance of hours and
+    nights (true), or gently, after it (false).
+    """
+
+    keep_changes_small: StrictBool = False
+    wishes_strictly: StrictBool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ChipIn(BaseModel):
+    """One preference for the run about one person (008 FR-020).
+
+    ``max_shifts``, ``max_nights`` and ``max_hours`` take ``count``; ``keep_on`` takes
+    ``project_id`` or ``site_id``; ``keep_off`` and ``prefer`` take ``weekday`` (0 is Sunday) or
+    ``shift_type_id``. A chip without what its kind needs is refused (422
+    ``schedule.chip_invalid``).
+    """
+
+    kind: Literal["max_shifts", "max_nights", "max_hours", "keep_on", "keep_off", "prefer"]
+    user_id: uuid.UUID
+    count: int | None = Field(default=None, ge=0, le=744)
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    shift_type_id: uuid.UUID | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class JobCreateRequest(BaseModel):
-    """What to generate: a range of dates, and optionally some projects and the solver."""
+    """What to generate: a range of dates, and optionally some projects and the solver.
+
+    008: ``controls``, up to 20 ``chips``, and ``based_on``, an earlier run this one reruns: it
+    starts from that run's working copy and keeps its locks, and copies its chips when ``chips``
+    is absent (FR-019, FR-021a).
+    """
 
     first: StrictDate = Field(alias="from")
     last: StrictDate = Field(alias="to")
     project_ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
     solver: Literal["greedy", "cpsat"] = "cpsat"
+    controls: Controls = Field(default_factory=Controls)
+    chips: list[ChipIn] | None = Field(default=None, max_length=20)
+    based_on: uuid.UUID | None = None
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -133,6 +175,8 @@ class Proposal(BaseModel):
     no_availability: list[uuid.UUID]
     short_published: list[ShortPublished]
     changes: Changes
+    # How many locked assignments the run kept (008 FR-018); absent in results made earlier.
+    locks_kept: int = 0
 
 
 class JobSummary(BaseModel):
@@ -161,6 +205,9 @@ class JobSummary(BaseModel):
         "runs and to `finished_at` once done; null before it starts. The bar's value is this over "
         "`time_limit_seconds` (007 FR-074)."
     )
+    controls: Controls = Field(description="The run's two plain controls (008 FR-017).")
+    chips: list[ChipIn] = Field(description="The manager's preferences for the run (FR-020).")
+    based_on: uuid.UUID | None = Field(description="The earlier run this one reruns (FR-019).")
 
 
 class JobRead(JobSummary):
@@ -194,6 +241,9 @@ def _summary(job: ScheduleJob, svc: ScheduleJobService) -> dict[str, Any]:
         "proposal_state": svc.state(job),
         "time_limit_seconds": get_settings().SCHEDULE_TIME_LIMIT_SECONDS,
         "elapsed_seconds": svc.elapsed_seconds(job),
+        "controls": job.controls or {},
+        "chips": job.chips or [],
+        "based_on": job.based_on_id,
     }
 
 
@@ -262,6 +312,13 @@ async def create_job(
                 "last_day": body.last,
                 "project_ids": body.project_ids,
                 "solver": body.solver,
+                "controls": body.controls.model_dump(),
+                "chips": (
+                    None
+                    if body.chips is None
+                    else [c.model_dump(mode="json", exclude_none=True) for c in body.chips]
+                ),
+                "based_on": body.based_on,
             },
         )
         return 202, job_read(job, svc).model_dump(mode="json", by_alias=True)

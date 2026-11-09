@@ -12,7 +12,7 @@ A slot with a part accepted is a draft now and is edited on the roster.
 """
 
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
@@ -24,14 +24,16 @@ from hds.models.user import User, UserRole
 from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.user import UserRepository
-from hds.scheduling import Employee, RuleWarning, validate
+from hds.scheduling import Employee, RuleWarning, chips, fairness, validate
 from hds.scheduling import cover as covering
+from hds.scheduling.eligibility import Roster
 from hds.scheduling.engine import slot_id
+from hds.scheduling.problem import Problem
 from hds.services import proposal_copy
 from hds.services.schedule_inputs import ScheduleInputService
-from hds.services.schedule_job import ScheduleJobService, check_version
+from hds.services.schedule_job import ScheduleJobService, check_version, stored_chip
 
-OPS = ("assign", "unassign", "move", "swap")
+OPS = ("assign", "unassign", "move", "swap", "lock", "unlock")
 STAFF = (UserRole.employee, UserRole.manager, UserRole.admin)
 
 
@@ -210,31 +212,9 @@ class ProposalService:
         work = proposal_copy.of(job.current, job.result)
         if proposal_copy.find(work, key) is None:
             raise NotFoundError(resource="Slot", id=slot_id(key))
-        org = await self._orgs.get_by_id(job.organization_id)
-        if org is None:
-            raise NotFoundError(resource="Organisation", id=job.organization_id)
         staff = await self._users.staff_of(job.organization_id)
-        built = await self._inputs.build(
-            job.organization_id,
-            job.first_day,
-            job.last_day,
-            [uuid.UUID(p) for p in job.project_ids],
-            also={u.id for u in staff},
-        )
-        base = built.problem
-        slots = tuple(
-            proposal_copy.as_slot(s, org.timezone, base.night_types) for s in work["slots"]
-        )
-        ours = {proposal_copy.shift_id_of(s) for s in work["slots"]}
-        # Drafts made by hand since the run are fixed shifts here, as the edit's check sees them.
-        extra = proposal_copy.unlisted(base, work, ours)
-        problem = replace(
-            base,
-            slots=slots,
-            fixed=(*base.fixed, *extra),
-            candidates=tuple(Employee(u.id, True) for u in staff),
-            current={},
-        )
+        base = await self._copy_problem(job, work, also={u.id for u in staff})
+        problem = replace(base, candidates=tuple(Employee(u.id, True) for u in staff))
         assigned = {
             s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
         }
@@ -273,6 +253,69 @@ class ProposalService:
                 "weekends": weekends,
             },
         }
+
+    async def fairness(self, actor: User, id: uuid.UUID) -> dict[str, Any]:
+        """The proposal's fairness, trade-offs, chips and guarantees, as it stands now.
+
+        008 FR-023 to FR-026. Judged on the working copy, so it follows every edit at once.
+        Numbers only; the client words them. ``overridden`` counts the assignments kept despite
+        a rule by a person's reason (FR-023); ``locks`` the locks the copy keeps (FR-018).
+
+        Raises:
+            ForbiddenError, NotFoundError, ConflictError: as ``read``.
+        """
+        job = await self._readable(actor, id)
+        work = proposal_copy.of(job.current, job.result)
+        problem = await self._copy_problem(job, work)
+        problem = replace(problem, chips=tuple(stored_chip(c) for c in job.chips or ()))
+        assigned = {
+            s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
+        }
+        results = chips.judge(problem, Roster(problem), assigned)
+        found = fairness.panel(problem, assigned)
+        traded = fairness.tradeoffs(problem, assigned, results)
+        people = [p for s in work["slots"] for p in s["people"]]
+        return {
+            "shares": [vars(s) for s in found.shares],
+            "totals": {
+                "people": found.people,
+                "minutes": found.minutes,
+                "nights": found.nights,
+                "weekends": found.weekends,
+            },
+            "tradeoffs": vars(traded),
+            "chips": [
+                {**dict(job.chips[r.index]), "state": r.state, "cause": r.cause} for r in results
+            ],
+            "overridden": sum(1 for p in people if p.get("override")),
+            # The locks the run kept from the roster, and those set in the proposal since.
+            "locks": int(work.get("locks_kept", 0)) + sum(1 for p in people if p.get("locked")),
+        }
+
+    async def _copy_problem(
+        self, job: ScheduleJob, work: Mapping[str, Any], also: Collection[uuid.UUID] = ()
+    ) -> Problem:
+        """The run's problem rebuilt today, with the working copy's slots in place of its own.
+
+        Drafts made by hand since the run are fixed shifts here, as the edit's check sees them.
+        """
+        org = await self._orgs.get_by_id(job.organization_id)
+        if org is None:
+            raise NotFoundError(resource="Organisation", id=job.organization_id)
+        built = await self._inputs.build(
+            job.organization_id,
+            job.first_day,
+            job.last_day,
+            [uuid.UUID(p) for p in job.project_ids],
+            also=set(also),
+        )
+        base = built.problem
+        slots = tuple(
+            proposal_copy.as_slot(s, org.timezone, base.night_types) for s in work["slots"]
+        )
+        ours = {proposal_copy.shift_id_of(s) for s in work["slots"]}
+        extra = proposal_copy.unlisted(base, work, ours)
+        return replace(base, slots=slots, fixed=(*base.fixed, *extra), current={})
 
     async def _staff(self, org_id: uuid.UUID, ids: set[uuid.UUID]) -> dict[uuid.UUID, Employee]:
         """The people an edit places, as the rules see them.
@@ -359,6 +402,15 @@ def apply(
         return {"user_id": user_id, "by": "person", "locked": False, "override": None}
 
     touched: dict[str, set[str]] = {}
+    if kind in ("lock", "unlock"):
+        # A lock marks a person later runs keep (008 FR-018); it changes no one's place, so no
+        # rule is judged again.
+        if person not in on:
+            raise invalid("That person is not on this shift.")
+        for p in slot["people"]:
+            if p["user_id"] == person:
+                p["locked"] = kind == "lock"
+        return before, {key: set()}
     if kind == "assign":
         if person in on:
             raise invalid("That person is already on this shift.")

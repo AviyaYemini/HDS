@@ -668,6 +668,33 @@ class RosterService:
         await self._record(actor, shift, "unassigned", [assignment.user_id], None, alert)
         return await self._judge(actor, [assignment.shift_id])
 
+    async def lock(self, actor: User, id: uuid.UUID, on: bool) -> tuple[Assignment, Shift]:
+        """Lock an assignment so later runs keep it, or unlock it (008 FR-018).
+
+        Within the projects ``actor`` may edit. A lock lasts until it is unlocked or its
+        assignment removed. Locking twice, or unlocking what is not locked, changes nothing.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
+            NotFoundError: The assignment is not in the organisation (HTTP 404).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        assignment = await self._assignments.get_by_id(id, actor.organization_id)
+        if assignment is None:
+            raise NotFoundError(resource="Assignment", id=id)
+        shift = await self._locked_shift(actor, assignment.shift_id)
+        await self._require_edit(actor, shift.project_id)
+        if on and assignment.locked_at is None:
+            assignment = await self._assignments.update(
+                id, actor.organization_id, locked_by=actor.id, locked_at=datetime.now(UTC)
+            )
+        elif not on and assignment.locked_at is not None:
+            assignment = await self._assignments.update(
+                id, actor.organization_id, locked_by=None, locked_at=None
+            )
+        await self._shifts.touch(shift.id, actor.organization_id)
+        return assignment, await self.fresh_shift(actor, shift.id)
+
     async def busy(self, actor: User, shift_id: uuid.UUID) -> list[Busy]:
         """Who is already on another shift that overlaps ``shift_id``, in any project (T042f).
 

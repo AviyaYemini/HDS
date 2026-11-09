@@ -26,6 +26,30 @@ export interface paths {
         patch: operations["change_assignment_times_api_v1_assignments__id__patch"];
         trace?: never;
     };
+    "/api/v1/assignments/{id}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Lock an assignment
+         * @description A Manager of the project, or an Admin. Later runs keep a locked assignment, count it toward hours, nights, the weekly maximum and fairness, and say how many they kept, until it is unlocked or removed (008 FR-018). Locking twice changes nothing.
+         */
+        put: operations["lock_api_v1_assignments__id__lock_put"];
+        post?: never;
+        /**
+         * Unlock an assignment
+         * @description A Manager of the project, or an Admin. Later runs may change the assignment again (008 FR-018). Unlocking what is not locked changes nothing.
+         */
+        delete: operations["unlock_api_v1_assignments__id__lock_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assignments/{id}/move": {
         parameters: {
             query?: never;
@@ -1086,6 +1110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/schedule-jobs/{id}/fairness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fairness and trade-offs of a proposal
+         * @description Manager or Admin, of every project in the run. Judged on the working copy, so it follows every edit (008 FR-026): each person's hours (in minutes), nights and weekend shifts in the range against the run's totals, with outliers; the trade-off counts; each chip met, not met (with what prevented it) or no longer applying; how many assignments break a rule by a person's override; and how many locks it keeps. Numbers only, never a score. 409 (`schedule.not_ready`) before the job has a proposal.
+         */
+        get: operations["fairness_of_api_v1_schedule_jobs__id__fairness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule-jobs/{id}/proposal": {
         parameters: {
             query?: never;
@@ -1838,6 +1882,12 @@ export interface components {
              */
             id: string;
             /**
+             * Locked
+             * @description Locked: later runs keep this assignment until it is unlocked (008 FR-018).
+             * @default false
+             */
+            locked: boolean;
+            /**
              * Overrides
              * @default []
              */
@@ -1960,6 +2010,67 @@ export interface components {
             added: components["schemas"]["Change"][];
             /** Removed */
             removed: components["schemas"]["Change"][];
+        };
+        /**
+         * ChipIn
+         * @description One preference for the run about one person (008 FR-020).
+         *
+         *     ``max_shifts``, ``max_nights`` and ``max_hours`` take ``count``; ``keep_on`` takes
+         *     ``project_id`` or ``site_id``; ``keep_off`` and ``prefer`` take ``weekday`` (0 is Sunday) or
+         *     ``shift_type_id``. A chip without what its kind needs is refused (422
+         *     ``schedule.chip_invalid``).
+         */
+        ChipIn: {
+            /** Count */
+            count?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "max_shifts" | "max_nights" | "max_hours" | "keep_on" | "keep_off" | "prefer";
+            /** Project Id */
+            project_id?: string | null;
+            /** Shift Type Id */
+            shift_type_id?: string | null;
+            /** Site Id */
+            site_id?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Weekday */
+            weekday?: number | null;
+        };
+        /**
+         * ChipState
+         * @description A chip of the run, and whether the proposal meets it now (008 FR-021, FR-022).
+         */
+        ChipState: {
+            /** Cause */
+            cause?: ("coverage" | "conflict" | "fixed") | null;
+            /** Count */
+            count?: number | null;
+            /** Kind */
+            kind: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Shift Type Id */
+            shift_type_id?: string | null;
+            /** Site Id */
+            site_id?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "met" | "not_met" | "not_applying";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Weekday */
+            weekday?: number | null;
         };
         /**
          * ClientCreateRequest
@@ -2108,6 +2219,26 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * Controls
+         * @description The run's two plain controls (008 FR-017); untouched, today's order.
+         *
+         *     ``keep_changes_small``: "Keep changes small" (true) or "Rebalance freely" (false).
+         *     ``wishes_strictly``: respect "would rather not" strictly, before the balance of hours and
+         *     nights (true), or gently, after it (false).
+         */
+        Controls: {
+            /**
+             * Keep Changes Small
+             * @default false
+             */
+            keep_changes_small: boolean;
+            /**
+             * Wishes Strictly
+             * @default true
+             */
+            wishes_strictly: boolean;
         };
         /**
          * CopyWeekRequest
@@ -2286,7 +2417,9 @@ export interface components {
         };
         /**
          * EditRequest
-         * @description One edit: assign, unassign, move or swap a person, with a reason to keep a rule break.
+         * @description One edit of a person: assign, unassign, move, swap, lock or unlock.
+         *
+         *     A rule break needs a reason to be kept; a lock marks someone later runs keep (008 FR-018).
          */
         EditRequest: {
             /** Key */
@@ -2295,7 +2428,7 @@ export interface components {
              * Op
              * @enum {string}
              */
-            op: "assign" | "unassign" | "move" | "swap";
+            op: "assign" | "unassign" | "move" | "swap" | "lock" | "unlock";
             /** Other User Id */
             other_user_id?: string | null;
             /** Override Reason */
@@ -2469,6 +2602,24 @@ export interface components {
             week_minutes?: number | null;
         };
         /**
+         * Fairness
+         * @description How fair the proposal is, what it traded off, its chips, and what it keeps.
+         *
+         *     008 FR-023 to FR-026.
+         */
+        Fairness: {
+            /** Chips */
+            chips: components["schemas"]["ChipState"][];
+            /** Locks */
+            locks: number;
+            /** Overridden */
+            overridden: number;
+            /** Shares */
+            shares: components["schemas"]["Share"][];
+            totals: components["schemas"]["Totals"];
+            tradeoffs: components["schemas"]["Tradeoffs"];
+        };
+        /**
          * GroupListResponse
          * @description The organisation's groups.
          */
@@ -2615,8 +2766,17 @@ export interface components {
         /**
          * JobCreateRequest
          * @description What to generate: a range of dates, and optionally some projects and the solver.
+         *
+         *     008: ``controls``, up to 20 ``chips``, and ``based_on``, an earlier run this one reruns: it
+         *     starts from that run's working copy and keeps its locks, and copies its chips when ``chips``
+         *     is absent (FR-019, FR-021a).
          */
         JobCreateRequest: {
+            /** Based On */
+            based_on?: string | null;
+            /** Chips */
+            chips?: components["schemas"]["ChipIn"][] | null;
+            controls?: components["schemas"]["Controls"];
             /**
              * From
              * Format: date
@@ -2651,6 +2811,18 @@ export interface components {
          * @description A job and, once it has succeeded, its proposal.
          */
         JobRead: {
+            /**
+             * Based On
+             * @description The earlier run this one reruns (FR-019).
+             */
+            based_on: string | null;
+            /**
+             * Chips
+             * @description The manager's preferences for the run (FR-020).
+             */
+            chips: components["schemas"]["ChipIn"][];
+            /** @description The run's two plain controls (008 FR-017). */
+            controls: components["schemas"]["Controls"];
             /**
              * Created At
              * Format: date-time
@@ -2713,6 +2885,18 @@ export interface components {
          * @description A job without its proposal.
          */
         JobSummary: {
+            /**
+             * Based On
+             * @description The earlier run this one reruns (FR-019).
+             */
+            based_on: string | null;
+            /**
+             * Chips
+             * @description The manager's preferences for the run (FR-020).
+             */
+            chips: components["schemas"]["ChipIn"][];
+            /** @description The run's two plain controls (008 FR-017). */
+            controls: components["schemas"]["Controls"];
             /**
              * Created At
              * Format: date-time
@@ -3650,6 +3834,11 @@ export interface components {
             changes: components["schemas"]["Changes"];
             /** Employees */
             employees: components["schemas"]["EmployeeShare"][];
+            /**
+             * Locks Kept
+             * @default 0
+             */
+            locks_kept: number;
             /** No Availability */
             no_availability: string[];
             /** Short Published */
@@ -4024,6 +4213,29 @@ export interface components {
              * Format: date-time
              */
             last_refreshed_at: string;
+        };
+        /**
+         * Share
+         * @description One person's share of the range, and which of it stands out (008 FR-025).
+         */
+        Share: {
+            /** Hours Outlier */
+            hours_outlier: boolean;
+            /** Minutes */
+            minutes: number;
+            /** Nights */
+            nights: number;
+            /** Nights Outlier */
+            nights_outlier: boolean;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Weekends */
+            weekends: number;
+            /** Weekends Outlier */
+            weekends_outlier: boolean;
         };
         /**
          * ShiftAnswer
@@ -4523,6 +4735,20 @@ export interface components {
             token_type: string;
         };
         /**
+         * Totals
+         * @description The run's people and their totals; each total over ``people`` is its average.
+         */
+        Totals: {
+            /** Minutes */
+            minutes: number;
+            /** Nights */
+            nights: number;
+            /** People */
+            people: number;
+            /** Weekends */
+            weekends: number;
+        };
+        /**
          * TrackedRead
          * @description One employee's availability for the window.
          */
@@ -4561,6 +4787,28 @@ export interface components {
         TrackerRead: {
             /** Items */
             items: components["schemas"]["TrackedRead"][];
+        };
+        /**
+         * Tradeoffs
+         * @description What the proposal gave up, as counts the summary words (008 FR-024).
+         */
+        Tradeoffs: {
+            /** Chips Not Met */
+            chips_not_met: number;
+            /** Close Wishes Given */
+            close_wishes_given: number;
+            /** Empty Places */
+            empty_places: number;
+            /** Minutes High */
+            minutes_high: number;
+            /** Minutes Low */
+            minutes_low: number;
+            /** Nights High */
+            nights_high: number;
+            /** Nights Low */
+            nights_low: number;
+            /** Open Wishes Missed */
+            open_wishes_missed: number;
         };
         /**
          * UnfilledSlot
@@ -5113,6 +5361,122 @@ export interface operations {
             };
             /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    lock_api_v1_assignments__id__lock_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentAnswer"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    unlock_api_v1_assignments__id__lock_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentAnswer"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10093,6 +10457,73 @@ export interface operations {
             };
             /** @description The record changed since it was read: the If-Match header is stale (roster.changed). */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    fairness_of_api_v1_schedule_jobs__id__fairness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fairness"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

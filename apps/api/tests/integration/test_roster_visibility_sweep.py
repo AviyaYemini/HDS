@@ -40,6 +40,7 @@ PART2_READS = {
     "GET /api/v1/organisation/scheduling",
     "GET /api/v1/schedule-jobs",
     "GET /api/v1/schedule-jobs/{id}",
+    "GET /api/v1/shifts/{id}/busy",
 }
 PART2_TAGS = {
     "availability",
@@ -124,6 +125,8 @@ def paths(w: dict[str, Any], me: Any) -> dict[str, str]:
         "GET /api/v1/organisation/scheduling": "/api/v1/organisation/scheduling",
         "GET /api/v1/schedule-jobs": "/api/v1/schedule-jobs",
         "GET /api/v1/schedule-jobs/{id}": f"/api/v1/schedule-jobs/{w['job']}",
+        # Who is busy at the manager's shift: Managers and Admins only (008 T042f).
+        "GET /api/v1/shifts/{id}/busy": f"/api/v1/shifts/{w['theirs']}/busy",
     }
 
 
@@ -140,6 +143,7 @@ EMPLOYEE = {
     "GET /api/v1/organisation/scheduling": 403,
     "GET /api/v1/schedule-jobs": 403,
     "GET /api/v1/schedule-jobs/{id}": 403,
+    "GET /api/v1/shifts/{id}/busy": 403,
 }
 
 
