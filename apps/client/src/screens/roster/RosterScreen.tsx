@@ -19,6 +19,7 @@ import type { components } from "@hds/api-client";
 
 import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SegmentedControl, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
+import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
@@ -162,6 +163,18 @@ export function RosterScreen() {
     }
     return done;
   };
+
+  /** Lock an assignment, so later runs keep it, or unlock it (008 FR-018). */
+  const lockAssignment = async (assignmentId: string, on: boolean) => {
+    try {
+      const path = { params: { path: { id: assignmentId } } };
+      await call(on ? session.api.PUT("/api/v1/assignments/{id}/lock", path) : session.api.DELETE("/api/v1/assignments/{id}/lock", path));
+      await shifts.reload();
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+    }
+  };
+  const lockedNow = personOn ? !!personOn.shift.assignments.find((a) => a.id === personOn.assignmentId)?.locked : false;
 
   /** Move an assignment to ``shift``, or swap it with ``swapWith`` there, in one step (T042f). */
   const move = async (assignmentId: string, userId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
@@ -349,6 +362,19 @@ export function RosterScreen() {
           setPersonOn(null);
           void unassign(target.shift, target.assignmentId);
         }} />
+        {personOn ? (
+          <Button
+            variant="secondary"
+            icon="lock"
+            label={lockedNow ? t("roster.unlock") : t("roster.lock")}
+            testID="action-lock"
+            onPress={() => {
+              const target = personOn;
+              setPersonOn(null);
+              void lockAssignment(target.assignmentId, !lockedNow);
+            }}
+          />
+        ) : null}
         <Button variant="secondary" icon="people" label={t("roster.replace")} testID="action-replace" onPress={() => {
           const target = personOn!;
           setPersonOn(null);
@@ -423,14 +449,18 @@ function Block({
           <Pressable
             key={a.id}
             testID="block-person"
-            {...webProps({ dataSet: { userId: a.user_id, ownTimes: String(a.own_times) } })}
+            {...webProps({ dataSet: { userId: a.user_id, ownTimes: String(a.own_times), locked: String(!!a.locked) } })}
             onPress={() => onPerson(a.id, a.user_id)}
             disabled={!editable}
             style={styles.person}
           >
-            <Txt role="meta" numberOfLines={1}>
-              {nameOf(a.user_id)}
-            </Txt>
+            <View style={styles.nameRow}>
+              {/* A lock later runs keep, shown to every Manager and Admin who sees the roster (FR-018). */}
+              {a.locked ? <Icon name="lock" size={12} color={colors.text.secondary} label={t("roster.locked")} testID="person-locked" /> : null}
+              <Txt role="meta" numberOfLines={1}>
+                {nameOf(a.user_id)}
+              </Txt>
+            </View>
             <View style={styles.track}>
               <View
                 testID="person-bar"
@@ -708,6 +738,7 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   week: { flexDirection: "row", gap: 8 },

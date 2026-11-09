@@ -65,11 +65,23 @@ const option = (user_id: string, extra: Record<string, unknown> = {}) => ({
 });
 const cover = (...options: ReturnType<typeof option>[]) => ({ key: KEY, options, totals: { people: 2, minutes: 480, nights: 0, weekends: 0 } });
 
+const FAIRNESS = `/api/v1/schedule-jobs/${JOB}/fairness`;
+const FAIR = {
+  shares: [],
+  totals: { people: 0, minutes: 0, nights: 0, weekends: 0 },
+  tradeoffs: { empty_places: 0, open_wishes_missed: 0, close_wishes_given: 0, minutes_low: 0, minutes_high: 0, nights_low: 0, nights_high: 0, chips_not_met: 0 },
+  chips: [],
+  overridden: 0,
+  locks: 0,
+};
+/** A fake API that also answers the review's fairness panel. */
+const fake = () => new FakeApi().on("GET", FAIRNESS, json(200, FAIR));
+
 const job = { id: JOB, from: "2027-06-06", to: "2027-06-12", status: "succeeded", proposal_state: "open" } as unknown as Job;
 const names = { projects: new Map([[PROJECT, "North Gate"]]), types: new Map(), people: new Map([[ANN, "Ann"], [BEN, "Ben"]]) };
 
 test("a break asks for a reason, and keeping it sends the reason with the same edit", async () => {
-  const api = new FakeApi();
+  const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
   api.on("GET", COVER, json(200, cover(option(BEN))));
   api.on(
@@ -110,7 +122,7 @@ test("a break asks for a reason, and keeping it sends the reason with the same e
 });
 
 test("staff kept on a draft the run could not place are shown, and not offered for edits", async () => {
-  const api = new FakeApi();
+  const api = fake();
   const body = review(0, [ANN]);
   body.slots[0]!.kept = [BEN];
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, body));
@@ -125,7 +137,7 @@ test("staff kept on a draft the run could not place are shown, and not offered f
 
 
 test("who else could cover: free people with their load, then a rule with its numbers in words", async () => {
-  const api = new FakeApi();
+  const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [])));
   api.on(
     "GET",
@@ -152,7 +164,7 @@ test("who else could cover: free people with their load, then a rule with its nu
 });
 
 test("when who else could cover cannot be read, the staff are still offered, with a retry (R24)", async () => {
-  const api = new FakeApi();
+  const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
   api.on("GET", COVER, json(503, { type: "x", title: "x", status: 503, code: "errors.unavailable" }), json(200, cover(option(BEN))));
   const session = await signedIn(api);
@@ -173,7 +185,7 @@ test("when who else could cover cannot be read, the staff are still offered, wit
 });
 
 test("the slots left empty come first, in red with words, and each opens who else could cover (T042b)", async () => {
-  const api = new FakeApi();
+  const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [])));
   api.on("GET", COVER, json(200, cover(option(BEN))));
   const session = await signedIn(api);
@@ -189,7 +201,7 @@ test("the slots left empty come first, in red with words, and each opens who els
 });
 
 test("weeks that hold no slot of the run are not shown (T042a)", async () => {
-  const api = new FakeApi();
+  const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
   const session = await signedIn(api);
   // Three calendar weeks asked for; the one slot is in the second.
