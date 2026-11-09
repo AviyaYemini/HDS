@@ -166,7 +166,7 @@ roster and runs make one path.
 - [x] T044 [P] [US6] Engine tests in `apps/api/tests/unit/scheduling/test_progress_stop.py`: `progress` is called with rising filled counts; `should_stop` ends the solve with the best result, still valid and marked stopped and not optimal
 - [x] T045 [P] [US6] Worker tests in `apps/api/tests/integration/test_worker_progress.py`: progress stored at most every 2 s; Stop with a result ends `stopped` with a proposal; Stop before any result ends `cancelled` with none (SC-007)
 - [x] T046 [P] [US7] Service tests: the record lists created, finished, edits, overrides, accepts and discards in order with actors; read scope as 007 (FR-031). Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
-- [ ] T047 [P] [US8] Playwright spec `apps/client/tests/e2e/ux/l-run-flow.spec.ts`: best so far and Stop; the in-app notice when a run ends on another screen; Generate this week prefilled; accept to the roster; Publish; Copy to next week offered; Find someone on an empty roster slot; the record panel
+- [x] T047 [P] [US8] Playwright spec `apps/client/tests/e2e/ux/l-run-flow.spec.ts`: best so far and Stop; the in-app notice when a run ends on another screen; Generate this week prefilled; accept to the roster; Publish; Copy to next week offered; Find someone on an empty roster slot; the record panel
 
 ### Implementation
 

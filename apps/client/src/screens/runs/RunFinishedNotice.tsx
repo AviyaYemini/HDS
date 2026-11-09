@@ -24,8 +24,10 @@ export function RunFinishedNotice() {
   useEffect(() => {
     here.current = pathname;
   }, [pathname]);
-  // The person's runs seen queued or running, so an end is noticed once.
+  // The person's runs seen queued or running, and every run seen at all, so each end is told once:
+  // one seen running that has ended, or one that started and ended between two looks.
   const active = useRef<Set<string> | null>(null);
+  const known = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -39,7 +41,9 @@ export function RunFinishedNotice() {
         const running = new Set(mine.filter((job) => job.status === "queued" || job.status === "running").map((job) => job.id));
         if (active.current !== null) {
           for (const job of mine) {
-            if (!active.current.has(job.id) || running.has(job.id)) continue;
+            const ended = !running.has(job.id);
+            const news = active.current.has(job.id) || !known.current.has(job.id);
+            if (!ended || !news) continue;
             // Ended since the last look: say so, unless they are on that run's page already.
             if (here.current === `/runs/${job.id}`) continue;
             showToast(t(job.status === "succeeded" ? "runs.notice_ready" : "runs.notice_ended"), {
@@ -50,6 +54,7 @@ export function RunFinishedNotice() {
           }
         }
         active.current = running;
+        for (const job of mine) known.current.add(job.id);
         if (running.size > 0) next = WHILE_RUNNING_MS;
       } catch {
         // A failed look waits for the next one; the notice is a courtesy, never an error.
