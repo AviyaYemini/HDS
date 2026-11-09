@@ -142,6 +142,9 @@ what it guarantees, what it traded off, and how fair it is.
 - [ ] T042 [P] [US4] Locale keys for controls, chips, guarantees, the summary and fairness; `docs/hds-api.md`
 - [ ] T042a [US3] Review (owner, 2026-11-09): show no week row, and no day, that holds no slot of the run; a run's dates outside its weeks' slots (the calendar weeks before the range) add nothing. `weeksOf` in `apps/client/src/screens/runs/model.ts` keeps only the weeks with a slot; desktop columns keep the days of those weeks
 - [ ] T042b [US3] Review (owner, 2026-11-09): at the top of the review, the slots the run left with empty places, highlighted in red (with an icon and words, never colour alone): each opens its slot in the week, scrolled to and focused, with "Who else could cover" open on it (FR-014, FR-015); an RNTL test and a step in `j-empty-slots.spec.ts`
+- [ ] T042c Roster (owner, 2026-11-09): the roster's "Assign to the shift" sheet gets a search field over every active staff member, by name, so an open seat is filled without scrolling the whole list. Later (project teams, with 015's qualifications): the list shows only the people attached to the project or qualified for it, and search still finds anyone
+- [ ] T042d Roster (owner, 2026-11-09): an assignment that breaks a rule (two shifts back to back, 16 hours without rest, the weekly maximum…) still goes through, and a dialog then names each break in words with its numbers, never blocking; it closes with one button and focus goes back where it was
+- [ ] T042e Roster (owner, 2026-11-09): Publish on a week with no drafts showed a sheet of zeros (every shift there was already published, so nothing was to publish). With nothing to publish, Publish is disabled with the reason in words ("Every shift this week is already published"), and the sheet never opens on zeros
 
 ### Close
 
