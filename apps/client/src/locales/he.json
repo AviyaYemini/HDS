@@ -832,5 +832,19 @@
   "roster.assign_search": "חיפוש לפי שם",
   "roster.assign_none": "אין אף אחד בשם הזה.",
   "roster.nothing_to_publish": "כל המשמרות בשבוע הזה כבר פורסמו.",
-  "roster.warnings_ok": "בסדר, להשאיר"
+  "roster.warnings_ok": "בסדר, להשאיר",
+  "roster.replace": "החלפה במישהו אחר",
+  "roster.replace_title": "החלפת {{person}}",
+  "roster.busy_mark": "במשמרת אחרת באותה שעה",
+  "roster.busy_at": "{{person}} במשמרת אחרת באותה שעה ({{time}}).",
+  "roster.busy_then": "{{person}} במשמרת אחרת באותה שעה.",
+  "roster.move_here": "העברת {{person}} לכאן (יורד מהמשמרת האחרת)",
+  "roster.swap_with": "החלפה בין {{person}} ל{{other}}",
+  "roster.keep_both": "להשאיר את {{person}} בשתיהן",
+  "roster.note_label": "הערה למשובץ (לא חובה)",
+  "roster.alert_label": "מי יקבל עדכון",
+  "roster.alert_none": "אף אחד",
+  "roster.alert_affected": "המושפעים",
+  "roster.alert_everyone": "כל מי שבסידור",
+  "shifts.note_title": "הערה מהמשרד"
 }

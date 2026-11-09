@@ -52,6 +52,20 @@ async function assign(admin: APIRequestContext, s: Shift, who: Me, hours?: [numb
   await ok(admin.post(`/api/v1/shifts/${s.id}/assignments`, { data }), 201);
 }
 
+/**
+ * Choose someone in the assign sheet. A person already on another shift then makes the sheet ask
+ * what to do (T042f); these tests keep them on both, as the roster did before.
+ */
+async function pick(page: Page, userId: string): Promise<void> {
+  await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${userId}"]`).click();
+  const choice = page.getByTestId("assign-busy-choice");
+  const asked = await choice.waitFor({ state: "visible", timeout: 1_000 }).then(
+    () => true,
+    () => false,
+  );
+  if (asked) await choice.getByTestId("action-busy-keep").click();
+}
+
 function block(page: Page, id: string) {
   return page.locator(`[data-testid="roster-block"][data-shift-id="${id}"]`).first();
 }
@@ -135,7 +149,7 @@ for (const language of LANGUAGES) {
       const before = await sheet.getByTestId("assign-option").count();
       await sheet.getByTestId("assign-search").fill("employee");
       await expect.poll(() => sheet.getByTestId("assign-option").count()).toBeLessThan(before);
-      await sheet.locator(`[data-testid="assign-option"][data-user-id="${employee.id}"]`).click();
+      await pick(page, employee.id);
       taps += 1;
       expect(taps).toBeLessThanOrEqual(3);
       const b = block(page, morning.id);
@@ -168,7 +182,7 @@ for (const language of LANGUAGES) {
       await signIn(page, "manager", language);
       await openRoster(page, language, p, first);
       await block(page, s.id).getByTestId("empty-seat").first().click();
-      await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${extra.id}"]`).click();
+      await pick(page, extra.id);
       await expect(page.getByTestId("warning-detail")).toContainText(
         language === "he" ? "לא הוגשה" : "did not submit",
       );
@@ -225,7 +239,7 @@ for (const language of LANGUAGES) {
       // Someone else changes the shift after the page read it.
       await ok(admin.patch(`/api/v1/shifts/${own.id}`, { data: { headcount: 3 } }));
       await block(page, own.id).getByTestId("empty-seat").first().click();
-      await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${employee.id}"]`).click();
+      await pick(page, employee.id);
       await expect(page.getByTestId("banner-roster-changed")).toBeVisible();
       await expect(block(page, own.id).getByTestId("block-coverage")).toHaveText(/\/3$/);
     });
@@ -249,6 +263,52 @@ for (const language of LANGUAGES) {
       await checkA11y(page, `submissions (${language})`);
     });
 
+    test("someone on another shift then is moved here, swapped, and undone in one step each (T042f, T042g)", async ({ page }) => {
+      const here = await project(admin, `Roster move here ${language}`);
+      const there = await project(admin, `Roster move there ${language}`);
+      for (const p of [here, there]) await ok(admin.put(`/api/v1/projects/${p.id}/managers`, { data: { user_ids: [manager.id] } }));
+      const day = addDays(WEEK, language === "he" ? 5 : 6);
+      const a = await shift(admin, here, day, "morning");
+      const b = await shift(admin, there, day, "morning");
+      const stamp = `${Date.now()}`;
+      const guard = await ok<Me>(admin.post("/api/v1/employees", { data: { email: `mover.${stamp}@hds.test`, full_name: `Mover ${stamp.slice(-5)}`, initial_password: "a-long-password-1" } }), 201);
+      const other = await ok<Me>(admin.post("/api/v1/employees", { data: { email: `held.${stamp}@hds.test`, full_name: `Held ${stamp.slice(-5)}`, initial_password: "a-long-password-1" } }), 201);
+      await assign(admin, b, guard);
+      // Who is on shift b (Roster move there), read through the API.
+      const onShift = async (s: Shift) =>
+        (await ok<{ items: { id: string; assignments: { user_id: string }[] }[] }>(admin.get("/api/v1/shifts", { params: { project_id: there.id, from: day, to: day } })))
+          .items.find((x) => x.id === s.id)!.assignments.map((x) => x.user_id);
+
+      await signIn(page, "manager", language);
+      await openRoster(page, language, here);
+      // The guard is on the other project's shift then: the sheet says so and offers to move them.
+      await block(page, a.id).getByTestId("empty-seat").first().click();
+      const sheet = page.getByTestId("assign-sheet");
+      const option = sheet.locator(`[data-testid="assign-option"][data-user-id="${guard.id}"]`);
+      await expect(option).toHaveAttribute("data-busy", "true");
+      await sheet.getByTestId("edit-note").fill(language === "he" ? "מעבר לשער" : "Move to the gate");
+      await option.click();
+      await sheet.getByTestId("action-busy-move").click();
+      await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
+      expect(await onShift(b)).not.toContain(guard.id);
+
+      // Undo moves them back, in one step.
+      await page.getByTestId("action-undo-roster").click();
+      await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toHaveCount(0);
+      await expect.poll(() => onShift(b)).toContain(guard.id);
+
+      // A swap: replacing the person on this shift with the busy guard trades their places.
+      await assign(admin, a, other);
+      await page.reload();
+      await block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${other.id}"]`).click();
+      await page.getByTestId("action-replace").click();
+      await sheet.locator(`[data-testid="assign-option"][data-user-id="${guard.id}"]`).click();
+      await sheet.getByTestId("action-busy-move").click();
+      await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
+      await expect.poll(() => onShift(b)).toContain(other.id);
+      await checkA11y(page, `roster after a swap (${language})`);
+    });
+
     test("on a phone, a day agenda assigns and publishes", async ({ page }, testInfo) => {
       test.skip(!isPhone(testInfo), "the phone agenda");
       const p = await project(admin, `Roster agenda ${language}`);
@@ -259,7 +319,7 @@ for (const language of LANGUAGES) {
       await page.goto(at("/roster", language, { project: p.id, week: WEEK, day }));
       await expect(page.getByTestId("roster-agenda")).toBeVisible();
       await block(page, s.id).getByTestId("empty-seat").first().click();
-      await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${employee.id}"]`).click();
+      await pick(page, employee.id);
       await expect(block(page, s.id).locator(`[data-testid="block-person"][data-user-id="${employee.id}"]`)).toBeVisible();
       // A rule this assignment breaks (the employee's other shifts that week) is named, never blocking (T042d).
       if (await page.getByTestId("warning-detail").isVisible()) await page.getByTestId("action-warnings-ok").click();

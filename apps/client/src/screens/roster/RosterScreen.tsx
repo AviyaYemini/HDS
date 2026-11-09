@@ -15,7 +15,9 @@ import { ApiError, call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { previewsEnabled } from "../../config/previews";
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
+import type { components } from "@hds/api-client";
+
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, SegmentedControl, Sheet, SkeletonRows, TextField, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
@@ -70,6 +72,19 @@ export function RosterScreen() {
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
+  // Replacing someone on a shift opens the assign sheet with them named (T042f).
+  const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
+  // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
+  const [note, setNote] = useState("");
+  const [alert, setAlert] = useState<Alert>("none");
+  // Who is already on another shift at the sheet's shift's time, in any project (T042f).
+  const busy = useLoad(
+    async () =>
+      assignTo
+        ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: assignTo.id } } }))).items
+        : [],
+    [assignTo?.id],
+  );
 
   // Names from the roster read itself (deactivated people included); the active list fills the rest.
   const names = useMemo(() => {
@@ -109,7 +124,12 @@ export function RosterScreen() {
       const answer = await call(
         session.api.POST("/api/v1/shifts/{id}/assignments", {
           params: { path: { id: shift.id }, header: { "If-Match": shift.etag } },
-          body: { user_id: userId, ...(times?.starts_at ? { starts_at: times.starts_at, ends_at: times.ends_at } : {}) },
+          body: {
+            user_id: userId,
+            ...(times?.starts_at ? { starts_at: times.starts_at, ends_at: times.ends_at } : {}),
+            alert: record ? alert : "none",
+            ...(record && note.trim() ? { note: note.trim() } : {}),
+          },
         }),
       );
       created = answer.assignment.id;
@@ -126,7 +146,12 @@ export function RosterScreen() {
   const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<boolean> => {
     const before = shift.assignments.find((a) => a.id === assignmentId);
     const done = await change(
-      () => call(session.api.DELETE("/api/v1/assignments/{id}", { params: { path: { id: assignmentId }, header: { "If-Match": shift.etag } } })),
+      () =>
+        call(
+          session.api.DELETE("/api/v1/assignments/{id}", {
+            params: { path: { id: assignmentId }, header: { "If-Match": shift.etag }, query: { alert: record ? alert : "none" } },
+          }),
+        ),
       shift.id,
     );
     if (done && record && before) {
@@ -138,11 +163,44 @@ export function RosterScreen() {
     return done;
   };
 
+  /** Move an assignment to ``shift``, or swap it with ``swapWith`` there, in one step (T042f). */
+  const move = async (assignmentId: string, userId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
+    try {
+      const answer = await call(
+        session.api.POST("/api/v1/assignments/{id}/move", {
+          params: { path: { id: assignmentId } },
+          body: { to_shift_id: shift.id, ...(swapWith ? { swap_with: swapWith } : {}), alert: record ? alert : "none", ...(record && note.trim() ? { note: note.trim() } : {}) },
+        }),
+      );
+      const found = answer.warnings as Warning[];
+      setWarnings((map) => {
+        const next = new Map(map);
+        for (const id of [fromShiftId, shift.id]) next.set(id, found.filter((w) => w.shift_ids.includes(id)));
+        return next;
+      });
+      await shifts.reload();
+      if (record) {
+        setHistory((h) => [...h, { kind: "moved", assignmentId, shiftId: shift.id, fromShiftId, swapWith }]);
+        if (found.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id))) setWarningsOf(shift);
+      }
+      return true;
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+      return false;
+    }
+  };
+
   // A step leaves the history only once its request has succeeded; re-creating an assignment
   // gives it a new id, which earlier steps for that person then follow (R88).
   const undo = async () => {
     const last = history[history.length - 1];
     if (!last) return;
+    if (last.kind === "moved") {
+      // Back to the shift it came from (in any project), swapping again when it was a swap.
+      const back = { id: last.fromShiftId } as Shift;
+      if (await move(last.assignmentId, "", last.shiftId, back, last.swapWith, false)) setHistory((h) => h.slice(0, -1));
+      return;
+    }
     const shift = shifts.data?.find((s) => s.id === last.shiftId);
     if (!shift) return;
     if (last.kind === "assigned") {
@@ -253,16 +311,49 @@ export function RosterScreen() {
         </View>
       )}
 
-      <AssignSheet shift={assignTo} people={people.data ?? []} onClose={() => setAssignTo(null)} onChoose={(userId) => {
-        const shift = assignTo!;
-        setAssignTo(null);
-        void assign(shift, userId);
-      }} />
+      <AssignSheet
+        shift={assignTo}
+        people={people.data ?? []}
+        busy={busy.data ?? []}
+        replacing={replacing ? nameOf(replacing.userId) : null}
+        note={note}
+        alert={alert}
+        onNote={setNote}
+        onAlert={setAlert}
+        onClose={() => {
+          setAssignTo(null);
+          setReplacing(null);
+          setNote("");
+        }}
+        onChoose={(userId, how, busyOn) => {
+          const shift = assignTo!;
+          const out = replacing;
+          setAssignTo(null);
+          setReplacing(null);
+          void (async () => {
+            if (how === "move" && busyOn?.assignment_id && busyOn.shift_id) {
+              // A swap trades places with the person being replaced; otherwise a transfer.
+              await move(busyOn.assignment_id, userId, busyOn.shift_id, shift, out ? out.assignmentId : null);
+            } else {
+              if (out && !(await unassign(out.shift, out.assignmentId))) return;
+              await assign(shift, userId);
+            }
+            setNote("");
+          })();
+        }}
+      />
       <Sheet open={personOn !== null} onClose={() => setPersonOn(null)} title={nameOf(personOn?.userId ?? null)} testID="person-sheet">
+        <AlertChoice value={alert} onChange={setAlert} />
         <Button variant="secondary" icon="close" label={t("roster.unassign")} testID="action-unassign" onPress={() => {
           const target = personOn!;
           setPersonOn(null);
           void unassign(target.shift, target.assignmentId);
+        }} />
+        <Button variant="secondary" icon="people" label={t("roster.replace")} testID="action-replace" onPress={() => {
+          const target = personOn!;
+          setPersonOn(null);
+          setReplacing(target);
+          setAssignTo(target.shift);
         }} />
       </Sheet>
       <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
@@ -360,10 +451,57 @@ function Block({
   );
 }
 
-function AssignSheet({ shift, people, onClose, onChoose }: { shift: Shift | null; people: Person[]; onClose: () => void; onChoose: (userId: string) => void }) {
+type BusyOn = components["schemas"]["BusyAnswer"]["items"][number];
+type Alert = components["schemas"]["AssignRequest"]["alert"];
+
+/** Who hears of a manual edit: everyone on the roster, the people it affects, or no one (T042g). */
+function AlertChoice({ value, onChange }: { value: Alert; onChange: (value: Alert) => void }) {
+  const { t } = useTranslation();
+  return (
+    <SegmentedControl
+      label={t("roster.alert_label")}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "none", label: t("roster.alert_none") },
+        { value: "affected", label: t("roster.alert_affected") },
+        { value: "everyone", label: t("roster.alert_everyone") },
+      ]}
+      testID="edit-alert"
+    />
+  );
+}
+
+function AssignSheet({
+  shift,
+  people,
+  busy,
+  replacing,
+  note,
+  alert,
+  onNote,
+  onAlert,
+  onClose,
+  onChoose,
+}: {
+  shift: Shift | null;
+  people: Person[];
+  busy: BusyOn[];
+  /** The name of the person being replaced, when the sheet replaces someone (T042f). */
+  replacing: string | null;
+  note: string;
+  alert: Alert;
+  onNote: (note: string) => void;
+  onAlert: (alert: Alert) => void;
+  onClose: () => void;
+  onChoose: (userId: string, how: "assign" | "move", busyOn: BusyOn | null) => void;
+}) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
+  // Someone already on another shift then, chosen: the sheet asks what to do (T042f).
+  const [pick, setPick] = useState<{ person: Person; on: BusyOn } | null>(null);
   const taken = new Set(shift?.assignments.map((a) => a.user_id) ?? []);
+  const busyBy = new Map(busy.map((b) => [b.user_id, b]));
   // Search by any part of the name, ignoring case and accents (T042c). Later the list shows only the
   // project's own or qualified people, and search still finds everyone.
   const wanted = fold(query, i18n.language);
@@ -372,19 +510,68 @@ function AssignSheet({ shift, people, onClose, onChoose }: { shift: Shift | null
     .sort((a, b) => a.full_name.localeCompare(b.full_name, i18n.language));
   const close = () => {
     setQuery("");
+    setPick(null);
     onClose();
   };
+  const choose = (person: Person) => {
+    const on = busyBy.get(person.id);
+    if (on) {
+      setPick({ person, on });
+      return;
+    }
+    setQuery("");
+    onChoose(person.id, "assign", null);
+  };
+  const done = (how: "assign" | "move") => {
+    const chosen = pick!;
+    setPick(null);
+    setQuery("");
+    onChoose(chosen.person.id, how, chosen.on);
+  };
+  const title = replacing ? t("roster.replace_title", { person: replacing }) : t("roster.assign_title");
   return (
-    <Sheet open={shift !== null} onClose={close} title={t("roster.assign_title")} testID="assign-sheet">
-      <TextField label={t("roster.assign_search")} value={query} onChangeText={setQuery} testID="assign-search" autoFocus />
-      {options.length === 0 ? (
-        <Txt role="body" tone="secondary" testID="assign-none">
-          {t("roster.assign_none")}
-        </Txt>
-      ) : null}
-      {options.map((person) => (
-        <Button key={person.id} variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id } }} onPress={() => onChoose(person.id)} />
-      ))}
+    <Sheet open={shift !== null} onClose={close} title={title} testID="assign-sheet">
+      {pick ? (
+        <View style={styles.warning} testID="assign-busy-choice">
+          <Txt role="body">
+            {pick.on.starts_at && pick.on.ends_at
+              ? t("roster.busy_at", { person: pick.person.full_name, time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
+              : t("roster.busy_then", { person: pick.person.full_name })}
+          </Txt>
+          {pick.on.movable ? (
+            <Button
+              variant="primary"
+              label={replacing ? t("roster.swap_with", { person: pick.person.full_name, other: replacing }) : t("roster.move_here", { person: pick.person.full_name })}
+              onPress={() => done("move")}
+              testID="action-busy-move"
+            />
+          ) : null}
+          <Button variant="secondary" label={t("roster.keep_both", { person: pick.person.full_name })} onPress={() => done("assign")} testID="action-busy-keep" />
+          <Button variant="quiet" label={t("common.cancel")} onPress={() => setPick(null)} testID="action-busy-cancel" />
+        </View>
+      ) : (
+        <>
+          <TextField label={t("roster.assign_search")} value={query} onChangeText={setQuery} testID="assign-search" autoFocus />
+          {options.length === 0 ? (
+            <Txt role="body" tone="secondary" testID="assign-none">
+              {t("roster.assign_none")}
+            </Txt>
+          ) : null}
+          {options.map((person) => (
+            <View key={person.id} style={styles.option}>
+              <Button variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id, busy: String(busyBy.has(person.id)) } }} onPress={() => choose(person)} />
+              {busyBy.has(person.id) ? (
+                <Txt role="meta" tone="warning" testID="assign-busy">
+                  {t("roster.busy_mark")}
+                </Txt>
+              ) : null}
+            </View>
+          ))}
+        </>
+      )}
+      {/* A word to the person placed, shown on their own shift page, and who hears of it (T042g). */}
+      <TextField label={t("roster.note_label")} value={note} onChangeText={onNote} maxLength={500} testID="edit-note" />
+      <AlertChoice value={alert} onChange={onAlert} />
       {previewsEnabled ? (
         <EmptyState testID="preview-qualification-expiry" icon="star" badge={t("preview.badge")} title={t("preview.qualification_expiry_title")} body={t("preview.qualification_expiry_body")} feature={t("preview.comes_with", { feature: "014" })} />
       ) : null}
@@ -521,6 +708,7 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   week: { flexDirection: "row", gap: 8 },
   day: { width: 168, borderWidth: 1, padding: 6, gap: 6 },

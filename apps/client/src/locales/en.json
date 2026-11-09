@@ -832,5 +832,19 @@
   "roster.assign_search": "Search by name",
   "roster.assign_none": "No one by that name.",
   "roster.nothing_to_publish": "Every shift this week is already published.",
-  "roster.warnings_ok": "OK, keep it"
+  "roster.warnings_ok": "OK, keep it",
+  "roster.replace": "Replace with someone else",
+  "roster.replace_title": "Replace {{person}}",
+  "roster.busy_mark": "On another shift then",
+  "roster.busy_at": "{{person}} is on another shift then ({{time}}).",
+  "roster.busy_then": "{{person}} is on another shift then.",
+  "roster.move_here": "Move {{person}} here (off the other shift)",
+  "roster.swap_with": "Swap {{person}} and {{other}}",
+  "roster.keep_both": "Keep {{person}} on both",
+  "roster.note_label": "Note to the person placed (optional)",
+  "roster.alert_label": "Who hears of it",
+  "roster.alert_none": "No one",
+  "roster.alert_affected": "Those affected",
+  "roster.alert_everyone": "Everyone on the roster",
+  "shifts.note_title": "A note from the office"
 }
