@@ -57,7 +57,7 @@ export function RosterScreen() {
   const [alert, setAlert] = useState<Alert>("none");
   const { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert, onBreaks: setWarningsOf });
   const { copyReplaces, setCopyReplaces, copyToNextWeek } = useCopyNextWeek(project, week);
-  const { ranked, busy } = useAssignInputs(assignTo);
+  const { ranked, busy, projectName } = useAssignInputs(assignTo);
 
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
   const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
@@ -171,6 +171,7 @@ export function RosterScreen() {
         people={people.data ?? []}
         busy={busy}
         ranked={ranked}
+        projectName={projectName}
         replacing={replacing ? nameOf(replacing.userId) : null}
         note={note}
         alert={alert}

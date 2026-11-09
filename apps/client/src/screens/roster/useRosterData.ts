@@ -47,9 +47,10 @@ export function useRosterData(project: string | null, week: string) {
 
 /**
  * What the assign sheet shows for ``shift`` (008 FR-034, T042f): its "Find someone" ranking, as a
- * proposal's "who else could cover", and who is already on another shift then, in any project.
+ * proposal's "who else could cover"; who is already on another shift then, in any project; and the
+ * projects' names, to say where.
  */
-export function useAssignInputs(shift: Shift | null): { ranked: Cover | null; busy: BusyOn[] } {
+export function useAssignInputs(shift: Shift | null): { ranked: Cover | null; busy: BusyOn[]; projectName: (id: string | null) => string | null } {
   const session = useSession();
   const ranked = useLoad(
     async () => (shift ? await call(session.api.GET("/api/v1/shifts/{id}/cover", { params: { path: { id: shift.id } } })) : null),
@@ -59,5 +60,8 @@ export function useAssignInputs(shift: Shift | null): { ranked: Cover | null; bu
     async () => (shift ? (await call(session.api.GET("/api/v1/shifts/{id}/busy", { params: { path: { id: shift.id } } }))).items : []),
     [shift?.id],
   );
-  return { ranked: ranked.data, busy: busy.data ?? [] };
+  // The other shift's project, by name, for "where is this person already" (owner, 2026-11-09).
+  const projects = useLoad(async () => (await call(session.api.GET("/api/v1/projects"))).items, []);
+  const projectName = (id: string | null) => (id ? (projects.data?.find((p) => p.id === id)?.name ?? null) : null);
+  return { ranked: ranked.data, busy: busy.data ?? [], projectName };
 }

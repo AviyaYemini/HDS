@@ -19,6 +19,7 @@ export function AssignSheet({
   people,
   busy,
   ranked,
+  projectName,
   replacing,
   note,
   alert,
@@ -32,6 +33,8 @@ export function AssignSheet({
   busy: BusyOn[];
   /** The shift's "Find someone" ranking (FR-034), when read; until then, by name. */
   ranked: Cover | null;
+  /** A project's name, when the reader may see it; null otherwise. */
+  projectName: (id: string | null) => string | null;
   /** The name of the person being replaced, when the sheet replaces someone (T042f). */
   replacing: string | null;
   note: string;
@@ -57,9 +60,18 @@ export function AssignSheet({
   const options = people
     .filter((p) => !taken.has(p.id) && (wanted === "" || fold(p.full_name, i18n.language).includes(wanted)))
     .sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9) || a.full_name.localeCompare(b.full_name, i18n.language));
+  /** Where someone is already placed then: the project and the time, as far as the reader may see. */
+  const busyText = (on: BusyOn): string => {
+    if (!on.starts_at || !on.ends_at) return t("roster.busy_mark");
+    const time = formatTimeRange(on.starts_at, on.ends_at, DEFAULT_TIME_ZONE);
+    const project = projectName(on.project_id);
+    return project ? t("roster.busy_where", { project, time }) : t("roster.busy_mark_at", { time });
+  };
   const reasonOf = (id: string): string | null => {
     const o = why.get(id);
     if (!o) return null;
+    // Someone busy then is said once, with where (busyText), not again as the ranking's reason.
+    if (busyBy.has(id) && reasonKey(o.code ?? "", (key) => i18n.exists(key)) === "runs.reasons.overlap") return null;
     if (o.free) return t(o.close ? "review.cover_would_rather_not" : "review.cover_free");
     const numbers = coverNumbers(o, i18n.language);
     return [t(reasonKey(o.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ");
@@ -91,7 +103,9 @@ export function AssignSheet({
         <View style={styles.warning} testID="assign-busy-choice">
           <Txt role="body">
             {pick.on.starts_at && pick.on.ends_at
-              ? t("roster.busy_at", { person: pick.person.full_name, time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
+              ? projectName(pick.on.project_id)
+                ? t("roster.busy_at_where", { person: pick.person.full_name, project: projectName(pick.on.project_id), time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
+                : t("roster.busy_at", { person: pick.person.full_name, time: formatTimeRange(pick.on.starts_at, pick.on.ends_at, DEFAULT_TIME_ZONE) })
               : t("roster.busy_then", { person: pick.person.full_name })}
           </Txt>
           {pick.on.movable ? (
@@ -118,7 +132,7 @@ export function AssignSheet({
               <Button variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id, busy: String(busyBy.has(person.id)) } }} onPress={() => choose(person)} />
               {busyBy.has(person.id) ? (
                 <Txt role="meta" tone="warning" testID="assign-busy">
-                  {t("roster.busy_mark")}
+                  {busyText(busyBy.get(person.id)!)}
                 </Txt>
               ) : null}
               {reasonOf(person.id) ? (
