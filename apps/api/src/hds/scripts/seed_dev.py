@@ -1,7 +1,8 @@
 """Idempotent full development seed (T115).
 
 Run with:
-    uv run python -m hds.scripts.seed_dev
+    uv run python -m hds.scripts.seed_dev           the base data, for the tests and the e2e specs
+    uv run python -m hds.scripts.seed_dev --wide    and the wider data on top (seed_wide)
 
 Seeded accounts (password Dev1234! for all):
     admin@hds.test      role=admin
@@ -32,6 +33,7 @@ Nobody has submitted availability. Requires every migration to be applied first.
 import asyncio
 import datetime
 import decimal
+import sys
 import uuid
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -68,13 +70,18 @@ async def _get_or_create(
     obj = result.scalar_one_or_none()
     if obj is not None:
         return obj, False
-    obj = model(id=uuid.uuid4(), **{**filters, **defaults})
+    # The id follows from what the record is, so two fresh databases seed the same ids, and the
+    # scheduler's ties (broken by the smallest id) fall the same way (seed_wide's repeatability).
+    key = f"{model.__tablename__}:{sorted((k, str(v)) for k, v in filters.items())}"
+    obj = model(id=uuid.uuid5(SEED_NAMESPACE, key), **{**filters, **defaults})
     session.add(obj)
     await session.flush()
     return obj, True
 
 
 SITE_ZONE = ZoneInfo("Asia/Jerusalem")
+SEED_NAMESPACE = uuid.UUID("5d1f0c2e-8b7a-4f0e-9c3d-2a6b1e4f7a90")
+"""The namespace the seed's record ids are derived in."""
 
 
 def _sunday_of(day: datetime.date) -> datetime.date:
@@ -184,19 +191,27 @@ async def _window(
     print(f"Window {'created' if created else 'exists'}: {window.starts_on} to {window.ends_on}")
 
 
-async def seed() -> None:
+async def seed(
+    wide: bool = False, factory: async_sessionmaker[AsyncSession] | None = None
+) -> None:
     """Create the development data set, skipping anything that already exists.
 
     Safe to run repeatedly: each record is looked up first. Writes to the database named by
     ``DATABASE_URL`` and commits once at the end, so a failure part-way leaves nothing behind.
     Never run it against production: the seeded accounts share a published password.
 
+    Args:
+        wide: Add the wider development data on top (``--wide``; hds.scripts.seed_wide).
+        factory: Sessions on the database to fill; by default, one on ``DATABASE_URL``.
+
     Side effects:
         Inserts rows and prints one line per record to standard output.
     """
-    settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    engine = None
+    if factory is None:
+        engine = create_async_engine(get_settings().DATABASE_URL, echo=False)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+    session_factory = factory
 
     async with session_factory() as db:
         # ── Organisation ─────────────────────────────────────────────────────
@@ -379,8 +394,15 @@ async def seed() -> None:
         await db.commit()
         print("\nSeed complete.")
 
-    await engine.dispose()
+    if wide:
+        # The wider data, through the services, on what the base just made (seed_wide).
+        from hds.scripts.seed_wide import seed_wide
+
+        await seed_wide(session_factory)
+        print("Wide seed complete.")
+    if engine is not None:
+        await engine.dispose()
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    asyncio.run(seed(wide="--wide" in sys.argv[1:]))

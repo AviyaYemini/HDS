@@ -47,6 +47,7 @@ from hds.repositories.staffing_need import StaffingNeedRepository
 from hds.repositories.submission_window import SubmissionWindowRepository
 from hds.repositories.user import UserRepository
 from hds.services.auth import AuthService
+from hds.services.availability import AvailabilityService
 from hds.services.availability_submission import AvailabilitySubmissionService
 from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
@@ -83,6 +84,17 @@ def availability_submissions(
 ) -> AvailabilitySubmissionService:
     """FastAPI dependency: availability submissions, in the request's unit of work."""
     return submission_service(db)
+
+
+def availability_service(db: AsyncSession) -> AvailabilityService:
+    """The availability entries and windows on ``db``: the one place they are wired."""
+    return AvailabilityService(
+        window_repo=SubmissionWindowRepository(db),
+        entry_repo=AvailabilityRepository(db),
+        user_repo=UserRepository(db),
+        shift_type_repo=ShiftTypeRepository(db),
+        submissions=submission_service(db),
+    )
 
 
 def roster_service_for(db: AsyncSession) -> RosterService:

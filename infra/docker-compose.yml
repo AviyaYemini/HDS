@@ -54,7 +54,8 @@ services:
       postgres:
         condition: service_healthy
     environment: *api-environment
-    command: ["sh", "-c", "alembic upgrade head && python -m hds.scripts.seed_dev"]
+    # The base data and the wider layer on top (seed_wide), so every screen has something to show.
+    command: ["sh", "-c", "alembic upgrade head && python -m hds.scripts.seed_dev --wide"]
     volumes:
       - ../apps/api/src:/app/src
       - ../apps/api/alembic:/app/alembic

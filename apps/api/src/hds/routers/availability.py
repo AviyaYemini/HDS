@@ -18,12 +18,8 @@ from hds.core.deps import require_manager, require_staff
 from hds.core.types import WHOLE_NUMBER, ChangeRequest, IsoDate, IsoDateTime, StrictDate, omittable
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User
-from hds.repositories.availability import AvailabilityRepository
-from hds.repositories.shift_type import ShiftTypeRepository
-from hds.repositories.submission_window import SubmissionWindowRepository
-from hds.repositories.user import UserRepository
 from hds.services.availability import AvailabilityService
-from hds.wiring import submission_service
+from hds.wiring import availability_service
 
 router = APIRouter(prefix="/api/v1", tags=["availability"])
 
@@ -34,13 +30,7 @@ WeekdayNumber = Annotated[int, Field(ge=0, le=6), WHOLE_NUMBER]
 
 
 def _svc(db: AsyncSession) -> AvailabilityService:
-    return AvailabilityService(
-        window_repo=SubmissionWindowRepository(db),
-        entry_repo=AvailabilityRepository(db),
-        user_repo=UserRepository(db),
-        shift_type_repo=ShiftTypeRepository(db),
-        submissions=submission_service(db),
-    )
+    return availability_service(db)
 
 
 class WindowRead(BaseModel):
