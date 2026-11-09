@@ -131,16 +131,20 @@ for (const language of LANGUAGES) {
       taps += 1;
       const sheet = page.getByTestId("assign-sheet");
       await expect(sheet).toBeVisible();
+      // Search narrows the list by name (T042c).
+      const before = await sheet.getByTestId("assign-option").count();
+      await sheet.getByTestId("assign-search").fill("employee");
+      await expect.poll(() => sheet.getByTestId("assign-option").count()).toBeLessThan(before);
       await sheet.locator(`[data-testid="assign-option"][data-user-id="${employee.id}"]`).click();
       taps += 1;
       expect(taps).toBeLessThanOrEqual(3);
       const b = block(page, morning.id);
       await expect(b.locator(`[data-testid="block-person"][data-user-id="${employee.id}"]`)).toBeVisible();
 
-      const badge = b.getByTestId("block-warning-badge");
-      await expect(badge).toBeVisible();
-      await badge.click();
+      // The assignment is made, and the rule it breaks opens by itself, only to inform (T042d).
+      await expect(b.getByTestId("block-warning-badge")).toBeVisible();
       const detail = page.getByTestId("warning-detail");
+      await expect(detail).toBeVisible();
       await expect(detail).toContainText("11"); // the rule's hours
       await expect(detail).toContainText(/0|00:00/); // the rest actually scheduled
       await page.getByTestId("action-override").first().click();
@@ -165,7 +169,6 @@ for (const language of LANGUAGES) {
       await openRoster(page, language, p, first);
       await block(page, s.id).getByTestId("empty-seat").first().click();
       await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${extra.id}"]`).click();
-      await block(page, s.id).getByTestId("block-warning-badge").click();
       await expect(page.getByTestId("warning-detail")).toContainText(
         language === "he" ? "לא הוגשה" : "did not submit",
       );
@@ -197,6 +200,9 @@ for (const language of LANGUAGES) {
       await review.getByTestId("publish-silently").click();
       await review.getByTestId("action-confirm-publish").click();
       await expect(block(page, a.id)).toHaveAttribute("data-status", "published");
+      // Nothing left to publish this week: Publish says so instead of opening on zeros (T042e).
+      await expect(page.getByTestId("action-publish")).toBeDisabled();
+      await expect(page.getByTestId("action-publish-reason")).toBeVisible();
       await checkA11y(page, `roster published (${language})`);
     });
 
@@ -254,6 +260,9 @@ for (const language of LANGUAGES) {
       await expect(page.getByTestId("roster-agenda")).toBeVisible();
       await block(page, s.id).getByTestId("empty-seat").first().click();
       await page.getByTestId("assign-sheet").locator(`[data-testid="assign-option"][data-user-id="${employee.id}"]`).click();
+      await expect(block(page, s.id).locator(`[data-testid="block-person"][data-user-id="${employee.id}"]`)).toBeVisible();
+      // A rule this assignment breaks (the employee's other shifts that week) is named, never blocking (T042d).
+      if (await page.getByTestId("warning-detail").isVisible()) await page.getByTestId("action-warnings-ok").click();
       await page.getByTestId("action-publish").click();
       await page.getByTestId("publish-review").getByTestId("action-confirm-publish").click();
       await expect(block(page, s.id)).toHaveAttribute("data-status", "published");

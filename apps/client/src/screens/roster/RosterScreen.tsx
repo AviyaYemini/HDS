@@ -79,6 +79,9 @@ export function RosterScreen() {
   }, [people.data, shifts.data]);
   const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? "") : ""), [names]);
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
+  const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
+  // The shift whose warnings are open, as read last: its assignments are the ones an override needs.
+  const warningShift = warningsOf ? ((shifts.data ?? []).find((s) => s.id === warningsOf.id) ?? warningsOf) : null;
 
   /** Run one roster change; a stale read (412) shows the banner and the latest version. */
   const change = async (run: () => Promise<{ shift_etag: string; warnings: Warning[] } | null>, shiftId: string): Promise<boolean> => {
@@ -101,6 +104,7 @@ export function RosterScreen() {
 
   const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true): Promise<string | null> => {
     let created: string | null = null;
+    let breaks = false;
     const done = await change(async () => {
       const answer = await call(
         session.api.POST("/api/v1/shifts/{id}/assignments", {
@@ -109,8 +113,12 @@ export function RosterScreen() {
         }),
       );
       created = answer.assignment.id;
+      breaks = answer.warnings.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id));
       return answer;
     }, shift.id);
+    // The assignment is made; any rule it breaks is then named in a dialog that only informs
+    // (T042d). Only for a choice made now, never for undo re-making an assignment.
+    if (done && breaks && record) setWarningsOf(shift);
     if (done && record && created) setHistory((h) => [...h, { kind: "assigned", assignmentId: created!, shiftId: shift.id, userId }]);
     return done ? created : null;
   };
@@ -180,7 +188,18 @@ export function RosterScreen() {
           <Txt role="label">{t("roster.all_projects")}</Txt>
         </LinkPressable>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
-        {publishable ? <Button variant="primary" icon="check" label={t("roster.publish")} onPress={() => setPublishing(true)} testID="action-publish" /> : null}
+        {publishable ? (
+          <Button
+            variant="primary"
+            icon="check"
+            label={t("roster.publish")}
+            onPress={() => setPublishing(true)}
+            // Nothing to publish when every shift of the week already is (T042e): say so, never a sheet of zeros.
+            disabled={!hasDrafts}
+            disabledReason={hasDrafts ? undefined : t("roster.nothing_to_publish")}
+            testID="action-publish"
+          />
+        ) : null}
       </PageTitle>
       {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={() => setStale(false)} /> : null}
       {previewsEnabled ? (
@@ -246,7 +265,7 @@ export function RosterScreen() {
           void unassign(target.shift, target.assignmentId);
         }} />
       </Sheet>
-      <WarningSheet shift={warningsOf} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
+      <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
         const id = warningsOf!.id;
         setWarnings((map) => new Map(map).set(id, (map.get(id) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
         setWarningsOf(null);
@@ -342,11 +361,27 @@ function Block({
 }
 
 function AssignSheet({ shift, people, onClose, onChoose }: { shift: Shift | null; people: Person[]; onClose: () => void; onChoose: (userId: string) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [query, setQuery] = useState("");
   const taken = new Set(shift?.assignments.map((a) => a.user_id) ?? []);
-  const options = people.filter((p) => !taken.has(p.id)).sort((a, b) => a.full_name.localeCompare(b.full_name));
+  // Search by any part of the name, ignoring case and accents (T042c). Later the list shows only the
+  // project's own or qualified people, and search still finds everyone.
+  const wanted = fold(query, i18n.language);
+  const options = people
+    .filter((p) => !taken.has(p.id) && (wanted === "" || fold(p.full_name, i18n.language).includes(wanted)))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, i18n.language));
+  const close = () => {
+    setQuery("");
+    onClose();
+  };
   return (
-    <Sheet open={shift !== null} onClose={onClose} title={t("roster.assign_title")} testID="assign-sheet">
+    <Sheet open={shift !== null} onClose={close} title={t("roster.assign_title")} testID="assign-sheet">
+      <TextField label={t("roster.assign_search")} value={query} onChangeText={setQuery} testID="assign-search" autoFocus />
+      {options.length === 0 ? (
+        <Txt role="body" tone="secondary" testID="assign-none">
+          {t("roster.assign_none")}
+        </Txt>
+      ) : null}
       {options.map((person) => (
         <Button key={person.id} variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id } }} onPress={() => onChoose(person.id)} />
       ))}
@@ -355,6 +390,11 @@ function AssignSheet({ shift, people, onClose, onChoose }: { shift: Shift | null
       ) : null}
     </Sheet>
   );
+}
+
+/** ``text`` for matching: lower case, accents and Hebrew points removed, spaces squeezed. */
+function fold(text: string, language: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f\u0591-\u05c7]/g, "").toLocaleLowerCase(language).replace(/\s+/g, " ").trim();
 }
 
 /** The text that says a warning's numbers, when the rule sends them. */
@@ -385,7 +425,13 @@ function WarningSheet({ shift, warnings, nameOf, onClose, onOverridden }: { shif
     }
   };
   return (
-    <Sheet open={shift !== null} onClose={onClose} title={t("roster.warnings_title")} testID="warning-detail">
+    <Sheet
+      open={shift !== null}
+      onClose={onClose}
+      title={t("roster.warnings_title")}
+      testID="warning-detail"
+      footer={<Button variant="primary" label={t("roster.warnings_ok")} onPress={onClose} testID="action-warnings-ok" />}
+    >
       {warnings.map((w, i) => (
         <View key={`${w.code}-${i}`} style={styles.warning}>
           <Txt role="label">{w.employee_id ? nameOf(w.employee_id) : t("roster.the_shift")}</Txt>

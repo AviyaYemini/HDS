@@ -171,3 +171,30 @@ test("when who else could cover cannot be read, the staff are still offered, wit
   expect(await screen.findByTestId("review-cover-option")).toBeTruthy();
   expect(api.calls("GET", COVER)).toHaveLength(2);
 });
+
+test("the slots left empty come first, in red with words, and each opens who else could cover (T042b)", async () => {
+  const api = new FakeApi();
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [])));
+  api.on("GET", COVER, json(200, cover(option(BEN))));
+  const session = await signedIn(api);
+  await renderWith(session, <ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} />);
+
+  expect(await screen.findByText("1 shift left with empty places")).toBeTruthy();
+  await act(async () => {
+    fireEvent.press(screen.getByTestId("review-empty-slot"));
+  });
+
+  expect(await screen.findByTestId("review-cover-option")).toBeTruthy();
+  expect(api.calls("GET", COVER)).toHaveLength(1);
+});
+
+test("weeks that hold no slot of the run are not shown (T042a)", async () => {
+  const api = new FakeApi();
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
+  const session = await signedIn(api);
+  // Three calendar weeks asked for; the one slot is in the second.
+  const wide = { ...job, from: "2027-05-30", to: "2027-06-19" } as Job;
+  await renderWith(session, <ReviewWeek job={wide} names={names} people={[{ id: ANN, full_name: "Ann" }]} onDecided={() => undefined} />);
+
+  expect(await screen.findAllByTestId("proposal-week")).toHaveLength(1);
+});

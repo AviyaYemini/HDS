@@ -822,5 +822,15 @@
   "review.cover_free": "Free then",
   "review.cover_would_rather_not": "Free, but would rather not",
   "review.assign_anyway_person": "Assign {{person}} anyway",
-  "review.cover_load": "After it: {{hours}} h, {{nights}} nights, {{weekends}} weekend shifts (average {{average_hours}} h)"
+  "review.cover_load": "After it: {{hours}} h, {{nights}} nights, {{weekends}} weekend shifts (average {{average_hours}} h)",
+  "review.empty_title_one": "1 shift left with empty places",
+  "review.empty_title_other": "{{count}} shifts left with empty places",
+  "review.empty_title": "{{count}} shifts left with empty places",
+  "review.empty_slot_one": "{{place}}: 1 empty",
+  "review.empty_slot_other": "{{place}}: {{count}} empty",
+  "review.empty_slot": "{{place}}: {{count}} empty",
+  "roster.assign_search": "Search by name",
+  "roster.assign_none": "No one by that name.",
+  "roster.nothing_to_publish": "Every shift this week is already published.",
+  "roster.warnings_ok": "OK, keep it"
 }

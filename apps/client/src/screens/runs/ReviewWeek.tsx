@@ -216,6 +216,14 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   };
 
   const byDay = slotsByDay(shown);
+  const empty = shown.slots.filter((slot) => slot.places > 0);
+  // Bring the slot into view behind the sheet, then open its "Who else could cover" (T042b).
+  const openSlot = (slot: ReviewSlot) => {
+    if (typeof document !== "undefined") {
+      document.querySelector(`[data-slot-key="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center" });
+    }
+    setAssignTo(slot);
+  };
   const { days: openDays, projects: openProjects } = openDaysAndProjects(shown);
   const anyOpen = open && hasOpen(shown);
   const showBar = open;
@@ -230,6 +238,25 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
         {marksText}
       </Txt>
       {problem ? <InlineBanner tone="warning" testID="review-problem" title={errorText(problem)} /> : null}
+      {empty.length > 0 ? (
+        // The slots left with empty places, first and in red with an icon and words; each opens
+        // its slot with "Who else could cover" (T042b, FR-014).
+        <InlineBanner tone="danger" title={t("review.empty_title", { count: empty.length })} testID="review-empty">
+          {empty.map((slot) => (
+            // Its words wrap at phone width, where a long place name would not fit on one line.
+            <Button
+              key={slot.key}
+              variant="quiet"
+              wrap
+              label={t("review.empty_slot", { place: placeName(slot), count: slot.places })}
+              disabled={!open || busy !== null}
+              onPress={() => openSlot(slot)}
+              testID="review-empty-slot"
+              web={{ dataSet: { slotKey: slot.key } }}
+            />
+          ))}
+        </InlineBanner>
+      ) : null}
       {showBar ? (
         <View style={styles.bar} testID="accept-bar">
           <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />
@@ -258,7 +285,10 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
           <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />
         </View>
       ) : null}
-      {weeksOf(job.from, job.to).map((days) => {
+      {/* Only the weeks that hold a slot of the run: calendar weeks with none add nothing (T042a). */}
+      {weeksOf(job.from, job.to)
+        .filter((days) => days.some((day) => byDay.has(day)))
+        .map((days) => {
         const visible = isDesktop ? days : days.filter((day) => byDay.has(day));
         return (
           <View key={days[0]} testID="proposal-week" style={[styles.week, isDesktop ? styles.weekRow : null]}>

@@ -822,5 +822,15 @@
   "review.cover_free": "ללא התנגשות",
   "review.cover_would_rather_not": "ללא התנגשות, אבל עדיף שלא",
   "review.assign_anyway_person": "שיבוץ {{person}} בכל זאת",
-  "review.cover_load": "אחרי השיבוץ: {{hours}} ש׳, {{nights}} לילות, {{weekends}} משמרות סוף שבוע (ממוצע {{average_hours}} ש׳)"
+  "review.cover_load": "אחרי השיבוץ: {{hours}} ש׳, {{nights}} לילות, {{weekends}} משמרות סוף שבוע (ממוצע {{average_hours}} ש׳)",
+  "review.empty_title_one": "משמרת אחת נשארה עם מקומות ריקים",
+  "review.empty_title_other": "{{count}} משמרות נשארו עם מקומות ריקים",
+  "review.empty_title": "{{count}} משמרות נשארו עם מקומות ריקים",
+  "review.empty_slot_one": "{{place}}: מקום ריק אחד",
+  "review.empty_slot_other": "{{place}}: {{count}} ריקים",
+  "review.empty_slot": "{{place}}: {{count}} ריקים",
+  "roster.assign_search": "חיפוש לפי שם",
+  "roster.assign_none": "אין אף אחד בשם הזה.",
+  "roster.nothing_to_publish": "כל המשמרות בשבוע הזה כבר פורסמו.",
+  "roster.warnings_ok": "בסדר, להשאיר"
 }
