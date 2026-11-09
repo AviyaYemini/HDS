@@ -173,10 +173,10 @@ roster and runs make one path.
 - [x] T048 [US6] `generate(..., progress=, should_stop=)` in `scheduling/engine.py` and the solution callback with `stop_search` in `scheduling/cpsat.py` (FR-027, FR-028, research P7)
 - [x] T049 [US6] Worker: `needed`, `best_filled`, `progress_at` writes, the stop flag refreshed every 2 s, `ended` and `cancelled` in `apps/api/src/hds/worker.py` and `services/schedule_job.py`
 - [x] T050 [US6] Contract first: `POST /schedule-jobs/{id}/stop`, the job's `progress`, `ended`, `stop_requested`; `GET /schedule-jobs/{id}/record`; `GET /shifts/{id}/cover`; routers; regenerate the client
-- [ ] T051 [US6] Client `RunProgress`: best so far beside 007's elapsed bar; "Stop and use best so far", Cancel before any result; `RunFinishedNotice` in `apps/client/src/design/` polling a person's running runs every 5 s (FR-029, research P15)
-- [ ] T052 [US7] Client `RecordPanel` on the run page, paged
-- [ ] T053 [US8] Client: "Generate this week" on the roster, accept returning to the roster's accepted range, "Copy to next week" after a publish, "Find someone" on an empty roster slot opening the cover list (FR-032 to FR-034)
-- [ ] T054 [P] [US6] Locale keys for progress, stop, notices, the record and the flow; `docs/hds-api.md`; replace 008's preview placeholder, if any, in `apps/client/src/screens/previews/`
+- [x] T051 [US6] Client `RunProgress`: best so far beside 007's elapsed bar; "Stop and use best so far", Cancel before any result; `RunFinishedNotice` in `apps/client/src/design/` polling a person's running runs every 5 s (FR-029, research P15)
+- [x] T052 [US7] Client `RecordPanel` on the run page, paged
+- [x] T053 [US8] Client: "Generate this week" on the roster, accept returning to the roster's accepted range, "Copy to next week" after a publish, "Find someone" on an empty roster slot opening the cover list (FR-032 to FR-034)
+- [x] T054 [P] [US6] Locale keys for progress, stop, notices, the record and the flow; `docs/hds-api.md`; replace 008's preview placeholder, if any, in `apps/client/src/screens/previews/`
 
 ### Close
 

@@ -7,6 +7,7 @@
  * a reason before it is kept. Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
@@ -17,11 +18,12 @@ import { Button, InlineBanner, Sheet, SkeletonRows, TextField, Txt, showToast } 
 import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange } from "../../locale";
+import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange, startOfWeek } from "../../locale";
 import { useLoad } from "../useLoad";
 import { FairnessPanel } from "./FairnessPanel";
 import { groupWarnings } from "../roster/model";
-import { weeksOf, type Job, type Names } from "./model";
+import { rosterHref } from "../roster/ProjectChooser";
+import { projectsOf, weeksOf, type Job, type Names } from "./model";
 import {
   MARK_ICON,
   breaksOf,
@@ -65,6 +67,7 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const { t, i18n } = useTranslation();
   const { colors, isDesktop } = useTheme();
   const session = useSession();
+  const router = useRouter();
   const errorText = useErrorText();
   const loaded = useLoad(
     async () => call(session.api.GET("/api/v1/schedule-jobs/{id}/proposal", { params: { path: { id: job.id } } })),
@@ -126,11 +129,20 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
           ...(part ? { body: part } : {}),
         }),
       );
-      showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), { tone: "success" });
+      // The roster week accepted is the next step, where Publish is one tap away (FR-033): all
+      // of it goes there at once; a part offers it, so the rest can still be reviewed.
+      const project = projectsOf(job)[0];
+      const week = startOfWeek(part && "days" in part && part.days?.[0] ? part.days[0] : job.from);
+      const roster = project ? rosterHref(project, week) : null;
+      showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), {
+        tone: "success",
+        ...(roster && answer.state !== "accepted" ? { action: { label: t("runs.open_roster"), onPress: () => router.push(roster as never) } } : {}),
+      });
       setChosen([]);
       setReview(null);
       loaded.reload();
       onDecided();
+      if (roster && answer.state === "accepted") router.push(roster as never);
     } catch (failure) {
       setProblem(codeOf(failure));
       stale(codeOf(failure));
