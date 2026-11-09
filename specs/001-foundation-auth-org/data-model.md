@@ -4,7 +4,7 @@
 
 All tables carry `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `created_at TIMESTAMPTZ
 NOT NULL DEFAULT now()`, and `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
-All tables (except `organisations`) carry `organization_id UUID NOT NULL REFERENCES
+All tables (except `organisations`) carry `organisation_id UUID NOT NULL REFERENCES
 organisations(id)` for future multi-tenancy.
 
 Soft-delete tables carry `is_deleted BOOLEAN NOT NULL DEFAULT false` and `deleted_at
@@ -39,7 +39,7 @@ use this record as their workforce profile. Client users (role = `client`) are l
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `email` | `VARCHAR(320)` | NOT NULL | Unique across all organisations (partial index below) |
 | `password_hash` | `VARCHAR(255)` | NOT NULL | Argon2id; never store plaintext |
 | `full_name` | `VARCHAR(255)` | NOT NULL | |
@@ -63,7 +63,7 @@ CREATE UNIQUE INDEX uq_users_email
     WHERE is_deleted = false;
 
 -- Lookup by org (list queries)
-CREATE INDEX idx_users_org ON users (organization_id);
+CREATE INDEX idx_users_org ON users (organisation_id);
 
 -- Lookup client users by client
 CREATE INDEX idx_users_client ON users (client_id) WHERE client_id IS NOT NULL;
@@ -105,13 +105,13 @@ Named collections of employees for reporting and filtering. Organisation-scoped.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `name` | `VARCHAR(255)` | NOT NULL | Unique within org |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 
 ```sql
-CREATE UNIQUE INDEX uq_groups_org_name ON groups (organization_id, name);
+CREATE UNIQUE INDEX uq_groups_org_name ON groups (organisation_id, name);
 ```
 
 ---
@@ -123,13 +123,13 @@ Named capabilities that can be assigned to employees. Organisation-scoped.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `name` | `VARCHAR(255)` | NOT NULL | Unique within org |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 
 ```sql
-CREATE UNIQUE INDEX uq_qualifications_org_name ON qualifications (organization_id, name);
+CREATE UNIQUE INDEX uq_qualifications_org_name ON qualifications (organisation_id, name);
 ```
 
 ---
@@ -167,7 +167,7 @@ A company that commissions projects. Managed by Managers/Admins.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `name` | `VARCHAR(255)` | NOT NULL | |
 | `contact_name` | `VARCHAR(255)` | NULL | |
 | `contact_email` | `VARCHAR(320)` | NULL | |
@@ -181,7 +181,7 @@ A company that commissions projects. Managed by Managers/Admins.
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 
 ```sql
-CREATE INDEX idx_clients_org ON clients (organization_id);
+CREATE INDEX idx_clients_org ON clients (organisation_id);
 ```
 
 **Cascade rule**: when `is_active` flips to `false` or `is_deleted` to `true`, the service
@@ -196,7 +196,7 @@ Physical locations where projects take place.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `name` | `VARCHAR(255)` | NOT NULL | |
 | `address` | `TEXT` | NOT NULL | |
 | `timezone` | `VARCHAR(64)` | NOT NULL | IANA tz |
@@ -204,7 +204,7 @@ Physical locations where projects take place.
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 
 ```sql
-CREATE INDEX idx_sites_org ON sites (organization_id);
+CREATE INDEX idx_sites_org ON sites (organisation_id);
 ```
 
 ---
@@ -216,7 +216,7 @@ A unit of work for a client at a site. Billing rate stored as exact decimal.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `UUID` | PK | |
-| `organization_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
+| `organisation_id` | `UUID` | NOT NULL, FK → `organisations.id` | |
 | `client_id` | `UUID` | NOT NULL, FK → `clients.id` | |
 | `site_id` | `UUID` | NOT NULL, FK → `sites.id` | |
 | `name` | `VARCHAR(255)` | NOT NULL | |
@@ -231,7 +231,7 @@ A unit of work for a client at a site. Billing rate stored as exact decimal.
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` | |
 
 ```sql
-CREATE INDEX idx_projects_org ON projects (organization_id);
+CREATE INDEX idx_projects_org ON projects (organisation_id);
 CREATE INDEX idx_projects_client ON projects (client_id);
 ```
 
@@ -252,14 +252,14 @@ CREATE TYPE project_status AS ENUM ('active', 'ended');
 ```
 organisations
     │
-    ├─< users (organization_id)
+    ├─< users (organisation_id)
     │       │
-    │       ├─< user_groups >─< groups (organization_id)
-    │       ├─< user_qualifications >─< qualifications (organization_id)
+    │       ├─< user_groups >─< groups (organisation_id)
+    │       ├─< user_qualifications >─< qualifications (organisation_id)
     │       ├─< refresh_tokens
     │       └── client_id ──────────────────────────────┐
     │                                                    │
-    ├─< clients (organization_id) <─────────────────────┘
+    ├─< clients (organisation_id) <─────────────────────┘
     │       │
     │       └─< projects (client_id)
     │                │

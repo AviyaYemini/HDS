@@ -1,7 +1,7 @@
 # Data model: Pay rates, pay to date and reports
 
 Migration `022_pay_reports` adds columns to `organisations` and `projects`, two tables and one index.
-Every table carries `organization_id`. Times are UTC; dates and weekdays are local at the site. Money
+Every table carries `organisation_id`. Times are UTC; dates and weekdays are local at the site. Money
 amounts are computed, never stored (research R1); percentages are `NUMERIC(5,2)`.
 
 ## organisations (columns added): premium defaults (FR-006)
@@ -41,14 +41,14 @@ to an ended project are refused (409 `pay.project_ended`).
 | Column | Type | Rules |
 | --- | --- | --- |
 | id | uuid | primary key |
-| organization_id | uuid | references organisations |
+| organisation_id | uuid | references organisations |
 | project_id | uuid | references projects, on delete cascade; `NULL` for an organisation day |
 | day | date | local date |
 | name | varchar(255) | not blank |
 | rate_pct | numeric(5,2) | 100 to 300 (`ck_special_days_rate`), default 150.00 |
 | created_at, updated_at | timestamptz | |
 
-Unique (`organization_id`, `day`) where `project_id IS NULL`; unique (`project_id`, `day`) where
+Unique (`organisation_id`, `day`) where `project_id IS NULL`; unique (`project_id`, `day`) where
 `project_id IS NOT NULL` (409 `special_days.duplicate`). A project day overrides an organisation day on the
 same date for that project. When a project ends, the organisation days it does not override are copied
 into its own list.
@@ -57,7 +57,7 @@ into its own list.
 
 | Column | Type | Rules |
 | --- | --- | --- |
-| organization_id | uuid | references organisations |
+| organisation_id | uuid | references organisations |
 | project_id | uuid | references projects, on delete cascade |
 | user_id | uuid | references users; an active Manager or Admin of the organisation when added |
 | created_at | timestamptz | |
@@ -66,7 +66,7 @@ Primary key (`project_id`, `user_id`); index on `user_id`. Replaced as a set und
 
 ## Index
 
-`idx_shifts_org_published_start` on `shifts (organization_id, starts_at) WHERE status = 'published'`, for
+`idx_shifts_org_published_start` on `shifts (organisation_id, starts_at) WHERE status = 'published'`, for
 the reports and pay to date (research R9).
 
 ## Unchanged, used as is

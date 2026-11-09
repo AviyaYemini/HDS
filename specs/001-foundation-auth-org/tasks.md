@@ -377,7 +377,7 @@ US6 (T099–T106) can be dropped from the first delivery. Cut it by removing tho
 - Unit tests MUST be written first and confirmed to fail before the service implementation
 - `billing_rate` and `default_hourly_rate` MUST use `Numeric(12,4,asdecimal=True)` — `Float` anywhere in the stack is a Constitution VII violation
 - Role checks live in **service methods** (via `ensure_role`, T116), not only in router dependencies (Constitution VI)
-- Spelling convention (I6): `organisations` (table, model, docs) is British; the `organization_id` column and attribute stay as shipped to avoid a rename migration. Do not mix new names.
+- Spelling convention (I6): `organisations` (table, model, docs) is British. The `organization_id` column and attribute were first kept as shipped to avoid a rename migration; migration 037 renamed them to `organisation_id` ([ADR 021](../../docs/adr/021-organisation-spelling-in-one-step.md)). The migrations and tasks above name the column as it was then.
 - T082 is a verify-only task folded into T036 (D1); no separate work remains.
 - Password-reset and invitation tokens must never be returned to unauthenticated callers (U3); the mail sender (T121) is the only delivery path.
 - UX timings SC-003 and SC-006 are deferred to `apps/client`; API timings SC-001 and the 300 ms read target are covered by T129 (G2).

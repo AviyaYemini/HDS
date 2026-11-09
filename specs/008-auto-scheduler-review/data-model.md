@@ -72,7 +72,7 @@ Check: both null or both set.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | UUID, PK | |
-| `organization_id` | UUID, FK, not null | |
+| `organisation_id` | UUID, FK, not null | |
 | `job_id` | UUID, FK `schedule_jobs.id`, not null | |
 | `kind` | varchar(24), not null | created, finished, stopped, cancelled, failed, edited, undone, locked, unlocked, overridden, accepted, discarded, expired |
 | `actor_id` | UUID, FK `users.id`, null | null for the worker's own events |

@@ -69,10 +69,10 @@ dc up -d --wait db scratch > /dev/null 2>&1
 
 step "1: a seeded database with known shifts, backed up to both places"
 dc run --rm -T api sh -c 'python -m alembic upgrade head && python -m hds.scripts.seed_dev' > /dev/null
-sql "INSERT INTO shifts (id, organization_id, project_id, shift_type_id, starts_at, ends_at,
+sql "INSERT INTO shifts (id, organisation_id, project_id, shift_type_id, starts_at, ends_at,
         headcount, status, created_at, updated_at)
-    SELECT gen_random_uuid(), p.organization_id, p.id,
-        (SELECT st.id FROM shift_types st WHERE st.organization_id = p.organization_id
+    SELECT gen_random_uuid(), p.organisation_id, p.id,
+        (SELECT st.id FROM shift_types st WHERE st.organisation_id = p.organisation_id
          ORDER BY st.name LIMIT 1),
         date_trunc('hour', now()) - n * interval '1 day',
         date_trunc('hour', now()) - n * interval '1 day' + interval '8 hours', 2, 'draft', now(), now()
