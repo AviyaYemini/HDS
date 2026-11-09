@@ -185,3 +185,24 @@ async def test_a_run_that_stopped_is_finished_and_a_window_already_there_is_kept
     # The base's two, four past weeks and this one; next week keeps the developer's window.
     assert windows == 2 + 4 + 1 + 1 - 1
     assert open_runs == 1
+
+
+async def test_a_week_later_a_kept_database_gets_the_new_week(scratch: Scratch) -> None:
+    factory = await seeded(scratch[1])
+    async with factory() as db:
+        windows = (await db.execute(text("SELECT count(*) FROM submission_windows"))).scalar_one()
+
+    # `make up` a week on: last week's proposal is this week's roster now, and next week is new.
+    assert await seed_wide(factory, TODAY + datetime.timedelta(days=7)) is False
+
+    async with factory() as db:
+        later = (await db.execute(text("SELECT count(*) FROM submission_windows"))).scalar_one()
+        states = (
+            await db.execute(
+                text("SELECT proposal_state, count(*) FROM schedule_jobs GROUP BY 1 ORDER BY 1")
+            )
+        ).all()
+    assert later == windows + 1
+    # Last week's proposal for this week went stale under the hand edits: discarded, and this week
+    # generated again and accepted; next week's is the one left open.
+    assert dict(states) == {"accepted": 6, "discarded": 1, "open": 1}

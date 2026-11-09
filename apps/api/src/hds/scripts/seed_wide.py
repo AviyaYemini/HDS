@@ -36,6 +36,7 @@ against production: the accounts share the published dev password.
 Layer: scripts. May use services, repositories and models; MUST NOT import routers.
 """
 
+import asyncio
 import datetime
 import decimal
 import random
@@ -46,6 +47,7 @@ from typing import Any
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from hds.core.exceptions import ConflictError
 from hds.models.availability import AvailabilityEntry
 from hds.models.client import Client
 from hds.models.group import Group, user_groups
@@ -63,8 +65,9 @@ from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 from hds.repositories.saved_view import SavedViewRepository
 from hds.repositories.user import UserRepository
-from hds.scripts.seed_dev import SITE_ZONE, _sunday_of
+from hds.scripts.seed_dev import SITE_ZONE, _seed_id, _sunday_of
 from hds.services.saved_view import SavedViewService
+from hds.services.schedule_job import LEASE, proposal_state
 from hds.wiring import (
     availability_service,
     job_service,
@@ -258,6 +261,8 @@ QUALIFICATIONS = ("רישיון נשק", "מדריך קליעה", "מאבטח מ
 EMPLOYEES = 40
 MANAGERS = 4
 PAST_WEEKS = 4
+WAIT_SECONDS = 5
+"""How often a run a stopped seed left behind is looked at again."""
 HAND_NOTE = "כיסוי ברגע האחרון"
 """The note on the seed's hand placements, which shows they were made."""
 
@@ -635,7 +640,9 @@ async def _availability(
                     SITE_ZONE,
                 )
                 found = SubmissionWindow(
-                    id=_next_id(rng),
+                    # From the organisation and the week, so a later run, on a later week, never
+                    # draws an id an earlier window took.
+                    id=await _seed_id(db, SubmissionWindow, f"windows:{org.id}:{first}"),
                     organisation_id=org.id,
                     starts_on=first,
                     ends_on=last,
@@ -680,14 +687,20 @@ async def _week(
     first: datetime.date,
     *,
     publish: bool,
+    fresh: bool = False,
 ) -> uuid.UUID:
     """Generate a week for the wide projects with the greedy solver; accept and publish it.
 
-    A run an earlier seed made for the week is picked up where it stopped.
+    A run an earlier seed made for the week is picked up where it stopped, while it can still be
+    used: queued or running (claimed again once its lease runs out), open and not expired, or
+    accepted. A failed, cancelled, discarded or expired one is left as it is, and the week gets a
+    new run; one whose proposal the roster has moved past since is discarded, and the week gets a
+    new run too (``fresh``).
     """
-    ids = [str(p.id) for p in projects]
+    ids = sorted(str(p.id) for p in projects)
+    now = datetime.datetime.now(datetime.UTC)
     async with factory() as db:
-        earlier = [
+        usable = [
             job
             for job in (
                 await db.execute(
@@ -695,15 +708,17 @@ async def _week(
                     .where(
                         ScheduleJob.organisation_id == admin.organisation_id,
                         ScheduleJob.first_day == first,
-                        ScheduleJob.status.in_(("queued", "running", "succeeded")),
                     )
                     .order_by(ScheduleJob.created_at)
                 )
             ).scalars()
-            if sorted(job.project_ids) == sorted(ids)
+            if sorted(job.project_ids) == ids
+            and job.status in ("queued", "running", "succeeded")
+            and proposal_state(job, now) in (None, "open", "accepted")
         ]
-        if earlier:
-            job_id = earlier[-1].id
+        reused = bool(usable) and not fresh
+        if reused:
+            job_id = usable[-1].id
         else:
             job = await job_service(db).create(
                 admin,
@@ -716,25 +731,44 @@ async def _week(
             )
             await db.commit()
             job_id = job.id
-    while await run_once(factory) is not None:
-        pass
-    async with factory() as db:
-        status, error = (
-            await db.execute(
-                select(ScheduleJob.status, ScheduleJob.error_code).where(ScheduleJob.id == job_id)
-            )
-        ).one()
+    # Run it here; one a stopped seed left running is claimed again once its lease runs out.
+    give_up = now + LEASE + datetime.timedelta(minutes=1)
+    while True:
+        while await run_once(factory) is not None:
+            pass
+        async with factory() as db:
+            status, error = (
+                await db.execute(
+                    select(ScheduleJob.status, ScheduleJob.error_code).where(
+                        ScheduleJob.id == job_id
+                    )
+                )
+            ).one()
+        if status not in ("queued", "running") or datetime.datetime.now(datetime.UTC) > give_up:
+            break
+        print(f"The run for the week of {first} is still held by a stopped seed; waiting")
+        await asyncio.sleep(WAIT_SECONDS)
     if status != "succeeded":
         # Stop here, loudly: the next run makes a new run for the week (a failed one is not reused).
         raise RuntimeError(f"the run for the week of {first} ended {status} ({error})")
     if publish:
         async with factory() as db:
-            state = (
-                await db.execute(select(ScheduleJob.proposal_state).where(ScheduleJob.id == job_id))
+            job = (
+                await db.execute(select(ScheduleJob).where(ScheduleJob.id == job_id))
             ).scalar_one()
-            if state == "open":
-                await job_service(db).accept(admin, job_id)
-                await db.commit()
+            if proposal_state(job, datetime.datetime.now(datetime.UTC)) == "open":
+                try:
+                    await job_service(db).accept(admin, job_id)
+                    await db.commit()
+                except ConflictError as refused:
+                    if refused.code != "schedule.proposal_out_of_date" or not reused:
+                        raise
+                    # An earlier seed's proposal the week has moved past (new edits, entries):
+                    # discarded, as a manager would, and the week generated again from today.
+                    await db.rollback()
+                    await job_service(db).discard(admin, job_id)
+                    await db.commit()
+                    return await _week(factory, admin, projects, first, publish=True, fresh=True)
         async with factory() as db:
             roster = roster_service_for(db)
             for project in projects:
