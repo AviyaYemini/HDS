@@ -19,3 +19,5 @@ count.
 | R9 | /code-review (PR 1) | `apps/api/src/hds/routers/schedule_jobs.py:345`: `IfMatch` and `version_of` defined twice, one router importing another | fixed |
 | R10 | /code-review (PR 1) | `apps/api/src/hds/services/proposal.py:167`: undo read the whole run record each time, under the job's lock | fixed |
 | R11 | CI (PR 1) | `apps/api/tests/contract/unprovable_operations.json`: Schemathesis sent undo a made-up `If-Match` and counted the correct 412 `schedule.version_stale` as a valid request refused (ST202); undo is on the list now, and the accept, discard and edit entries name the 412 too | fixed |
+| R12 | CI (PR 1) | `apps/api/tests/integration/test_role_matrix.py:123`: the matrix had no rows for reading, editing and undoing a proposal; all three are Manager or Admin | fixed |
+| R13 | CI (PR 1) | `infra/tests/rolling_update.sh:238`: the rolling update queued a run in a new organisation with no project, which 007 refuses (422 `schedule.no_projects`); it makes a site, a client and a project first | fixed |
