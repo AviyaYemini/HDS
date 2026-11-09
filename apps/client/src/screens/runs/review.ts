@@ -104,3 +104,44 @@ export function breaksOf(error: unknown): EditWarning[] {
     .filter((e): e is { key: string; user_id: string | null; code: string; values?: Record<string, string> } => typeof e === "object" && e !== null && "code" in e && "key" in e)
     .map((e) => ({ key: e.key, user_id: e.user_id ?? null, code: e.code, values: e.values ?? {}, excused: false }));
 }
+
+export type Cover = components["schemas"]["Cover"];
+export type CoverOption = Cover["options"][number];
+
+/** The numbers a rule gives about one person: rest, or the weekly maximum (FR-013), in minutes. */
+export interface Numbers {
+  code: string | null;
+  have?: number | null;
+  need?: number | null;
+  week_minutes?: number | null;
+  slot_minutes?: number | null;
+  limit?: number | null;
+}
+
+/** `minutes` as hours, to one decimal place at most, in `language`'s digits. */
+export function hours(minutes: number, language: string): string {
+  return new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(minutes / 60);
+}
+
+/**
+ * The translation key and values that say a rule's numbers for one person ("9 h rest, needs
+ * 11 h"; "48 h this week, 8 h more, over the 48 h cap"), or null when the rule has none.
+ */
+export function numbersOf(found: Numbers, language: string): { key: string; values: Record<string, string> } | null {
+  if (found.code === "schedule.minimum_rest" && found.have != null && found.need != null) {
+    return { key: "runs.numbers.rest", values: { have: hours(found.have, language), need: hours(found.need, language) } };
+  }
+  if (found.code === "schedule.weekly_maximum" && found.week_minutes != null && found.slot_minutes != null && found.limit != null) {
+    return {
+      key: "runs.numbers.weekly",
+      values: { worked: hours(found.week_minutes, language), more: hours(found.slot_minutes, language), limit: hours(found.limit, language) },
+    };
+  }
+  return null;
+}
+
+/** The translation key for a reason code; a code this build does not know reads as another rule. */
+export function reasonKey(code: string, exists: (key: string) => boolean): string {
+  const key = `runs.reasons.${code.replace(/^schedule\./, "")}`;
+  return exists(key) ? key : "runs.reasons.other";
+}

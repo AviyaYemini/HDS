@@ -813,5 +813,14 @@
   "schedule.nothing_to_undo": "There is no edit to undo.",
   "schedule.edit_invalid": "This change does not fit the proposal.",
   "schedule.override_reason_required": "This change breaks a rule. Give a reason to keep it.",
-  "review.chosen_pair": "Chosen: the change for {{person}}"
+  "review.chosen_pair": "Chosen: the change for {{person}}",
+  "runs.person_numbers": "{{person}}: {{numbers}}",
+  "runs.numbers.rest": "{{have}} h rest, needs {{need}} h",
+  "runs.numbers.weekly": "{{worked}} h this week, {{more}} h more, over the {{limit}} h cap",
+  "review.why_empty": "Why it is empty",
+  "review.cover_title": "Who else could cover",
+  "review.cover_free": "Free then",
+  "review.cover_would_rather_not": "Free, but would rather not",
+  "review.assign_anyway_person": "Assign {{person}} anyway",
+  "review.cover_load": "After it: {{hours}} h, {{nights}} nights, {{weekends}} weekend shifts (average {{average_hours}} h)"
 }
