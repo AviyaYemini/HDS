@@ -1786,6 +1786,24 @@ components:
                       type: string
                       enum: [schedule.unavailable, schedule.overlap, schedule.minimum_rest, schedule.weekly_maximum, schedule.needed_elsewhere, schedule.no_active_employee]
                     employees: {type: integer}
+                    people:
+                      description: >-
+                        For minimum rest and the weekly maximum, each person excluded, with the
+                        numbers, in minutes (008 FR-013): the rest they would have and the rest
+                        needed, or the minutes already worked that week, the slot's and the limit.
+                        Absent in results made before 008's PR 2.
+                      type: array
+                      items:
+                        type: object
+                        required: [user_id, code]
+                        properties:
+                          user_id: {$ref: "#/components/schemas/UUIDv4"}
+                          code: {type: string, enum: [schedule.minimum_rest, schedule.weekly_maximum]}
+                          have: {type: [integer, "null"]}
+                          need: {type: [integer, "null"]}
+                          week_minutes: {type: [integer, "null"]}
+                          slot_minutes: {type: [integer, "null"]}
+                          limit: {type: [integer, "null"]}
         employees:
           type: array
           items:

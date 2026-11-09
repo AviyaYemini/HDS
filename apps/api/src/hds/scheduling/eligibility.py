@@ -16,8 +16,10 @@ from .problem import (
     OVERLAP,
     UNAVAILABLE,
     WEEKLY_MAXIMUM,
+    Blocked,
     Problem,
     Slot,
+    minutes,
 )
 from .rules import entry_covers, local_day, week_start
 from .types import Entry
@@ -167,6 +169,40 @@ class Roster:
             return WEEKLY_MAXIMUM
         if chosen_clash or fixed_week + chosen_week + slot.length > settings.max_weekly:
             return NEEDED_ELSEWHERE
+        return None
+
+    def detail(self, person: uuid.UUID, slot: Slot) -> Blocked | None:
+        """The numbers behind ``refusal`` when it is minimum rest or the weekly maximum, else None.
+
+        Rest is the shortest rest ``slot`` would leave beside a fixed shift; the week counts the
+        fixed shifts of ``slot``'s week (research P10). Built from the same checks as ``refusal``.
+        """
+        code = self.refusal(person, slot)
+        settings = self._settings
+        fixed = [b for b in self.bookings(person) if b.fixed and b.key != slot.key]
+        if code == MINIMUM_REST:
+            rests = [
+                (b.starts_at - slot.ends_at)
+                if b.starts_at >= slot.ends_at
+                else (slot.starts_at - b.ends_at)
+                for b in fixed
+                if clash(slot.starts_at, slot.ends_at, b.starts_at, b.ends_at, settings.min_rest)
+                == MINIMUM_REST
+            ]
+            have = min(rests)
+            return Blocked(
+                person, code, have=int(have.total_seconds() // 60), need=minutes(settings.min_rest)
+            )
+        if code == WEEKLY_MAXIMUM:
+            week = self._week(slot)
+            worked = sum((b.length for b in fixed if b.week == week), timedelta())
+            return Blocked(
+                person,
+                code,
+                week_minutes=minutes(worked),
+                slot_minutes=slot.minutes,
+                limit=minutes(settings.max_weekly),
+            )
         return None
 
 

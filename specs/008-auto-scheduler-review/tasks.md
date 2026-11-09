@@ -95,14 +95,14 @@ it across every project.
 
 ### Tests first
 
-- [ ] T020 [P] [US3] Example tests in `apps/api/tests/unit/scheduling/test_explanations.py`: one week per reason code; rest and weekly maximum name each person with `have`, `need`, `week_minutes`, `slot_minutes`, `limit`; counts still add up to every candidate not on the slot (FR-013)
+- [x] T020 [P] [US3] Example tests in `apps/api/tests/unit/scheduling/test_explanations.py`: one week per reason code; rest and weekly maximum name each person with `have`, `need`, `week_minutes`, `slot_minutes`, `limit`; counts still add up to every candidate not on the slot (FR-013)
 - [ ] T021 [P] [US3] Hypothesis property in `apps/api/tests/property/test_cover.py`: every option marked free can be placed without breaking a rule across all projects, and every option not free names a rule that placing them breaks (SC-004)
 - [ ] T022 [P] [US3] Service and API tests: cover answers carry only codes and numbers, never pay, a site, or another project's shift (FR-016), in `apps/api/tests/unit/services/test_cover_visibility.py`. Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
 - [ ] T023 [P] [US3] Playwright spec `apps/client/tests/e2e/ux/j-empty-slots.spec.ts`: the slot panel's reasons and numbers; cover list order; picking a free person; "Assign anyway" with a reason
 
 ### Implementation
 
-- [ ] T024 [US3] `Roster.detail` in `apps/api/src/hds/scheduling/eligibility.py`; `Blocked` and `Reason.people` in `scheduling/problem.py`; `_unfilled` in `scheduling/engine.py` fills them (research P10)
+- [x] T024 [US3] `Roster.detail` in `apps/api/src/hds/scheduling/eligibility.py`; `Blocked` and `Reason.people` in `scheduling/problem.py`; `_unfilled` in `scheduling/engine.py` fills them (research P10)
 - [ ] T025 [US3] `scheduling/cover.py`: `options(problem, assigned, key)` ranked as research P11, across every project and kind (FR-014)
 - [ ] T026 [US3] Contract first for `GET /schedule-jobs/{id}/slots/{key}/cover`; `ProposalService.cover` builds the problem with the working copy; router; regenerate the client
 - [ ] T027 [US3] Client `SlotPanel` in `apps/client/src/screens/runs/`: reasons with counts, named people with numbers, the empty-slot list on the review, "Who else could cover" with reasons in words, picking places the person as an edit (FR-015); "Assign anyway" through the override sheet

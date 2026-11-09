@@ -48,11 +48,25 @@ class Limits(BaseModel):
     max_weekly_hours: int
 
 
+class Excluded(BaseModel):
+    """A person rest or the weekly maximum kept off a slot, with the numbers (008 FR-013)."""
+
+    user_id: uuid.UUID
+    code: str
+    have: int | None = None
+    need: int | None = None
+    week_minutes: int | None = None
+    slot_minutes: int | None = None
+    limit: int | None = None
+
+
 class Reason(BaseModel):
-    """One reason places stayed empty, and how many candidates it excluded."""
+    """One reason places stayed empty, how many candidates it excluded, and who, where it names."""
 
     code: str
     employees: int
+    # Absent in results stored before 008's PR 2.
+    people: list[Excluded] = []
 
 
 class ProposedSlot(BaseModel):

@@ -2275,6 +2275,29 @@ export interface components {
             weekday?: number | null;
         };
         /**
+         * Excluded
+         * @description A person minimum rest or the weekly maximum kept off a slot, with the numbers (008 FR-013).
+         */
+        Excluded: {
+            /** Code */
+            code: string;
+            /** Have */
+            have?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Need */
+            need?: number | null;
+            /** Slot Minutes */
+            slot_minutes?: number | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Week Minutes */
+            week_minutes?: number | null;
+        };
+        /**
          * GroupListResponse
          * @description The organisation's groups.
          */
@@ -3546,13 +3569,18 @@ export interface components {
         };
         /**
          * Reason
-         * @description One reason places stayed empty, and how many candidates it excluded.
+         * @description One reason places stayed empty, how many candidates it excluded, and who, where it names.
          */
         Reason: {
             /** Code */
             code: string;
             /** Employees */
             employees: number;
+            /**
+             * People
+             * @default []
+             */
+            people: components["schemas"]["Excluded"][];
         };
         /**
          * RefreshRequest
