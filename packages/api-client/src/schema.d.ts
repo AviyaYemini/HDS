@@ -1150,6 +1150,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/schedule-jobs/{id}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A run's record
+         * @description Manager or Admin, of every project in the run. The run's record, oldest first: who ran it and with what, how it ended, each edit, override, lock, accept and discard, each with who and when. It only grows (008 FR-030, FR-031, ADR 020).
+         */
+        get: operations["read_record_api_v1_schedule_jobs__id__record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule-jobs/{id}/slots/{key}/cover": {
         parameters: {
             query?: never;
@@ -1164,6 +1184,26 @@ export interface paths {
         get: operations["cover_slot_api_v1_schedule_jobs__id__slots__key__cover_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule-jobs/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a run
+         * @description Manager or Admin, of every project in the run. A queued run is cancelled at once; a running one ends within a few seconds with its best result so far, labelled stopped, or cancelled with no proposal when it has none yet (008 FR-028). Asking twice changes nothing. 409 (`schedule.not_running`) for a run already over.
+         */
+        post: operations["stop_job_api_v1_schedule_jobs__id__stop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1294,6 +1334,26 @@ export interface paths {
          * @description A Manager of the project, or an Admin. Everyone already on another shift that overlaps this one, in any project, by the times they work it. The other shift (its id, project and times, and the assignment) is named only when the caller may edit its roster; `movable` then says swap and transfer may be offered (008 T042f).
          */
         get: operations["busy_api_v1_shifts__id__busy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shifts/{id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find someone for a shift
+         * @description A Manager of the project, or an Admin. "Find someone" on the roster (008 FR-034): every active staff member not on the shift, judged over all their shifts in every project and the drafts, as "Who else could cover" ranks them in a proposal. Codes and numbers only: never pay, a site or another project's shift (FR-016).
+         */
+        get: operations["find_someone_api_v1_shifts__id__cover_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2833,6 +2893,11 @@ export interface components {
              * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
              */
             elapsed_seconds: number | null;
+            /**
+             * Ended
+             * @description How the run ended: stopped is with the best so far (FR-028).
+             */
+            ended: ("finished" | "stopped" | "timed_out" | "cancelled" | "failed") | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2849,6 +2914,8 @@ export interface components {
             id: string;
             /** Optimal */
             optimal: boolean | null;
+            /** @description The best so far while it runs, the final count once done (008 FR-027). */
+            progress: components["schemas"]["Progress"] | null;
             /** Project Ids */
             project_ids: string[];
             proposal: components["schemas"]["Proposal"] | null;
@@ -2869,6 +2936,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /**
+             * Stop Requested
+             * @description Someone asked it to stop (FR-028).
+             */
+            stop_requested: boolean;
             /**
              * Time Limit Seconds
              * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
@@ -2907,6 +2979,11 @@ export interface components {
              * @description Whole seconds the job has searched by the server's clock, to now while it runs and to `finished_at` once done; null before it starts. The bar's value is this over `time_limit_seconds` (007 FR-074).
              */
             elapsed_seconds: number | null;
+            /**
+             * Ended
+             * @description How the run ended: stopped is with the best so far (FR-028).
+             */
+            ended: ("finished" | "stopped" | "timed_out" | "cancelled" | "failed") | null;
             /** Error Code */
             error_code: string | null;
             /** Finished At */
@@ -2923,6 +3000,8 @@ export interface components {
             id: string;
             /** Optimal */
             optimal: boolean | null;
+            /** @description The best so far while it runs, the final count once done (008 FR-027). */
+            progress: components["schemas"]["Progress"] | null;
             /** Project Ids */
             project_ids: string[];
             /** Proposal State */
@@ -2942,6 +3021,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /**
+             * Stop Requested
+             * @description Someone asked it to stop (FR-028).
+             */
+            stop_requested: boolean;
             /**
              * Time Limit Seconds
              * @description How long the solver may search: the determinate progress bar's whole (007 FR-074).
@@ -3679,6 +3763,18 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * Progress
+         * @description Places filled out of those needed, and when it last improved (008 FR-027).
+         */
+        Progress: {
+            /** At */
+            at: string | null;
+            /** Filled */
+            filled: number | null;
+            /** Needed */
+            needed: number;
+        };
+        /**
          * ProjectCreateRequest
          * @description New project.
          *
@@ -3978,6 +4074,39 @@ export interface components {
              * @default []
              */
             people: components["schemas"]["Excluded"][];
+        };
+        /**
+         * RecordItem
+         * @description One step of a run's record: what, who and when (008 FR-030).
+         */
+        RecordItem: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /** Seq */
+            seq: number;
+            /** Version */
+            version: number | null;
+        };
+        /**
+         * RecordPage
+         * @description A page of a run's record, oldest first; ``next_after`` reads the next.
+         */
+        RecordPage: {
+            /** Items */
+            items: components["schemas"]["RecordItem"][];
+            /** Next After */
+            next_after: number | null;
         };
         /**
          * RefreshRequest
@@ -10618,6 +10747,68 @@ export interface operations {
             };
         };
     };
+    read_record_api_v1_schedule_jobs__id__record_get: {
+        parameters: {
+            query?: {
+                /** @description The last `seq` already read. */
+                after?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     cover_slot_api_v1_schedule_jobs__id__slots__key__cover_get: {
         parameters: {
             query?: never;
@@ -10637,6 +10828,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Cover"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request conflicts with the current state (duplicate, last admin, in use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    stop_job_api_v1_schedule_jobs__id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
@@ -11267,6 +11525,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BusyAnswer"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The referenced resource does not exist in the caller's organisation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    find_someone_api_v1_shifts__id__cover_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cover"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */

@@ -22,13 +22,12 @@ AT = datetime(2027, 6, 1, 9, 0, tzinfo=UTC)
 async def recorded(
     client: AsyncClient, test_db: AsyncSession, users: dict[str, User]
 ) -> ScheduleJobEventRepository:
-    """A queued job with two steps in its record."""
+    """A queued job with two steps in its record: the "created" its request wrote, and one more."""
     admin = await headers_for(client, "admin")
     await staffed_project(client, admin)
     job = (await ask(client, admin)).json()
     events = ScheduleJobEventRepository(test_db)
     org = users["admin"].organization_id
-    await events.append(org, job["id"], "created", AT, {"days": 7}, actor_id=users["admin"].id)
     await events.append(org, job["id"], "finished", AT, {"filled": 7}, version=0)
     return events
 

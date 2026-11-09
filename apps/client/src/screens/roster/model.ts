@@ -72,3 +72,33 @@ export type RosterChange =
   // A transfer or a swap (008 T042f): undone by moving the assignment back, swapping again.
   | { kind: "moved"; assignmentId: string; shiftId: string; fromShiftId: string; swapWith: string | null }
   | { kind: "unassigned"; shiftId: string; userId: string; starts_at: string | null; ends_at: string | null };
+
+/** One rule a person breaks, with every distinct set of numbers it was reported with. */
+export interface WarningGroup<T> {
+  first: T;
+  values: Record<string, string>[];
+}
+
+/**
+ * Warnings grouped by person and rule (owner, 2026-11-09): the rules report one warning per
+ * clashing pair of shifts, so someone on two overlapping shifts would read the same words twice,
+ * each with its own "Keep despite this", though one override covers the rule. Each group keeps the
+ * numbers that differ (a rest of 0 h and one of 8 h), each once, in the order first seen.
+ */
+export function groupWarnings<T extends { code: string; values?: Record<string, string> | null }>(
+  warnings: readonly T[],
+  person: (w: T) => string | null,
+): WarningGroup<T>[] {
+  const groups = new Map<string, WarningGroup<T>>();
+  for (const w of warnings) {
+    const key = `${person(w) ?? ""}|${w.code}`;
+    const values = w.values ?? {};
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, { first: w, values: [values] });
+    } else if (!group.values.some((v) => JSON.stringify(v) === JSON.stringify(values))) {
+      group.values.push(values);
+    }
+  }
+  return [...groups.values()];
+}

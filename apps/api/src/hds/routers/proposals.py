@@ -19,7 +19,8 @@ from hds.core.types import text
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
 from hds.services.proposal import ProposalService
-from hds.wiring import proposals
+from hds.services.roster_cover import RosterCoverService
+from hds.wiring import proposals, roster_cover
 
 router = APIRouter(prefix="/api/v1", tags=["proposals"])
 
@@ -393,3 +394,27 @@ async def fairness_of(
     Manager or Admin, of every project in the run.
     """
     return Fairness(**await svc.fairness(current_user, id))
+
+
+@router.get(
+    "/shifts/{id}/cover",
+    response_model=Cover,
+    tags=["shifts"],
+    summary="Find someone for a shift",
+    description=(
+        'A Manager of the project, or an Admin. "Find someone" on the roster (008 FR-034): '
+        "every active staff member not on the shift, judged over all their shifts in every "
+        'project and the drafts, as "Who else could cover" ranks them in a proposal. Codes '
+        "and numbers only: never pay, a site or another project's shift (FR-016)."
+    ),
+)
+async def find_someone(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    svc: RosterCoverService = Depends(roster_cover),
+) -> Cover:
+    """Find someone for a shift.
+
+    A Manager of the project, or an Admin.
+    """
+    return Cover(**await svc.cover(current_user, id))

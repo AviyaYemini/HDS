@@ -176,3 +176,43 @@ async def test_another_organisations_job_is_not_found(
     answer = await async_client.get(f"{JOBS}/{other_org.job.id}/slots/need:x/cover", headers=admin)
 
     assert answer.status_code == 404, answer.text
+
+
+async def test_find_someone_on_the_roster_ranks_staff_for_a_shift(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """008 FR-034: the roster's empty seat opens the same ranked list, for a draft or published."""
+    admin = await headers_for(async_client, "admin")
+    manager = await headers_for(async_client, "manager")
+    guarded = await staffed_project(async_client, admin)
+    elsewhere = await add_project(async_client, admin, "Elsewhere")
+    busy = await employee(async_client, admin, "Busy Elsewhere")
+    taken = (await add_shift(async_client, admin, elsewhere, SUNDAY))["shift"]
+    assert (await assign(async_client, admin, taken["id"], busy)).status_code == 201
+    shift = (await add_shift(async_client, admin, guarded, SUNDAY))["shift"]
+
+    answer = await async_client.get(f"/api/v1/shifts/{shift['id']}/cover", headers=manager)
+
+    assert answer.status_code == 200, answer.text
+    by = {o["user_id"]: o for o in answer.json()["options"]}
+    assert by[busy]["code"] == "schedule.overlap"
+    assert all(set(o) == OPTION_FIELDS for o in answer.json()["options"])
+    assert taken["id"] not in answer.text and elsewhere["id"] not in answer.text
+
+
+async def test_find_someone_is_refused_outside_ones_projects_and_to_employees(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    admin = await headers_for(async_client, "admin")
+    other = await add_project(async_client, admin, "Not The Managers")
+    shift = (await add_shift(async_client, admin, other, SUNDAY))["shift"]
+
+    answers = [
+        await async_client.get(
+            f"/api/v1/shifts/{shift['id']}/cover", headers=await headers_for(async_client, role)
+        )
+        for role in ("manager", "employee", "client")
+    ]
+
+    assert [a.status_code for a in answers] == [403, 403, 403]
+    assert answers[0].json()["code"] == "roster.project_not_managed"

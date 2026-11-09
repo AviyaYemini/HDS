@@ -143,5 +143,6 @@
   "roster.bulk_change_invalid": "יש לבחור תקן חדש או הסרה.",
   "views.duplicate_name": "כבר קיימת כאן תצוגה בשם הזה.",
   "assignments.move_same_shift": "העובד כבר במשמרת הזו.",
-  "schedule.chip_invalid": "העדפה צריכה את הערך שהסוג שלה דורש, ולציין אדם מהצוות."
+  "schedule.chip_invalid": "העדפה צריכה את הערך שהסוג שלה דורש, ולציין אדם מהצוות.",
+  "schedule.not_running": "ההרצה כבר הסתיימה."
 }

@@ -30,6 +30,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import threading
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
@@ -52,11 +53,13 @@ from hds.core.logging import configure_logging
 from hds.core.metrics import JobMetrics
 from hds.repositories.schedule_job import CHANNEL
 from hds.services.health import HealthService
-from hds.services.schedule_job import Claim, JobFailedError, solve
+from hds.services.schedule_job import Claim, JobFailedError, ended_of, solve
 from hds.wiring import health_service, job_service, migrations
 
 logger = logging.getLogger("hds.worker")
 POLL_SECONDS = 5
+#: How often a solving job's best so far is written and its stop flag read (008 FR-027, SC-007).
+FOLLOW_SECONDS = 2.0
 
 #: The failing check the worker's health answers name when its loop is stuck.
 LOOP = "worker_loop"
@@ -151,13 +154,70 @@ async def _run(
         return await _fail(factory, claim, error)
     if stopping is not None and stopping.is_set():
         return await _hand_back(factory, claim)
+    # Best so far and Stop (008 FR-027, FR-028, research P7): the solver's thread notes the places
+    # filled; every FOLLOW_SECONDS this loop writes them and reads the stop flag, which the
+    # solver polls.
+    needed = sum(s.places for s in built.problem.slots)
+    best: list[int | None] = [None]  # the latest only, set by the solver's thread
+    stop = threading.Event()
+
+    def heard(filled: int, _needed: int) -> None:
+        best[0] = filled
+
+    async def follow() -> None:
+        written: int | None = None
+        while True:
+            await asyncio.sleep(FOLLOW_SECONDS)
+            now = best[0]
+            try:
+                async with factory() as session:
+                    # The best is written only when it improved, so its time says when (FR-027).
+                    halt = await job_service(session).progress(
+                        claim, needed, now if now != written else None
+                    )
+                    await session.commit()
+            except Exception:
+                logger.exception("schedule job %s: progress not written", claim.id)
+                continue
+            written = now
+            if halt:
+                stop.set()
+
+    following = asyncio.create_task(follow())
     try:
-        result = await solve(claim, built, limit)
+        result = await solve(claim, built, limit, progress=heard, should_stop=stop.is_set)
     except Exception as error:
         return await _fail(factory, claim, error)
+    finally:
+        following.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await following
+    if result.stopped and best[0] is None:
+        # Stopped before any result: Cancel, with no proposal (FR-028).
+        async with factory() as session:
+            jobs = job_service(session)
+            stored = await jobs.cancel(claim)
+            if stored:
+                await jobs.recorded(claim, "cancelled", {"before_any_result": True})
+            await session.commit()
+        return "cancelled" if stored else SUPERSEDED
     try:
         async with factory() as session:
-            stored = await job_service(session).succeed(claim, built, result)
+            jobs = job_service(session)
+            stored = await jobs.succeed(claim, built, result)
+            if stored:
+                # How the run ended joins its record (008 FR-030).
+                await jobs.recorded(
+                    claim,
+                    "finished",
+                    {
+                        "ended": ended_of(claim, result),
+                        "filled": sum(len(on) for on in result.assigned.values()),
+                        "needed": needed,
+                        "optimal": result.optimal,
+                        "locks_kept": built.locks,
+                    },
+                )
             await session.commit()
         if not stored:
             logger.warning("schedule job %s was claimed again before it finished", claim.id)
@@ -167,7 +227,9 @@ async def _run(
         # solved again three times and reported as lost.
         logger.exception("schedule job %s could not store its result", claim.id)
         async with factory() as session:
-            await job_service(session).fail(claim, "jobs.solver_failed")
+            jobs = job_service(session)
+            if await jobs.fail(claim, "jobs.solver_failed"):
+                await jobs.recorded(claim, "failed", {"code": "jobs.solver_failed"})
             await session.commit()
         return "failed"
     return "succeeded"
@@ -178,7 +240,9 @@ async def _fail(factory: async_sessionmaker[AsyncSession], claim: Claim, error: 
     code = error.code if isinstance(error, JobFailedError) else "jobs.solver_failed"
     logger.exception("schedule job %s failed: %s", claim.id, code)
     async with factory() as session:
-        await job_service(session).fail(claim, code)
+        jobs = job_service(session)
+        if await jobs.fail(claim, code):
+            await jobs.recorded(claim, "failed", {"code": code})
         await session.commit()
     return "failed"
 

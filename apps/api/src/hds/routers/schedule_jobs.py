@@ -179,6 +179,14 @@ class Proposal(BaseModel):
     locks_kept: int = 0
 
 
+class Progress(BaseModel):
+    """Places filled out of those needed, and when it last improved (008 FR-027)."""
+
+    filled: int | None
+    needed: int
+    at: datetime | None
+
+
 class JobSummary(BaseModel):
     """A job without its proposal."""
 
@@ -205,6 +213,13 @@ class JobSummary(BaseModel):
         "runs and to `finished_at` once done; null before it starts. The bar's value is this over "
         "`time_limit_seconds` (007 FR-074)."
     )
+    progress: Progress | None = Field(
+        description="The best so far while it runs, the final count once done (008 FR-027)."
+    )
+    ended: Literal["finished", "stopped", "timed_out", "cancelled", "failed"] | None = Field(
+        description="How the run ended: stopped is with the best so far (FR-028)."
+    )
+    stop_requested: bool = Field(description="Someone asked it to stop (FR-028).")
     controls: Controls = Field(description="The run's two plain controls (008 FR-017).")
     chips: list[ChipIn] = Field(description="The manager's preferences for the run (FR-020).")
     based_on: uuid.UUID | None = Field(description="The earlier run this one reruns (FR-019).")
@@ -241,6 +256,13 @@ def _summary(job: ScheduleJob, svc: ScheduleJobService) -> dict[str, Any]:
         "proposal_state": svc.state(job),
         "time_limit_seconds": get_settings().SCHEDULE_TIME_LIMIT_SECONDS,
         "elapsed_seconds": svc.elapsed_seconds(job),
+        "progress": (
+            {"filled": job.best_filled, "needed": job.needed, "at": job.progress_at}
+            if job.needed is not None
+            else None
+        ),
+        "ended": job.ended,
+        "stop_requested": job.stop_requested_at is not None,
         "controls": job.controls or {},
         "chips": job.chips or [],
         "based_on": job.based_on_id,
@@ -474,3 +496,75 @@ async def discard_job(
     """
     job = await svc.discard(current_user, id, version_of(if_match))
     return JSONResponse(job_read(job, svc).model_dump(mode="json", by_alias=True))
+
+
+class RecordItem(BaseModel):
+    """One step of a run's record: what, who and when (008 FR-030)."""
+
+    seq: int
+    kind: str
+    at: datetime
+    actor_id: uuid.UUID | None
+    version: int | None
+    body: dict[str, Any]
+
+
+class RecordPage(BaseModel):
+    """A page of a run's record, oldest first; ``next_after`` reads the next."""
+
+    items: list[RecordItem]
+    next_after: int | None
+
+
+@router.post(
+    "/schedule-jobs/{id}/stop",
+    response_model=JobRead,
+    summary="Stop a run",
+    description=(
+        "Manager or Admin, of every project in the run. A queued run is cancelled at once; a "
+        "running one ends within a few seconds with its best result so far, labelled stopped, "
+        "or cancelled with no proposal when it has none yet (008 FR-028). Asking twice changes "
+        "nothing. 409 (`schedule.not_running`) for a run already over."
+    ),
+)
+async def stop_job(
+    id: uuid.UUID,
+    current_user: User = Depends(require_manager),
+    svc: ScheduleJobService = Depends(schedule_jobs),
+) -> JobRead:
+    """Stop a run.
+
+    Manager or Admin, of every project in the run.
+    """
+    return job_read(await svc.stop(current_user, id), svc)
+
+
+@router.get(
+    "/schedule-jobs/{id}/record",
+    response_model=RecordPage,
+    summary="A run's record",
+    description=(
+        "Manager or Admin, of every project in the run. The run's record, oldest first: who ran "
+        "it and with what, how it ended, each edit, override, lock, accept and discard, each "
+        "with who and when. It only grows (008 FR-030, FR-031, ADR 020)."
+    ),
+)
+async def read_record(
+    id: uuid.UUID,
+    after: int | None = Query(default=None, ge=0, description="The last `seq` already read."),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(require_manager),
+    svc: ScheduleJobService = Depends(schedule_jobs),
+) -> RecordPage:
+    """A run's record.
+
+    Manager or Admin, of every project in the run.
+    """
+    rows = await svc.record_page(current_user, id, after, limit)
+    items = [
+        RecordItem(
+            seq=r.seq, kind=r.kind, at=r.at, actor_id=r.actor_id, version=r.version, body=r.body
+        )
+        for r in rows
+    ]
+    return RecordPage(items=items, next_after=items[-1].seq if len(items) == limit else None)

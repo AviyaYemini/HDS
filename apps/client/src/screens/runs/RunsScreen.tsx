@@ -99,14 +99,26 @@ function useRunProjects(): { offered: Offered[] | null; names: Map<string, strin
   return { offered, names: new Map(all.map((p) => [p.id, p.name])), error: projects.error, reload: projects.reload };
 }
 
-function GenerateForm({ onCancel, offered, again }: { onCancel: () => void; offered: Offered[]; again?: Again | null }) {
+/**
+ * The roster's week as a run's range, never starting before today, as the date field allows: this
+ * week from today on, or next week when the whole week has passed (FR-032).
+ */
+export function fromPreset(week: string, today: string): DateRange {
+  const end = addDays(week, 6);
+  if (compareDates(end, today) < 0) return presetRange("next-week", today);
+  return { start: compareDates(week, today) < 0 ? today : week, end };
+}
+
+function GenerateForm({ onCancel, offered, again, preset }: { onCancel: () => void; offered: Offered[]; again?: Again | null; preset?: { week: string; project: string | null } | null }) {
   const { t } = useTranslation();
   const session = useSession();
   const router = useRouter();
   const errorText = useErrorText();
   const { colors, isDesktop } = useTheme();
   const today = todayIn(DEFAULT_TIME_ZONE);
-  const [range, setRange] = useState<DateRange>(() => (again ? { start: again.from, end: again.to } : presetRange("next-week", today)));
+  const [range, setRange] = useState<DateRange>(() =>
+    again ? { start: again.from, end: again.to } : preset ? fromPreset(preset.week, today) : presetRange("next-week", today),
+  );
   // The two plain controls and the chips (FR-017, FR-020); a rerun starts with the earlier run's.
   const [controls, setControls] = useState<Controls>(() => again?.controls ?? DEFAULT_CONTROLS);
   const [chips, setChips] = useState<Chip[]>(() => again?.chips ?? []);
@@ -117,7 +129,10 @@ function GenerateForm({ onCancel, offered, again }: { onCancel: () => void; offe
   // and security, though choosing both on purpose stays allowed (reviewer's ruling, 2026-11-08,
   // after the owner's note in spec.md's assumptions).
   const types = typesOf(offered);
-  const [picked, setPicked] = useState<string[] | null>(() => (again ? again.project_ids : null));
+  // From the roster's "Generate this week": its project, when the person may run it (FR-032).
+  const [picked, setPicked] = useState<string[] | null>(() =>
+    again ? again.project_ids : preset?.project && offered.some((p) => p.id === preset.project) ? [preset.project] : null,
+  );
   const projects = picked ?? (types.length > 1 ? [] : offered.map((p) => p.id));
   // The key follows the request itself: a repeat of the same one (a double press, a retry after a
   // lost answer) answers the same run, and any change of range or projects (the offered list
@@ -262,8 +277,10 @@ export function RunsScreen() {
   const { t } = useTranslation();
   const errorText = useErrorText();
   // "Run again" opens the form on an earlier run (?again=<id>, FR-019).
-  const params = useLocalSearchParams<{ again?: string }>();
-  const [creating, setCreating] = useState(!!params.again);
+  const params = useLocalSearchParams<{ again?: string; week?: string; project?: string }>();
+  // The roster's "Generate this week" opens the form on that week and project (FR-032).
+  const [creating, setCreating] = useState(!!params.again || !!params.week);
+  const preset = params.week ? { week: params.week, project: params.project ?? null } : null;
   const jobs = useRuns();
   const projects = useRunProjects();
   const session = useSession();
@@ -288,7 +305,7 @@ export function RunsScreen() {
       ) : projects.offered.length === 0 ? (
         <EmptyState icon="briefcase" title={t("runs.no_projects_title")} body={t("runs.no_projects_body")} testID="run-no-projects" />
       ) : (
-        <GenerateForm onCancel={() => setCreating(false)} offered={projects.offered} again={again.data} />
+        <GenerateForm onCancel={() => setCreating(false)} offered={projects.offered} again={again.data} preset={preset} />
       )}
       {jobs.error ? (
         <InlineBanner tone="warning" title={errorText(jobs.error)} action={{ label: t("common.retry"), onPress: () => void jobs.reload() }} />

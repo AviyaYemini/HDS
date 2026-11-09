@@ -11,6 +11,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -56,21 +57,32 @@ class FakeJobs:
     async def build(self, claim: Claim) -> object:
         if self.solve_fails:
             raise RuntimeError("cannot build")
-        return object()
+        # Enough of a built problem for the worker: its places (008 best so far) and locks.
+        return SimpleNamespace(problem=SimpleNamespace(slots=()), locks=0)
 
     async def succeed(self, claim: Claim, built: object, result: object) -> bool:
         return self.stored
 
-    async def fail(self, claim: Claim, code: str) -> None:
+    async def fail(self, claim: Claim, code: str) -> bool:
         if self.fail_raises:
             raise OSError("database down")
+        return True
+
+    async def progress(self, claim: Claim, needed: int, filled: int | None) -> bool:
+        return False
+
+    async def cancel(self, claim: Claim) -> bool:
+        return True
+
+    async def recorded(self, claim: Claim, kind: str, body: dict[str, object]) -> None:
+        return None
 
 
 def install(monkeypatch: pytest.MonkeyPatch, jobs: FakeJobs) -> worker.WorkerOps:
     """Point the worker at ``jobs`` and a solver that returns at once."""
 
-    async def solve(claim: Claim, built: object, limit: timedelta) -> object:
-        return object()
+    async def solve(claim: Claim, built: object, limit: timedelta, **_: object) -> object:
+        return SimpleNamespace(stopped=False, optimal=True, assigned={})
 
     monkeypatch.setattr(worker, "job_service", lambda session: jobs)
     monkeypatch.setattr(worker, "solve", solve)

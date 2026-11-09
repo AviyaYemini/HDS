@@ -25,11 +25,11 @@ from hds.repositories.organisation import OrganisationRepository
 from hds.repositories.schedule_job_event import ScheduleJobEventRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling import Employee, RuleWarning, chips, fairness, validate
-from hds.scheduling import cover as covering
 from hds.scheduling.eligibility import Roster
 from hds.scheduling.engine import slot_id
 from hds.scheduling.problem import Problem
 from hds.services import proposal_copy
+from hds.services.roster_cover import cover_answer
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService, check_version, stored_chip
 
@@ -218,41 +218,7 @@ class ProposalService:
         assigned = {
             s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
         }
-        names = {u.id: u.full_name for u in staff}
-        loaded = covering.loads(problem, assigned)
-        found = covering.options(problem, assigned, key, names, loaded)
-        # The average counts the people who work shifts: every Employee, and a Manager or Admin
-        # only when they have hours in the range, so idle office staff never pull it down.
-        worked = loaded[0]
-        among = [u.id for u in staff if u.role == UserRole.employee or worked[u.id] > 0]
-        people, minutes, nights, weekends = covering.totals(loaded, among)
-        return {
-            "key": key,
-            "options": [
-                {
-                    "user_id": o.user_id,
-                    "free": o.code is None,
-                    "code": o.code,
-                    "have": o.detail.have if o.detail else None,
-                    "need": o.detail.need if o.detail else None,
-                    "week_minutes": o.detail.week_minutes if o.detail else None,
-                    "slot_minutes": o.detail.slot_minutes if o.detail else None,
-                    "limit": o.detail.limit if o.detail else None,
-                    "close": o.close,
-                    "open": o.open,
-                    "minutes": o.minutes,
-                    "nights": o.nights,
-                    "weekends": o.weekends,
-                }
-                for o in found
-            ],
-            "totals": {
-                "people": people,
-                "minutes": minutes,
-                "nights": nights,
-                "weekends": weekends,
-            },
-        }
+        return cover_answer(problem, assigned, key, staff)
 
     async def fairness(self, actor: User, id: uuid.UUID) -> dict[str, Any]:
         """The proposal's fairness, trade-offs, chips and guarantees, as it stands now.

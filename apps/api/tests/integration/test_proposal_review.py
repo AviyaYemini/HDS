@@ -106,7 +106,8 @@ async def test_one_day_is_accepted_and_the_rest_stays_open(
     assert rest.json()["proposal_state"] == "partly_accepted"
     assert await roster_count(test_db) == 1
     kinds = await test_db.execute(text("SELECT kind FROM schedule_job_events ORDER BY seq"))
-    assert [k for (k,) in kinds] == ["accepted", "discarded"]
+    # The run's own steps first, then the decisions (008 FR-030).
+    assert [k for (k,) in kinds] == ["created", "finished", "accepted", "discarded"]
 
 
 async def test_the_rest_accepted_afterwards_closes_the_proposal(

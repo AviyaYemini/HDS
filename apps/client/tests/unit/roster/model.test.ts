@@ -3,7 +3,7 @@
  * against the block (a half shift, extra hours), an overnight shift's two days, and coverage. The
  * bars are in percent of the block, so they mirror with the layout in Hebrew.
  */
-import { barGeometry, cellOf, coverage, isOvernight, placed, shiftDays, weekDays, type Shift } from "../../../src/screens/roster/model";
+import { barGeometry, cellOf, coverage, groupWarnings, isOvernight, placed, shiftDays, weekDays, type Shift } from "../../../src/screens/roster/model";
 
 const ZONE = "Asia/Jerusalem";
 
@@ -57,4 +57,27 @@ test("coverage counts filled against required, and placement groups by day and t
   expect(grouped.get(cellOf("2026-12-07", "morning"))?.map((s) => s.id)).toEqual(["m"]);
   expect(weekDays("2026-12-06")).toHaveLength(7);
   expect(weekDays("2026-12-06")[6]).toBe("2026-12-12");
+});
+
+describe("warnings grouped by person and rule (owner, 2026-11-09)", () => {
+  const w = (code: string, employee_id: string | null, values: Record<string, string> = {}) => ({ code, employee_id, values });
+
+  test("the same rule for one person reads once, keeping each distinct set of numbers", () => {
+    const groups = groupWarnings(
+      [
+        w("warnings.overlap", "ann"),
+        w("warnings.overlap", "ann"),
+        w("warnings.rest_too_short", "ann", { rest_hours: "0", minimum_hours: "11" }),
+        w("warnings.rest_too_short", "ann", { rest_hours: "8", minimum_hours: "11" }),
+        w("warnings.overlap", "ben"),
+      ],
+      (x) => x.employee_id,
+    );
+
+    expect(groups.map((g) => [g.first.employee_id, g.first.code, g.values.length])).toEqual([
+      ["ann", "warnings.overlap", 1],
+      ["ann", "warnings.rest_too_short", 2],
+      ["ben", "warnings.overlap", 1],
+    ]);
+  });
 });

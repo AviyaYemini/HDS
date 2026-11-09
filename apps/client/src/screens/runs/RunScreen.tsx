@@ -13,7 +13,7 @@ import { StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { InlineBanner, LinkPressable, PageTitle, SkeletonRows, StatusChip, Txt } from "../../design/components";
+import { Button, InlineBanner, LinkPressable, PageTitle, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
 import { Icon } from "../../design/icons/Icon";
 import { webProps } from "../../design/web";
 import { Screen } from "../../design/components/Screen";
@@ -23,6 +23,7 @@ import { DEFAULT_TIME_ZONE, formatNumericDate, formatNumericRange, formatTimeRan
 import { useLoad } from "../useLoad";
 import { rosterHref } from "../roster/ProjectChooser";
 import { HonestyLabel } from "./HonestyLabel";
+import { RecordPanel } from "./RecordPanel";
 import { ReviewWeek } from "./ReviewWeek";
 import { numbersOf, reasonKey } from "./review";
 import { STATUS_TONE, coveredText, elapsedNow, filled, isActive, projectsOf, runProgress, type Job, type Names } from "./model";
@@ -229,6 +230,49 @@ function Proposal({ job, names }: { job: Job; names: Names }) {
   );
 }
 
+/**
+ * Best so far and Stop while a run works (008 FR-027, FR-028): the places filled so far out of those
+ * needed, and "Stop and use best so far" once there is a result, Cancel before. A stop takes a few
+ * seconds to land; until then the button says so.
+ */
+function RunStop({ job, onStopped }: { job: Job; onStopped: () => void }) {
+  const { t } = useTranslation();
+  const session = useSession();
+  const errorText = useErrorText();
+  const [busy, setBusy] = useState(false);
+  const progress = job.progress;
+  const hasResult = progress?.filled != null;
+  const stop = async () => {
+    setBusy(true);
+    try {
+      await call(session.api.POST("/api/v1/schedule-jobs/{id}/stop", { params: { path: { id: job.id } } }));
+      onStopped();
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={styles.summary} testID="run-best-so-far">
+      {hasResult ? (
+        <Txt role="body" numeric testID="run-best">
+          {t("runs.best_so_far", { filled: progress!.filled, needed: progress!.needed })}
+        </Txt>
+      ) : null}
+      <Button
+        variant="secondary"
+        icon="close"
+        label={job.stop_requested ? t("runs.stopping") : hasResult ? t("runs.stop_best") : t("runs.cancel_run")}
+        busy={busy}
+        disabled={busy || job.stop_requested}
+        onPress={() => void stop()}
+        testID="action-stop-run"
+      />
+    </View>
+  );
+}
+
 export function RunScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -238,6 +282,9 @@ export function RunScreen() {
   const job = reading?.job ?? null;
   const names = useNames();
   useRunBar(reading);
+  // The record reads again whenever the run moves: its state, a Stop, a decision or an edit (FR-030).
+  const [version, setVersion] = useState(-1);
+  const stamp = job ? `${job.status}:${job.ended ?? ""}:${String(job.stop_requested)}:${job.proposal_state ?? ""}:${version}` : "";
 
   return (
     <Screen testID="screen-run">
@@ -262,6 +309,13 @@ export function RunScreen() {
           {isActive(job) ? (
             <Txt role="body" tone="secondary" testID="run-progress">
               {job.solver === "greedy" ? t("runs.running") : t("runs.running_up_to", { count: job.time_limit_seconds })}
+            </Txt>
+          ) : null}
+          {isActive(job) ? <RunStop job={job} onStopped={reload} /> : null}
+          {job.ended === "stopped" ? (
+            // A run stopped by a person keeps its best result, said in words (FR-028).
+            <Txt role="meta" tone="secondary" testID="run-stopped-early">
+              {t("runs.stopped_early")}
             </Txt>
           ) : null}
           {job.status === "failed" ? <InlineBanner tone="danger" title={t("runs.failed")} /> : null}
@@ -291,7 +345,9 @@ export function RunScreen() {
               <Txt role="label">{t("runs.run_again")}</Txt>
             </LinkPressable>
           ) : null}
-          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} /> : null}
+          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
+          {/* Every run's record, once it has one (FR-030). */}
+          <RecordPanel jobId={job.id} stamp={stamp} name={(person) => names.people.get(person) ?? t("runs.unknown_person")} />
         </View>
       )}
     </Screen>

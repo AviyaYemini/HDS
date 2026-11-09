@@ -1,7 +1,7 @@
 /**
  * 004 US2 to US4 — Generating a roster: a Manager asks for next week, sees the proposal with its
  * empty places and their reasons, and accepts it as drafts. Drawn in 007's design (T078, T079):
- * the run list, the generate form and the run's page.
+ * the run list, the generate form and the run's page; since 008, accepting opens the roster week.
  */
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
@@ -35,7 +35,11 @@ test("a Manager generates next week, reads why places stay empty, and accepts it
 
   await expect(page.getByTestId("run-honesty-label")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("unfilled").first()).toContainText(/Not available|another shift|Rest|Weekly|elsewhere|No active staff/);
+  const run = page.url();
   await page.getByTestId("action-accept").click();
+  // A whole accept opens its roster week, Publish one tap away (008 FR-033); the run says so.
+  await expect(page.getByTestId("screen-roster")).toBeVisible({ timeout: 30_000 });
+  await page.goto(run);
   await expect(page.getByTestId("run-proposal-state")).toContainText("Accepted");
   await expect(page.getByTestId("action-accept")).toHaveCount(0);
 });

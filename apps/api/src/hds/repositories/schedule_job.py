@@ -89,7 +89,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
 
     async def claim(
         self, now: datetime, lease: timedelta, max_attempts: int
-    ) -> tuple[ScheduleJob | None, list[uuid.UUID]]:
+    ) -> tuple[ScheduleJob | None, list[tuple[uuid.UUID, uuid.UUID]]]:
         """Claim the oldest job that is queued, or running past its lease.
 
         ``FOR UPDATE SKIP LOCKED``, so two workers never take the same job and neither waits for
@@ -98,9 +98,9 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
 
         Returns:
             The claimed job (now ``running``, its attempts counted and leased), or ``None``; and
-            the ids of jobs marked lost on the way.
+            the jobs marked lost on the way, as (id, organisation) pairs.
         """
-        lost: list[uuid.UUID] = []
+        lost: list[tuple[uuid.UUID, uuid.UUID]] = []
         while True:
             result = await self.session.execute(
                 select(ScheduleJob)
@@ -119,9 +119,9 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
             if job is None:
                 return None, lost
             if job.status == "running" and job.attempts >= max_attempts:
-                job.status, job.error_code = "failed", "jobs.worker_lost"
+                job.status, job.error_code, job.ended = "failed", "jobs.worker_lost", "failed"
                 job.finished_at, job.lease_until = now, None
-                lost.append(job.id)
+                lost.append((job.id, job.organization_id))
                 await self.session.flush()
                 continue
             job.status = "running"
@@ -178,6 +178,46 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
                 text("SELECT pg_notify(:c, :i)"), {"c": CHANNEL, "i": str(id)}
             )
         return released
+
+    async def progress(
+        self, id: uuid.UUID, attempt: int, values: Mapping[str, Any]
+    ) -> tuple[bool, bool]:
+        """Write a running job's best so far; whether it is still this run's, and Stop was asked.
+
+        Guarded as ``finish`` is: a run that lost its claim writes nothing (008 FR-027, FR-028).
+        """
+        result = await self.session.execute(
+            update(ScheduleJob)
+            .where(
+                ScheduleJob.id == id,
+                ScheduleJob.attempts == attempt,
+                ScheduleJob.status == "running",
+            )
+            .values(**values)
+            .returning(ScheduleJob.stop_requested_at)
+        )
+        row = result.first()
+        return row is not None, row is not None and row[0] is not None
+
+    async def cancel_queued(self, id: uuid.UUID, at: datetime) -> bool:
+        """Cancel a job no worker has claimed yet (008 FR-028); whether it was still queued."""
+        result = await self.session.execute(
+            update(ScheduleJob)
+            .where(ScheduleJob.id == id, ScheduleJob.status == "queued")
+            .values(status="cancelled", ended="cancelled", finished_at=at, lease_until=None)
+            .returning(ScheduleJob.id)
+        )
+        await self.session.flush()
+        return result.first() is not None
+
+    async def ask_stop(self, id: uuid.UUID, at: datetime) -> None:
+        """Mark a running job to stop; its worker reads the flag within a few seconds."""
+        await self.session.execute(
+            update(ScheduleJob)
+            .where(ScheduleJob.id == id, ScheduleJob.stop_requested_at.is_(None))
+            .values(stop_requested_at=at)
+        )
+        await self.session.flush()
 
     async def finish(self, id: uuid.UUID, attempt: int, values: Mapping[str, Any]) -> bool:
         """Record the end of the run that claimed ``id`` as attempt ``attempt``.

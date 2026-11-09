@@ -6,7 +6,7 @@
  * publish review; Undo for unpublished changes; and the stale-save banner. A Manager edits only the
  * projects they manage (`roster.edit:project`); others read.
  */
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -24,8 +24,9 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAULT_TIME_ZONE } from "../../locale";
 import { useLoad } from "../useLoad";
-import { ProjectChooser } from "./ProjectChooser";
-import { barGeometry, cellOf, coverage, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
+import { numbersOf as coverNumbers, reasonKey } from "../runs/review";
+import { ProjectChooser, rosterHref } from "./ProjectChooser";
+import { barGeometry, cellOf, coverage, groupWarnings, isOvernight, placed, shiftDays, weekDays, type RosterChange, type Shift, type Warning } from "./model";
 
 type Person = { id: string; full_name: string };
 
@@ -39,9 +40,11 @@ export function RosterScreen() {
   const project = params.project ?? null;
   const week = startOfWeek(params.week ?? todayIn(DEFAULT_TIME_ZONE));
   const days = weekDays(week);
+  const router = useRouter();
   const editable = project !== null && capabilities.hasOnProject("roster.edit:project", project);
   // Publishing has its own capability, the one the API checks (roster.publish:project).
   const publishable = project !== null && capabilities.hasOnProject("roster.publish:project", project);
+  const runnable = project !== null && capabilities.has("schedule.generate") && editable;
 
   const types = useLoad(
     async () => (project ? (await call(session.api.GET("/api/v1/projects/{id}/shift-types", { params: { path: { id: project } } }))).items : []),
@@ -73,12 +76,20 @@ export function RosterScreen() {
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
+  /** How many of next week's drafts a copy would replace, while the manager is asked (FR-033). */
+  const [copyReplaces, setCopyReplaces] = useState<number | null>(null);
   // Replacing someone on a shift opens the assign sheet with them named (T042f).
   const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
   const [note, setNote] = useState("");
   const [alert, setAlert] = useState<Alert>("none");
   // Who is already on another shift at the sheet's shift's time, in any project (T042f).
+  // "Find someone" (008 FR-034): the shift's ranked list, as a proposal's "who else could cover".
+  const ranked = useLoad(
+    async () =>
+      assignTo ? await call(session.api.GET("/api/v1/shifts/{id}/cover", { params: { path: { id: assignTo.id } } })) : null,
+    [assignTo?.id],
+  );
   const busy = useLoad(
     async () =>
       assignTo
@@ -164,6 +175,36 @@ export function RosterScreen() {
       ]);
     }
     return done ? etag : null;
+  };
+
+  /**
+   * Copy the week shown to the next one and open it (008 FR-033). A dry run first: when the copy
+   * would replace drafts next week already holds, the manager is asked before any is replaced.
+   */
+  const copyToNextWeek = async (confirmed = false) => {
+    if (!project) return;
+    const copy = (dry_run: boolean) =>
+      call(
+        session.api.POST("/api/v1/projects/{id}/copy-week", {
+          params: { path: { id: project } },
+          body: { from_week: week, to_week: addDays(week, 7), on_conflict: "overwrite", dry_run },
+        }),
+      );
+    try {
+      if (!confirmed) {
+        const plan = await copy(true);
+        const replaced = plan.changes.filter((c) => c.action === "replace").length;
+        if (replaced > 0) {
+          setCopyReplaces(replaced);
+          return;
+        }
+      }
+      setCopyReplaces(null);
+      await copy(false);
+      router.push(rosterHref(project, addDays(week, 7)) as never);
+    } catch (failure) {
+      showToast(errorText(codeOf(failure)), { tone: "warning" });
+    }
   };
 
   /** Lock an assignment, so later runs keep it, or unlock it (008 FR-018). */
@@ -261,6 +302,10 @@ export function RosterScreen() {
           <Txt role="label">{t("roster.all_projects")}</Txt>
         </LinkPressable>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
+        {runnable ? (
+          // The run form set to this week and this project (008 FR-032).
+          <Button variant="secondary" icon="play" label={t("roster.generate_week")} onPress={() => router.push(`/runs?week=${week}&project=${project}` as never)} testID="action-generate-week" />
+        ) : null}
         {publishable ? (
           <Button
             variant="primary"
@@ -330,6 +375,7 @@ export function RosterScreen() {
         shift={assignTo}
         people={people.data ?? []}
         busy={busy.data ?? []}
+        ranked={ranked.data}
         replacing={replacing ? nameOf(replacing.userId) : null}
         note={note}
         alert={alert}
@@ -399,7 +445,21 @@ export function RosterScreen() {
         setPublishing(false);
         setHistory([]);
         await shifts.reload();
+        // After a publish, the next step is next week (008 FR-033): copy this week's shifts there,
+        // replacing only drafts, never a published shift, once the manager agrees, and open it.
+        showToast(t("roster.published"), {
+          tone: "success",
+          action: { label: t("roster.copy_next_week"), onPress: () => void copyToNextWeek() },
+          testID: "toast-published",
+        });
       }} />
+      <Sheet open={copyReplaces !== null} onClose={() => setCopyReplaces(null)} title={t("roster.copy_next_week")} testID="copy-confirm">
+        <Txt role="body">{t("roster.copy_replaces", { count: copyReplaces ?? 0 })}</Txt>
+        <View style={styles.actions}>
+          <Button variant="primary" label={t("roster.copy_replace")} onPress={() => void copyToNextWeek(true)} testID="action-confirm-copy" />
+          <Button label={t("common.cancel")} onPress={() => setCopyReplaces(null)} testID="action-cancel-copy" />
+        </View>
+      </Sheet>
     </Screen>
   );
 }
@@ -490,6 +550,7 @@ function Block({
 }
 
 type BusyOn = components["schemas"]["BusyAnswer"]["items"][number];
+type Cover = components["schemas"]["Cover"];
 type Alert = components["schemas"]["AssignRequest"]["alert"];
 
 /** Who hears of a manual edit: everyone on the roster, the people it affects, or no one (T042g). */
@@ -514,6 +575,7 @@ function AssignSheet({
   shift,
   people,
   busy,
+  ranked,
   replacing,
   note,
   alert,
@@ -525,6 +587,8 @@ function AssignSheet({
   shift: Shift | null;
   people: Person[];
   busy: BusyOn[];
+  /** The shift's "Find someone" ranking (FR-034), when read; until then, by name. */
+  ranked: Cover | null;
   /** The name of the person being replaced, when the sheet replaces someone (T042f). */
   replacing: string | null;
   note: string;
@@ -543,9 +607,20 @@ function AssignSheet({
   // Search by any part of the name, ignoring case and accents (T042c). Later the list shows only the
   // project's own or qualified people, and search still finds everyone.
   const wanted = fold(query, i18n.language);
+  // Ranked as "who else could cover" when the ranking is in: free people first, best first; by
+  // name until then, and for anyone the ranking leaves out.
+  const rank = new Map((ranked?.options ?? []).map((o, i) => [o.user_id, i]));
+  const why = new Map((ranked?.options ?? []).map((o) => [o.user_id, o]));
   const options = people
     .filter((p) => !taken.has(p.id) && (wanted === "" || fold(p.full_name, i18n.language).includes(wanted)))
-    .sort((a, b) => a.full_name.localeCompare(b.full_name, i18n.language));
+    .sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9) || a.full_name.localeCompare(b.full_name, i18n.language));
+  const reasonOf = (id: string): string | null => {
+    const o = why.get(id);
+    if (!o) return null;
+    if (o.free) return t(o.close ? "review.cover_would_rather_not" : "review.cover_free");
+    const numbers = coverNumbers(o, i18n.language);
+    return [t(reasonKey(o.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ");
+  };
   const close = () => {
     setQuery("");
     setPick(null);
@@ -603,6 +678,11 @@ function AssignSheet({
                   {t("roster.busy_mark")}
                 </Txt>
               ) : null}
+              {reasonOf(person.id) ? (
+                <Txt role="meta" tone={why.get(person.id)?.free ? "secondary" : "warning"} testID="assign-reason">
+                  {reasonOf(person.id)}
+                </Txt>
+              ) : null}
             </View>
           ))}
         </>
@@ -657,16 +737,19 @@ function WarningSheet({ shift, warnings, nameOf, onClose, onOverridden }: { shif
       testID="warning-detail"
       footer={<Button variant="primary" label={t("roster.warnings_ok")} onPress={onClose} testID="action-warnings-ok" />}
     >
-      {warnings.map((w, i) => (
-        <View key={`${w.code}-${i}`} style={styles.warning}>
+      {/* One row per person and rule, however many shifts it clashes with; one override each. */}
+      {groupWarnings(warnings, (w) => w.employee_id ?? null).map(({ first: w, values }) => (
+        <View key={`${w.employee_id ?? "shift"}-${w.code}`} style={styles.warning} testID="warning-row">
           <Txt role="label">{w.employee_id ? nameOf(w.employee_id) : t("roster.the_shift")}</Txt>
           <Txt role="body">{t(w.code)}</Txt>
-          {numbersOf(w) ? (
-            // The rule and the numbers, in the UI's language (FR-041).
-            <Txt role="meta" tone="secondary" numeric>
-              {t(numbersOf(w)!, w.values ?? {})}
-            </Txt>
-          ) : null}
+          {numbersOf(w)
+            ? values.map((v) => (
+                // The rule and the numbers, in the UI's language (FR-041).
+                <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
+                  {t(numbersOf(w)!, v)}
+                </Txt>
+              ))
+            : null}
           {w.employee_id ? <Button variant="secondary" label={t("roster.override")} testID="action-override" onPress={() => setOverriding(w)} /> : null}
         </View>
       ))}
@@ -746,6 +829,7 @@ function Radio({ checked, label, testID, onPress }: { checked: boolean; label: s
 }
 
 const styles = StyleSheet.create({
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   option: { gap: 2 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },

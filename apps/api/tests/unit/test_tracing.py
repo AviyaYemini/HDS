@@ -449,7 +449,7 @@ async def test_a_line_inside_a_job_names_the_job_s_trace(
     class LoggingJobs(TracedJobs):
         async def build(self, claim: Claim) -> object:
             logging.getLogger("hds.test").info("building")
-            return object()
+            return await super().build(claim)
 
     ops = install(monkeypatch, LoggingJobs(claim_with(TRACEPARENT)))
     await worker.run_once(cast(Any, fake_session), ops)

@@ -163,24 +163,24 @@ roster and runs make one path.
 
 ### Tests first
 
-- [ ] T044 [P] [US6] Engine tests in `apps/api/tests/unit/scheduling/test_progress_stop.py`: `progress` is called with rising filled counts; `should_stop` ends the solve with the best result, still valid and marked stopped and not optimal
-- [ ] T045 [P] [US6] Worker tests in `apps/api/tests/integration/test_worker_progress.py`: progress stored at most every 2 s; Stop with a result ends `stopped` with a proposal; Stop before any result ends `cancelled` with none (SC-007)
-- [ ] T046 [P] [US7] Service tests: the record lists created, finished, edits, overrides, accepts and discards in order with actors; read scope as 007 (FR-031). Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
-- [ ] T047 [P] [US8] Playwright spec `apps/client/tests/e2e/ux/l-run-flow.spec.ts`: best so far and Stop; the in-app notice when a run ends on another screen; Generate this week prefilled; accept to the roster; Publish; Copy to next week offered; Find someone on an empty roster slot; the record panel
+- [x] T044 [P] [US6] Engine tests in `apps/api/tests/unit/scheduling/test_progress_stop.py`: `progress` is called with rising filled counts; `should_stop` ends the solve with the best result, still valid and marked stopped and not optimal
+- [x] T045 [P] [US6] Worker tests in `apps/api/tests/integration/test_worker_progress.py`: progress stored at most every 2 s; Stop with a result ends `stopped` with a proposal; Stop before any result ends `cancelled` with none (SC-007)
+- [x] T046 [P] [US7] Service tests: the record lists created, finished, edits, overrides, accepts and discards in order with actors; read scope as 007 (FR-031). Every new operation of the group has an allowed test and a forbidden one: an Employee and a Client get 403, another organisation's job or assignment 404 (FR-035)
+- [x] T047 [P] [US8] Playwright spec `apps/client/tests/e2e/ux/l-run-flow.spec.ts`: best so far and Stop; the in-app notice when a run ends on another screen; Generate this week prefilled; accept to the roster; Publish; Copy to next week offered; Find someone on an empty roster slot; the record panel
 
 ### Implementation
 
-- [ ] T048 [US6] `generate(..., progress=, should_stop=)` in `scheduling/engine.py` and the solution callback with `stop_search` in `scheduling/cpsat.py` (FR-027, FR-028, research P7)
-- [ ] T049 [US6] Worker: `needed`, `best_filled`, `progress_at` writes, the stop flag refreshed every 2 s, `ended` and `cancelled` in `apps/api/src/hds/worker.py` and `services/schedule_job.py`
-- [ ] T050 [US6] Contract first: `POST /schedule-jobs/{id}/stop`, the job's `progress`, `ended`, `stop_requested`; `GET /schedule-jobs/{id}/record`; `GET /shifts/{id}/cover`; routers; regenerate the client
-- [ ] T051 [US6] Client `RunProgress`: best so far beside 007's elapsed bar; "Stop and use best so far", Cancel before any result; `RunFinishedNotice` in `apps/client/src/design/` polling a person's running runs every 5 s (FR-029, research P15)
-- [ ] T052 [US7] Client `RecordPanel` on the run page, paged
-- [ ] T053 [US8] Client: "Generate this week" on the roster, accept returning to the roster's accepted range, "Copy to next week" after a publish, "Find someone" on an empty roster slot opening the cover list (FR-032 to FR-034)
-- [ ] T054 [P] [US6] Locale keys for progress, stop, notices, the record and the flow; `docs/hds-api.md`; replace 008's preview placeholder, if any, in `apps/client/src/screens/previews/`
+- [x] T048 [US6] `generate(..., progress=, should_stop=)` in `scheduling/engine.py` and the solution callback with `stop_search` in `scheduling/cpsat.py` (FR-027, FR-028, research P7)
+- [x] T049 [US6] Worker: `needed`, `best_filled`, `progress_at` writes, the stop flag refreshed every 2 s, `ended` and `cancelled` in `apps/api/src/hds/worker.py` and `services/schedule_job.py`
+- [x] T050 [US6] Contract first: `POST /schedule-jobs/{id}/stop`, the job's `progress`, `ended`, `stop_requested`; `GET /schedule-jobs/{id}/record`; `GET /shifts/{id}/cover`; routers; regenerate the client
+- [x] T051 [US6] Client `RunProgress`: best so far beside 007's elapsed bar; "Stop and use best so far", Cancel before any result; `RunFinishedNotice` in `apps/client/src/design/` polling a person's running runs every 5 s (FR-029, research P15)
+- [x] T052 [US7] Client `RecordPanel` on the run page, paged
+- [x] T053 [US8] Client: "Generate this week" on the roster, accept returning to the roster's accepted range, "Copy to next week" after a publish, "Find someone" on an empty roster slot opening the cover list (FR-032 to FR-034)
+- [x] T054 [P] [US6] Locale keys for progress, stop, notices, the record and the flow; `docs/hds-api.md`; replace 008's preview placeholder, if any, in `apps/client/src/screens/previews/`
 
 ### Close
 
-- [ ] T055 Close group D as the template says. Mutants (≤ 3, who can see what): the record readable by a Manager who manages only some of the run's projects; Stop accepted from a Manager outside the run's projects; Find someone answering for a shift in a project the Manager doesn't manage. Commit `feat(scheduling): best so far and stop, the run record, and one scheduling flow (…)`. **PR 4 ready**: once-per-PR steps
+- [x] T055 Close group D as the template says. Mutants (≤ 3, who can see what): the record readable by a Manager who manages only some of the run's projects; Stop accepted from a Manager outside the run's projects; Find someone answering for a shift in a project the Manager doesn't manage. Commit `feat(scheduling): best so far and stop, the run record, and one scheduling flow (…)`. **PR 4 ready**: once-per-PR steps
 
 ---
 

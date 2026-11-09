@@ -7,6 +7,7 @@
  * a reason before it is kept. Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
@@ -17,10 +18,12 @@ import { Button, InlineBanner, Sheet, SkeletonRows, TextField, Txt, showToast } 
 import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange } from "../../locale";
+import { DEFAULT_TIME_ZONE, formatHeaderDate, formatTimeRange, startOfWeek } from "../../locale";
 import { useLoad } from "../useLoad";
 import { FairnessPanel } from "./FairnessPanel";
-import { weeksOf, type Job, type Names } from "./model";
+import { groupWarnings } from "../roster/model";
+import { rosterHref } from "../roster/ProjectChooser";
+import { projectsOf, weeksOf, type Job, type Names } from "./model";
 import {
   MARK_ICON,
   breaksOf,
@@ -51,6 +54,8 @@ interface Props {
   people: { id: string; full_name: string }[];
   /** After an accept or a discard, so the page reads the job again. */
   onDecided: () => void;
+  /** Hears the proposal's version as it moves with each edit, so the record can follow (FR-030). */
+  onVersion?: (version: number) => void;
 }
 
 interface PersonOn {
@@ -60,10 +65,11 @@ interface PersonOn {
 
 type Pending = { edit: Edit; breaks: EditWarning[] };
 
-export function ReviewWeek({ job, names, people, onDecided }: Props) {
+export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) {
   const { t, i18n } = useTranslation();
   const { colors, isDesktop } = useTheme();
   const session = useSession();
+  const router = useRouter();
   const errorText = useErrorText();
   const loaded = useLoad(
     async () => call(session.api.GET("/api/v1/schedule-jobs/{id}/proposal", { params: { path: { id: job.id } } })),
@@ -84,6 +90,9 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const [fetched, setFetched] = useState<{ key: string; version: number; attempt: number; data: Cover | null; error: unknown } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const shownVersion = review?.version ?? loaded.data?.version ?? -1;
+  useEffect(() => {
+    if (shownVersion >= 0) onVersion?.(shownVersion);
+  }, [shownVersion, onVersion]);
   useEffect(() => {
     if (assignTo === null) return;
     let live = true;
@@ -125,11 +134,21 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
           ...(part ? { body: part } : {}),
         }),
       );
-      showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), { tone: "success" });
+      // The roster week accepted is the next step, where Publish is one tap away (FR-033): all
+      // of it goes there at once; a part offers it, so the rest can still be reviewed.
+      // The project accepted, when the part names one; else the run's first.
+      const project = (part && "project_ids" in part && part.project_ids?.[0]) || projectsOf(job)[0];
+      const week = startOfWeek(part && "days" in part && part.days?.[0] ? part.days[0] : job.from);
+      const roster = project ? rosterHref(project, week) : null;
+      showToast(t("runs.accepted", { count: answer.shifts_created + answer.shifts_updated }), {
+        tone: "success",
+        ...(roster && answer.state !== "accepted" ? { action: { label: t("runs.open_roster"), onPress: () => router.push(roster as never) } } : {}),
+      });
       setChosen([]);
       setReview(null);
       loaded.reload();
       onDecided();
+      if (roster && answer.state === "accepted") router.push(roster as never);
     } catch (failure) {
       setProblem(codeOf(failure));
       stale(codeOf(failure));
@@ -384,15 +403,18 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
       >
         {pending ? (
           <View testID="review-override-sheet" style={styles.panel}>
-            {pending.breaks.map((w, i) => (
-              <View key={`${w.code}-${i}`} style={styles.break} testID="review-break">
+            {/* One row per person and rule, as on the roster: one reason covers them all. */}
+            {groupWarnings(pending.breaks, (w) => w.user_id ?? null).map(({ first: w, values }) => (
+              <View key={`${w.user_id ?? "shift"}-${w.code}`} style={styles.break} testID="review-break">
                 <Txt role="label">{w.user_id ? name(w.user_id) : t("roster.the_shift")}</Txt>
                 <Txt role="body">{t(w.code)}</Txt>
-                {numbersKey(w.values) ? (
-                  <Txt role="meta" tone="secondary" numeric>
-                    {t(numbersKey(w.values)!, w.values)}
-                  </Txt>
-                ) : null}
+                {numbersKey(w.values)
+                  ? values.map((v) => (
+                      <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
+                        {t(numbersKey(v)!, v)}
+                      </Txt>
+                    ))
+                  : null}
               </View>
             ))}
             <TextField label={t("roster.override_reason")} value={reason} onChangeText={setReason} maxLength={500} testID="review-override-reason" />

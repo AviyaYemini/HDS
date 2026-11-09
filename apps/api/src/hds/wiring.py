@@ -58,6 +58,7 @@ from hds.services.project_manager import ProjectManagerService
 from hds.services.proposal import ProposalService
 from hds.services.reports import ReportsService
 from hds.services.roster import RosterService
+from hds.services.roster_cover import RosterCoverService
 from hds.services.roster_tools import RosterToolsService
 from hds.services.saved_view import SavedViewService
 from hds.services.schedule_inputs import ScheduleInputService
@@ -168,6 +169,15 @@ def proposals(
         users=UserRepository(db),
         organisations=OrganisationRepository(db),
         events=ScheduleJobEventRepository(db),
+    )
+
+
+def roster_cover(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> RosterCoverService:
+    """FastAPI dependency: "Find someone" on the roster (008 FR-034), per request."""
+    return RosterCoverService(
+        roster=roster_service_for(db), inputs=input_service(db), users=UserRepository(db)
     )
 
 

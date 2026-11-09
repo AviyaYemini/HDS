@@ -14,9 +14,10 @@ optimal.
 """
 
 import math
+import threading
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 
 from ortools.sat.python import cp_model
@@ -45,7 +46,9 @@ def solve(
     nights: Mapping[uuid.UUID, int],
     deadline_ns: int,
     workers: int | None = None,
-) -> tuple[dict[str, list[uuid.UUID]], bool]:
+    report: Callable[[int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> tuple[dict[str, list[uuid.UUID]], bool, bool]:
     """Assign people to ``problem``'s slots.
 
     Args:
@@ -57,9 +60,14 @@ def solve(
         deadline_ns: When every stage must be done, on ``time.monotonic_ns()``; the caller starts
             the clock before the model is built, so building counts against the limit.
         workers: Search workers; ``1`` with a fixed seed makes a run repeatable (tests).
+        report: Hears the places filled with each better solution of the first stage (008
+            FR-027).
+        should_stop: Polled while each stage solves, by a watcher thread that halts the solver
+            within a fifth of a second, between solutions too (008 FR-028, research P7).
 
     Returns:
-        The people chosen for each slot, by key, and whether the result is proven optimal.
+        The people chosen for each slot, by key; whether the result is proven optimal; whether
+        Stop ended it.
     """
     settings = problem.settings
     model = cp_model.CpModel()
@@ -73,7 +81,7 @@ def solve(
                 x[p, s.key] = model.new_bool_var(f"x_{p}_{s.key}")
     chosen: dict[str, list[uuid.UUID]] = {s.key: [] for s in problem.slots}
     if not x:
-        return chosen, True
+        return chosen, True, False
 
     by_key = {s.key: s for s in problem.slots}
     theirs: dict[uuid.UUID, list[Slot]] = {}
@@ -111,11 +119,17 @@ def solve(
     stages = _goals(problem, roster, model, x, theirs, people, minutes, nights)
     shares = [_SHARE.get(name, 1) for name, _, _ in stages]
     optimal = True
+    stopped = False
     values: dict[tuple[uuid.UUID, str], int] | None = None
     # The first stage starts from the starting point: the drafts, or a rerun's proposal (P6).
     for (p, key), var in x.items():
         model.add_hint(var, int(p in problem.starting.get(key, ())))
     for index, (_, expression, maximise) in enumerate(stages):
+        # A Stop asked between stages ends the solve before the next one starts (FR-028).
+        if should_stop is not None and should_stop():
+            stopped = True
+            optimal = False
+            break
         remaining = (deadline_ns - time.monotonic_ns()) / 1e9
         if remaining <= 0.01:
             optimal = False
@@ -133,7 +147,19 @@ def solve(
         solver.parameters.random_seed = 0
         if workers is not None:
             solver.parameters.num_workers = workers
-        status = solver.solve(model)
+        callback = _Progress(x, report) if index == 0 and report is not None else None
+        watch = _StopWatch(solver, should_stop) if should_stop is not None else None
+        try:
+            status = solver.solve(model, callback)
+        finally:
+            if watch is not None:
+                watch.done()
+        if watch is not None and watch.stopped:
+            stopped = True
+            if status in _DONE:
+                values = {pair: int(solver.value(var)) for pair, var in x.items()}
+            optimal = False
+            break
         if status not in _DONE:
             optimal = False
             break
@@ -148,7 +174,50 @@ def solve(
                 chosen[key].append(p)
     else:
         optimal = False
-    return chosen, optimal
+    return chosen, optimal, stopped
+
+
+class _Progress(cp_model.CpSolverSolutionCallback):
+    """Hears each better solution of the filling stage and reports the places it fills."""
+
+    def __init__(
+        self, x: Mapping[tuple[uuid.UUID, str], cp_model.IntVar], report: Callable[[int], None]
+    ) -> None:
+        super().__init__()
+        self._x = list(x.values())
+        self._report = report
+
+    def on_solution_callback(self) -> None:
+        """Report the places this solution fills."""
+        self._report(sum(int(self.value(v)) for v in self._x))
+
+
+class _StopWatch:
+    """Polls ``should_stop`` beside a running solve and halts it when asked (research P7).
+
+    A solution callback runs only when a solution is found, so it cannot see a Stop asked before
+    the first one or between them; this thread can, and CP-SAT allows ``stop_search`` from it.
+    """
+
+    def __init__(self, solver: cp_model.CpSolver, should_stop: Callable[[], bool]) -> None:
+        self.stopped = False
+        self._solver = solver
+        self._should_stop = should_stop
+        self._finished = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._finished.wait(0.2):
+            if self._should_stop():
+                self.stopped = True
+                self._solver.stop_search()
+                return
+
+    def done(self) -> None:
+        """The solve has returned: stop watching."""
+        self._finished.set()
+        self._thread.join(timeout=1)
 
 
 def _goals(
