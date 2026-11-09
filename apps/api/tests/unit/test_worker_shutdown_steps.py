@@ -53,8 +53,9 @@ class StoppingJobs(FakeJobs):
         self._step("succeed")
         return True
 
-    async def fail(self, claim: Claim, code: str) -> None:
+    async def fail(self, claim: Claim, code: str) -> bool:
         self._step(f"fail {code}")
+        return True
 
 
 async def run(
