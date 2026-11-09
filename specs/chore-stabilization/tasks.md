@@ -8,7 +8,7 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 - [x] S02 Migration 037: rename every `organization_id` column and foreign key, and the trigger function that names it, with a working downgrade; the models, repositories, services, routers, schemas, scripts and the API's tests follow in the same commit, since an attribute is renamed everywhere at once; the API fields become `organisation_id`
 - [x] S03 The 001 contract, the regenerated `packages/api-client`, and the client follow
 - [x] S04 Docs and specs follow; `git grep -i organization` lists only third-party names and applied migrations
-- [ ] S05 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
+- [x] S05 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
 
 ## PR 2: client structure
 
