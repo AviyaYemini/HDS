@@ -46,16 +46,12 @@ head_revision=$(cd apps/api && uv run --quiet alembic heads | sed -n 's/^\([^ ]*
 base_revision=$(cd "$work/base/apps/api" && uv run --quiet alembic heads | sed -n 's/^\([^ ]*\) (head)$/\1/p')
 echo "base revision $base_revision, head revision $head_revision"
 
-# A rename recorded as exempt (ADR 021): the base predates it, so its code cannot run on the new
-# schema, and no release of that code exists. Once the revision is on main every base holds it.
-while read -r revision record; do
-    case "$revision" in ''|'#'*) continue ;; esac
-    if [ -f "apps/api/alembic/versions/$revision.py" ] \
-        && [ ! -f "$work/base/apps/api/alembic/versions/$revision.py" ]; then
-        printf '\ncompatibility: not checked; the base predates %s, exempt by %s\n' "$revision" "$record"
-        exit 0
-    fi
-done < infra/tests/compat-exemptions.txt
+# A rename recorded as exempt (ADR 021): the base's code cannot run on the new schema, and no
+# release of it exists. Only the exact step onto that migration; anything else is checked.
+if note=$(infra/tests/compat_exempt.sh "$base"); then
+    printf '\ncompatibility: not checked; %s\n' "$note"
+    exit 0
+fi
 
 say "the head's migrations in the base's place"
 versions="$work/base/apps/api/alembic/versions"

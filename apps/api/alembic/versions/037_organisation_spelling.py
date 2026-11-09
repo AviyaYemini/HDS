@@ -9,15 +9,18 @@ What changes:
 - The trigger function ``hds_default_shift_types``, which inserts a new organisation's default
   shift types, names the column in its body, which a rename does not reach: it is replaced with
   the new name.
+- Idempotent replays stored before the rename (``idempotency_keys.response_body``) answer with the
+  field's new name, as the live endpoint now does.
 
 Why: one spelling for organisation, as the tables, models and documentation already use
 (docs/adr/021-organisation-spelling-in-one-step.md).
 
-Existing rows: kept as they are; only names change.
+Existing rows: kept as they are; only names change, in stored replays too.
 
 Rolling update: not compatible with the previous release, whose code names the old column. An
-exemption recorded in ADR 021 while nothing is deployed; ``infra/tests/compat.sh`` skips a base
-older than this revision (``infra/tests/compat-exemptions.txt``).
+exemption recorded in ADR 021 while nothing is deployed (``infra/tests/compat-exemptions.txt``):
+for the step from 036 to this revision, ``infra/tests/compat.sh`` passes with a note and
+``infra/tests/rolling_update.sh`` starts from the head's own release.
 
 Downgrade renames everything back and restores the function's old body.
 
@@ -78,13 +81,19 @@ FUNCTION = (
 
 
 def _rename(old: str, new: str) -> None:
-    """Rename the column and its foreign key in every table, then the function's body."""
+    """Rename the column and its foreign key in every table, the function's body, the replays."""
     for table in TABLES:
         op.alter_column(table, old, new_column_name=new)
         op.execute(
             f'ALTER TABLE "{table}" RENAME CONSTRAINT "{table}_{old}_fkey" TO "{table}_{new}_fkey"'
         )
     op.execute(FUNCTION.format(column=new))
+    # A stored replay answers as the endpoint does now: its field takes the new name.
+    op.execute(
+        "UPDATE idempotency_keys SET response_body = "
+        f"replace(response_body::text, '\"{old}\"', '\"{new}\"')::jsonb "
+        f"WHERE response_body::text LIKE '%\"{old}\"%'"
+    )
 
 
 def upgrade() -> None:

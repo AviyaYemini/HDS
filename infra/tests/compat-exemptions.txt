@@ -1,4 +1,5 @@
-# Migration revisions the compatibility check (compat.sh) does not hold a base to, one per line:
-# a base without the revision passes with a note instead of running its old code on the new schema.
-# Each line names its decision record. Never add one after the first deployment (Constitution X).
+# Migrations exempt from running the previous release on the new schema (compat_exempt.sh): for the
+# step from the migration each one revises onto it, compat.sh passes with a note and
+# rolling_update.sh starts from the head's own release. One per line, with its decision record.
+# Never add one after the first deployment (Constitution X).
 037_organisation_spelling docs/adr/021-organisation-spelling-in-one-step.md

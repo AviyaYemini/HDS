@@ -1,6 +1,6 @@
 # Stabilization after 008: plan (chore lane)
 
-**Date**: 2026-11-09 | **Base**: `main` at `d1b2497` (008 merged as #24) | **Status**: awaiting owner approval
+**Date**: 2026-11-09 | **Base**: `main` at `d1b2497` (008 merged as #24) | **Status**: approved (owner, 2026-11-09)
 
 Three pieces of work before 009, each its own pull request, cut from `main`. The rest of the earlier
 stabilization prompt is dropped (owner, 2026-11-09). This is a chore lane: this plan, a short
@@ -21,19 +21,21 @@ ledger, but no spec. The standing workflow applies:
 
 ## PR 1: one spelling, "organisation" (behaviour change for API consumers)
 
-The tables are already `organisations`; the columns, fields and identifiers say "organization".
-That is 193 files today: 163 in `apps/api`, 38 `organization_id` columns across 19 models, the 001
-contract, 8 API fields, the client and the seed.
+The tables are already `organisations`; the columns, fields and identifiers said "organization":
+22 `organization_id` columns, each with its foreign key, one trigger function that names the
+column, 8 API schemas, the 001 contract, the client and the seed.
 
-- **Migration:** one migration renames every `organization_id` column with its foreign keys and
-  constraint and index names. It has a working downgrade.
+- **Migration:** one migration (037) renames every `organization_id` column and its foreign key,
+  rewrites the trigger function, and renames the field in stored idempotent replays. It has a
+  working downgrade. Indexes never held the word, so they keep their names.
 - **Code:** models, repositories, services, routers and schemas follow. API fields become
   `organisation_id`. The 001 contract is updated, `packages/api-client` regenerated, and the client
   updated to match. seed_dev, the tests and the docs follow.
-- **Exemptions:** done in one step, so two rules get a recorded exemption (an ADR):
-  - Constitution X and `infra/tests/compat.sh`: a column rename breaks old code on the new
-    schema. Nothing is deployed, so no old pod exists. compat.sh skips a base older than this
-    revision, so the required check still runs and passes.
+- **Exemptions:** the rename is done in one step, so two rules get a recorded exemption (ADR 021):
+  - Constitution X: a column rename breaks old code on the new schema. Nothing is deployed, so no
+    old pod exists. For the step from 036 to 037 only, `infra/tests/compat.sh` passes with a note,
+    and `infra/tests/rolling_update.sh` starts from the head's own release
+    (`infra/tests/compat_exempt.sh`).
   - Constitution V: renamed API fields are a breaking change, which would mean `/api/v2`. Our own
     client, regenerated in the same pull request, is the only consumer.
 - **Check:** afterwards, `git grep -i organization` shows only third-party names, listed in the

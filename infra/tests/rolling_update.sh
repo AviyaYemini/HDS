@@ -4,6 +4,7 @@
 # failed request, no lost session and the schedule job finished once. Run by the CI rolling-update
 # job, and by hand: infra/tests/rolling_update.sh [BASE]
 #
+#   0. A step onto a migration in infra/tests/compat-exemptions.txt starts from the head (ADR 021).
 #   1. A k3d cluster from infra/cluster/k3d.yaml.
 #   2. The base's and the head's images, imported into it. The head's API image carries one more,
 #      throwaway, additive migration (a scratch table with a nullable column), so every run upgrades
@@ -40,6 +41,13 @@ SERVER="k3d-$CLUSTER-server-0"
 NS=hds
 cd "$ROOT"
 base=$(git rev-parse --verify "${1:-$(git merge-base origin/main HEAD)}^{commit}")
+# A step onto a migration exempt from the rolling-update rules (ADR 021) starts from the head's own
+# release: the base's code cannot run on the new schema, and no release of it exists. The cluster,
+# the upgrade across the throwaway migration, the load and Flux's check still run.
+if note=$(infra/tests/compat_exempt.sh "$base"); then
+    printf 'rolling update: from the head itself; %s\n' "$note"
+    base=$(git rev-parse --verify "HEAD^{commit}")
+fi
 socket=${DOCKER_SOCKET:-$(docker context inspect --format '{{.Endpoints.docker.Host}}' | sed 's#^unix://##')}
 work=$(mktemp -d "${TMPDIR:-/tmp}/hds-rolling.XXXXXX")
 chmod 755 "$work"
