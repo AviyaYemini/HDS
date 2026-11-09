@@ -180,7 +180,7 @@ roster and runs make one path.
 
 ### Close
 
-- [ ] T055 Close group D as the template says. Mutants (≤ 3, who can see what): the record readable by a Manager who manages only some of the run's projects; Stop accepted from a Manager outside the run's projects; Find someone answering for a shift in a project the Manager doesn't manage. Commit `feat(scheduling): best so far and stop, the run record, and one scheduling flow (…)`. **PR 4 ready**: once-per-PR steps
+- [x] T055 Close group D as the template says. Mutants (≤ 3, who can see what): the record readable by a Manager who manages only some of the run's projects; Stop accepted from a Manager outside the run's projects; Find someone answering for a shift in a project the Manager doesn't manage. Commit `feat(scheduling): best so far and stop, the run record, and one scheduling flow (…)`. **PR 4 ready**: once-per-PR steps
 
 ---
 
