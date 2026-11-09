@@ -911,5 +911,6 @@
   "review.fairness_share": "{{hours}} h · {{nights}} nights · {{weekends}} weekend",
   "review.outlier.hours": "hours well above average",
   "review.outlier.nights": "nights well above average",
-  "review.outlier.weekends": "weekends well above average"
+  "review.outlier.weekends": "weekends well above average",
+  "schedule.chip_invalid": "A preference needs the value its kind asks for, and must name a member of the staff."
 }

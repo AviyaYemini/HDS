@@ -911,5 +911,6 @@
   "review.fairness_share": "{{hours}} ש׳ · {{nights}} לילות · {{weekends}} סוף שבוע",
   "review.outlier.hours": "שעות הרבה מעל הממוצע",
   "review.outlier.nights": "לילות הרבה מעל הממוצע",
-  "review.outlier.weekends": "סופי שבוע הרבה מעל הממוצע"
+  "review.outlier.weekends": "סופי שבוע הרבה מעל הממוצע",
+  "schedule.chip_invalid": "העדפה צריכה את הערך שהסוג שלה דורש, ולציין אדם מהצוות."
 }

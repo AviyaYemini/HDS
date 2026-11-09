@@ -142,5 +142,6 @@
   "roster.week_not_sunday": "A week starts on a Sunday.",
   "roster.bulk_change_invalid": "Choose either a new headcount or removal.",
   "views.duplicate_name": "You already have a view by that name here.",
-  "assignments.move_same_shift": "They are on that shift already."
+  "assignments.move_same_shift": "They are on that shift already.",
+  "schedule.chip_invalid": "A preference needs the value its kind asks for, and must name a member of the staff."
 }

@@ -17,7 +17,7 @@ from hds.core.deps import ProposalIfMatch as IfMatch
 from hds.core.deps import proposal_version as version_of
 from hds.core.deps import require_manager
 from hds.core.exceptions import DomainValidationError
-from hds.core.types import StrictDate, text
+from hds.core.types import WHOLE_NUMBER, StrictDate, text
 from hds.models.schedule_job import ScheduleJob
 from hds.models.user import User
 from hds.services.idempotency import IdempotencyService
@@ -55,10 +55,10 @@ class ChipIn(BaseModel):
 
     kind: Literal["max_shifts", "max_nights", "max_hours", "keep_on", "keep_off", "prefer"]
     user_id: uuid.UUID
-    count: int | None = Field(default=None, ge=0, le=744)
+    count: Annotated[int, Field(ge=0, le=744), WHOLE_NUMBER] | None = None
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
-    weekday: int | None = Field(default=None, ge=0, le=6)
+    weekday: Annotated[int, Field(ge=0, le=6), WHOLE_NUMBER] | None = None
     shift_type_id: uuid.UUID | None = None
 
     model_config = ConfigDict(extra="forbid")
