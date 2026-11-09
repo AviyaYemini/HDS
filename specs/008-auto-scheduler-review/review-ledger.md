@@ -29,3 +29,5 @@ count.
 | R19 | CodeRabbit (PR 21) | `docs/adr/020-proposal-working-copy-and-run-record.md:22`, `docs/hds-api.md:30`: the version guards only writes that send `If-Match`, and the record holds edits and decisions until PR 4; both said more | fixed |
 | R20 | CodeRabbit (PR 21) | `specs/008-auto-scheduler-review/contracts/api.md:5`, `:22`: the scope code is `roster.project_not_managed`, and `lock`/`unlock` come in PR 3 | fixed |
 | R21 | CodeRabbit (PR 21) | `specs/008-auto-scheduler-review/quickstart.md:4`, `research.md:70`, `.claude/commands/hds-review.md:6`, `.claude/hds/process-cuts-proposal.md:7`: the quickstart assumed a larger seed; Stop is watched apart from solution callbacks; the review reads `git diff main...HEAD`; local checks are scoped to changed paths | fixed |
+| R22 | CodeRabbit (PR 21) | `docs/adr/020-proposal-working-copy-and-run-record.md:28`: the ADR still listed the run's own steps in PR 1's record, and its part check predated R14 | fixed |
+| R23 | CodeRabbit (PR 21) | `docs/hds-api.md:30`: the whole of an untouched proposal is refused with `schedule.proposal_out_of_date`, not `schedule.part_out_of_date` | fixed |
