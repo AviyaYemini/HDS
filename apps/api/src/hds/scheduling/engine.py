@@ -8,7 +8,7 @@ imports OR-Tools, is loaded only when it is asked for.
 import time
 import uuid
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import timedelta
 from typing import Literal
 
@@ -52,7 +52,13 @@ def slot_id(key: str) -> uuid.UUID:
 
 
 def generate(
-    problem: Problem, *, solver: Solver, time_limit: timedelta, workers: int | None = None
+    problem: Problem,
+    *,
+    solver: Solver,
+    time_limit: timedelta,
+    workers: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> Result:
     """Propose who works each slot of ``problem``.
 
@@ -66,6 +72,10 @@ def generate(
         time_limit: The CP-SAT budget, counted from this call, so building the model counts too;
             the best solution found by then is returned.
         workers: CP-SAT search workers; ``1`` makes a run repeatable (tests).
+        progress: Called as the solver improves, with the places filled so far and the places
+            needed (008 FR-027); from the solver's own thread.
+        should_stop: Asked while the solver works; once it says yes, the solve ends with the
+            best result reached, repaired and judged as usual, marked stopped (008 FR-028).
 
     Returns:
         The proposal. A slot's ``assigned`` holds the candidates chosen for it, not its kept people.
@@ -83,14 +93,26 @@ def generate(
     people = [p.id for p in problem.candidates if p.is_active]
     roster = Roster(problem)
     minutes, nights = _fixed_in_range(problem)
+    needed = sum(s.places for s in problem.slots)
+    report = (lambda filled: progress(filled, needed)) if progress is not None else None
     if solver == "greedy":
-        chosen = greedy.solve(problem, roster, people, minutes, nights)
+        chosen, stopped = greedy.solve(
+            problem, roster, people, minutes, nights, report=report, should_stop=should_stop
+        )
         optimal = False
     else:
         from . import cpsat
 
-        chosen, optimal = cpsat.solve(
-            problem, roster, people, minutes, nights, deadline_ns, workers
+        chosen, optimal, stopped = cpsat.solve(
+            problem,
+            roster,
+            people,
+            minutes,
+            nights,
+            deadline_ns,
+            workers,
+            report=report,
+            should_stop=should_stop,
         )
         by_key = {s.key: s for s in problem.slots}
         for key, on in chosen.items():
@@ -106,7 +128,8 @@ def generate(
         unfilled=_unfilled(problem, roster, assigned, people),
         summary=_summary(problem, roster, assigned, people, minutes, nights),
         changes=_changes(problem, assigned),
-        optimal=optimal,
+        optimal=optimal and not stopped,
+        stopped=stopped,
         # Judged against the fixed shifts alone: which slots a person could take at all.
         chips=chips.judge(problem, Roster(problem), assigned),
     )

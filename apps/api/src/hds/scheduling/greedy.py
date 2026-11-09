@@ -8,7 +8,7 @@ for the CP-SAT model and never claims to be optimal.
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from . import chips
 from .eligibility import Roster, fill
@@ -21,7 +21,9 @@ def solve(
     people: Sequence[uuid.UUID],
     minutes: Mapping[uuid.UUID, int],
     nights: Mapping[uuid.UUID, int],
-) -> dict[str, list[uuid.UUID]]:
+    report: Callable[[int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> tuple[dict[str, list[uuid.UUID]], bool]:
     """Fill the slots in start order, one place at a time, booking choices on ``roster``.
 
     Each place goes to the candidate who may take it with, in order: the manager's chips least
@@ -36,9 +38,11 @@ def solve(
         people: The active candidates.
         minutes: Each candidate's minutes already worked in the range (fixed shifts).
         nights: Each candidate's nights already worked in the range.
+        report: Hears the places filled so far, after each slot (008 FR-027).
+        should_stop: Asked before each slot; yes ends the pass (008 FR-028).
 
     Returns:
-        The people chosen for each slot, by slot key.
+        The people chosen for each slot, by slot key, and whether it was stopped.
     """
     worked = dict(minutes)
     night_count = dict(nights)
@@ -75,7 +79,10 @@ def solve(
         return (against(p, slot), *middle, not holder, str(p))
 
     # One slot at a time, so the night count and the caps move with each choice as minutes do.
+    filled = 0
     for slot in sorted(problem.slots, key=lambda s: (s.starts_at, s.key)):
+        if should_stop is not None and should_stop():
+            return chosen, True
         before = len(chosen[slot.key])
         fill([slot], roster, people, chosen, rank, worked)
         for p in chosen[slot.key][before:]:
@@ -84,4 +91,7 @@ def solve(
             for i, chip in enumerate(live):
                 if chip.user_id == p and i in load:
                     load[i] += chips.unit(chip, slot)
-    return chosen
+        filled += len(chosen[slot.key]) - before
+        if report is not None and len(chosen[slot.key]) > before:
+            report(filled)
+    return chosen, False

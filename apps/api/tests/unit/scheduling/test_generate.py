@@ -268,8 +268,8 @@ def test_a_stage_that_is_not_proven_makes_the_result_not_optimal(
 
     original = cp_model.CpSolver.solve
 
-    def feasible_only(self: cp_model.CpSolver, model: cp_model.CpModel) -> object:
-        original(self, model)
+    def feasible_only(self: cp_model.CpSolver, model: cp_model.CpModel, *rest: object) -> object:
+        original(self, model, *rest)  # type: ignore[arg-type]
         return cp_model.FEASIBLE
 
     monkeypatch.setattr(cp_model.CpSolver, "solve", feasible_only)

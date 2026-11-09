@@ -244,6 +244,8 @@ class Result:
     changes: Changes
     optimal: bool
     chips: tuple[ChipResult, ...] = ()
+    # 008 FR-028: ended early by Stop, with the best result reached; never optimal then.
+    stopped: bool = False
 
 
 class SolverError(RuntimeError):
