@@ -12,6 +12,7 @@ may edit the shift's project's roster asks for it.
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from datetime import timedelta
 from typing import Any
 
 from hds.models.user import User, UserRole
@@ -19,7 +20,7 @@ from hds.repositories.user import UserRepository
 from hds.scheduling import Employee
 from hds.scheduling import cover as covering
 from hds.scheduling.problem import Problem, Slot
-from hds.scheduling.rules import local_day
+from hds.scheduling.rules import week_start
 from hds.services.roster import RosterService
 from hds.services.schedule_inputs import ScheduleInputService
 
@@ -75,7 +76,7 @@ class RosterCoverService:
 
         Args:
             roster: The shift, its scope and its site's zone.
-            inputs: Builds the shift's day as a run would, with every staff member's shifts.
+            inputs: Builds the shift's week as a run would, with every staff member's shifts.
             users: The organisation's staff.
         """
         self._roster = roster
@@ -91,10 +92,16 @@ class RosterCoverService:
         """
         shift = await self._roster.shift_to_edit(actor, shift_id)
         zone = await self._roster.site_zone(shift.project_id)
-        day = local_day(shift.starts_at, zone)
+        # Over the shift's week, as a run's "Who else could cover" counts each person's hours,
+        # nights and weekends over its period, so the ranking agrees with it (FR-034).
+        first = week_start(shift.starts_at, zone)
         staff = await self._users.staff_of(actor.organization_id)
         built = await self._inputs.build(
-            actor.organization_id, day, day, [shift.project_id], also={u.id for u in staff}
+            actor.organization_id,
+            first,
+            first + timedelta(days=6),
+            [shift.project_id],
+            also={u.id for u in staff},
         )
         problem = built.problem
         key = f"draft:{shift.id}"

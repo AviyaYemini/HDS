@@ -112,6 +112,45 @@ async def test_stop_before_any_result_cancels_with_no_proposal(
     assert (done["status"], done["ended"], done["proposal"]) == ("cancelled", "cancelled", None)
 
 
+async def reclaim_soon(test_db: AsyncSession, job: str) -> None:
+    """Count another attempt the moment the worker has claimed the job, as a reclaim would."""
+    for _ in range(200):
+        await asyncio.sleep(0.02)
+        state = (
+            await test_db.execute(
+                text("SELECT status FROM schedule_jobs WHERE id = :j"), {"j": job}
+            )
+        ).scalar_one()
+        await test_db.commit()
+        if state == "running":
+            await test_db.execute(
+                text("UPDATE schedule_jobs SET attempts = attempts + 1 WHERE id = :j"), {"j": job}
+            )
+            await test_db.commit()
+            return
+
+
+async def test_a_run_reclaimed_by_another_worker_stops_solving_and_stores_nothing(
+    async_client: AsyncClient,
+    seed_users: dict[str, User],
+    test_db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await queued(async_client, admin)
+    monkeypatch.setattr(worker, "FOLLOW_SECONDS", 0.05)
+    monkeypatch.setattr(worker, "solve", waiting_solve(report_first=True))
+
+    # The stand-in waits up to 4 s for a stop; a lost claim asks it to (review R63).
+    started = asyncio.get_running_loop().time()
+    await asyncio.gather(work(), reclaim_soon(test_db, job))
+    assert asyncio.get_running_loop().time() - started < 3
+    done = (await async_client.get(f"{JOBS}/{job}", headers=admin)).json()
+
+    assert (done["status"], done["proposal"], done["stop_requested"]) == ("running", None, False)
+
+
 async def test_stop_on_a_queued_run_cancels_it_and_on_a_finished_one_is_refused(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:

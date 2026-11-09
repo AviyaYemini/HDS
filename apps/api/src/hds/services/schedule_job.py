@@ -905,8 +905,12 @@ class ScheduleJobService:
     async def claim(self) -> Claim | None:
         """Claim the next job (worker); ``None`` when there is none. The caller commits."""
         job, lost = await self._jobs.claim(self._now(), LEASE, MAX_ATTEMPTS)
-        for job_id in lost:
+        for job_id, org_id in lost:
             logger.warning("schedule job %s lost its worker %d times; failed", job_id, MAX_ATTEMPTS)
+            # How it ended joins its record, as every other end does (008 FR-030).
+            if self._events is not None:
+                body = {"code": "jobs.worker_lost"}
+                await self._events.append(org_id, job_id, "failed", self._now(), body)
         if job is None:
             return None
         return Claim(
@@ -986,21 +990,22 @@ class ScheduleJobService:
         return replace(built, problem=steered, locks=built.locks + added, held=held)
 
     async def progress(self, claim: Claim, needed: int, filled: int | None) -> bool:
-        """Write the run's best so far (worker); whether Stop was asked. The caller commits.
+        """Write the run's best so far (worker); whether to stop. The caller commits.
 
-        008 FR-027: the places filled out of those needed, and when; FR-028: the stop flag.
+        008 FR-027: the places filled out of those needed, and when they last improved, so
+        ``filled`` is given only when it has; FR-028: stop when Stop was asked, or when the run
+        is no longer this worker's (another reclaimed it), so it stops solving for nothing.
         """
         values: dict[str, Any] = {"needed": needed}
         if filled is not None:
             values |= {"best_filled": filled, "progress_at": self._now()}
-        _, asked = await self._jobs.progress(claim.id, claim.attempt, values)
-        return asked
+        ours, asked = await self._jobs.progress(claim.id, claim.attempt, values)
+        return asked or not ours
 
     async def succeed(self, claim: Claim, built: Built, result: Result) -> bool:
         """Store the proposal (worker); whether the job was still this run's. The caller commits.
 
-        ``ended`` says how: ``stopped`` by a person with the best so far, or ``finished``
-        (008 FR-028).
+        ``ended`` says how (008 FR-028): see :func:`ended_of`.
         """
         filled = sum(len(on) for on in result.assigned.values())
         return await self._jobs.finish(
@@ -1013,7 +1018,7 @@ class ScheduleJobService:
                 "optimal": result.optimal,
                 "proposal_state": "open",
                 "finished_at": self._now(),
-                "ended": "stopped" if result.stopped else "finished",
+                "ended": ended_of(claim, result),
                 "needed": sum(s.places for s in built.problem.slots),
                 "best_filled": filled,
             },
@@ -1038,6 +1043,20 @@ class ScheduleJobService:
             claim.attempt,
             {"status": "failed", "error_code": code, "finished_at": self._now(), "ended": "failed"},
         )
+
+
+def ended_of(claim: Claim, result: Result) -> str:
+    """How a solved run ended (008 FR-028).
+
+    ``stopped`` by a person with its best so far; ``timed_out`` when CP-SAT ran out of time before
+    proving its result optimal; else ``finished`` (the greedy solver never proves optimality, so it
+    always finishes).
+    """
+    if result.stopped:
+        return "stopped"
+    if claim.solver == "cpsat" and not result.optimal:
+        return "timed_out"
+    return "finished"
 
 
 async def solve(

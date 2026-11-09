@@ -53,7 +53,7 @@ from hds.core.logging import configure_logging
 from hds.core.metrics import JobMetrics
 from hds.repositories.schedule_job import CHANNEL
 from hds.services.health import HealthService
-from hds.services.schedule_job import Claim, JobFailedError, solve
+from hds.services.schedule_job import Claim, JobFailedError, ended_of, solve
 from hds.wiring import health_service, job_service, migrations
 
 logger = logging.getLogger("hds.worker")
@@ -158,25 +158,29 @@ async def _run(
     # filled; every FOLLOW_SECONDS this loop writes them and reads the stop flag, which the
     # solver polls.
     needed = sum(s.places for s in built.problem.slots)
-    best: list[int] = []
+    best: list[int | None] = [None]  # the latest only, set by the solver's thread
     stop = threading.Event()
 
     def heard(filled: int, _needed: int) -> None:
-        best.append(filled)
+        best[0] = filled
 
     async def follow() -> None:
+        written: int | None = None
         while True:
             await asyncio.sleep(FOLLOW_SECONDS)
+            now = best[0]
             try:
                 async with factory() as session:
-                    asked = await job_service(session).progress(
-                        claim, needed, best[-1] if best else None
+                    # The best is written only when it improved, so its time says when (FR-027).
+                    halt = await job_service(session).progress(
+                        claim, needed, now if now != written else None
                     )
                     await session.commit()
             except Exception:
                 logger.exception("schedule job %s: progress not written", claim.id)
                 continue
-            if asked:
+            written = now
+            if halt:
                 stop.set()
 
     following = asyncio.create_task(follow())
@@ -188,7 +192,7 @@ async def _run(
         following.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await following
-    if result.stopped and not best:
+    if result.stopped and best[0] is None:
         # Stopped before any result: Cancel, with no proposal (FR-028).
         async with factory() as session:
             jobs = job_service(session)
@@ -207,7 +211,7 @@ async def _run(
                     claim,
                     "finished",
                     {
-                        "ended": "stopped" if result.stopped else "finished",
+                        "ended": ended_of(claim, result),
                         "filled": sum(len(on) for on in result.assigned.values()),
                         "needed": needed,
                         "optimal": result.optimal,
@@ -223,7 +227,9 @@ async def _run(
         # solved again three times and reported as lost.
         logger.exception("schedule job %s could not store its result", claim.id)
         async with factory() as session:
-            await job_service(session).fail(claim, "jobs.solver_failed")
+            jobs = job_service(session)
+            if await jobs.fail(claim, "jobs.solver_failed"):
+                await jobs.recorded(claim, "failed", {"code": "jobs.solver_failed"})
             await session.commit()
         return "failed"
     return "succeeded"

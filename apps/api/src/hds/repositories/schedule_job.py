@@ -89,7 +89,7 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
 
     async def claim(
         self, now: datetime, lease: timedelta, max_attempts: int
-    ) -> tuple[ScheduleJob | None, list[uuid.UUID]]:
+    ) -> tuple[ScheduleJob | None, list[tuple[uuid.UUID, uuid.UUID]]]:
         """Claim the oldest job that is queued, or running past its lease.
 
         ``FOR UPDATE SKIP LOCKED``, so two workers never take the same job and neither waits for
@@ -98,9 +98,9 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
 
         Returns:
             The claimed job (now ``running``, its attempts counted and leased), or ``None``; and
-            the ids of jobs marked lost on the way.
+            the jobs marked lost on the way, as (id, organisation) pairs.
         """
-        lost: list[uuid.UUID] = []
+        lost: list[tuple[uuid.UUID, uuid.UUID]] = []
         while True:
             result = await self.session.execute(
                 select(ScheduleJob)
@@ -119,9 +119,9 @@ class ScheduleJobRepository(OrgScopedRepository[ScheduleJob]):
             if job is None:
                 return None, lost
             if job.status == "running" and job.attempts >= max_attempts:
-                job.status, job.error_code = "failed", "jobs.worker_lost"
+                job.status, job.error_code, job.ended = "failed", "jobs.worker_lost", "failed"
                 job.finished_at, job.lease_until = now, None
-                lost.append(job.id)
+                lost.append((job.id, job.organization_id))
                 await self.session.flush()
                 continue
             job.status = "running"

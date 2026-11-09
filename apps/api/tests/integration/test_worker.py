@@ -93,6 +93,13 @@ async def test_a_job_lost_three_times_fails_as_worker_lost(
     assert (row["status"], row["error_code"]) == ("failed", "jobs.worker_lost")
     read = (await async_client.get(f"{JOBS}/{job['id']}", headers=manager)).json()
     assert read["status"] == "failed" and read["proposal"] is None
+    # How it ended, as every other end says it (008 FR-030, review R59).
+    assert read["ended"] == "failed"
+    record = (await async_client.get(f"{JOBS}/{job['id']}/record", headers=manager)).json()
+    assert [(i["kind"], i["body"]) for i in record["items"]][-1] == (
+        "failed",
+        {"code": "jobs.worker_lost"},
+    )
 
 
 @pytest.mark.parametrize("error", [SolverError("bad"), RuntimeError("boom")])
