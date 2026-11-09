@@ -142,12 +142,16 @@ class CoverOption(BaseModel):
     weekends: int
 
 
-class CoverAverage(BaseModel):
-    """The staff's average minutes, nights and weekend shifts in the range, before the pick."""
+class CoverTotals(BaseModel):
+    """The active staff's count and total minutes, nights and weekend shifts, before the pick.
 
-    minutes: float
-    nights: float
-    weekends: float
+    Each total over ``people`` is the average an option's numbers are set against.
+    """
+
+    people: int
+    minutes: int
+    nights: int
+    weekends: int
 
 
 class Cover(BaseModel):
@@ -155,7 +159,7 @@ class Cover(BaseModel):
 
     key: str
     options: list[CoverOption]
-    average: CoverAverage
+    totals: CoverTotals
 
 
 class EditRequest(BaseModel):

@@ -400,7 +400,7 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
             ) : (
               cover.data.options.map((option) => {
                 const numbers = numbersOf(option, i18n.language);
-                const average = cover.data!.average;
+                const totals = cover.data!.totals;
                 return (
                   <View key={option.user_id} style={styles.option} testID="review-cover-option" {...webProps({ dataSet: { userId: option.user_id, free: String(option.free) } })}>
                     <Button
@@ -421,7 +421,7 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
                         hours: hours(option.minutes, i18n.language),
                         nights: option.nights,
                         weekends: option.weekends,
-                        average_hours: hours(average.minutes, i18n.language),
+                        average_hours: hours(totals.people > 0 ? totals.minutes / totals.people : 0, i18n.language),
                       })}
                     </Txt>
                   </View>

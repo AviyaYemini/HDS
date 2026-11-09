@@ -78,7 +78,7 @@ async def test_guards_elsewhere_are_offered_free_or_with_the_rule_they_break(
     )
     # Ids, codes and numbers only: nothing names a shift, a site, a project or pay.
     assert all(set(o) == OPTION_FIELDS for o in body["options"])
-    assert set(body) == {"key", "options", "average"}
+    assert set(body) == {"key", "options", "totals"}
     assert taken["id"] not in answer.text and trainer_project["id"] not in answer.text
 
 

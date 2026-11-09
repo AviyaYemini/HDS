@@ -1750,7 +1750,7 @@ components:
     Cover:
       type: object
       description: Who else could cover one slot of a proposal, best first (008 FR-014, FR-016).
-      required: [key, options, average]
+      required: [key, options, totals]
       properties:
         key: {type: string}
         options:
@@ -1779,14 +1779,17 @@ components:
               minutes: {type: integer}
               nights: {type: integer}
               weekends: {type: integer}
-        average:
+        totals:
           type: object
-          description: The staff's average minutes, nights and weekend shifts in the range, before the pick.
-          required: [minutes, nights, weekends]
+          description: >-
+            The active staff's count and total minutes, nights and weekend shifts in the range,
+            before the pick; each total over people is the average an option is set against.
+          required: [people, minutes, nights, weekends]
           properties:
-            minutes: {type: number}
-            nights: {type: number}
-            weekends: {type: number}
+            people: {type: integer}
+            minutes: {type: integer}
+            nights: {type: integer}
+            weekends: {type: integer}
 
     Proposal:
       type: object
@@ -4894,7 +4897,7 @@ paths:
       tags: [Proposals]
       responses:
         "200":
-          description: The options, best first, and the averages they are set against.
+          description: The options, best first, and the staff's totals they are set against.
           content:
             application/json:
               schema:

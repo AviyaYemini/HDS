@@ -130,13 +130,19 @@ def options(
     return tuple(sorted(found, key=rank))
 
 
-def averages(problem: Problem, assigned: Mapping[str, Sequence[uuid.UUID]]) -> tuple[float, ...]:
-    """The active candidates' average minutes, nights and weekend shifts in the range, as now.
+def totals(
+    problem: Problem, assigned: Mapping[str, Sequence[uuid.UUID]]
+) -> tuple[int, int, int, int]:
+    """How many active candidates there are, and their minutes, nights and weekend shifts in all.
 
-    What a person's numbers in ``options`` are set against, in words ("2 nights over the average").
+    What a person's numbers in ``options`` are set against: their average is each total over the
+    count ("2 nights over the average"). Whole numbers, so nothing is rounded here.
     """
     people = [c.id for c in problem.candidates if c.is_active]
-    if not people:
-        return (0.0, 0.0, 0.0)
     worked, nights, weekends = loads(problem, assigned)
-    return tuple(sum(c[p] for p in people) / len(people) for c in (worked, nights, weekends))
+    return (
+        len(people),
+        sum(worked[p] for p in people),
+        sum(nights[p] for p in people),
+        sum(weekends[p] for p in people),
+    )

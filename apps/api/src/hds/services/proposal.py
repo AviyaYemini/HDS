@@ -192,8 +192,9 @@ class ProposalService:
 
         Every active staff member not on it, judged over all their shifts in every project, the
         roster's drafts and the working copy: free people first, then those who would break a
-        rule, with the rule and numbers; and the averages their numbers are set against. Codes,
-        numbers and ids only: never pay, a site, or another project's shift.
+        rule, with the rule and numbers; and the staff's totals, whose averages their numbers
+        are set against. Codes, numbers and ids only: never pay, a site, or another project's
+        shift.
 
         Raises:
             ForbiddenError: ``users.manager_required`` or ``roster.project_not_managed`` (HTTP 403).
@@ -234,7 +235,7 @@ class ProposalService:
         }
         names = {u.id: u.full_name for u in staff}
         found = covering.options(problem, assigned, key, names)
-        minutes, nights, weekends = covering.averages(problem, assigned)
+        people, minutes, nights, weekends = covering.totals(problem, assigned)
         return {
             "key": key,
             "options": [
@@ -255,10 +256,11 @@ class ProposalService:
                 }
                 for o in found
             ],
-            "average": {
-                "minutes": round(minutes, 1),
-                "nights": round(nights, 2),
-                "weekends": round(weekends, 2),
+            "totals": {
+                "people": people,
+                "minutes": minutes,
+                "nights": nights,
+                "weekends": weekends,
             },
         }
 

@@ -2071,23 +2071,11 @@ export interface components {
          * @description Who else could cover one slot of a proposal, best first.
          */
         Cover: {
-            average: components["schemas"]["CoverAverage"];
             /** Key */
             key: string;
             /** Options */
             options: components["schemas"]["CoverOption"][];
-        };
-        /**
-         * CoverAverage
-         * @description The staff's average minutes, nights and weekend shifts in the range, before the pick.
-         */
-        CoverAverage: {
-            /** Minutes */
-            minutes: number;
-            /** Nights */
-            nights: number;
-            /** Weekends */
-            weekends: number;
+            totals: components["schemas"]["CoverTotals"];
         };
         /**
          * CoverOption
@@ -2126,6 +2114,22 @@ export interface components {
             user_id: string;
             /** Week Minutes */
             week_minutes: number | null;
+            /** Weekends */
+            weekends: number;
+        };
+        /**
+         * CoverTotals
+         * @description The active staff's count and total minutes, nights and weekend shifts, before the pick.
+         *
+         *     Each total over ``people`` is the average an option's numbers are set against.
+         */
+        CoverTotals: {
+            /** Minutes */
+            minutes: number;
+            /** Nights */
+            nights: number;
+            /** People */
+            people: number;
             /** Weekends */
             weekends: number;
         };

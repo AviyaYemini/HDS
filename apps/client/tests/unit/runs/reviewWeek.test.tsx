@@ -63,7 +63,7 @@ const option = (user_id: string, extra: Record<string, unknown> = {}) => ({
   weekends: 0,
   ...extra,
 });
-const cover = (...options: ReturnType<typeof option>[]) => ({ key: KEY, options, average: { minutes: 240, nights: 0, weekends: 0 } });
+const cover = (...options: ReturnType<typeof option>[]) => ({ key: KEY, options, totals: { people: 2, minutes: 480, nights: 0, weekends: 0 } });
 
 const job = { id: JOB, from: "2027-06-06", to: "2027-06-12", status: "succeeded", proposal_state: "open" } as unknown as Job;
 const names = { projects: new Map([[PROJECT, "North Gate"]]), types: new Map(), people: new Map([[ANN, "Ann"], [BEN, "Ben"]]) };
