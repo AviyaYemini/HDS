@@ -75,12 +75,16 @@ e2e specs use only the base data above.
   published through the app's own services. Pay and hours follow from them as in production.
 - **A run to review:** next week, when most people are on reserve duty from Thursday, is left as a
   proposal with its empty places and their reasons.
-- **Hand edits and views:** three hand placements this week break a rest rule, two of them kept
-  with a recorded reason. A few saved views sit on the staff and projects tables.
+- **Hand edits and views:** three people are placed by hand on a night before their own morning
+  this week. Each placement breaks a rule (too little rest, a blocked day, a wish not to work
+  then), and two of them are kept with a recorded reason. A few saved views sit on the staff and projects tables.
 
-It is laid around today, so it never goes stale, and the same day always gives the same data.
-Running it again adds nothing. To load it outside Docker, run
-`uv run python -m hds.scripts.seed_dev --wide`.
+It is laid around the day it is first loaded, and the same day always gives the same data.
+Running it again adds nothing, so the data ages with the database: after a week or two, "this
+week" is in the past and the run to review has expired. To lay it around today again, run
+`make wipe && make up`. To load it outside Docker, run
+`uv run python -m hds.scripts.seed_dev --wide`. Its holidays come from a fixed table that runs
+to October 2028.
 
 The other targets:
 

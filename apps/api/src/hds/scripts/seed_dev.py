@@ -70,10 +70,14 @@ async def _get_or_create(
     obj = result.scalar_one_or_none()
     if obj is not None:
         return obj, False
-    # The id follows from what the record is, so two fresh databases seed the same ids, and the
-    # scheduler's ties (broken by the smallest id) fall the same way (seed_wide's repeatability).
+    # The id follows from what the record is, so two fresh databases give the people the same
+    # ids, and the scheduler's ties (broken by the smallest id) fall the same way (seed_wide's
+    # repeatability). A record renamed since it was seeded keeps that id; a new one then takes a
+    # random id rather than clash with it.
     key = f"{model.__tablename__}:{sorted((k, str(v)) for k, v in filters.items())}"
-    obj = model(id=uuid.uuid5(SEED_NAMESPACE, key), **{**filters, **defaults})
+    derived = uuid.uuid5(SEED_NAMESPACE, key)
+    taken = await session.get(model, derived) is not None
+    obj = model(id=uuid.uuid4() if taken else derived, **{**filters, **defaults})
     session.add(obj)
     await session.flush()
     return obj, True
@@ -195,7 +199,9 @@ async def seed(wide: bool = False, factory: async_sessionmaker[AsyncSession] | N
     """Create the development data set, skipping anything that already exists.
 
     Safe to run repeatedly: each record is looked up first. Writes to the database named by
-    ``DATABASE_URL`` and commits once at the end, so a failure part-way leaves nothing behind.
+    ``DATABASE_URL`` and commits the base once at the end, so a failure part-way through it leaves
+    nothing behind. The wide layer commits step by step, through the services; a run of it that
+    stops leaves what it made, and later runs add nothing (``make wipe`` starts over).
     Never run it against production: the seeded accounts share a published password.
 
     Args:
@@ -209,9 +215,8 @@ async def seed(wide: bool = False, factory: async_sessionmaker[AsyncSession] | N
     if factory is None:
         engine = create_async_engine(get_settings().DATABASE_URL, echo=False)
         factory = async_sessionmaker(engine, expire_on_commit=False)
-    session_factory = factory
 
-    async with session_factory() as db:
+    async with factory() as db:
         # ── Organisation ─────────────────────────────────────────────────────
         org, created = await _get_or_create(
             db,
@@ -396,7 +401,7 @@ async def seed(wide: bool = False, factory: async_sessionmaker[AsyncSession] | N
         # The wider data, through the services, on what the base just made (seed_wide).
         from hds.scripts.seed_wide import seed_wide
 
-        await seed_wide(session_factory)
+        await seed_wide(factory)
         print("Wide seed complete.")
     if engine is not None:
         await engine.dispose()

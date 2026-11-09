@@ -18,12 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from hds.models.shift import Assignment, Shift
 from hds.models.user import User
-from hds.scripts.seed_dev import seed
+from hds.scripts.seed_dev import SITE_ZONE, seed
 from hds.scripts.seed_wide import seed_wide
 from hds.wiring import roster_service_for
 from tests.integration.migration_support import Scratch, scratch_database
 
-TODAY = datetime.date(2027, 3, 10)  # a Wednesday; every date is laid around it
+# Today at the site, as `make up` would lay it: the services judge deadlines by the real clock,
+# so a fixed day would turn next week's open window closed once that day had passed.
+TODAY = datetime.datetime.now(SITE_ZONE).date()
 HEAD = "head"
 
 

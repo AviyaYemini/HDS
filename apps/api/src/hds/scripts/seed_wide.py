@@ -23,8 +23,10 @@ organisation, enough that every screen from 001 to 008 has something to show:
     Edits:      a few manual assignments that break a rule, some kept with a recorded reason
     Views:      saved views on the staff and projects tables
 
-Deterministic: a fixed random seed, and every date relative to today. Running it again adds
-nothing: the layer is skipped when its first project exists. Needs the base seed first, and
+Deterministic: a fixed random seed and ids drawn from it, and every date relative to the day
+it runs. Running it again adds nothing: the layer is skipped when its first account exists,
+whole or after a run that stopped (``make wipe`` starts over). The holidays are a fixed table
+that runs to October 2028. Needs the base seed first, and
 writes through the services wherever the app does, so it never runs against production: the
 accounts share the published dev password.
 
@@ -37,7 +39,6 @@ import random
 import uuid
 from collections.abc import Sequence
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -54,6 +55,7 @@ from hds.models.site import Site
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 from hds.repositories.saved_view import SavedViewRepository
+from hds.scripts.seed_dev import SITE_ZONE, _sunday_of
 from hds.services.saved_view import SavedViewService
 from hds.wiring import (
     availability_service,
@@ -67,10 +69,10 @@ from hds.wiring import (
 )
 from hds.worker import run_once
 
-SITE_ZONE = ZoneInfo("Asia/Jerusalem")
 RANDOM_SEED = 20261109
-MARKER = "שער הנמל"
-"""The first wide project: when it exists, the layer is there already."""
+MARKER = "staff01@hds.test"
+"""The first wide account: its e-mail cannot be changed in the app, so when it exists the layer
+is there, whole or (after a run that stopped) in part."""
 
 # Israel's days off, from @hebcal/core (chag days and Independence Day), checked 2026-11-09.
 HOLIDAYS: tuple[tuple[str, str], ...] = (
@@ -175,7 +177,7 @@ SITES = (
 # name, type, client index, site index, billing rate, needs (shift type name → people per weekday)
 PROJECTS: tuple[tuple[str, ProjectType, int, int, str, dict[str, tuple[int, ...]]], ...] = (
     (
-        MARKER,
+        "שער הנמל",
         ProjectType.security,
         0,
         0,
@@ -259,25 +261,21 @@ def _next_id(rng: random.Random) -> uuid.UUID:
     return uuid.UUID(int=rng.getrandbits(128), version=4)
 
 
-def _sunday_of(day: datetime.date) -> datetime.date:
-    """The Sunday that starts ``day``'s week (weeks run Sunday to Saturday at the site)."""
-    return day - datetime.timedelta(days=(day.weekday() + 1) % 7)
-
-
 def _names(rng: random.Random, count: int) -> list[str]:
     """``count`` distinct invented full names."""
     pairs = [f"{first} {last}" for first in FIRST_NAMES for last in LAST_NAMES]
     return rng.sample(pairs, count)
 
 
-async def _first_project(db: AsyncSession, org: Organisation) -> Project | None:
+async def _layer_exists(db: AsyncSession, org: Organisation) -> bool:
+    """Whether the layer was added before, whole or in part."""
     found = await db.execute(
-        select(Project).where(Project.organisation_id == org.id, Project.name == MARKER)
+        select(User.id).where(User.organisation_id == org.id, User.email == MARKER)
     )
-    return found.scalar_one_or_none()
+    return found.first() is not None
 
 
-async def _user(
+def _user(
     db: AsyncSession,
     rng: random.Random,
     org: Organisation,
@@ -345,7 +343,7 @@ async def _records(
     await db.flush()
 
     staff = [
-        await _user(
+        _user(
             db,
             rng,
             org,
@@ -358,7 +356,7 @@ async def _records(
         for n in range(1, EMPLOYEES + 1)
     ]
     managers = [
-        await _user(
+        _user(
             db,
             rng,
             org,
@@ -371,12 +369,12 @@ async def _records(
         for n in range(1, MANAGERS + 1)
     ]
     for n, client in enumerate(clients, start=1):
-        await _user(
+        _user(
             db,
             rng,
             org,
             f"client{n}@hds.test",
-            f"{client.contact_name}",
+            client.contact_name or "",
             UserRole.client,
             password_hash,
             client_id=client.id,
@@ -401,7 +399,11 @@ async def _records(
     types = {
         t.name: t
         for t in (
-            await db.execute(select(ShiftType).where(ShiftType.organisation_id == org.id))
+            await db.execute(
+                select(ShiftType).where(
+                    ShiftType.organisation_id == org.id, ShiftType.is_active.is_(True)
+                )
+            )
         ).scalars()
     }
     projects = []
@@ -627,7 +629,11 @@ async def _manual_edits(
     projects: Sequence[Project],
     this_week: datetime.date,
 ) -> None:
-    """A few hand placements that break a rest rule; most kept with a reason, one left open."""
+    """Three hand placements that break a rule; two kept with a recorded reason, one left open.
+
+    Each puts someone on their own morning's project on the night before it, so the roster names
+    the rule it breaks (too little rest, or a day they blocked or would rather not work).
+    """
     starts = datetime.datetime.combine(this_week, datetime.time(), SITE_ZONE)
     ends = starts + datetime.timedelta(days=7)
     async with factory() as db:
@@ -646,23 +652,30 @@ async def _manual_edits(
             .scalars()
             .all()
         )
-        on = {
-            a.shift_id: a.user_id
-            for a in (
-                await db.execute(
-                    select(Assignment).where(Assignment.shift_id.in_([s.id for s in shifts]))
-                )
-            ).scalars()
-        }
-    # Someone on a morning placed on the night before it as well: too little rest between them.
-    pairs = []
+        on: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for a in (
+            await db.execute(
+                select(Assignment).where(Assignment.shift_id.in_([s.id for s in shifts]))
+            )
+        ).scalars():
+            on.setdefault(a.shift_id, set()).add(a.user_id)
+    # Someone on a morning placed on the same project's night before it as well: too little rest
+    # between them. One person per night, on three different nights.
+    pairs: list[tuple[Shift, uuid.UUID]] = []
     for night in (s for s in shifts if s.ends_at.astimezone(SITE_ZONE).hour == 7):
-        for morning in shifts:
-            if morning.starts_at == night.ends_at and morning.id in on and night.id in on:
-                pairs.append((night, on[morning.id]))
-        if len(pairs) >= 3:
+        morning = next(
+            (
+                m
+                for m in shifts
+                if m.project_id == night.project_id and m.starts_at == night.ends_at
+            ),
+            None,
+        )
+        free = sorted(on.get(morning.id, set()) - on.get(night.id, set())) if morning else []
+        if free:
+            pairs.append((night, free[0]))
+        if len(pairs) == 3:
             break
-    pairs = pairs[:3]
     for index, (night, person) in enumerate(pairs):
         async with factory() as db:
             judged = await roster_service_for(db).assign(
@@ -707,8 +720,11 @@ async def seed_wide(
         org = (
             await db.execute(select(Organisation).where(Organisation.name == "HDS Dev"))
         ).scalar_one()
-        if await _first_project(db, org) is not None:
-            print("Wide data exists: nothing added")
+        if await _layer_exists(db, org):
+            # Whole, or in part after a run that stopped: either way nothing is added, and a run
+            # that stopped stays visible rather than failing every later start.
+            print("Wide data exists (or a run of it stopped): nothing added.")
+            print("To lay it again around today: make wipe && make up")
             return False
         admin = (await db.execute(select(User).where(User.email == "admin@hds.test"))).scalar_one()
         records = await _records(db, org, rng, today, admin.password_hash)
