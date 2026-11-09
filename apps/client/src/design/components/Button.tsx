@@ -7,7 +7,7 @@
  * web), disabled but legible (with a reason when there is one), and busy (a spinner beside the
  * label, which stays readable). Targets are 44 px tall at comfortable density, 36 px at compact.
  */
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -27,7 +27,7 @@ import { useTheme } from "../theme/ThemeProvider";
 import { component } from "../theme/theme.generated";
 import { webProps, type WebOnlyProps } from "../web";
 import { ClippedBox } from "./ClippedBox";
-import { Txt } from "./Text";
+import { SurfaceContext, Txt } from "./Text";
 
 /** The kinds of button. */
 export type ButtonVariant = "primary" | "secondary" | "quiet" | "link";
@@ -82,6 +82,7 @@ export function Button({
   style,
 }: ButtonProps) {
   const { colors, density, isDesktop } = useTheme();
+  const surface = useContext(SurfaceContext);
   const keyboard = useKeyboardMode();
   const motion = useMotion();
   const { t } = useTranslation();
@@ -96,6 +97,11 @@ export function Button({
 
   const textColor = (state: PressState): string => {
     if (variant === "primary") return colors.cta.text;
+    // On a dark (inverse) surface, as a toast's action, the accent fails contrast (008 R57): a
+    // link or quiet button takes the surface's own text colours, and the link keeps its underline.
+    if (surface === "inverse" && (variant === "link" || variant === "quiet")) {
+      return disabled ? colors.inverse.textSecondary : colors.inverse.text;
+    }
     if (disabled) return colors.text.secondary;
     if (variant === "secondary") return colors.text.primary;
     return state.pressed ? colors.accent.pressed : colors.accent.default;
@@ -133,7 +139,8 @@ export function Button({
     ) : icon ? (
       <Icon name={icon} size={18} color={color} />
     ) : null;
-    const underline = variant === "link" && (state.hovered || hover || state.pressed);
+    // Always underlined on an inverse surface, where its colour is the text's (R57).
+    const underline = variant === "link" && (surface === "inverse" || state.hovered || hover || state.pressed);
     return (
       <View style={styles.row}>
         {iconPosition === "leading" ? glyph : null}
