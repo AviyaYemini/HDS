@@ -16,7 +16,7 @@ The work of [plan.md](plan.md), one pull request per section, in this order. One
 - [x] S12 Admin: one file per screen
 - [x] S13 Runs: the review, the run page and the run list lose their parts and hooks to files of their own
 - [x] S14 Admin table, availability and account split the same way
-- [ ] S15 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
+- [x] S15 Close: scoped `make ci-local`, one `/code-review`, the ledger, the pull-request text
 
 ## PR 3: expanded dev dataset
 
