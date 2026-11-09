@@ -114,7 +114,16 @@ def proposal_state(job: ScheduleJob, now: datetime) -> str | None:
 
 
 def proposal_json(built: Built, result: Result) -> dict[str, Any]:
-    """The stored form of a proposal (data-model.md ``result``)."""
+    """The stored form of a proposal (data-model.md ``result``).
+
+    The people a rerun held for the earlier proposal's locks (``built.held``) are stored as the
+    proposal's own, added where the drafts do not have them and marked locked (008 FR-019).
+    """
+    held = built.held
+    current = built.problem.current
+    added = [*result.changes.added] + [
+        (key, p) for key, people in held.items() for p in people if p not in current.get(key, ())
+    ]
     return {
         "slots": [
             {
@@ -122,13 +131,17 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
                 "shift_id": str(s.shift_id) if s.shift_id else None,
                 "zone": s.zone,
                 "project_id": str(s.project_id),
+                "site_id": str(s.site_id) if s.site_id else None,
                 "shift_type_id": str(s.shift_type_id),
                 "date": s.day.isoformat(),
                 "starts_at": s.starts_at.astimezone(UTC).isoformat(),
                 "ends_at": s.ends_at.astimezone(UTC).isoformat(),
                 "headcount": s.headcount,
-                "assigned": [str(p) for p in result.assigned.get(s.key, ())],
-                "kept": [str(p) for p in s.kept],
+                "assigned": [
+                    str(p) for p in (*result.assigned.get(s.key, ()), *held.get(s.key, ()))
+                ],
+                "kept": [str(p) for p in s.kept if p not in held.get(s.key, ())],
+                "locked": [str(p) for p in held.get(s.key, ())],
             }
             for s in built.problem.slots
         ],
@@ -176,7 +189,10 @@ def proposal_json(built: Built, result: Result) -> dict[str, Any]:
             for s in built.short_published
         ],
         "changes": {
-            "added": [{"key": k, "user_id": str(p)} for k, p in result.changes.added],
+            "added": [
+                {"key": k, "user_id": str(p)}
+                for k, p in sorted(added, key=lambda kp: (kp[0], str(kp[1])))
+            ],
             "removed": [{"key": k, "user_id": str(p)} for k, p in result.changes.removed],
         },
     }
@@ -332,6 +348,8 @@ class ScheduleJobService:
     ) -> list[dict[str, Any]]:
         """The chips, each with what its kind needs and naming staff of the organisation.
 
+        Staff deleted or deactivated since still pass: their chip no longer applies (FR-022).
+
         Raises:
             DomainValidationError: ``schedule.chip_invalid`` for a chip without its value, or
                 naming someone who is not staff of the organisation (HTTP 422).
@@ -349,7 +367,9 @@ class ScheduleJobService:
             {
                 u.id
                 for u in await self._users.get_many(people, actor.organization_id)
-                if u.role != UserRole.client and not u.is_deleted
+                # Anyone of the organisation's staff, even deleted or inactive since: such a chip is
+                # reported as no longer applying and never fails a run (FR-022, R42).
+                if u.role != UserRole.client
             }
             if people
             else set()
@@ -514,7 +534,8 @@ class ScheduleJobService:
                     detail="Nothing the part names is still open in the proposal.",
                 )
             # Nothing left to write (the proposal matches the roster): accepting closes it, as
-            # before 008.
+            # before 008, writing only the locks set in the review.
+            await self._write_locks(work, None, actor)
             job.version += 1
             await self._jobs.decide(job, "accepted", actor.id, self._now())
             await self.record(job, "accepted", {"part": {}}, actor=actor, version=job.version)
@@ -632,6 +653,8 @@ class ScheduleJobService:
             slot["stored"] = sorted((set(slot["stored"]) | set(joining)) - set(leaving))
         await self._shifts.create_many(org_id, new_shifts)
         await self._assignments.create_many(org_id, new_people)
+        # A lock set in the review on someone already on the draft reaches the roster too (R38).
+        await self._write_locks(work, None if not named else set(chosen), actor)
         if self._overrides is not None:
             for row in overrides:
                 await self._overrides.create(org_id, row)
@@ -651,6 +674,18 @@ class ScheduleJobService:
             version=job.version,
         )
         return {**counts, "version": job.version, "state": state}
+
+    async def _write_locks(
+        self, work: Mapping[str, Any], keys: set[str] | None, actor: User
+    ) -> None:
+        """Lock on the roster the people the copy locks on drafts (``keys``; every slot if None)."""
+        for slot in work["slots"]:
+            if not slot.get("shift_id") or (keys is not None and slot["key"] not in keys):
+                continue
+            locked = {uuid.UUID(p["user_id"]) for p in slot["people"] if p.get("locked")}
+            await self._assignments.lock_people(
+                uuid.UUID(slot["shift_id"]), locked, actor.id, self._now()
+            )
 
     async def _people(self, org_id: uuid.UUID, ids: set[str]) -> dict[uuid.UUID, Employee]:
         """The people a part places, as the rules see them: deleted or inactive is inactive (R2)."""
@@ -876,8 +911,13 @@ class ScheduleJobService:
             controls=Controls(**claim.controls),
             chips=tuple(stored_chip(c) for c in claim.chips),
         )
-        added = sum(len(set(kept_more.get(s.key, ())) - set(s.kept)) for s in problem.slots)
-        return replace(built, problem=steered, locks=built.locks + added)
+        held = {
+            s.key: tuple(p for p in kept_more.get(s.key, ()) if p not in s.kept)
+            for s in problem.slots
+            if kept_more.get(s.key)
+        }
+        added = sum(len(v) for v in held.values())
+        return replace(built, problem=steered, locks=built.locks + added, held=held)
 
     async def succeed(self, claim: Claim, built: Built, result: Result) -> bool:
         """Store the proposal (worker); whether the job was still this run's. The caller commits."""

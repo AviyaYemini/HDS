@@ -66,8 +66,9 @@ def initial(result: Mapping[str, Any]) -> Copy:
         item = {k: v for k, v in slot.items() if k != "assigned"}
         item["run_before"] = sorted(before)
         item["stored"] = sorted(before)
+        held = set(slot.get("locked", []))
         item["people"] = [
-            {"user_id": p, "by": "solver", "locked": False, "override": None}
+            {"user_id": p, "by": "solver", "locked": p in held, "override": None}
             for p in slot["assigned"]
         ]
         slots.append(item)
@@ -200,6 +201,7 @@ def as_slot(slot: Mapping[str, Any], zone: str, night_types: Collection[uuid.UUI
         headcount=slot["headcount"],
         night=type_id in night_types,
         kept=tuple(uuid.UUID(p) for p in slot.get("kept", [])),
+        site_id=uuid.UUID(slot["site_id"]) if slot.get("site_id") else None,
     )
 
 

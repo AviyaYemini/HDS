@@ -273,7 +273,7 @@ class ProposalService:
         }
         results = chips.judge(problem, Roster(problem), assigned)
         found = fairness.panel(problem, assigned)
-        traded = fairness.tradeoffs(problem, assigned, results)
+        traded = fairness.tradeoffs(problem, assigned, results, found)
         people = [p for s in work["slots"] for p in s["people"]]
         return {
             "shares": [vars(s) for s in found.shares],
@@ -398,8 +398,21 @@ def apply(
     if target is not None:
         before[target["key"]] = [dict(p) for p in target["people"]]
 
+    # A person moved or swapped keeps the lock they had in the copy (R44).
+    had = {
+        p["user_id"]: bool(p.get("locked"))
+        for s in (slot, target)
+        if s is not None
+        for p in s["people"]
+    }
+
     def entry(user_id: str) -> dict[str, Any]:
-        return {"user_id": user_id, "by": "person", "locked": False, "override": None}
+        return {
+            "user_id": user_id,
+            "by": "person",
+            "locked": had.get(user_id, False),
+            "override": None,
+        }
 
     touched: dict[str, set[str]] = {}
     if kind in ("lock", "unlock"):

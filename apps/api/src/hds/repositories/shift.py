@@ -437,6 +437,21 @@ class AssignmentRepository(OrgScopedRepository[Assignment]):
         )
         return len(result.all())
 
+    async def lock_people(
+        self, shift_id: uuid.UUID, user_ids: Collection[uuid.UUID], by: uuid.UUID, at: datetime
+    ) -> None:
+        """Lock the assignments of ``user_ids`` on a shift that are not locked yet (008 FR-018)."""
+        if user_ids:
+            await self.session.execute(
+                update(Assignment)
+                .where(
+                    Assignment.shift_id == shift_id,
+                    Assignment.user_id.in_(list(user_ids)),
+                    Assignment.locked_at.is_(None),
+                )
+                .values(locked_by=by, locked_at=at)
+            )
+
     async def on_shift(self, shift_id: uuid.UUID) -> list[Assignment]:
         """The assignments on one shift, read from the database (a caller holds its lock)."""
         result = await self.session.execute(

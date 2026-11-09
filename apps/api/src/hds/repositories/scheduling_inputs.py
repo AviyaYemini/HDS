@@ -28,6 +28,7 @@ class ActiveProject:
     start_date: date
     end_date: date | None
     zone: str
+    site_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
     ) -> list[ActiveProject]:
         """The organisation's active, not deleted projects; only ``ids`` when given."""
         query = (
-            select(Project.id, Project.start_date, Project.end_date, Site.timezone)
+            select(Project.id, Project.start_date, Project.end_date, Site.timezone, Project.site_id)
             .join(Site, Site.id == Project.site_id)
             .where(
                 Project.organization_id == org_id,
@@ -73,7 +74,7 @@ class SchedulingInputRepository(BaseRepository[Shift]):
         if ids is not None:
             query = query.where(Project.id.in_(list(ids)))
         result = await self.session.execute(query.order_by(Project.id))
-        return [ActiveProject(r[0], r[1], r[2], r[3]) for r in result.all()]
+        return [ActiveProject(r[0], r[1], r[2], r[3], r[4]) for r in result.all()]
 
     async def project_types(
         self, project_ids: Collection[uuid.UUID]

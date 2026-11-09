@@ -684,15 +684,16 @@ class RosterService:
             raise NotFoundError(resource="Assignment", id=id)
         shift = await self._locked_shift(actor, assignment.shift_id)
         await self._require_edit(actor, shift.project_id)
-        if on and assignment.locked_at is None:
+        changed = (assignment.locked_at is None) == on
+        if changed:
             assignment = await self._assignments.update(
-                id, actor.organization_id, locked_by=actor.id, locked_at=datetime.now(UTC)
+                id,
+                actor.organization_id,
+                locked_by=actor.id if on else None,
+                locked_at=datetime.now(UTC) if on else None,
             )
-        elif not on and assignment.locked_at is not None:
-            assignment = await self._assignments.update(
-                id, actor.organization_id, locked_by=None, locked_at=None
-            )
-        await self._shifts.touch(shift.id, actor.organization_id)
+            # Only a real change moves the shift's ETag (R45).
+            await self._shifts.touch(shift.id, actor.organization_id)
         return assignment, await self.fresh_shift(actor, shift.id)
 
     async def busy(self, actor: User, shift_id: uuid.UUID) -> list[Busy]:
@@ -793,6 +794,17 @@ class RosterService:
                 detail="The employee is already assigned to that shift.",
                 field="to_shift_id",
             )
+        # As assign does: each person's row locked, so their other changes wait, and no one
+        # inactive is placed on a shift (R41).
+        for person in sorted({moving.user_id, *([other.user_id] if other else [])}, key=str):
+            await self._users.lock_user(person)
+            found = await self._users.get_by_id(person, org)
+            if found is None or not found.is_active:
+                raise ConflictError(
+                    code="assignments.employee_inactive",
+                    detail="An inactive employee cannot be assigned.",
+                    field="user_id",
+                )
         moved = [moving.id] + ([other.id] if other else [])
         if self._overrides is not None:
             await self._overrides.delete_for_assignments(org, moved)

@@ -150,7 +150,7 @@ what it guarantees, what it traded off, and how fair it is.
 
 ### Close
 
-- [ ] T043 Close group C as the template says. Mutants (≤ 3, who can see what): lock allowed on an assignment in a project the Manager doesn't manage; a chip naming a person outside the organisation accepted; `based_on` copying chips from another organisation's job. Commit `feat(scheduling): steer a run with controls, locks and chips, and show its trade-offs (…)`. **PR 3 ready**: once-per-PR steps
+- [x] T043 Close group C as the template says (done 2026-11-09: the three mutants below all failed the lock and chip tests; scoped `make ci-local` green; /code-review R37 to R46, all fixed). Mutants (≤ 3, who can see what): lock allowed on an assignment in a project the Manager doesn't manage; a chip naming a person outside the organisation accepted; `based_on` copying chips from another organisation's job. Commit `feat(scheduling): steer a run with controls, locks and chips, and show its trade-offs (…)`. **PR 3 ready**: once-per-PR steps
 
 ---
 

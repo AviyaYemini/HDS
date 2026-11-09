@@ -307,6 +307,16 @@ for (const language of LANGUAGES) {
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
       await expect.poll(() => onShift(b)).toContain(other.id);
       await checkA11y(page, `roster after a swap (${language})`);
+
+      // Replacing with someone free: the removal and the assignment both go through, the second
+      // with the etag the first returned (R40).
+      const free = await ok<Me>(admin.post("/api/v1/employees", { data: { email: `free.${stamp}@hds.test`, full_name: `Free ${stamp.slice(-5)}`, initial_password: "a-long-password-1" } }), 201);
+      await page.reload();
+      await block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`).click();
+      await page.getByTestId("action-replace").click();
+      await sheet.locator(`[data-testid="assign-option"][data-user-id="${free.id}"]`).click();
+      await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${free.id}"]`)).toBeVisible();
+      await expect(page.getByTestId("banner-roster-changed")).toHaveCount(0);
     });
 
     test("on a phone, a day agenda assigns and publishes", async ({ page }, testInfo) => {

@@ -234,3 +234,120 @@ async def test_employees_and_clients_cannot_lock_or_read_fairness(
     ]
 
     assert [x.status_code for x in answers] == [403, 403]
+
+
+async def test_a_rerun_holds_a_proposal_lock_and_accepting_writes_it_locked(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R37: a person held for the earlier lock is the rerun's own, and reaches the roster."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    first = await solved(async_client, admin, project_ids=[project["id"]])
+    slot = next(s for s in first["proposal"]["slots"] if s["assigned"])
+    person = slot["assigned"][0]
+    locked = await async_client.post(
+        f"{JOBS}/{first['id']}/edits",
+        json={"op": "lock", "key": slot["key"], "user_id": person},
+        headers=admin,
+    )
+    assert locked.status_code == 200, locked.text
+
+    rerun = await solved(async_client, admin, project_ids=[project["id"]], based_on=first["id"])
+    again = next(s for s in rerun["proposal"]["slots"] if s["key"] == slot["key"])
+    accepted = await async_client.post(f"{JOBS}/{rerun['id']}/accept", headers=admin)
+
+    assert person in again["assigned"] and person not in again["kept"]
+    assert accepted.status_code == 200, accepted.text
+    row = await test_db.execute(
+        text("SELECT locked_at IS NOT NULL FROM assignments WHERE user_id = :u"), {"u": person}
+    )
+    assert [locked for (locked,) in row] == [True]
+
+
+async def test_a_lock_set_in_review_on_someone_already_on_the_draft_reaches_the_roster(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R38: someone the proposal keeps unchanged, locked in the review, is locked on accept."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    shift = (await add_shift(async_client, admin, project, SUNDAY))["shift"]
+    worker = seed_users["employee"]
+    made = await assign(async_client, admin, shift["id"], worker.id)
+    assert made.status_code == 201, made.text
+    done = await solved(async_client, admin, project_ids=[project["id"]])
+    key = f"draft:{shift['id']}"
+    on = next(s for s in done["proposal"]["slots"] if s["key"] == key)["assigned"]
+    if str(worker.id) not in on:
+        pytest.skip("the run moved the worker; the lock path needs them kept")
+    locked = await async_client.post(
+        f"{JOBS}/{done['id']}/edits",
+        json={"op": "lock", "key": key, "user_id": str(worker.id)},
+        headers=admin,
+    )
+    assert locked.status_code == 200, locked.text
+
+    accepted = await async_client.post(f"{JOBS}/{done['id']}/accept", headers=admin)
+
+    assert accepted.status_code == 200, accepted.text
+    row = await test_db.execute(
+        text("SELECT locked_at IS NOT NULL FROM assignments WHERE id = :a"),
+        {"a": made.json()["assignment"]["id"]},
+    )
+    assert row.scalar_one() is True
+
+
+async def test_a_chip_keeping_someone_on_a_site_applies(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R39: slots carry their project's site, so a keep-on-site chip is weighed and judged."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    worker = str(seed_users["employee"].id)
+    done = await solved(
+        async_client,
+        admin,
+        project_ids=[project["id"]],
+        chips=[{"kind": "keep_on", "user_id": worker, "site_id": project["site_id"]}],
+    )
+
+    found = (await async_client.get(f"{JOBS}/{done['id']}/fairness", headers=admin)).json()
+
+    assert found["chips"][0]["state"] == "met"
+
+
+async def test_a_chip_for_someone_deleted_since_never_fails_a_rerun(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R42: the chip is reported as no longer applying (FR-022), and the rerun is made."""
+    from tests.report_support import employee
+
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    gone = await employee(async_client, admin, "Soon Gone")
+    first = await solved(
+        async_client,
+        admin,
+        project_ids=[project["id"]],
+        chips=[{"kind": "max_shifts", "user_id": gone, "count": 1}],
+    )
+    deleted = await async_client.delete(f"/api/v1/employees/{gone}", headers=admin)
+    assert deleted.status_code == 204, deleted.text
+
+    rerun = await solved(async_client, admin, project_ids=[project["id"]], based_on=first["id"])
+    found = (await async_client.get(f"{JOBS}/{rerun['id']}/fairness", headers=admin)).json()
+
+    assert found["chips"][0]["state"] == "not_applying"
+
+
+async def test_locking_twice_leaves_the_shifts_etag(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R45: only a real change moves the etag, so other editors' saves are not refused."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin, "Twice locked")
+    _, assignment = await locked_draft(async_client, admin, project, seed_users["employee"])
+
+    first = await async_client.put(f"{ASSIGNMENTS}/{assignment}/lock", headers=admin)
+    second = await async_client.put(f"{ASSIGNMENTS}/{assignment}/lock", headers=admin)
+
+    assert first.json()["shift_etag"] == second.json()["shift_etag"]

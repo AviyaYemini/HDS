@@ -144,24 +144,26 @@ export function RosterScreen() {
     return done ? created : null;
   };
 
-  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<boolean> => {
+  /** Take someone off; the shift's new etag on success (a replace assigns with it, R40), else null. */
+  const unassign = async (shift: Shift, assignmentId: string, record = true): Promise<string | null> => {
     const before = shift.assignments.find((a) => a.id === assignmentId);
-    const done = await change(
-      () =>
-        call(
-          session.api.DELETE("/api/v1/assignments/{id}", {
-            params: { path: { id: assignmentId }, header: { "If-Match": shift.etag }, query: { alert: record ? alert : "none" } },
-          }),
-        ),
-      shift.id,
-    );
+    let etag: string | null = null;
+    const done = await change(async () => {
+      const answer = await call(
+        session.api.DELETE("/api/v1/assignments/{id}", {
+          params: { path: { id: assignmentId }, header: { "If-Match": shift.etag }, query: { alert: record ? alert : "none" } },
+        }),
+      );
+      etag = answer.shift_etag;
+      return answer;
+    }, shift.id);
     if (done && record && before) {
       setHistory((h) => [
         ...h,
         { kind: "unassigned", shiftId: shift.id, userId: before.user_id, starts_at: before.own_times ? before.starts_at : null, ends_at: before.own_times ? before.ends_at : null },
       ]);
     }
-    return done;
+    return done ? etag : null;
   };
 
   /** Lock an assignment, so later runs keep it, or unlock it (008 FR-018). */
@@ -347,11 +349,17 @@ export function RosterScreen() {
             if (how === "move" && busyOn?.assignment_id && busyOn.shift_id) {
               // A swap trades places with the person being replaced; otherwise a transfer.
               await move(busyOn.assignment_id, userId, busyOn.shift_id, shift, out ? out.assignmentId : null);
+            } else if (out) {
+              // The removal moved the shift's etag: assign with the new one, never a stale read (R40).
+              const etag = await unassign(out.shift, out.assignmentId);
+              if (etag === null) return;
+              await assign({ ...shift, etag }, userId);
             } else {
-              if (out && !(await unassign(out.shift, out.assignmentId))) return;
               await assign(shift, userId);
             }
+            // A choice of who hears of it is for one edit, never carried to the next (R43).
             setNote("");
+            setAlert("none");
           })();
         }}
       />
@@ -360,7 +368,7 @@ export function RosterScreen() {
         <Button variant="secondary" icon="close" label={t("roster.unassign")} testID="action-unassign" onPress={() => {
           const target = personOn!;
           setPersonOn(null);
-          void unassign(target.shift, target.assignmentId);
+          void unassign(target.shift, target.assignmentId).then(() => setAlert("none"));
         }} />
         {personOn ? (
           <Button

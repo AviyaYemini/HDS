@@ -259,3 +259,23 @@ async def test_a_shift_or_assignment_not_in_the_organisation_is_not_found(
     ]
 
     assert [x.status_code for x in answers] == [404, 404]
+
+
+async def test_an_inactive_person_is_never_moved_onto_a_shift(
+    async_client: AsyncClient, seed_users: dict[str, User]
+) -> None:
+    """R41: a move keeps assign's rule: no one inactive is placed."""
+    admin = await headers_for(async_client, "admin")
+    project = await add_project(async_client, admin, "Inactive move")
+    first = (await add_shift(async_client, admin, project, FIRST))["shift"]
+    second = (await add_shift(async_client, admin, project, FIRST, "afternoon"))["shift"]
+    person = await employee(async_client, admin, "Leaving Soon")
+    a = await placed(async_client, admin, first, person)
+    off = await async_client.post(f"/api/v1/employees/{person}/deactivate", headers=admin)
+    assert off.status_code == 200, off.text
+
+    answer = await async_client.post(
+        f"{ASSIGNMENTS}/{a}/move", json={"to_shift_id": second["id"]}, headers=admin
+    )
+
+    assert (answer.status_code, answer.json()["code"]) == (409, "assignments.employee_inactive")

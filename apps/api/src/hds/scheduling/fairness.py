@@ -112,6 +112,7 @@ def tradeoffs(
     problem: Problem,
     assigned: Mapping[str, Sequence[uuid.UUID]],
     chips: Sequence[ChipResult] = (),
+    shared: Panel | None = None,
 ) -> Tradeoffs:
     """The counts the summary words: empty places, wishes, the spreads, and chips not met.
 
@@ -142,7 +143,8 @@ def tradeoffs(
             for s in problem.slots
             if s.key in given.get(c.id, set()) and roster.preference(c.id, s)[1]
         )
-    shares = panel(problem, assigned).shares
+    # The panel the caller has already worked out, or worked out here (R46).
+    shares = (shared or panel(problem, assigned)).shares
     minutes = [s.minutes for s in shares] or [0]
     nights = [s.nights for s in shares] or [0]
     return Tradeoffs(
