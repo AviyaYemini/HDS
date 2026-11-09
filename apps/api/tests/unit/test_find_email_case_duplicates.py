@@ -58,3 +58,9 @@ async def test_clashes_are_listed_by_id_without_addresses_and_the_exit_status_is
     assert str(first[0]) in out and str(second[0]) in out
     assert str(ORG_A) in out and str(ORG_B) in out
     assert "corp.com" not in out.lower()
+
+
+def test_the_organisation_column_is_read_by_its_name_before_and_after_migration_037() -> None:
+    # The script runs before migration 016, whose schema predates the rename (ADR 021).
+    assert script.organisation_column(["id", "organization_id", "email"]) == "organization_id"
+    assert script.organisation_column(["id", "organisation_id", "email"]) == "organisation_id"
