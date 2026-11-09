@@ -79,8 +79,9 @@ def test_a_part_by_day_project_or_pair_names_only_open_pairs() -> None:
     }
     assert proposal_copy.selected(work, days=["2027-06-07"]) == {"need:mon": {ANN}}
     assert proposal_copy.selected(work, project_ids=[OTHER]) == {"draft:tue": {CAT}}
+    # Ann is not open; Ben replaces Cat, so naming Ben takes Cat's removal too (R15).
     assert proposal_copy.selected(work, pairs=[("draft:sun", BEN), ("draft:sun", ANN)]) == {
-        "draft:sun": {BEN}
+        "draft:sun": {BEN, CAT}
     }
 
 

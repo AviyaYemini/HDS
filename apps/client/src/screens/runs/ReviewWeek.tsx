@@ -474,6 +474,14 @@ function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, 
           </View>
         );
       })}
+      {/* Staff the run could not place but who stay on the draft (a Manager placed by hand, say):
+          they fill places, so they are shown, unchanged and outside the proposal's edits. */}
+      {slot.kept.map((userId) => (
+        <View key={`kept-${userId}`} style={styles.person} testID="proposal-kept" {...webProps({ dataSet: { userId } })}>
+          <Icon name={MARK_ICON.unchanged} size={14} color={colors.text.primary} />
+          <Txt role="meta">{name(userId)}</Txt>
+        </View>
+      ))}
       {editable ? <Button variant="quiet" icon="plus" label={t("review.assign")} onPress={onAssign} testID="action-review-assign" /> : null}
     </View>
   );

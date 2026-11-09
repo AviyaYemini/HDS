@@ -21,7 +21,7 @@ Rolling update: an expand step. Every new column is nullable or has a server def
 widened checks accept every value the previous release writes (006 FR-016).
 
 Downgrade drops the record, the lock and the new job columns, and restores the narrower checks;
-jobs cancelled or partly accepted must be gone first (the checks would fail otherwise).
+035's downgrade first maps jobs cancelled or partly accepted to states these checks allow.
 
 Revision ID: 034_proposal_review
 Revises: 033_saved_views

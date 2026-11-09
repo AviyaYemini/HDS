@@ -442,14 +442,19 @@ class ScheduleJobService:
         await self._shifts.lock_between(org_id, *window)
         await self._users.lock_staff(org_id)
         built = await self._inputs.build(org_id, job.first_day, job.last_day, run_ids)
-        if built.fingerprint != job.fingerprint:
-            named = any(part.get(k) for k in ("days", "project_ids", "assignments"))
-            if job.version == 0 and not proposal_copy.any_accepted(work) and not named:
-                # The whole of an untouched proposal, as before 008: any change refuses it.
-                raise ConflictError(
-                    code="schedule.proposal_out_of_date",
-                    detail="Something the proposal was made from has changed; generate it again.",
-                )
+        named = any(part.get(k) for k in ("days", "project_ids", "assignments"))
+        untouched = job.version == 0 and not proposal_copy.any_accepted(work) and not named
+        if untouched and built.fingerprint != job.fingerprint:
+            # The whole of an untouched proposal, as before 008: any change refuses it.
+            raise ConflictError(
+                code="schedule.proposal_out_of_date",
+                detail="Something the proposal was made from has changed; generate it again.",
+            )
+        if not untouched:
+            # Anything else is judged on today's roster, even when the fingerprint still matches:
+            # it does not cover people placed by hand who were not candidates (their shifts
+            # elsewhere, their entries, whether they are active), nor a part that takes one pair
+            # of a slot and leaves another.
             placed = await self._people(org_id, {p for who in chosen.values() for p in who})
             judged = await self._inputs.build(
                 org_id, job.first_day, job.last_day, run_ids, also=set(placed)
@@ -581,7 +586,11 @@ class ScheduleJobService:
                 causes.append({"key": slot["key"], "date": slot["date"], "cause": "removed"})
                 continue
             on_now = {str(p) for p in (*built.problem.current.get(key, ()), *now.kept)}
-            if on_now != {*slot["stored"], *slot.get("kept", [])}:
+            moved = (now.starts_at, now.ends_at) != (
+                datetime.fromisoformat(slot["starts_at"]),
+                datetime.fromisoformat(slot["ends_at"]),
+            )
+            if moved or on_now != {*slot["stored"], *slot.get("kept", [])}:
                 causes.append({"key": slot["key"], "date": slot["date"], "cause": "changed"})
         if not causes:
             for warning in self._part_breaks(zone, built, work, chosen, known):

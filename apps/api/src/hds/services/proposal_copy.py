@@ -195,7 +195,9 @@ def selected(
     """The open pairs a part names, by slot key: all of them when the part names nothing.
 
     ``days`` are ISO dates and ``project_ids`` id strings; ``pairs`` are ``(key, user_id)``. A part
-    takes the union of what it names; a named pair that is not open is ignored.
+    takes the union of what it names; a named pair that is not open is ignored. Naming either
+    person of a ``changed`` mark takes both, so a slot given to another person never keeps the
+    one it replaces as well.
     """
     days, project_ids, pairs = set(days), set(project_ids), set(pairs)
     everything = not (days or project_ids or pairs)
@@ -207,6 +209,10 @@ def selected(
             continue
         whole = everything or slot["date"] in days or slot["project_id"] in project_ids
         take = open_now if whole else {u for k, u in pairs if k == slot["key"] and u in open_now}
+        for mark in marks(slot) if take and not whole else ():
+            pair = {mark["user_id"], mark["replaces"]}
+            if mark["mark"] == "changed" and pair & take:
+                take |= pair & open_now
         if take:
             chosen[slot["key"]] = take
     return chosen

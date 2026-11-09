@@ -582,3 +582,100 @@ async def test_a_need_whose_headcount_changed_is_out_of_date(
     assert answer.status_code == 409, answer.text
     assert [e["cause"] for e in answer.json()["errors"]] == ["changed"]
     assert await roster_count(test_db) == 0
+
+
+async def test_a_manager_placed_by_hand_then_deactivated_is_refused_on_a_matching_fingerprint(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R14: the fingerprint leaves out non-candidates, so an edited copy is always judged."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    manager = str(seed_users["manager"].id)
+    key = slot_on((await review(async_client, admin, job)).json(), WEDNESDAY)["key"]
+    placed = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "assign", "key": key, "user_id": manager, "override_reason": "covering"},
+        headers=admin,
+    )
+    assert placed.status_code == 200, placed.text
+    gone = await async_client.post(f"/api/v1/employees/{manager}/deactivate", headers=admin)
+    assert gone.status_code == 200, gone.text
+
+    answer = await async_client.post(f"{JOBS}/{job['id']}/accept", headers=admin)
+
+    assert answer.status_code == 409, answer.text
+    assert "warnings.employee_inactive" in [e.get("code") for e in answer.json()["errors"]]
+    assert await roster_count(test_db) == 0
+
+
+async def test_naming_one_person_of_a_changed_pair_takes_the_person_replaced(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R15: accepting the newcomer alone never leaves both on a full draft."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    made = (await add_shift(async_client, admin, project, WEDNESDAY))["shift"]
+    worker = str(seed_users["employee"].id)
+    assert (await assign(async_client, admin, made["id"], worker)).status_code == 201
+    job = await proposed(async_client, admin)
+    dana = await employee(async_client, admin, "Dana Levi")
+    key = f"draft:{made['id']}"
+    swapped = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "unassign", "key": key, "user_id": worker},
+        headers=admin,
+    )
+    assert swapped.status_code == 200, swapped.text
+    added = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "assign", "key": key, "user_id": dana, "override_reason": "covering"},
+        headers=admin,
+    )
+    assert added.status_code == 200, added.text
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/accept",
+        json={"assignments": [{"key": key, "user_id": dana}]},
+        headers=admin,
+    )
+
+    assert answer.status_code == 200, answer.text
+    on = await test_db.execute(
+        text("SELECT user_id::text FROM assignments WHERE shift_id = :s"), {"s": made["id"]}
+    )
+    assert [u for (u,) in on] == [dana]
+
+
+async def test_a_draft_whose_times_moved_is_out_of_date(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """R16: the same people on a draft at other times is a changed draft."""
+    admin = await headers_for(async_client, "admin")
+    project = await staffed_project(async_client, admin)
+    made = (await add_shift(async_client, admin, project, WEDNESDAY))["shift"]
+    worker = str(seed_users["employee"].id)
+    assert (await assign(async_client, admin, made["id"], worker)).status_code == 201
+    job = await proposed(async_client, admin)
+    key = f"draft:{made['id']}"
+    dropped = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "unassign", "key": key, "user_id": worker},
+        headers=admin,
+    )
+    assert dropped.status_code == 200, dropped.text
+    await test_db.execute(
+        text(
+            "UPDATE shifts SET starts_at = starts_at + interval '1 hour', "
+            "ends_at = ends_at + interval '1 hour' WHERE id = :s"
+        ),
+        {"s": made["id"]},
+    )
+    await test_db.commit()
+
+    answer = await async_client.post(
+        f"{JOBS}/{job['id']}/accept", json={"days": [WEDNESDAY.isoformat()]}, headers=admin
+    )
+
+    assert answer.status_code == 409, answer.text
+    assert [e["cause"] for e in answer.json()["errors"]] == ["changed"]

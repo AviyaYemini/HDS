@@ -34,7 +34,7 @@ const review = (version: number, people: string[]) => ({
       starts_at: "2027-06-07T04:00:00Z",
       ends_at: "2027-06-07T12:00:00Z",
       headcount: 1,
-      kept: [],
+      kept: [] as string[],
       people: people.map((p) => ({ user_id: p, by: "solver", locked: false, override: null })),
       places: Math.max(0, 1 - people.length),
       marks: people.map((p) => ({ mark: "added", user_id: p, replaces: null, accepted: false })),
@@ -87,4 +87,18 @@ test("a break asks for a reason, and keeping it sends the reason with the same e
     { op: "assign", key: KEY, user_id: BEN },
     { op: "assign", key: KEY, user_id: BEN, override_reason: "One more is needed" },
   ]);
+});
+
+test("staff kept on a draft the run could not place are shown, and not offered for edits", async () => {
+  const api = new FakeApi();
+  const body = review(0, [ANN]);
+  body.slots[0]!.kept = [BEN];
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, body));
+  const session = await signedIn(api);
+  await renderWith(session, <ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} />);
+
+  expect(await screen.findByTestId("proposal-kept")).toBeTruthy();
+  expect(screen.getByText("Ben")).toBeTruthy();
+  // Ann is the proposal's, so her name is a button that opens the edits; Ben's is text only.
+  expect(screen.getAllByTestId("review-person")).toHaveLength(1);
 });
