@@ -62,6 +62,7 @@ from hds.models.special_day import SpecialDay
 from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 from hds.repositories.saved_view import SavedViewRepository
+from hds.repositories.user import UserRepository
 from hds.scripts.seed_dev import SITE_ZONE, _sunday_of
 from hds.services.saved_view import SavedViewService
 from hds.wiring import (
@@ -332,18 +333,23 @@ def _user(
     client_id: uuid.UUID | None = None,
     rate: decimal.Decimal | None = None,
 ) -> User:
+    # The repository's own step stamps an account created active (only it may write the activation
+    # time) and stores the address as the app does; the id is the seed's, drawn in order.
     user = User(
         id=_next_id(rng),
         organisation_id=org.id,
-        email=email,
-        full_name=name,
-        role=role,
-        client_id=client_id,
-        password_hash=password_hash,
-        default_hourly_rate=rate,
-        is_active=True,
-        is_deleted=False,
-        activated_at=datetime.datetime.now(datetime.UTC),
+        **UserRepository._with_activation(
+            {
+                "email": email,
+                "full_name": name,
+                "role": role,
+                "client_id": client_id,
+                "password_hash": password_hash,
+                "default_hourly_rate": rate,
+                "is_active": True,
+                "is_deleted": False,
+            }
+        ),
     )
     db.add(user)
     return user
@@ -712,6 +718,15 @@ async def _week(
             job_id = job.id
     while await run_once(factory) is not None:
         pass
+    async with factory() as db:
+        status, error = (
+            await db.execute(
+                select(ScheduleJob.status, ScheduleJob.error_code).where(ScheduleJob.id == job_id)
+            )
+        ).one()
+    if status != "succeeded":
+        # Stop here, loudly: the next run makes a new run for the week (a failed one is not reused).
+        raise RuntimeError(f"the run for the week of {first} ended {status} ({error})")
     if publish:
         async with factory() as db:
             state = (
