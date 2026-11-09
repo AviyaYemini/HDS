@@ -219,7 +219,7 @@ def _unfilled(
                 raise SolverError(f"{p} could take an empty place on {slot.key}")
             counts[code] += 1
             if code in (MINIMUM_REST, WEEKLY_MAXIMUM):
-                found_detail = roster.detail(p, slot)
+                found_detail = roster.detail(p, slot, code)
                 if found_detail is not None:
                     named.setdefault(code, []).append(found_detail)
         reasons = tuple(

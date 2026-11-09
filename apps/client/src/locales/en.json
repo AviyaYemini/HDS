@@ -817,7 +817,7 @@
   "runs.person_numbers": "{{person}}: {{numbers}}",
   "runs.numbers.rest": "{{have}} h rest, needs {{need}} h",
   "runs.numbers.weekly": "{{worked}} h this week, {{more}} h more, over the {{limit}} h cap",
-  "review.why_empty": "Why it is empty",
+  "review.why_empty": "Why it stayed empty when the run was made",
   "review.cover_title": "Who else could cover",
   "review.cover_free": "Free then",
   "review.cover_would_rather_not": "Free, but would rather not",

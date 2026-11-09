@@ -80,6 +80,10 @@ async def test_guards_elsewhere_are_offered_free_or_with_the_rule_they_break(
     assert all(set(o) == OPTION_FIELDS for o in body["options"])
     assert set(body) == {"key", "options", "totals"}
     assert taken["id"] not in answer.text and trainer_project["id"] not in answer.text
+    # The average counts those who work: every active Employee, not the Admin and Manager idle here.
+    listed = (await async_client.get("/api/v1/employees", headers=admin)).json()["items"]
+    employees = [p for p in listed if p["role"] == "employee" and p["is_active"]]
+    assert body["totals"]["people"] == len(employees)
 
 
 async def test_rest_is_given_with_its_numbers(

@@ -111,7 +111,7 @@ it across every project.
 
 ### Close
 
-- [ ] T029 Close group B as the template says. Mutants (≤ 3, who can see what): cover including another project's shift id or site in its answer; cover answering a Manager for a run they don't fully manage; the free check skipping shifts outside the run's projects. Commit `feat(scheduling): explain every empty slot and offer who else could cover (…)`. **PR 2 ready**: once-per-PR steps
+- [x] T029 Close group B as the template says (done 2026-11-09: the three mutants below all failed the cover tests; scoped `make ci-local` green; /code-review R24 to R33, eight fixed and two won't-fix). Mutants (≤ 3, who can see what): cover including another project's shift id or site in its answer; cover answering a Manager for a run they don't fully manage; the free check skipping shifts outside the run's projects. Commit `feat(scheduling): explain every empty slot and offer who else could cover (…)`. **PR 2 ready**: once-per-PR steps
 
 ---
 

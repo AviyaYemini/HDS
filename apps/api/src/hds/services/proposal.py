@@ -76,6 +76,11 @@ class ProposalService:
             NotFoundError: Not in the organisation (HTTP 404).
             ConflictError: ``schedule.not_ready`` when the job has no proposal (HTTP 409).
         """
+        job = await self._readable(actor, id)
+        return job, view(proposal_copy.of(job.current, job.result))
+
+    async def _readable(self, actor: User, id: uuid.UUID) -> ScheduleJob:
+        """The job, once ``actor`` may read its proposal and it has one (see ``read``)."""
         ensure_role(actor, *MANAGER_ROLES)
         job = await self._jobs.get(actor, id)
         await self._jobs.require_scope_of(actor, job)
@@ -83,7 +88,7 @@ class ProposalService:
             raise ConflictError(
                 code="schedule.not_ready", detail="The job has no proposal to read."
             )
-        return job, view(proposal_copy.of(job.current, job.result))
+        return job
 
     async def edit(
         self, actor: User, id: uuid.UUID, op: Mapping[str, Any], if_match: int | None = None
@@ -201,7 +206,7 @@ class ProposalService:
             NotFoundError: Not in the organisation, or no slot ``key`` (HTTP 404).
             ConflictError: ``schedule.not_ready`` when the job has no proposal (HTTP 409).
         """
-        job, _ = await self.read(actor, id)
+        job = await self._readable(actor, id)
         work = proposal_copy.of(job.current, job.result)
         if proposal_copy.find(work, key) is None:
             raise NotFoundError(resource="Slot", id=slot_id(key))
@@ -234,8 +239,13 @@ class ProposalService:
             s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
         }
         names = {u.id: u.full_name for u in staff}
-        found = covering.options(problem, assigned, key, names)
-        people, minutes, nights, weekends = covering.totals(problem, assigned)
+        loaded = covering.loads(problem, assigned)
+        found = covering.options(problem, assigned, key, names, loaded)
+        # The average counts the people who work shifts: every Employee, and a Manager or Admin
+        # only when they have hours in the range, so idle office staff never pull it down.
+        worked = loaded[0]
+        among = [u.id for u in staff if u.role == UserRole.employee or worked[u.id] > 0]
+        people, minutes, nights, weekends = covering.totals(loaded, among)
         return {
             "key": key,
             "options": [

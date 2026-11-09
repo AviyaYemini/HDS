@@ -101,3 +101,9 @@ describe("a rule's numbers in words (008 FR-013)", () => {
     expect(reasonKey("schedule.new_rule", (k) => known.has(k))).toBe("runs.reasons.other");
   });
 });
+
+test("a rest just short of the minimum never reads as meeting it (R26)", () => {
+  expect(numbersOf({ code: "schedule.minimum_rest", have: 599, need: 600 }, "en")).toEqual({ key: "runs.numbers.rest", values: { have: "9.9", need: "10" } });
+  expect(hours(599, "en", "down")).toBe("9.9");
+  expect(hours(601, "en", "up")).toBe("10.1");
+});

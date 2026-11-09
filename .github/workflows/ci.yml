@@ -540,23 +540,29 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: apps/client
-      # pnpm passes the flags on to the script's last command, playwright test. The sweep's titles
-      # end "<theme>: every screen passes axe ...", so ", light:" never matches the high-contrast one.
+      # The web build both steps below test, as `pnpm e2e` makes it, on its own: a failed build
+      # stops the shard here instead of failing every test after it.
+      - name: The web build
+        id: build
+        run: EXPO_PUBLIC_API_URL=http://localhost:8100 EXPO_PUBLIC_PREVIEWS=1 pnpm exec expo export --platform web --output-dir dist
+        working-directory: apps/client
       - name: Every spec but the sweep, shard ${{ matrix.shard }} of 4
-        run: pnpm e2e --shard=${{ matrix.shard }}/4 --grep-invert "every screen passes axe"
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4 --grep-invert "every screen passes axe"
         working-directory: apps/client
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/specs
-      # Run even when the step above failed, so both report.
+      # Run even when the step above failed, so both report, but only on a build that worked. The
+      # sweep's titles end "<theme>: every screen passes axe ...", so ", light:" never matches the
+      # high-contrast one.
       - name: The accessibility sweep, ${{ matrix.theme }}
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm exec playwright test tests/e2e/ux/h-a11y-sweep.spec.ts --grep ", ${{ matrix.theme }}:"
         working-directory: apps/client
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/sweep
       # A theme added to the sweep but to no shard above would never run: none may be left over.
       - name: Every sweep test is in a shard
-        if: matrix.shard == 1
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         run: |
           left=$(E2E_EXTERNAL_API=1 pnpm exec playwright test --list tests/e2e/ux/h-a11y-sweep.spec.ts \
             --grep-invert ", (light|dark|high-contrast-light|high-contrast-dark):" | grep -c ' › ' || true)

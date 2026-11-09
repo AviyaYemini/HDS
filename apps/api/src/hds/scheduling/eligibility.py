@@ -171,13 +171,15 @@ class Roster:
             return NEEDED_ELSEWHERE
         return None
 
-    def detail(self, person: uuid.UUID, slot: Slot) -> Blocked | None:
-        """The numbers behind ``refusal`` when it is minimum rest or the weekly maximum, else None.
+    def detail(self, person: uuid.UUID, slot: Slot, code: str | None) -> Blocked | None:
+        """The numbers behind ``code``, ``refusal``'s answer, for rest or the weekly maximum.
 
-        Rest is the shortest rest ``slot`` would leave beside a fixed shift; the week counts the
-        fixed shifts of ``slot``'s week (research P10). Built from the same checks as ``refusal``.
+        ``None`` for any other code. Rest is the shortest rest ``slot`` would leave beside a fixed
+        shift; the week counts the fixed shifts of ``slot``'s week (research P10), as ``refusal``
+        does. The caller passes the code it already has, so the bookings are not judged twice.
         """
-        code = self.refusal(person, slot)
+        if code not in (MINIMUM_REST, WEEKLY_MAXIMUM):
+            return None
         settings = self._settings
         fixed = [b for b in self.bookings(person) if b.fixed and b.key != slot.key]
         if code == MINIMUM_REST:

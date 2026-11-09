@@ -817,7 +817,7 @@
   "runs.person_numbers": "{{person}}: {{numbers}}",
   "runs.numbers.rest": "{{have}} ש׳ מנוחה, נדרשות {{need}} ש׳",
   "runs.numbers.weekly": "{{worked}} ש׳ השבוע, ועוד {{more}} ש׳, מעל התקרה של {{limit}} ש׳",
-  "review.why_empty": "למה נשאר ריק",
+  "review.why_empty": "למה נשאר ריק כשההרצה נעשתה",
   "review.cover_title": "אפשרויות כיסוי",
   "review.cover_free": "ללא התנגשות",
   "review.cover_would_rather_not": "ללא התנגשות, אבל עדיף שלא",

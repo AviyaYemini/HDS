@@ -80,20 +80,21 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
   const [reason, setReason] = useState("");
   // Who else could cover the slot being assigned to (FR-014): read each time the sheet opens on a
   // slot, since the working copy changes with every edit.
-  const [fetched, setFetched] = useState<{ key: string; version: number; data: Cover | null; error: unknown } | null>(null);
+  const [fetched, setFetched] = useState<{ key: string; version: number; attempt: number; data: Cover | null; error: unknown } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const shownVersion = review?.version ?? loaded.data?.version ?? -1;
   useEffect(() => {
     if (assignTo === null) return;
     let live = true;
     call(session.api.GET("/api/v1/schedule-jobs/{id}/slots/{key}/cover", { params: { path: { id: job.id, key: assignTo.key } } }))
-      .then((data) => live && setFetched({ key: assignTo.key, version: shownVersion, data, error: null }))
-      .catch((error: unknown) => live && setFetched({ key: assignTo.key, version: shownVersion, data: null, error }));
+      .then((data) => live && setFetched({ key: assignTo.key, version: shownVersion, attempt, data, error: null }))
+      .catch((error: unknown) => live && setFetched({ key: assignTo.key, version: shownVersion, attempt, data: null, error }));
     return () => {
       live = false;
     };
-  }, [assignTo, job.id, session.api, shownVersion]);
+  }, [assignTo, job.id, session.api, shownVersion, attempt]);
   // The answer for the slot open now, read on the version shown; anything else is still loading.
-  const cover = assignTo && fetched?.key === assignTo.key && fetched.version === shownVersion ? fetched : null;
+  const cover = assignTo && fetched?.key === assignTo.key && fetched.version === shownVersion && fetched.attempt === attempt ? fetched : null;
 
   if (loaded.error && !shown) {
     return <InlineBanner tone="warning" title={errorText(loaded.error)} action={{ label: t("common.retry"), onPress: loaded.reload }} />;
@@ -394,7 +395,24 @@ export function ReviewWeek({ job, names, people, onDecided }: Props) {
               {t("review.cover_title")}
             </Txt>
             {cover?.error ? (
-              <InlineBanner tone="warning" title={errorText(codeOf(cover.error))} />
+              // The ranked list could not be read: say so, offer it again, and still let the
+              // manager pick from the staff, the rules then checked by the edit itself (R24).
+              <View style={styles.panel}>
+                <InlineBanner tone="warning" title={errorText(codeOf(cover.error))} action={{ label: t("common.retry"), onPress: () => setAttempt((n) => n + 1) }} />
+                {people
+                  .filter((p) => !assignTo.people.some((q) => q.user_id === p.id))
+                  .map((person) => (
+                    <Button
+                      key={person.id}
+                      variant="quiet"
+                      icon="user"
+                      label={person.full_name}
+                      testID="review-assign-option"
+                      web={{ dataSet: { userId: person.id } }}
+                      onPress={() => void send({ op: "assign", key: assignTo.key, user_id: person.id })}
+                    />
+                  ))}
+              </View>
             ) : !cover?.data ? (
               <SkeletonRows rows={3} />
             ) : (

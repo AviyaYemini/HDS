@@ -14,12 +14,12 @@ tested, each with the rule and, for rest and the weekly maximum, the numbers. Ne
 
 import uuid
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from .eligibility import Roster
-from .problem import MINIMUM_REST, REASON_CODES, WEEKLY_MAXIMUM, Blocked, Problem, Slot
+from .problem import REASON_CODES, Blocked, Problem, Slot
 from .problem import minutes as to_minutes
 from .rules import local_day, sunday_index
 
@@ -75,16 +75,20 @@ def loads(
     return worked, nights, weekends
 
 
+Loads = tuple[Counter[uuid.UUID], Counter[uuid.UUID], Counter[uuid.UUID]]
+
+
 def options(
     problem: Problem,
     assigned: Mapping[str, Sequence[uuid.UUID]],
     key: str,
     names: Mapping[uuid.UUID, str] | None = None,
+    loaded: Loads | None = None,
 ) -> tuple[Option, ...]:
     """Every active candidate not on slot ``key``, free ones first (see the module docstring).
 
     ``assigned`` is the working copy: the candidates on each slot. ``names`` breaks ties by name;
-    without it, by id.
+    without it, by id. ``loaded`` is ``loads(problem, assigned)`` when the caller has it already.
 
     Raises:
         KeyError: ``key`` is not a slot of ``problem``.
@@ -95,7 +99,7 @@ def options(
     for slot in problem.slots:
         for person in assigned.get(slot.key, ()):
             roster.book(person, slot, fixed=True)
-    worked, nights, weekends = loads(problem, assigned)
+    worked, nights, weekends = loaded or loads(problem, assigned)
     weekend = int(_weekend(target.starts_at, target.zone))
     on = {*target.kept, *assigned.get(key, ())}
     found: list[Option] = []
@@ -104,7 +108,7 @@ def options(
         if not candidate.is_active or person in on:
             continue
         code = roster.refusal(person, target)
-        detail = roster.detail(person, target) if code in (MINIMUM_REST, WEEKLY_MAXIMUM) else None
+        detail = roster.detail(person, target, code)
         wants, dislikes = roster.preference(person, target)
         found.append(
             Option(
@@ -130,19 +134,17 @@ def options(
     return tuple(sorted(found, key=rank))
 
 
-def totals(
-    problem: Problem, assigned: Mapping[str, Sequence[uuid.UUID]]
-) -> tuple[int, int, int, int]:
-    """How many active candidates there are, and their minutes, nights and weekend shifts in all.
+def totals(loaded: Loads, among: Collection[uuid.UUID]) -> tuple[int, int, int, int]:
+    """How many people ``among`` counts, and their minutes, nights and weekend shifts in all.
 
     What a person's numbers in ``options`` are set against: their average is each total over the
-    count ("2 nights over the average"). Whole numbers, so nothing is rounded here.
+    count ("2 nights over the average"). Whole numbers, so nothing is rounded here. ``loaded`` is
+    ``loads(problem, assigned)``.
     """
-    people = [c.id for c in problem.candidates if c.is_active]
-    worked, nights, weekends = loads(problem, assigned)
+    worked, nights, weekends = loaded
     return (
-        len(people),
-        sum(worked[p] for p in people),
-        sum(nights[p] for p in people),
-        sum(weekends[p] for p in people),
+        len(among),
+        sum(worked[p] for p in among),
+        sum(nights[p] for p in among),
+        sum(weekends[p] for p in among),
     )

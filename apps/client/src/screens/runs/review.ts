@@ -118,9 +118,14 @@ export interface Numbers {
   limit?: number | null;
 }
 
-/** `minutes` as hours, to one decimal place at most, in `language`'s digits. */
-export function hours(minutes: number, language: string): string {
-  return new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(minutes / 60);
+/**
+ * `minutes` as hours, to one decimal place at most, in `language`'s digits. `round` says which way:
+ * a rule's numbers round so a person just short of a limit never reads as meeting it (R26).
+ */
+export function hours(minutes: number, language: string, round: "near" | "down" | "up" = "near"): string {
+  const tenths = minutes / 6;
+  const whole = round === "down" ? Math.floor(tenths) : round === "up" ? Math.ceil(tenths) : Math.round(tenths);
+  return new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(whole / 10);
 }
 
 /**
@@ -129,12 +134,16 @@ export function hours(minutes: number, language: string): string {
  */
 export function numbersOf(found: Numbers, language: string): { key: string; values: Record<string, string> } | null {
   if (found.code === "schedule.minimum_rest" && found.have != null && found.need != null) {
-    return { key: "runs.numbers.rest", values: { have: hours(found.have, language), need: hours(found.need, language) } };
+    return { key: "runs.numbers.rest", values: { have: hours(found.have, language, "down"), need: hours(found.need, language, "up") } };
   }
   if (found.code === "schedule.weekly_maximum" && found.week_minutes != null && found.slot_minutes != null && found.limit != null) {
     return {
       key: "runs.numbers.weekly",
-      values: { worked: hours(found.week_minutes, language), more: hours(found.slot_minutes, language), limit: hours(found.limit, language) },
+      values: {
+        worked: hours(found.week_minutes, language, "up"),
+        more: hours(found.slot_minutes, language, "up"),
+        limit: hours(found.limit, language, "down"),
+      },
     };
   }
   return null;

@@ -150,3 +150,24 @@ test("who else could cover: free people with their load, then a rule with its nu
   });
   expect(api.calls("POST", `/api/v1/schedule-jobs/${JOB}/edits`).map((c) => c.body)).toEqual([{ op: "assign", key: KEY, user_id: ANN }]);
 });
+
+test("when who else could cover cannot be read, the staff are still offered, with a retry (R24)", async () => {
+  const api = new FakeApi();
+  api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
+  api.on("GET", COVER, json(503, { type: "x", title: "x", status: 503, code: "errors.unavailable" }), json(200, cover(option(BEN))));
+  const session = await signedIn(api);
+  await renderWith(session, <ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} />);
+
+  await act(async () => {
+    fireEvent.press(await screen.findByTestId("action-review-assign"));
+  });
+
+  // Ann is on the slot already; Ben is offered from the staff list, and the retry reads the list.
+  expect(await screen.findByText("Ben")).toBeTruthy();
+  expect(screen.queryByTestId("review-cover-option")).toBeNull();
+  await act(async () => {
+    fireEvent.press(screen.getByText("Try again"));
+  });
+  expect(await screen.findByTestId("review-cover-option")).toBeTruthy();
+  expect(api.calls("GET", COVER)).toHaveLength(2);
+});

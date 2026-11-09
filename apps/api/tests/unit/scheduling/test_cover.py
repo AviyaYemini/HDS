@@ -4,7 +4,7 @@ Covers: 008 FR-014, FR-016; research P11. The rules themselves are checked again
 tests/property/test_cover.py.
 """
 
-from hds.scheduling.cover import options
+from hds.scheduling.cover import loads, options, totals
 from hds.scheduling.problem import MINIMUM_REST, OVERLAP, UNAVAILABLE, Blocked
 from tests.unit.scheduling.factory import OTHER_PROJECT, day, entry, fixed, person, problem, slot
 
@@ -87,3 +87,13 @@ def test_shifts_in_every_project_count() -> None:
     (only,) = options(made, {}, morning.key)
 
     assert only.code == OVERLAP
+
+
+def test_the_totals_count_only_the_people_named_and_their_load_in_the_range() -> None:
+    morning = slot(day(2))
+    night = slot(day(0), "night")
+    made = problem([morning, night], [ANN, BEN, CAL])
+    loaded = loads(made, {night.key: (ANN.id,)})
+
+    assert totals(loaded, [ANN.id, BEN.id]) == (2, 8 * 60, 1, 0)
+    assert totals(loaded, []) == (0, 0, 0, 0)
