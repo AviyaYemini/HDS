@@ -79,6 +79,37 @@ def _span(day: dt.date, start: str, end: str) -> tuple[dt.datetime, dt.datetime]
     return starts.astimezone(dt.UTC), ends.astimezone(dt.UTC)
 
 
+def _own_span(
+    day: dt.date,
+    shift_start: dt.datetime,
+    shift_end: dt.datetime,
+    start: str | None,
+    end: str | None,
+) -> tuple[dt.datetime, dt.datetime]:
+    """A person's own times on a shift, each on the shift's own night.
+
+    02:00 on a 20:00-06:00 shift is the next morning; a start with no end runs to the shift's
+    end, and an end with no start begins at the shift's start.
+    """
+
+    def near(clock: str) -> dt.datetime:
+        # The day or the next, whichever puts the time nearest the shift.
+        def gap(moment: dt.datetime) -> dt.timedelta:
+            return max(shift_start - moment, moment - shift_end, dt.timedelta(0))
+
+        options = [
+            dt.datetime.combine(day + dt.timedelta(days=d), _time(clock), ZONE).astimezone(dt.UTC)
+            for d in (0, 1)
+        ]
+        return min(options, key=gap)
+
+    own_start = near(start) if start else shift_start
+    own_end = near(end) if end else shift_end
+    if own_end <= own_start:
+        own_end += dt.timedelta(days=1)
+    return own_start, own_end
+
+
 def _sunday(day: dt.date) -> dt.date:
     return day - dt.timedelta(days=(day.weekday() + 1) % 7)
 
@@ -277,7 +308,10 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
         if len(s["people"]) == 1 and sums:
             shift_rate = (Decimal(sums[0]) / _hours(s["start"], s["end"])).quantize(FOUR)
         elif s["people"] and (hourly := [e["hourly"] for e in s["people"] if "hourly" in e]):
-            shift_rate = Decimal(hourly[0]).quantize(FOUR)
+            # One rate for the whole shift only when everyone on it has the same; otherwise each
+            # person's own default rate applies (an assignment has no rate of its own).
+            if len(hourly) == len(s["people"]) and len(set(hourly)) == 1:
+                shift_rate = Decimal(hourly[0]).quantize(FOUR)
         shift = Shift(
             id=uuid.uuid4(),
             organisation_id=org.id,
@@ -299,8 +333,13 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
                 continue
             seen.add(person.id)
             own_start = own_end = None
-            if "start" in e and "end" in e and (e["start"], e["end"]) != (s["start"], s["end"]):
-                own_start, own_end = _span(day, e["start"], e["end"])
+            if ("start" in e or "end" in e) and (
+                e.get("start", s["start"]),
+                e.get("end", s["end"]),
+            ) != (s["start"], s["end"]):
+                own_start, own_end = _own_span(
+                    day, starts_at, ends_at, e.get("start"), e.get("end")
+                )
             pending.append(
                 Assignment(
                     id=uuid.uuid4(),

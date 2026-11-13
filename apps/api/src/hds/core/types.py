@@ -245,9 +245,10 @@ PercentOut = Annotated[
 ShareOut = Annotated[
     Decimal,
     PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
-    WithJsonSchema({"type": "string", "pattern": r"^-?[0-9]{1,6}\.[0-9]{2}$", "example": "18.40"}),
+    WithJsonSchema({"type": "string", "pattern": r"^-?[0-9]+\.[0-9]{2}$", "example": "18.40"}),
 ]
-"""A share in percent in a response, which may be negative (a loss), two decimals (CEO demo)."""
+"""A share in percent in a response, two decimals (CEO demo). A loss may run far below -100 when
+billing is small, so the digits before the point are not bounded."""
 
 Amount = Annotated[
     Decimal,

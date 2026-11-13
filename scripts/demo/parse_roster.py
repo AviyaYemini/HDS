@@ -187,7 +187,8 @@ def split_cell(value) -> tuple[list[dict], int]:
     text = str(value).replace("‏", "")
     if clean(text) in ("X", "x", "", "ּ"):
         return [], 0
-    pieces = [p for p in re.split(r"[,\n]|\s{3,}", text) if clean(p)]
+    # A comma between people splits them; a comma inside an amount ("1,200₪") does not.
+    pieces = [p for p in re.split(r"(?<!\d),|,(?!\d{3}(?!\d))|\n|\s{3,}", text) if clean(p)]
     people, open_places = [], 0
     for p in pieces:
         p = clean(p)

@@ -133,8 +133,10 @@ def validate(
             if not employee.is_active:
                 found.add(RuleWarning("warnings.employee_inactive", person, (slot.id,)))
             engagement = employee.engagement
+            # The shift's own start dates it, not the person's later start (as for availability).
+            shift = original[slot.id]
             if engagement is not None and not engagement.covers(
-                slot.project_id, local_day(slot.starts_at, slot.zone)
+                shift.project_id, local_day(shift.starts_at, shift.zone)
             ):
                 found.add(RuleWarning("warnings.temporary_outside", person, (slot.id,)))
     for slot in all_shifts:

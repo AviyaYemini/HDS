@@ -211,6 +211,22 @@ async def test_the_fingerprint_is_stable_and_follows_every_input(
             json={"ids": [project["types"]["morning"], project["types"]["night"]]},
             headers=admin,
         ),
+        # A temporary worker's engagement is an input, and a shorter one too (CodeRabbit, PR 28).
+        lambda: async_client.patch(
+            f"/api/v1/employees/{employee}",
+            json={
+                "employment_type": "temporary",
+                "engaged_from": SUNDAY.isoformat(),
+                "engaged_until": (SUNDAY + timedelta(30)).isoformat(),
+                "project_ids": [project["id"]],
+            },
+            headers=admin,
+        ),
+        lambda: async_client.patch(
+            f"/api/v1/employees/{employee}",
+            json={"engaged_until": (SUNDAY + timedelta(20)).isoformat()},
+            headers=admin,
+        ),
         lambda: async_client.post(f"/api/v1/employees/{employee}/deactivate", headers=admin),
     ]
     for change in changes:

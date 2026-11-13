@@ -624,6 +624,23 @@ class RosterService:
         await self._shifts.touch(shift.id, actor.organisation_id)
         return Judged(updated, await self._judge(actor, [shift.id]))
 
+    async def person(self, actor: User, user_id: uuid.UUID) -> tuple[str, bool, bool] | None:
+        """An assigned person's name, whether active and whether temporary, for a change's answer.
+
+        The same facts the roster read gives each assignment, so the two never disagree.
+
+        Args:
+            actor: The signed-in Manager or Admin.
+            user_id: The person on the assignment.
+
+        Returns:
+            ``(full_name, is_active, temporary)``, or ``None`` outside the organisation.
+        """
+        user = await self._users.get_by_id(user_id, actor.organisation_id)
+        if user is None:
+            return None
+        return (user.full_name, user.is_active, user.employment_type == "temporary")
+
     async def fresh_shift(self, actor: User, id: uuid.UUID) -> Shift:
         """The shift as stored now, for its new ``etag`` after a change (007 FR-041)."""
         shift = await self._shifts.get_locked(id, actor.organisation_id)

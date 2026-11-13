@@ -31,7 +31,7 @@ from hds.repositories.scheduling_inputs import (
 )
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
-from hds.scheduling import Entry, Problem, Settings, ShiftSlot, Slot, local_span
+from hds.scheduling import Employee, Entry, Problem, Settings, ShiftSlot, Slot, local_span
 from hds.scheduling.rules import local_day, sunday_index, week_start
 from hds.services.temporary import as_employee
 
@@ -376,7 +376,7 @@ def fingerprint(
             + sorted(f"{p}@{at(a)}/{at(b)}" for p, a, b in f.own_times)
             for f in sorted(problem.fixed, key=lambda f: str(f.id))
         ],
-        "candidates": sorted(f"{c.id}:{c.is_active}" for c in problem.candidates),
+        "candidates": sorted(_candidate(c) for c in problem.candidates),
         "entries": sorted(
             json.dumps(
                 [
@@ -397,3 +397,16 @@ def fingerprint(
         "short": [[str(s.shift_id), s.needed, s.assigned] for s in short],
     }
     return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
+
+
+def _candidate(c: Employee) -> str:
+    """A candidate for the fingerprint: a temporary worker's projects and dates count too.
+
+    Only when set, so the fingerprints of permanent staff, and of earlier proposals, still match.
+    """
+    base = f"{c.id}:{c.is_active}"
+    e = c.engagement
+    if e is None:
+        return base
+    projects = ",".join(sorted(str(p) for p in e.projects))
+    return f"{base}:{projects}:{e.first_day.isoformat()}:{e.last_day.isoformat()}"
