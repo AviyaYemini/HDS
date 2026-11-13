@@ -22,8 +22,8 @@ import { addDays, formatHeaderDate, formatTimeRange, startOfWeek, todayIn, DEFAU
 import { AssignSheet } from "./AssignSheet";
 import { Block } from "./Block";
 import { PersonSheet } from "./PersonSheet";
-import { ProjectChooser } from "./ProjectChooser";
 import { PublishSheet } from "./PublishSheet";
+import { RosterSheet } from "./RosterSheet";
 import { WarningSheet } from "./WarningSheet";
 import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
 import { useCopyNextWeek } from "./useCopyNextWeek";
@@ -66,12 +66,8 @@ export function RosterScreen() {
   const lockedNow = personOn ? !!personOn.shift.assignments.find((a) => a.id === personOn.assignmentId)?.locked : false;
 
   if (!project) {
-    return (
-      <Screen testID="screen-roster">
-        <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")} />
-        <ProjectChooser week={params.week} stay={params.all === "1"} />
-      </Screen>
-    );
+    // The whole week in the managers' sheet layout (CEO demo, slide 7); a project's name opens its week.
+    return <RosterSheet weekParam={params.week} />;
   }
 
   const loading = types.data === null || shifts.data === null;
@@ -93,7 +89,7 @@ export function RosterScreen() {
     <Screen testID="screen-roster" fixed={isDesktop}>
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")}>
         {/* Every project, the read-only ones included, even for the manager of one (group O review). */}
-        <LinkPressable href="/roster?all=1" testID="action-all-projects" style={styles.allProjects}>
+        <LinkPressable href={`/roster?week=${week}`} testID="action-all-projects" style={styles.allProjects}>
           <Txt role="label">{t("roster.all_projects")}</Txt>
         </LinkPressable>
         <Button variant="secondary" icon="undo" label={t("roster.undo")} onPress={() => void undo()} disabled={history.length === 0} testID="action-undo-roster" />
