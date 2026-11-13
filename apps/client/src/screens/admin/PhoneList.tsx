@@ -4,6 +4,7 @@
  * actions; and a column's value as plain text.
  */
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { Button, SearchablePicker, SkeletonRows, Txt, type Column, type SortDirection } from "../../design/components";
@@ -18,6 +19,13 @@ export function cellText<Row>(column: Column<Row>, row: Row): string {
   if (column.text) return column.text(row);
   const value = column.render ? column.render(row) : (row as Record<string, unknown>)[column.key];
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+/** A record as a phone card (the owner, 2026-11-13): a second line, key numbers and chips. */
+export interface PhoneCard {
+  subtitle?: string;
+  figures: readonly { label: string; value: string }[];
+  chips?: ReactNode;
 }
 
 /**
@@ -37,7 +45,9 @@ export function PhoneList<Row>({
   selecting = false,
   selected,
   onToggle,
+  card,
 }: {
+  card?: ((row: Row) => PhoneCard) | undefined;
   columns: readonly Column<Row>[];
   rows: readonly Row[];
   loading: boolean;
@@ -111,9 +121,13 @@ export function PhoneList<Row>({
                   {first ? cellText(first, row) : ""}
                 </Txt>
               </View>
-              <Txt role="meta" tone="secondary">
-                {rest.map((c) => cellText(c, row)).filter((v) => v && v !== "—").join(" · ")}
-              </Txt>
+              {card ? (
+                <PhoneCardBody card={card(row)} />
+              ) : (
+                <Txt role="meta" tone="secondary">
+                  {rest.map((c) => cellText(c, row)).filter((v) => v && v !== "—").join(" · ")}
+                </Txt>
+              )}
             </Pressable>
           ))}
         </View>
@@ -130,4 +144,35 @@ const styles = StyleSheet.create({
   item: { gap: 2, paddingVertical: 10, minHeight: 48, borderBottomWidth: 1 },
   itemHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   itemTitle: { flexGrow: 1, flexShrink: 1 },
+});
+
+function PhoneCardBody({ card }: { card: PhoneCard }) {
+  return (
+    <>
+      {card.subtitle ? (
+        <Txt role="meta" tone="secondary" numberOfLines={1}>
+          {card.subtitle}
+        </Txt>
+      ) : null}
+      <View style={cardStyles.figures}>
+        {card.figures.map((f) => (
+          <View key={f.label} style={cardStyles.figure}>
+            <Txt role="eyebrow" tone="secondary">
+              {f.label}
+            </Txt>
+            <Txt role="body" numeric numberOfLines={1}>
+              {f.value}
+            </Txt>
+          </View>
+        ))}
+      </View>
+      {card.chips ? <View style={cardStyles.chips}>{card.chips}</View> : null}
+    </>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  figures: { flexDirection: "row", flexWrap: "wrap", gap: 20, marginTop: 4 },
+  figure: { minWidth: 64 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
 });

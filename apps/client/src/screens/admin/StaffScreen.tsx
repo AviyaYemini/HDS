@@ -135,6 +135,26 @@ export function StaffScreen() {
       emptyTitle={t("admin.empty.staff_title")}
       emptyBody={t("admin.empty.staff_body")}
       filter={(u) => passesType(u, typeFilter)}
+      // A phone's card: the role and e-mail, the hours this week and month and the rate, and the chips.
+      phoneCard={(u) => {
+        const job = employmentOf(u);
+        return {
+          subtitle: `${t(`role.${u.role}`)} · ${u.email}`,
+          figures: [
+            { label: t("staff.col.week"), value: hoursText(weekHours, u.id) },
+            { label: t("staff.col.month"), value: hoursText(monthHours, u.id) },
+            ...(u.default_hourly_rate ? [{ label: t("entity.default_hourly_rate"), value: formatMoney(moneyText(u.default_hourly_rate), i18n.language) }] : []),
+          ],
+          chips: (
+            <>
+              <StatusChip status={u.is_active ? "success" : "neutral"} label={u.is_active ? t("entity.active") : t("entity.inactive")} />
+              {job.employment_type === "temporary" ? (
+                <StatusChip status="info" label={job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")} testID={`card-temporary-${u.id}`} />
+              ) : null}
+            </>
+          ),
+        };
+      }}
       toolbar={
         <SegmentedControl<TypeFilter>
           label={t("staff.type_filter")}

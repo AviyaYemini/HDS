@@ -39,13 +39,14 @@ beforeEach(async () => {
 test("hours and the temporary chip, with no weekly-limit flag", async () => {
   router.__setSearchParams({});
   await renderWith(await signedIn(api()), <StaffScreen />);
-  // At phone width (the tests' default) each record is a card whose second line carries the columns as text.
-  expect(await screen.findByText(/Active · Temporary · until 12\.02/, {}, { timeout: 5000 })).toBeTruthy();
-  expect(await screen.findByText(/45 h/, {}, { timeout: 5000 })).toBeTruthy();
+  // At phone width (the tests' default) each record is a card: the hours, the rate and the chips.
+  expect(await screen.findByTestId("card-temporary-u2", {}, { timeout: 5000 })).toHaveTextContent("Temporary · until 12.02");
+  expect(screen.queryByTestId("card-temporary-u1")).toBeNull();
+  expect(await screen.findByText("45 h", {}, { timeout: 5000 })).toBeTruthy();
+  expect(screen.getByText("120 h")).toBeTruthy();
+  expect(screen.getAllByText("This week · rostered").length).toBeGreaterThan(0);
   // No weekly-limit flag: warnings are out of the app's scope (the owner, 2026-11-13).
   expect(screen.queryByText(/Near 48/)).toBeNull();
-  expect(screen.getByText(/120 h/)).toBeTruthy();
-  expect(screen.getAllByText(/Temporary · until/)).toHaveLength(1);
 });
 
 test("?type=temporary shows only temporary workers", async () => {

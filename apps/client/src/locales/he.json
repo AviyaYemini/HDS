@@ -1001,8 +1001,8 @@
   "hc.bars.project": "שעות לפי פרויקט",
   "hc.bars.employee": "שעות לפי עובד",
   "hc.bars.client": "שעות לפי לקוח",
-  "hc.legend_project": "כהה אבטחה, בהיר הדרכה · השמונה הגדולים",
-  "hc.legend": "השמונה הגדולים",
+  "hc.legend_project": "כהה אבטחה, בהיר הדרכה · {{count}} הגדולים",
+  "hc.legend": "{{count}} הגדולים",
   "hc.col.project": "פרויקט",
   "hc.col.employee": "עובד",
   "hc.col.client": "לקוח",
@@ -1108,5 +1108,6 @@
   "snapshot.chart.others": "אחרים",
   "snapshot.chart.clients_summary": "חיוב של {{total}} ב-{{count}} פלחים; {{client}} מוביל עם {{pct}}%.",
   "snapshot.chart.people_title": "הרכב כוח אדם",
-  "snapshot.chart.people_summary": "{{permanent}} קבועים ו-{{temporary}} זמניים: {{pct}}% מכוח האדם זמני."
+  "snapshot.chart.people_summary": "{{permanent}} קבועים ו-{{temporary}} זמניים: {{pct}}% מכוח האדם זמני.",
+  "sheet.day_none": "אין משמרות ביום הזה."
 }

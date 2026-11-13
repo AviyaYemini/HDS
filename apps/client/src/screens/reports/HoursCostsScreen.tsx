@@ -10,10 +10,11 @@ import { StyleSheet, View } from "react-native";
 
 import { call, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { InlineBanner, PageTitle, SegmentedControl, SkeletonRows, Table, Txt, type Column } from "../../design/components";
+import { InlineBanner, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Table, Txt, type Column } from "../../design/components";
+import { useTheme } from "../../design/theme/ThemeProvider";
 import { Screen } from "../../design/components/Screen";
 import { DEFAULT_TIME_ZONE, formatMoney, formatNumericRange, presetRange, todayIn } from "../../locale";
-import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { CardList, ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { useLoad } from "../useLoad";
 import { usePage, useReportRange } from "./parts";
 
@@ -49,6 +50,7 @@ export function HoursCostsScreen() {
   const { t, i18n } = useTranslation();
   const { api } = useSession();
   const errorText = useErrorText();
+  const { isDesktop } = useTheme();
   const { setRange, asked } = useReportRange();
   const today = todayIn(DEFAULT_TIME_ZONE);
   // The deck's period buttons (slide 9) instead of an open calendar: the report's first screen is its figures.
@@ -82,7 +84,7 @@ export function HoursCostsScreen() {
     : [];
 
   const typeOf = (id: string) => projects.data?.find((p) => p.id === id)?.type;
-  const columns: BarColumn[] = topGroups(groups).map((g) => ({
+  const columns: BarColumn[] = topGroups(groups, isDesktop ? 8 : 5).map((g) => ({
     key: g.id,
     label: g.name,
     dark: groupBy === "project" && typeOf(g.id) === "training" ? 0 : Number(g.hours),
@@ -136,10 +138,27 @@ export function HoursCostsScreen() {
             <Split>
               <View style={styles.chart}>
                 <SectionHead title={t(`hc.bars.${groupBy}`)} />
-                <ColumnBars columns={columns} legend={groupBy === "project" ? t("hc.legend_project") : t("hc.legend")} />
+                <ColumnBars columns={columns} legend={groupBy === "project" ? t("hc.legend_project", { count: isDesktop ? 8 : 5 }) : t("hc.legend", { count: isDesktop ? 8 : 5 })} />
               </View>
               <View style={styles.table}>
-                <Table columns={tableColumns} rows={shown} keyOf={(g) => g.id} caption={t("hc.title")} testID="hc-table" />
+                {isDesktop ? (
+                  <Table columns={tableColumns} rows={shown} keyOf={(g) => g.id} caption={t("hc.title")} testID="hc-table" />
+                ) : (
+                  // A phone: a card a group, its hours, shifts and money, and a chip for missing rates.
+                  <CardList
+                    testID="hc-table"
+                    items={shown.map((g) => ({
+                      key: g.id,
+                      title: g.name,
+                      figures: [
+                        { label: t("hc.col.hours"), value: hours(g.hours) },
+                        ...(showBilling && g.billing != null ? [{ label: t("hc.col.billing"), value: money(g.billing) }] : [{ label: t("hc.col.shifts"), value: String(g.shifts) }]),
+                        ...(showPay && g.pay != null ? [{ label: t("hc.col.pay"), value: money(g.pay) }] : []),
+                      ],
+                      chips: g.shifts_missing_rate > 0 ? <StatusChip status="warning" label={missing(g)} /> : undefined,
+                    }))}
+                  />
+                )}
                 {pager}
               </View>
             </Split>

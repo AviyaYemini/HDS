@@ -19,7 +19,7 @@ import { webProps } from "../../design/web";
 import { hold } from "../../design/heldActions";
 import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
-import { PhoneList } from "./PhoneList";
+import { PhoneList, type PhoneCard } from "./PhoneList";
 import { fromViewQuery, readState, searched, sorted, toParams, viewQuery, type TableState } from "./tableState";
 import { shared } from "./tableStyles";
 
@@ -62,6 +62,8 @@ export interface AdminTableProps<Row> {
   toolbar?: ReactNode;
   /** Rows to keep, after loading and before the search (the screen's own filter). */
   filter?: (row: Row) => boolean;
+  /** On a phone: the card's second line, key numbers and chips, in place of the columns as one line. */
+  phoneCard?: (row: Row) => PhoneCard;
 }
 
 type Saved = { id: string; name: string; query: string };
@@ -94,6 +96,7 @@ export function AdminTable<Row>({
   emptyBody,
   toolbar,
   filter,
+  phoneCard,
 }: AdminTableProps<Row>) {
   const { t, i18n } = useTranslation();
   const session = useSession();
@@ -407,6 +410,7 @@ export function AdminTable<Row>({
         />
       ) : !isDesktop ? (
         <PhoneList
+          card={phoneCard}
           columns={columns}
           rows={shown}
           loading={rows.data === null}

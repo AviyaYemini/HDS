@@ -7,7 +7,7 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
@@ -19,9 +19,9 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
-import { weekDays } from "./model";
+import { weekDays, type Shift } from "./model";
 import { rosterHref } from "./ProjectChooser";
-import { buildSheet, isTemporary, rowEmpty, sheetTotals, shortName, withShifts, type SheetRow } from "./sheet";
+import { buildSheet, isTemporary, rowEmpty, sheetTotals, shortName, withShifts, type ClientGroup, type SheetRow } from "./sheet";
 
 const LABEL_WIDTH = 176;
 const DAY_MIN_WIDTH = 124;
@@ -42,7 +42,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const router = useRouter();
   const capabilities = useCapabilities();
   const errorText = useErrorText();
-  const { colors } = useTheme();
+  const { colors, isDesktop } = useTheme();
   const widths = useWidths();
   const today = todayIn(DEFAULT_TIME_ZONE);
   const week = startOfWeek(weekParam ?? today);
@@ -100,6 +100,10 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
     }
   };
 
+  // A phone shows one day at a time: today when it is in this week, else the week's Sunday.
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const day = pickedDay && days.includes(pickedDay) ? pickedDay : days.includes(today) ? today : days[0]!;
+  const nameOf = (id: string, full?: string | null) => full ?? names.get(id) ?? "";
   const goWeek = (to: string) => router.setParams({ week: to } as never);
   const failure = projects.error ?? clients.error ?? shifts.error;
   const rangeText = `${formatDay(days[0]!)} – ${formatDay(days[6]!)}`;
@@ -118,7 +122,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
           {totals.temporary > 0 ? ` · ${t("sheet.temporary_count", { count: totals.temporary })}` : ""}
         </Txt>
       ) : null}
-      {trimmed && trimmed.hidden > 0 && (groups?.length ?? 0) > 0 ? (
+      {isDesktop && trimmed && trimmed.hidden > 0 && (groups?.length ?? 0) > 0 ? (
         <View style={styles.toggle}>
           <Button
             variant="quiet"
@@ -134,6 +138,8 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
         <SkeletonRows rows={8} />
       ) : allGroups!.length === 0 ? (
         <EmptyState icon="calendar" title={t("roster.no_projects")} body={t("roster.no_projects_body")} />
+      ) : !isDesktop ? (
+        <DayView days={days} day={day} today={today} onDay={setPickedDay} groups={allGroups!} week={week} nameOf={nameOf} />
       ) : groups.length === 0 && !showAll ? (
         <EmptyState icon="calendar" title={t("sheet.no_shifts_title")} body={t("sheet.no_shifts_body")} action={{ label: t("sheet.show_all", { count: trimmed!.hidden }), onPress: () => setShowAll(true) }} />
       ) : (
@@ -160,7 +166,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
                   </Txt>
                 </View>
                 {g.rows.map((row) => (
-                  <ProjectRow key={row.project.id} row={row} week={week} nameOf={(id, full) => full ?? names.get(id) ?? ""} />
+                  <ProjectRow key={row.project.id} row={row} week={week} nameOf={nameOf} />
                 ))}
               </View>
             ))}
@@ -200,60 +206,146 @@ function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf
       </LinkPressable>
       {row.cells.map((cell, i) => (
         <View key={i} style={[styles.cell, styles.day, widths.day, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
-          {cell.map((shift) => {
-            const open = Math.max(0, shift.headcount - shift.assignments.length);
-            const published = shift.status === "published";
-            return (
-              <View key={shift.id} testID="sheet-shift" {...webProps({ dataSet: { shiftId: shift.id, status: shift.status } })} style={styles.shift}>
-                {cell.length > 1 || shift.headcount > 2 ? (
-                  <Txt role="meta" tone="secondary" numeric numberOfLines={1}>
-                    {formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}
-                  </Txt>
-                ) : null}
-                {shift.assignments.map((a) => {
-                  const temp = isTemporary(a);
-                  return (
-                    <View
-                      key={a.id}
-                      testID="sheet-person"
-                      {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp) } })}
-                      style={[
-                        styles.blk,
-                        { borderStartColor: colors.text.primary, backgroundColor: published ? colors.bg.surface : colors.bg.selected },
-                        published ? { borderColor: colors.border.strong, borderWidth: 1, borderStartWidth: 3 } : null,
-                      ]}
-                    >
-                      <Txt role="meta" numberOfLines={1} style={styles.name}>
-                        {shortName(nameOf(a.user_id, a.full_name))}
-                      </Txt>
-                      {temp ? (
-                        <View testID="chip-temporary" style={[styles.tchip, { borderColor: colors.status.info }]}>
-                          <Txt role="eyebrow" style={{ color: colors.status.info }}>
-                            {t("sheet.temporary")}
-                          </Txt>
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-                {open > 0 ? (
-                  <View testID="sheet-empty" style={[styles.blk, styles.empty, { borderColor: colors.status.danger }]}>
-                    <Txt role="eyebrow" tone="danger">
-                      {t("sheet.empty_places", { count: open })}
-                    </Txt>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
+          {cell.map((shift) => (
+            <ShiftBlock key={shift.id} shift={shift} showTime={cell.length > 1 || shift.headcount > 2} nameOf={nameOf} />
+          ))}
         </View>
       ))}
     </View>
   );
 }
 
+/**
+ * The roster on a phone (the owner, 2026-11-13): a Sunday-to-Saturday strip, and for the chosen day
+ * the projects with shifts, grouped by client, as cards with their people and empty places.
+ */
+function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: readonly string[]; day: string; today: string; onDay: (day: string) => void; groups: readonly ClientGroup[]; week: string; nameOf: (id: string, full?: string | null) => string }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const index = days.indexOf(day);
+  const ofDay = groups
+    .map((g) => ({ ...g, rows: g.rows.filter((r) => (r.cells[index] ?? []).length > 0) }))
+    .filter((g) => g.rows.length > 0);
+  return (
+    <View style={styles.dayView} testID="roster-day-view">
+      <View role="tablist" style={[styles.strip, { borderColor: colors.border.strong }]} testID="day-strip">
+        {days.map((d, i) => {
+          const on = d === day;
+          return (
+            <Pressable
+              key={d}
+              role="tab"
+              aria-selected={on}
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${t(`sheet.weekday.${i}`)} ${Number(d.slice(8))}`}
+              testID={`day-${d}`}
+              onPress={() => onDay(d)}
+              style={[styles.stripDay, { borderTopColor: on ? colors.accent.default : "transparent", backgroundColor: on ? colors.bg.selected : d === today ? colors.bg.surface : "transparent" }]}
+            >
+              <Txt role="eyebrow" tone={on ? "accent" : "secondary"}>
+                {t(`sheet.weekday.${i}`)}
+              </Txt>
+              <Txt role="label" numeric>
+                {String(Number(d.slice(8)))}
+              </Txt>
+            </Pressable>
+          );
+        })}
+      </View>
+      {ofDay.length === 0 ? (
+        <Txt role="body" tone="secondary" testID="day-empty">
+          {t("sheet.day_none")}
+        </Txt>
+      ) : (
+        ofDay.map((g) => (
+          <View key={g.clientId} style={styles.dayClient} testID="sheet-client">
+            <Txt role="eyebrow" tone="accent">
+              {g.clientName || t("sheet.no_client")}
+            </Txt>
+            {g.rows.map((row) => {
+              const shifts = row.cells[index]!;
+              const empty = shifts.reduce((n, s) => n + Math.max(0, s.headcount - s.assignments.length), 0);
+              return (
+                <View key={row.project.id} testID="day-card" style={[styles.dayCard, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+                  <LinkPressable href={rosterHref(row.project.id, week)} testID="sheet-project" style={styles.dayCardHead}>
+                    <Txt role="label" numberOfLines={2} style={styles.name}>
+                      {row.project.name}
+                    </Txt>
+                    <Txt role="meta" tone={empty > 0 ? "danger" : "secondary"} numeric>
+                      {empty > 0 ? t("sheet.row_empty", { count: empty }) : t("sheet.row_full")}
+                    </Txt>
+                  </LinkPressable>
+                  {shifts.map((shift) => (
+                    <ShiftBlock key={shift.id} shift={shift} showTime nameOf={nameOf} />
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+/** One shift: its times when needed, its people as blocks (with the temporary chip) and its empty places dashed. */
+function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boolean; nameOf: (id: string, full?: string | null) => string }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+    const open = Math.max(0, shift.headcount - shift.assignments.length);
+    const published = shift.status === "published";
+    return (
+      <View testID="sheet-shift" {...webProps({ dataSet: { shiftId: shift.id, status: shift.status } })} style={styles.shift}>
+        {showTime ? (
+          <Txt role="meta" tone="secondary" numeric numberOfLines={1}>
+            {formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}
+          </Txt>
+        ) : null}
+        {shift.assignments.map((a) => {
+          const temp = isTemporary(a);
+          return (
+            <View
+              key={a.id}
+              testID="sheet-person"
+              {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp) } })}
+              style={[
+                styles.blk,
+                { borderStartColor: colors.text.primary, backgroundColor: published ? colors.bg.surface : colors.bg.selected },
+                published ? { borderColor: colors.border.strong, borderWidth: 1, borderStartWidth: 3 } : null,
+              ]}
+            >
+              <Txt role="meta" numberOfLines={1} style={styles.name}>
+                {shortName(nameOf(a.user_id, a.full_name))}
+              </Txt>
+              {temp ? (
+                <View testID="chip-temporary" style={[styles.tchip, { borderColor: colors.status.info }]}>
+                  <Txt role="eyebrow" style={{ color: colors.status.info }}>
+                    {t("sheet.temporary")}
+                  </Txt>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+        {open > 0 ? (
+          <View testID="sheet-empty" style={[styles.blk, styles.empty, { borderColor: colors.status.danger }]}>
+            <Txt role="eyebrow" tone="danger">
+              {t("sheet.empty_places", { count: open })}
+            </Txt>
+          </View>
+        ) : null}
+      </View>
+    );
+}
+
 const styles = StyleSheet.create({
   scroller: { flexGrow: 1 },
+  dayView: { gap: 16 },
+  strip: { flexDirection: "row", borderBottomWidth: 1 },
+  stripDay: { flex: 1, alignItems: "center", paddingVertical: 6, borderTopWidth: 2, minHeight: 48, justifyContent: "center" },
+  dayClient: { gap: 8 },
+  dayCard: { borderWidth: 1, padding: 10, gap: 8 },
+  dayCardHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
   grid: { borderWidth: 1, flexGrow: 1 },
   line: { flexDirection: "row" },
   head: { paddingVertical: 4, paddingHorizontal: 6, borderStartWidth: 1, borderTopWidth: 1 },

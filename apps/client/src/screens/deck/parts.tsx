@@ -4,8 +4,8 @@
  * forecast columns, and a bordered section heading. Every number shown is one the API answered;
  * the client never adds money up.
  */
-import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
@@ -133,10 +133,82 @@ export function ColumnBars({ columns, legend, height = 120 }: { columns: readonl
   );
 }
 
-/** Two areas side by side on a desktop, stacked on a phone. */
+/** One card of a phone list: the name on top, a few key numbers, and chips. */
+export interface CardItem {
+  key: string;
+  title: string;
+  subtitle?: string;
+  figures: readonly { label: string; value: string; tone?: "primary" | "danger" }[];
+  chips?: ReactNode;
+  /** What a tap opens (what the desktop row opens); none when the row opens nothing. */
+  onPress?: () => void;
+}
+
+/** Below the desktop width a table becomes cards: nothing cramped, nothing scrolling sideways. */
+export function CardList({ items, testID }: { items: readonly CardItem[]; testID: string }) {
+  const { colors } = useTheme();
+  return (
+    <View role="list" testID={testID} style={styles.cards}>
+      {items.map((item) => {
+        const body = (
+          <>
+            <Txt role="label" numberOfLines={2}>
+              {item.title}
+            </Txt>
+            {item.subtitle ? (
+              <Txt role="meta" tone="secondary" numberOfLines={1}>
+                {item.subtitle}
+              </Txt>
+            ) : null}
+            <View style={styles.cardFigures}>
+              {item.figures.map((f) => (
+                <View key={f.label} style={styles.cardFigure}>
+                  <Txt role="eyebrow" tone="secondary">
+                    {f.label}
+                  </Txt>
+                  <Txt role="body" numeric tone={f.tone ?? "primary"} numberOfLines={1}>
+                    {f.value}
+                  </Txt>
+                </View>
+              ))}
+            </View>
+            {item.chips ? <View style={styles.cardChips}>{item.chips}</View> : null}
+          </>
+        );
+        return item.onPress ? (
+          <Pressable
+            key={item.key}
+            role="listitem"
+            testID="card"
+            onPress={item.onPress}
+            style={({ pressed }) => [styles.card, { borderBottomColor: colors.border.subtle }, pressed ? { backgroundColor: colors.bg.selected } : null]}
+          >
+            {body}
+          </Pressable>
+        ) : (
+          <View key={item.key} role="listitem" testID="card" style={[styles.card, { borderBottomColor: colors.border.subtle }]}>
+            {body}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Two or more areas side by side on a desktop, stacked on a phone. Stacked, an area's own `flex`
+ * (its share of the row) would stretch it down the column, so it takes its natural height instead.
+ */
 export function Split({ children }: { children: ReactNode }) {
   const { isDesktop } = useTheme();
-  return <View style={isDesktop ? styles.splitRow : styles.splitCol}>{children}</View>;
+  if (isDesktop) return <View style={styles.splitRow}>{children}</View>;
+  return (
+    <View style={styles.splitCol}>
+      {Children.map(children, (child) =>
+        isValidElement<{ style?: StyleProp<ViewStyle> }>(child) ? cloneElement(child, { style: [child.props.style, styles.stacked] }) : child,
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -152,6 +224,12 @@ const styles = StyleSheet.create({
   bar: { flex: 1 },
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
+  cards: { borderTopWidth: 0 },
+  card: { gap: 6, paddingVertical: 12, borderBottomWidth: 1, minHeight: 48 },
+  cardFigures: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  cardFigure: { gap: 0, minWidth: 64 },
+  cardChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   splitRow: { flexDirection: "row", gap: 32, alignItems: "flex-start" },
   splitCol: { gap: 24 },
+  stacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });

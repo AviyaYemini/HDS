@@ -19,7 +19,7 @@ import { DEFAULT_TIME_ZONE, formatMoney, todayIn } from "../../locale";
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { Candles, Donut } from "../deck/Charts";
 import { pieSlices, sumAmounts, weeklyCandles } from "../deck/chartMath";
-import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { CardList, ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { useLoad } from "../useLoad";
 import { coveragePercent, formatPercent, healthChip, periodRange, weekLabel, type OverviewProject, type Period } from "./model";
 
@@ -30,7 +30,7 @@ export function OverviewScreen() {
   const { t, i18n } = useTranslation();
   const { api } = useSession();
   const errorText = useErrorText();
-  const { colors } = useTheme();
+  const { colors, isDesktop } = useTheme();
   const today = todayIn(DEFAULT_TIME_ZONE);
   const [period, setPeriod] = useState<Period>("month");
   const range = periodRange(period, today);
@@ -234,7 +234,25 @@ export function OverviewScreen() {
           {/* The project table at full width: Hebrew names stay on one line (the helper's review). */}
           <View style={styles.table}>
             <SectionHead title={t("snapshot.projects_title")} note={t("snapshot.projects_note", { count: d.projects.length })} />
-            <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
+            {isDesktop ? (
+              <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
+            ) : (
+              // A phone: a card a project, the name on top, its key numbers and its status (the owner, 2026-11-13).
+              <CardList
+                testID="overview-projects"
+                items={d.projects.map((p) => ({
+                  key: p.id,
+                  title: p.terms_estimated ? `${p.name} *` : p.name,
+                  subtitle: `${p.client_name}${p.temporary_workers > 0 ? ` · ${t("snapshot.temp_on_project", { count: p.temporary_workers })}` : ""}`,
+                  figures: [
+                    ...(p.billing != null ? [{ label: t("snapshot.col.billing"), value: money(p.billing) }] : [{ label: t("snapshot.col.hours"), value: formatHoursFigure(p.hours, i18n.language) }]),
+                    { label: t("snapshot.col.coverage"), value: formatPercent(p.coverage_pct) },
+                    ...(p.margin_pct != null ? [{ label: t("snapshot.col.margin"), value: formatPercent(p.margin_pct), tone: (Number(p.margin_pct) < 0 ? "danger" : "primary") as "danger" | "primary" }] : []),
+                  ],
+                  chips: <StatusChip status={healthChip(p.status)} label={p.status === "gaps" ? t("snapshot.status.gaps", { count: p.empty_places }) : t(`snapshot.status.${p.status}`)} testID={`status-${p.id}`} />,
+                }))}
+              />
+            )}
           </View>
           {d.terms_estimated ? (
             <View testID="note-estimated" style={[styles.note, { borderColor: colors.border.strong }]}>

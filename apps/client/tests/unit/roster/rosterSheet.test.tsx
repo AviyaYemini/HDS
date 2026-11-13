@@ -1,6 +1,7 @@
 /**
- * The roster sheet on screen (specs/demo-ceo/plan.md, screen 2): projects under their client, names
- * as blocks with the "temporary" chip, empty places dashed, the week's totals, and "copy last week"
+ * The roster sheet on screen (specs/demo-ceo/plan.md, screen 2), at phone width a day at a time:
+ * projects under their client, names as blocks with the "temporary" chip, empty places dashed, the
+ * week's totals, and "copy last week"
  * as a dry run per editable project before anything is written. Made-up names only.
  */
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
@@ -52,20 +53,22 @@ beforeEach(async () => {
   await setupI18n("en");
 });
 
-test("projects show under their clients, with names, the temporary chip and the empty place", async () => {
+test("on a phone, one day at a time: the day strip, then that day's projects under their clients", async () => {
   const fake = api();
   await renderWith(await signedIn(fake), <RosterSheet weekParam={WEEK} />);
-  expect(await screen.findByTestId("roster-sheet", {}, { timeout: 5000 })).toBeTruthy();
-  expect(screen.getByText("Alpha Security")).toBeTruthy();
-  // A project with no shifts this week waits behind the toggle, which says how many there are.
+  // The tests run at phone width: the week is a day strip, Sunday first, with no grid.
+  expect(await screen.findByTestId("day-strip", {}, { timeout: 5000 })).toBeTruthy();
+  expect(screen.queryByTestId("roster-sheet")).toBeNull();
+  expect(screen.getByTestId("sheet-totals")).toHaveTextContent(/3 places · 2 filled · 1 empty/);
+  // Sunday has no shifts; Monday has the harbour gate's.
+  expect(screen.getByTestId("day-empty")).toBeTruthy();
+  await fireEvent.press(screen.getByTestId("day-2026-12-07"));
+  expect(await screen.findByText("Alpha Security")).toBeTruthy();
   expect(screen.queryByText("Beta Guarding")).toBeNull();
-  await fireEvent.press(screen.getByTestId("action-toggle-quiet-projects"));
-  expect(await screen.findByText("Beta Guarding")).toBeTruthy();
-  expect(screen.getByText("No shifts this week")).toBeTruthy();
+  expect(screen.getAllByTestId("day-card")).toHaveLength(1);
   expect(screen.getByText("Dana L.")).toBeTruthy();
   expect(screen.getAllByTestId("chip-temporary")).toHaveLength(1);
   expect(screen.getByTestId("sheet-empty")).toHaveTextContent("1 empty");
-  expect(screen.getByTestId("sheet-totals")).toHaveTextContent(/3 places · 2 filled · 1 empty/);
   // Warnings are out of the app's scope (the owner, 2026-11-13): no strip, no count, no call.
   expect(screen.queryByTestId("warnings-strip")).toBeNull();
   expect(screen.getByTestId("sheet-totals")).not.toHaveTextContent(/warning/i);
