@@ -28,12 +28,14 @@ for (const language of LANGUAGES) {
     await expect(page.getByTestId("screen-work-log")).toBeVisible();
     await expect(page.getByTestId("page-title")).toHaveText(language === "he" ? "יומן עבודה" : "Work log");
     await expect(page.locator("body")).not.toContainText("מי עבד");
-    await expect(page.getByTestId("preset-this-pay-period")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("preset-this-month")).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("figure-people")).toHaveAttribute("data-value", String(api.people));
     await expect(page.getByTestId("figure-shifts")).toHaveAttribute("data-value", String(api.shifts));
     await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", api.hours);
     // Reports cannot reach into the future.
     const tomorrow = siteDay(1);
+    // The dates open with "custom" (the owner, 2026-11-13).
+    await page.getByTestId("preset-custom").click();
     await expect(page.getByTestId("date-range").locator(`[role="gridcell"][data-date="${tomorrow}"]`)).toHaveAttribute("aria-disabled", "true");
     await checkA11y(page, `work log (${language})`);
   });

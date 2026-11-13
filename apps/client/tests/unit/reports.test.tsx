@@ -5,6 +5,7 @@
  */
 import { fireEvent, screen } from "@testing-library/react-native";
 
+import { setReducedMotionForTests } from "../../src/design/motion";
 import { setupI18n } from "../../src/i18n";
 import { DEFAULT_TIME_ZONE, todayIn } from "../../src/locale";
 import { HoursReportScreen, WorkLogScreen } from "../../src/screens/reports/ReportScreens";
@@ -14,9 +15,10 @@ const ROW = { user_id: "u1", full_name: "Dana Levi", project_id: "p1", project_n
 
 beforeEach(async () => {
   await setupI18n("en");
+  setReducedMotionForTests(true);
 });
 
-test("the work log asks for the whole company this pay period, up to today, and shows the API's figures", async () => {
+test("the work log asks for the whole company this month, up to today, and shows the API's figures", async () => {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const api = new FakeApi()
     .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Gate" }] }))
@@ -30,12 +32,12 @@ test("the work log asks for the whole company this pay period, up to today, and 
   expect(asked.has("project_id") || asked.has("site_id") || asked.has("group_id")).toBe(false);
   // The API's own totals, shown as they came, never the rows added up (16.00 h, 1 person here):
   // data-value is web only, checked by g-reports.
-  expect(screen.getByTestId("figure-hours")).toHaveTextContent(/41\.50/);
-  expect(screen.getByTestId("figure-people")).toHaveTextContent(/People\s*3$/);
-  expect(screen.getByTestId("figure-shifts")).toHaveTextContent(/Person-shifts\s*5$/);
-  await fireEvent.press(screen.getByTestId("report-bar"));
-  expect(await screen.findByTestId("report-rows")).toBeTruthy();
-  expect(screen.getAllByText(/Dana Levi/).length).toBeGreaterThan(0);
+  expect(screen.getByTestId("figure-hours")).toHaveTextContent(/03\s*Hours\s*41\.5$/);
+  expect(screen.getByTestId("figure-people")).toHaveTextContent(/01\s*People\s*3$/);
+  expect(screen.getByTestId("figure-shifts")).toHaveTextContent(/02\s*Person-shifts\s*5$/);
+  // This month by default, with the people in a table at once (the owner, 2026-11-13).
+  expect(screen.getByTestId("preset-this-month").props.accessibilityState?.checked ?? screen.getByTestId("preset-this-month").props["aria-checked"]).toBeTruthy();
+  expect(screen.getByTestId("wl-table")).toHaveTextContent(/Dana Levi/);
 });
 
 test("a site waits for its choice before asking the API", async () => {

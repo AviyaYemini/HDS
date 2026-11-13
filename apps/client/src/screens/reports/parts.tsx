@@ -13,9 +13,9 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, compareDates, presetRange, todayIn, type DateRange } from "../../locale";
 
 /** The report's range: this pay period by default; what is asked never ends after today. */
-export function useReportRange(): { range: DateRange; setRange: (range: DateRange) => void; asked: { from: string; to: string }; today: string } {
+export function useReportRange(initial: "this-pay-period" | "this-month" = "this-pay-period"): { range: DateRange; setRange: (range: DateRange) => void; asked: { from: string; to: string }; today: string } {
   const today = todayIn(DEFAULT_TIME_ZONE);
-  const [range, setRange] = useState<DateRange>(() => presetRange("this-pay-period", today));
+  const [range, setRange] = useState<DateRange>(() => presetRange(initial, today));
   const to = compareDates(range.end, today) > 0 ? today : range.end;
   return { range, setRange, asked: { from: range.start, to }, today };
 }

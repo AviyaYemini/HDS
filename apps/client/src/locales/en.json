@@ -1180,5 +1180,14 @@
   "runsum.accept_short": "Accept",
   "pay.change_up_same": "{{amount}} more than the same days of last month",
   "pay.change_down_same": "{{amount}} less than the same days of last month",
-  "pay.previous_total": "Last month: {{amount}}"
+  "pay.previous_total": "Last month: {{amount}}",
+  "wl.preset.this-month": "This month",
+  "wl.preset.last-month": "Last month",
+  "wl.preset.last-30-days": "30 days",
+  "wl.preset.custom": "Custom",
+  "wl.col.person": "Person",
+  "wl.col.project": "Project",
+  "wl.col.shifts": "Shifts",
+  "wl.col.hours": "Hours",
+  "wl.col.dates": "First–last"
 }
