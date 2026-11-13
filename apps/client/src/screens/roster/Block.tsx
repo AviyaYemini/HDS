@@ -11,7 +11,7 @@ import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { formatTimeRange } from "../../locale";
-import { barGeometry, coverage, type Shift, type Warning } from "./model";
+import { barGeometry, coverage, type Shift } from "./model";
 
 /** Extra hours draw past the block's edge by design (US3); the overflow check (FR-079) allows it. */
 const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
@@ -19,19 +19,15 @@ const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
 export function Block({
   shift,
   editable,
-  warnings,
   nameOf,
   onOpenSeat,
   onPerson,
-  onWarnings,
 }: {
   shift: Shift;
   editable: boolean;
-  warnings: Warning[];
   nameOf: (id: string) => string;
   onOpenSeat: () => void;
   onPerson: (assignmentId: string, userId: string) => void;
-  onWarnings: () => void;
 }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -51,13 +47,6 @@ export function Block({
         <Txt role="meta" numeric testID="block-coverage">
           {`${filled}/${required}`}
         </Txt>
-        {warnings.length > 0 ? (
-          <Pressable testID="block-warning-badge" role="button" accessibilityLabel={t("roster.warnings", { count: warnings.length })} onPress={onWarnings} style={[styles.badge, { backgroundColor: colors.status.warning }]}>
-            <Txt role="meta" style={{ color: colors.inverse.text }}>
-              {String(warnings.length)}
-            </Txt>
-          </Pressable>
-        ) : null}
       </View>
       {shift.assignments.map((a) => {
         const bar = barGeometry(shift, a);
@@ -101,7 +90,6 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   block: { borderWidth: 1, borderStartWidth: 3, padding: 6, gap: 4 },
   blockHead: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "space-between" },
-  badge: { minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   person: { gap: 2, minHeight: 32, justifyContent: "center" },
   track: { height: 6, overflow: "visible" },
   bar: { height: 6 },

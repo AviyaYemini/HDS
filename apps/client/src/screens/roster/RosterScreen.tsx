@@ -2,7 +2,7 @@
  * The roster week (specs/007-ux-redesign FR-025 to FR-041, T070 to T074): Sunday–Saturday columns
  * and a row per shift type on a desktop, a day agenda on a phone; each shift a block with its people
  * drawn against it (a half shift narrower, extra hours past its edge), coverage and empty seats;
- * assigning by tapping, warnings with their rule and numbers and an override with a reason; a
+ * assigning by tapping (no rule warnings: out of scope, the owner, 2026-11-13); a
  * publish review; Undo for unpublished changes; and the stale-save banner. A Manager edits only the
  * projects they manage (`roster.edit:project`); others read.
  */
@@ -24,7 +24,6 @@ import { Block } from "./Block";
 import { PersonSheet } from "./PersonSheet";
 import { PublishSheet } from "./PublishSheet";
 import { RosterSheet } from "./RosterSheet";
-import { WarningSheet } from "./WarningSheet";
 import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
 import { useCopyNextWeek } from "./useCopyNextWeek";
 import { useAssignInputs, useRosterData } from "./useRosterData";
@@ -48,21 +47,18 @@ export function RosterScreen() {
   const { types, shifts, people, nameOf } = useRosterData(project, week);
   const [assignTo, setAssignTo] = useState<Shift | null>(null);
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
-  const [warningsOf, setWarningsOf] = useState<Shift | null>(null);
   const [publishing, setPublishing] = useState(false);
   // Replacing someone on a shift opens the assign sheet with them named (T042f).
   const [replacing, setReplacing] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   // A word to the person placed, and who hears of the edit (T042g); kept while a sheet is open.
   const [note, setNote] = useState("");
   const [alert, setAlert] = useState<Alert>("none");
-  const { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert, onBreaks: setWarningsOf });
+  const { history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment } = useRosterEdits({ shifts, note, alert });
   const { copyReplaces, setCopyReplaces, copyToNextWeek } = useCopyNextWeek(project, week);
   const { ranked, busy, projectName } = useAssignInputs(assignTo);
 
   const byCell = useMemo(() => placed(shifts.data ?? []), [shifts.data]);
   const hasDrafts = (shifts.data ?? []).some((shift) => shift.status === "draft");
-  // The shift whose warnings are open, as read last: its assignments are the ones an override needs.
-  const warningShift = warningsOf ? ((shifts.data ?? []).find((s) => s.id === warningsOf.id) ?? warningsOf) : null;
   const lockedNow = personOn ? !!personOn.shift.assignments.find((a) => a.id === personOn.assignmentId)?.locked : false;
 
   if (!project) {
@@ -77,11 +73,9 @@ export function RosterScreen() {
       key={shift.id}
       shift={shift}
       editable={editable}
-      warnings={warnings.get(shift.id) ?? []}
       nameOf={nameOf}
       onOpenSeat={() => editable && setAssignTo(shift)}
       onPerson={(assignmentId, userId) => editable && setPersonOn({ shift, assignmentId, userId })}
-      onWarnings={() => setWarningsOf(shift)}
     />
   );
 
@@ -186,7 +180,7 @@ export function RosterScreen() {
           void (async () => {
             if (how === "move" && busyOn?.assignment_id && busyOn.shift_id) {
               // A swap trades places with the person being replaced; otherwise a transfer.
-              await move(busyOn.assignment_id, userId, busyOn.shift_id, shift, out ? out.assignmentId : null);
+              await move(busyOn.assignment_id, busyOn.shift_id, shift, out ? out.assignmentId : null);
             } else if (out) {
               // The removal moved the shift's etag: assign with the new one, never a stale read (R40).
               const etag = await unassign(out.shift, out.assignmentId);
@@ -225,10 +219,6 @@ export function RosterScreen() {
           setAssignTo(target.shift);
         }}
       />
-      <WarningSheet shift={warningShift} warnings={warningsOf ? (warnings.get(warningsOf.id) ?? []) : []} nameOf={nameOf} onClose={() => setWarningsOf(null)} onOverridden={(code, employee) => {
-        dropWarning(warningsOf!.id, code, employee);
-        setWarningsOf(null);
-      }} />
       <PublishSheet open={publishing} project={project} first={week} last={addDays(week, 6)} onClose={() => setPublishing(false)} onPublished={async () => {
         setPublishing(false);
         clearHistory();

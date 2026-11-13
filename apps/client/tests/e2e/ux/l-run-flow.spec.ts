@@ -77,11 +77,11 @@ LANGUAGES.forEach((language, index) => {
     await expect(page.getByTestId("screen-roster")).toBeVisible({ timeout: 30_000 });
     expect(page.url()).toContain(`week=${week}`);
 
-    // An empty seat ranks who could take it, with reasons in words.
+    // An empty seat ranks who could take it (who is free first; no rule warnings, the owner, 2026-11-13).
     const seat = page.getByTestId("empty-seat").first();
     if (await seat.isVisible()) {
       await seat.click();
-      await expect(page.getByTestId("assign-reason").first()).toBeVisible();
+      await expect(page.getByTestId("assign-option").first()).toBeVisible();
       await page.keyboard.press("Escape");
     }
 

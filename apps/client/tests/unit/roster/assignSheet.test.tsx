@@ -63,3 +63,39 @@ test("a busy person is said once, with the project when it may be seen, else the
   expect(lines[1]).toMatch(/^On another shift then, /);
   expect(screen.queryByText("Already on another shift")).toBeNull();
 });
+
+test("no rule is named against a person: only who is free, and who would rather not (the owner, 2026-11-13)", async () => {
+  const CAL = "77777777-7777-4777-8777-777777777777";
+  const DAN = "88888888-8888-4888-8888-888888888888";
+  const EVE = "99999999-9999-4999-8999-999999999999";
+  const options = {
+    options: [
+      { user_id: CAL, free: false, close: false, code: "schedule.minimum_rest", have: "6", need: "11" },
+      { user_id: DAN, free: true, close: false, code: null },
+      { user_id: EVE, free: true, close: true, code: null },
+    ],
+  } as unknown as Cover;
+  await render(
+    <AssignSheet
+      shift={shift}
+      people={[
+        { id: CAL, full_name: "Cal" },
+        { id: DAN, full_name: "Dan" },
+        { id: EVE, full_name: "Eve" },
+      ]}
+      busy={[]}
+      ranked={options}
+      projectName={() => null}
+      replacing={null}
+      note=""
+      alert="none"
+      onNote={() => undefined}
+      onAlert={() => undefined}
+      onClose={() => undefined}
+      onChoose={() => undefined}
+    />,
+  );
+  const reasons = screen.getAllByTestId("assign-reason").map((n) => String(n.props.children));
+  expect(reasons).toHaveLength(2);
+  expect(reasons.join(" ")).not.toMatch(/rest|11/i);
+});
