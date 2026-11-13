@@ -12,10 +12,10 @@ See `plan.md`. **H** is the HDS helper session, on `demo/ceo`. **C** is the CLI 
 
 ## Screens (C)
 
-- [ ] U01 The snapshot dashboard (slide 14), as the landing screen for Admins and Managers.
-- [ ] U02 The roster week in the sheet's layout (slide 7), with temporary chips and dashed empty places.
-- [ ] U03 Staff control (slide 8): hours, the near-limit flag, temporary workers (filter, chip and form fields).
-- [ ] U04 Hours and costs in the deck's style (slide 9).
+- [x] U01 The snapshot dashboard (slide 14), as the landing screen for Admins and Managers.
+- [x] U02 The roster week in the sheet's layout (slide 7), with temporary chips and dashed empty places.
+- [x] U03 Staff control (slide 8): hours, the near-limit flag, temporary workers (filter, chip and form fields).
+- [x] U04 Hours and costs in the deck's style (slide 9).
 
 ## Added on the way (H)
 
@@ -24,5 +24,5 @@ See `plan.md`. **H** is the HDS helper session, on `demo/ceo`. **C** is the CLI 
 
 ## Close (H)
 
-- [ ] Z01 Merge `demo/ceo-ui`. Load the demo data, then walk through the demo in Hebrew on desktop and phone widths.
-- [ ] Z02 Write a short demo script for the meeting, and the PR text for the owner.
+- [x] Z01 Merge `demo/ceo-ui`. Load the demo data, then walk through the demo in Hebrew on desktop and phone widths.
+- [x] Z02 Write a short demo script for the meeting, and the PR text for the owner.
