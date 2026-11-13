@@ -1109,5 +1109,10 @@
   "snapshot.chart.clients_summary": "{{total}} billed in {{count}} slices; {{client}} leads with {{pct}}%.",
   "snapshot.chart.people_title": "Staff mix",
   "snapshot.chart.people_summary": "{{permanent}} permanent and {{temporary}} temporary: {{pct}}% of staff are temporary.",
-  "sheet.day_none": "No shifts on this day."
+  "sheet.day_none": "No shifts on this day.",
+  "brand.eyebrow": "Hybrid Defense Systems",
+  "brand.tagline": "The Human Advantage.\nThe Technological Solution.",
+  "brand.line_product": "Rosters · staff · clients · reports",
+  "brand.line_platforms": "Web · iOS · Android · Hebrew and English",
+  "brand.company": "HDS 2.0"
 }

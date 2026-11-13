@@ -1109,5 +1109,10 @@
   "snapshot.chart.clients_summary": "חיוב של {{total}} ב-{{count}} פלחים; {{client}} מוביל עם {{pct}}%.",
   "snapshot.chart.people_title": "הרכב כוח אדם",
   "snapshot.chart.people_summary": "{{permanent}} קבועים ו-{{temporary}} זמניים: {{pct}}% מכוח האדם זמני.",
-  "sheet.day_none": "אין משמרות ביום הזה."
+  "sheet.day_none": "אין משמרות ביום הזה.",
+  "brand.eyebrow": "Hybrid Defense Systems",
+  "brand.tagline": "היתרון האנושי.\nהפתרון הטכנולוגי.",
+  "brand.line_product": "סידור עבודה · צוות · לקוחות · דוחות",
+  "brand.line_platforms": "ווב · iOS · Android · עברית ואנגלית",
+  "brand.company": "HDS 2.0"
 }
