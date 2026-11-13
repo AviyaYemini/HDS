@@ -3235,6 +3235,12 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/UUIDv4"
+        - name: employment_type
+          in: query
+          description: Permanent staff only, or temporary workers only (CEO demo).
+          schema:
+            type: string
+            enum: [permanent, temporary]
       responses:
         "200":
           description: Paginated employee list.

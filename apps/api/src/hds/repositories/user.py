@@ -81,6 +81,7 @@ class UserRepository(OrgScopedRepository[User]):
         is_active: bool | None = None,
         group_id: uuid.UUID | None = None,
         qualification_id: uuid.UUID | None = None,
+        employment_type: str | None = None,
     ) -> list[User]:
         """List non-deleted users of one organisation, ordered by name then id.
 
@@ -92,6 +93,7 @@ class UserRepository(OrgScopedRepository[User]):
             is_active: Keep only active or only inactive users.
             group_id: Keep only members of this group.
             qualification_id: Keep only holders of this qualification.
+            employment_type: Keep only permanent staff or only temporary workers.
 
         Returns:
             Users matching all given filters (AND).
@@ -109,6 +111,8 @@ class UserRepository(OrgScopedRepository[User]):
             stmt = stmt.where(User.role == role)
         if is_active is not None:
             stmt = stmt.where(User.is_active.is_(is_active))
+        if employment_type is not None:
+            stmt = stmt.where(User.employment_type == employment_type)
         if group_id is not None:
             stmt = stmt.where(
                 User.id.in_(select(user_groups.c.user_id).where(user_groups.c.group_id == group_id))

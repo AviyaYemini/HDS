@@ -17,6 +17,7 @@ from hds.models.login_throttle import LoginThrottle
 from hds.models.organisation import Organisation
 from hds.models.project import Project, ProjectStatus, ProjectType
 from hds.models.project_manager import ProjectManager
+from hds.models.project_member import ProjectMember
 from hds.models.qualification import Qualification, user_qualifications
 from hds.models.refresh_token import RefreshToken
 from hds.models.roster_extras import PublishEvent, RosterEditEvent, RuleOverride, WeekTemplate
@@ -54,6 +55,7 @@ __all__ = [
     "ProjectType",
     "ProjectStatus",
     "ProjectManager",
+    "ProjectMember",
     "SpecialDay",
     "InvitationToken",
     "ShiftType",

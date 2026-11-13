@@ -1965,6 +1965,12 @@ export interface components {
              */
             starts_at: string;
             /**
+             * Temporary
+             * @description A temporary worker, on their projects for at most three months (CEO demo).
+             * @default false
+             */
+            temporary: boolean;
+            /**
              * User Id
              * Format: uuid
              */
@@ -3141,6 +3147,22 @@ export interface components {
              * Format: email
              */
             email: string;
+            /**
+             * Employment Type
+             * @default permanent
+             * @enum {string}
+             */
+            employment_type: "permanent" | "temporary";
+            /**
+             * Engaged From
+             * @description A temporary worker's first day; null for permanent staff.
+             */
+            engaged_from?: string | null;
+            /**
+             * Engaged Until
+             * @description A temporary worker's last day, at most three months after the first.
+             */
+            engaged_until?: string | null;
             /** Full Name */
             full_name: string;
             /**
@@ -3159,6 +3181,11 @@ export interface components {
             organisation_id: string;
             /** Phone */
             phone?: string | null;
+            /**
+             * Project Ids
+             * @description The projects a temporary worker works on; empty for permanent staff.
+             */
+            project_ids?: string[];
             role: components["schemas"]["UserRole"];
             /**
              * Updated At
@@ -4966,12 +4993,23 @@ export interface components {
              * Format: email
              */
             email: string;
+            /**
+             * Employment Type
+             * @description Permanent when left out (CEO demo).
+             */
+            employment_type?: ("permanent" | "temporary") | null;
+            /** Engaged From */
+            engaged_from?: string | null;
+            /** Engaged Until */
+            engaged_until?: string | null;
             /** Full Name */
             full_name: string;
             /** Initial Password */
             initial_password: string;
             /** Phone */
             phone?: string | null;
+            /** Project Ids */
+            project_ids?: string[] | null;
             /**
              * Role
              * @default employee
@@ -5009,6 +5047,22 @@ export interface components {
              * Format: email
              */
             email: string;
+            /**
+             * Employment Type
+             * @default permanent
+             * @enum {string}
+             */
+            employment_type: "permanent" | "temporary";
+            /**
+             * Engaged From
+             * @description A temporary worker's first day; null for permanent staff.
+             */
+            engaged_from?: string | null;
+            /**
+             * Engaged Until
+             * @description A temporary worker's last day, at most three months after the first.
+             */
+            engaged_until?: string | null;
             /** Full Name */
             full_name: string;
             /**
@@ -5025,6 +5079,11 @@ export interface components {
             organisation_id: string;
             /** Phone */
             phone?: string | null;
+            /**
+             * Project Ids
+             * @description The projects a temporary worker works on; empty for permanent staff.
+             */
+            project_ids?: string[];
             role: components["schemas"]["UserRole"];
             /**
              * Updated At
@@ -5047,10 +5106,21 @@ export interface components {
         UserUpdateRequest: {
             /** Default Hourly Rate */
             default_hourly_rate?: string | null;
+            /**
+             * Employment Type
+             * @enum {string}
+             */
+            employment_type?: "permanent" | "temporary";
+            /** Engaged From */
+            engaged_from?: string | null;
+            /** Engaged Until */
+            engaged_until?: string | null;
             /** Full Name */
             full_name?: string;
             /** Phone */
             phone?: string | null;
+            /** Project Ids */
+            project_ids?: string[];
             /**
              * Role
              * @enum {string}
@@ -6750,6 +6820,7 @@ export interface operations {
                 is_active?: boolean | null;
                 group_id?: string | null;
                 qualification_id?: string | null;
+                employment_type?: ("permanent" | "temporary") | null;
             };
             header?: never;
             path?: never;

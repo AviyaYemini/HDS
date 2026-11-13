@@ -78,6 +78,10 @@ class AssignmentRead(BaseModel):
         default=False,
         description="Locked: later runs keep this assignment until it is unlocked (008 FR-018).",
     )
+    temporary: bool = Field(
+        default=False,
+        description="A temporary worker, on their projects for at most three months (CEO demo).",
+    )
 
 
 class ShiftRead(BaseModel):
@@ -245,7 +249,7 @@ def _assignment(
     a: Any,
     shift: Any,
     overrides: list[Any] | None = None,
-    person: tuple[str, bool] | None = None,
+    person: tuple[str, bool, bool] | None = None,
 ) -> AssignmentRead:
     own = a.starts_at is not None and a.ends_at is not None
     return AssignmentRead(
@@ -267,6 +271,7 @@ def _assignment(
         ],
         full_name=person[0] if person else None,
         active=person[1] if person else None,
+        temporary=person[2] if person else False,
     )
 
 

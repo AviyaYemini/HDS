@@ -17,12 +17,12 @@ from typing import Any
 
 from hds.models.user import User, UserRole
 from hds.repositories.user import UserRepository
-from hds.scheduling import Employee
 from hds.scheduling import cover as covering
 from hds.scheduling.problem import Problem, Slot
 from hds.scheduling.rules import week_start
 from hds.services.roster import RosterService
 from hds.services.schedule_inputs import ScheduleInputService
+from hds.services.temporary import as_employee
 
 
 def cover_answer(
@@ -127,5 +127,5 @@ class RosterCoverService:
                     ),
                 ),
             )
-        problem = replace(problem, candidates=tuple(Employee(u.id, True) for u in staff))
+        problem = replace(problem, candidates=tuple(as_employee(u, active=True) for u in staff))
         return cover_answer(problem, problem.current, key, staff)

@@ -45,7 +45,6 @@ from hds.repositories.shift import (
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.user import UserRepository
 from hds.scheduling import (
-    Employee,
     Entry,
     RuleWarning,
     Settings,
@@ -55,6 +54,7 @@ from hds.scheduling import (
     week_start,
 )
 from hds.services.pay_visibility import pay_visible
+from hds.services.temporary import as_employee
 
 if TYPE_CHECKING:
     from hds.services.availability_submission import AvailabilitySubmissionService
@@ -961,7 +961,7 @@ class RosterService:
                 ]
         # A deleted employee's assignments stay, so they are judged as no longer active.
         employees = {
-            u.id: Employee(u.id, u.is_active and not u.is_deleted)
+            u.id: as_employee(u, active=u.is_active and not u.is_deleted)
             for u in await self._users.get_many(
                 {a.user_id for v in [*focused, *others] for a in v.assignments},
                 actor.organisation_id,

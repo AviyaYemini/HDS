@@ -366,6 +366,7 @@ async def test_list_employees_scopes_to_the_actors_organisation() -> None:
         is_active=None,
         group_id=gid,
         qualification_id=None,
+        employment_type=None,
     )
 
 

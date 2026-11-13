@@ -19,11 +19,12 @@ from .problem import (
     Unfilled,
 )
 from .rules import local_span, validate, week_start
-from .types import Employee, Entry, RuleWarning, Settings, ShiftSlot
+from .types import Employee, Engagement, Entry, RuleWarning, Settings, ShiftSlot
 
 __all__ = [
     "Changes",
     "Employee",
+    "Engagement",
     "EmployeeSummary",
     "Problem",
     "Reason",

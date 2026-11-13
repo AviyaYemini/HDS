@@ -49,7 +49,7 @@ How it maps onto HDS:
 
 **Rates:**
 - where the sheet states one (a billing/pay pair, an hourly rate, or a sum for a shift), it is used;
-- elsewhere an estimate is used and the project carries `rates_estimated`, which the screens show.
+- elsewhere an estimate is used and the project carries `terms_estimated`, which the screens show.
 
 **Temporary workers in the demo data:** a person seen for under 3 months, on one or two projects, is made temporary for those projects. Their period starts at their first week.
 
@@ -99,8 +99,8 @@ weeks[]                               week_start, hours, billing, pay|null, fore
 projects[]                            id, name, client_name, managers[] (names), type, hours, billing,
                                       pay|null, margin_pct|null, coverage_pct|null (this week; null
                                       without needs), empty_places (this week), temporary_workers,
-                                      rates_estimated, status: "ok" | "gaps" | "loss" | "no_rate"
-rates_estimated                       bool: some figure uses an estimated rate
+                                      terms_estimated, status: "ok" | "gaps" | "loss" | "no_rate"
+terms_estimated                       bool: some figure uses an estimated rate
 ```
 
 The rest the screens need already exists:

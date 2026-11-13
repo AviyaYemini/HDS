@@ -144,5 +144,9 @@
   "views.duplicate_name": "You already have a view by that name here.",
   "assignments.move_same_shift": "They are on that shift already.",
   "schedule.chip_invalid": "A preference needs the value its kind asks for, and must name a member of the staff.",
-  "schedule.not_running": "The run has already ended."
+  "schedule.not_running": "The run has already ended.",
+  "warnings.temporary_outside": "A temporary worker is outside their projects or dates.",
+  "employees.temporary_period_invalid": "A temporary worker needs a start and an end at most three months later.",
+  "employees.temporary_projects_required": "A temporary worker needs at least one project.",
+  "employees.project_invalid": "A project is not one of the organisation's."
 }

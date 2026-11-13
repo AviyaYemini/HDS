@@ -5,13 +5,14 @@ Layer: models. Depends on ``hds.models.base`` and sibling models only.
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -28,6 +29,7 @@ from hds.models.base import TimestampedBase
 if TYPE_CHECKING:
     from hds.models.client import Client
     from hds.models.group import Group
+    from hds.models.project_member import ProjectMember
     from hds.models.qualification import Qualification
     from hds.models.refresh_token import RefreshToken
 
@@ -82,6 +84,13 @@ class User(TimestampedBase):
         Numeric(precision=12, scale=4, asdecimal=True)
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clients.id"))
+    # CEO demo: a temporary worker works on their projects (``project_members``) between these
+    # dates, at most three months apart; a permanent one has no dates (migration 038).
+    employment_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="permanent", server_default="permanent"
+    )
+    engaged_from: Mapped[date | None] = mapped_column(Date)
+    engaged_until: Mapped[date | None] = mapped_column(Date)
 
     client: Mapped["Client | None"] = relationship("Client", back_populates="users")
     groups: Mapped[list["Group"]] = relationship(
@@ -93,6 +102,20 @@ class User(TimestampedBase):
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user"
     )
+    # Loaded with the user (one more query per load), so ``project_ids`` is always at hand.
+    memberships: Mapped[list["ProjectMember"]] = relationship(
+        "ProjectMember", lazy="selectin", viewonly=True
+    )
+
+    @property
+    def project_ids(self) -> list[uuid.UUID]:
+        """The projects on this person's team, in a stable order (CEO demo)."""
+        return sorted((m.project_id for m in self.memberships), key=str)
+
+    @property
+    def temporary(self) -> bool:
+        """Whether this is a temporary worker (CEO demo)."""
+        return self.employment_type == "temporary"
 
     __table_args__ = (
         CheckConstraint("default_hourly_rate > 0", name="ck_users_hourly_rate_positive"),
