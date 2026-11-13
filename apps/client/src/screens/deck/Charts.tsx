@@ -12,6 +12,7 @@ import { isRtl } from "../../i18n";
 import { Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
+import { nameText } from "../../locale";
 import { arcPath, niceTicks, type Candle, type Slice } from "./chartMath";
 
 /** The greys a donut's slices take in order, dark to light; "others" takes the lightest. */
@@ -82,9 +83,10 @@ export function Donut({ slices, colorOf, amountText, centre, summary, testID, pr
             <View style={[styles.swatch, { backgroundColor: colour(s, i), borderColor: colors.border.strong }]} />
             {/* The name on its own line, the share and the amount under it: nothing cut or wrapped mid-number. */}
             <View style={styles.legendText}>
-              {/* A name someone typed: its own direction, whatever the UI's. */}
-              <Txt role="meta" numberOfLines={1} dir="auto">
-                {s.label}
+              {/* The row keeps the screen's direction, so the label stays in its row; the name itself
+                  is isolated, so a Latin, Hebrew or mixed name reads whole (the owner, 2026-11-13). */}
+              <Txt role="meta" numberOfLines={1} testID={`${testID}-label`}>
+                {nameText(s.label)}
               </Txt>
               <Txt role="meta" tone="secondary" numeric numberOfLines={1}>
                 {`${Math.round(s.pct)}% · ${amountText(s)}`}

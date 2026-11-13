@@ -11,6 +11,7 @@ import Svg, { Circle, Polyline } from "react-native-svg";
 import { Button, Skeleton, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
+import { nameText } from "../../locale";
 import { sparkPoints } from "./polish";
 
 /** One numbered key figure. */
@@ -341,7 +342,7 @@ export function HBars({ bars, legend, progress = 1, testID }: { bars: readonly H
         const row = (
           <View style={isDesktop ? styles.hrow : styles.hrowPhone}>
             <Txt role="label" style={isDesktop ? styles.hlabel : null}>
-              {b.label}
+              {nameText(b.label)}
             </Txt>
             <View style={styles.htrackRow}>
               <View style={[styles.htrack, { backgroundColor: colors.bg.selected }]}>{fill}</View>
