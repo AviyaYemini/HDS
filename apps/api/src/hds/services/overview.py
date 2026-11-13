@@ -82,7 +82,10 @@ class ProjectLine:
     money: Money = field(default_factory=Money)
     needed: int = 0
     filled: int = 0
+    needed_next: int = 0
+    filled_next: int = 0
     temporary_workers: int = 0
+    weeks: dict[date, Money] = field(default_factory=lambda: defaultdict(Money))
 
     @property
     def margin_pct(self) -> Decimal | None:
@@ -117,6 +120,9 @@ class Overview:
     needed: int
     filled: int
     projects_with_gaps: int
+    needed_next: int
+    filled_next: int
+    projects_with_gaps_next: int
     active: int
     working_this_week: int
     temporary: int
@@ -126,6 +132,33 @@ class Overview:
     days: list[tuple[date, Money]]
     projects: list[ProjectLine]
     terms_estimated: bool
+    previous: "Previous | None" = None
+
+
+@dataclass
+class Previous:
+    """The period before, for "▲ 6% from October": its range, totals and the same days so far."""
+
+    first: date
+    last: date
+    money: Money
+    billing_to_date: Decimal | None
+    hours_to_date: Decimal
+
+
+def previous_range(first: date, last: date) -> tuple[date, date]:
+    """The period just before ``first``..``last``.
+
+    Whole calendar months back when the range is whole months, otherwise the same number of days.
+    """
+    next_day = last + timedelta(days=1)
+    if first.day == 1 and next_day.day == 1:
+        months = (next_day.year - first.year) * 12 + next_day.month - first.month
+        year, month = divmod(first.month - 1 - months, 12)
+        start = date(first.year + year, month + 1, 1)
+        return start, first - timedelta(days=1)
+    length = (last - first).days + 1
+    return first - timedelta(days=length), first - timedelta(days=1)
 
 
 class OverviewService:
@@ -151,7 +184,13 @@ class OverviewService:
         self._members = member_repo
 
     async def overview(
-        self, actor: User, first: date, last: date, now: datetime | None = None
+        self,
+        actor: User,
+        first: date,
+        last: date,
+        now: datetime | None = None,
+        *,
+        compare: bool = True,
     ) -> Overview:
         """The snapshot from ``first`` to ``last`` for ``actor`` (Manager or Admin).
 
@@ -178,6 +217,7 @@ class OverviewService:
 
         week_start = sunday(today)
         week_end = week_start + timedelta(days=6)
+        next_start, next_end = week_start + timedelta(days=7), week_end + timedelta(days=7)
         range_from, range_before = utc_window(min(first, week_start), max(last, week_end))
         lines = await self._rows.lines(org_id, range_from, range_before, scope)
 
@@ -202,7 +242,8 @@ class OverviewService:
             for p in projects.values()
         }
 
-        total = Money()
+        # Money is shown when the reader may see any project's pay, even with no work yet.
+        total = Money(money_shown=bool(visible))
         weeks: dict[date, Money] = defaultdict(Money)
         days: dict[date, Money] = defaultdict(Money)
         week_hours: dict[uuid.UUID, timedelta] = defaultdict(timedelta)
@@ -235,16 +276,22 @@ class OverviewService:
             weeks[sunday(day)].add(hours, billing, pay, done)
             days[day].add(hours, billing, pay, done)
             table[s.project_id].money.add(hours, billing, pay, done)
+            table[s.project_id].weeks[sunday(day)].add(hours, billing, pay, done)
 
-        needed = filled = 0
-        for c in await self._rows.cover(org_id, *utc_window(week_start, week_end), scope):
-            if not week_start <= local(c.starts_at, c.timezone) <= week_end:
-                continue
+        needed = filled = needed_next = filled_next = 0
+        for c in await self._rows.cover(org_id, *utc_window(week_start, next_end), scope):
+            day = local(c.starts_at, c.timezone)
             on = min(c.on_it, c.headcount)
-            needed += c.headcount
-            filled += on
-            table[c.project_id].needed += c.headcount
-            table[c.project_id].filled += on
+            if week_start <= day <= week_end:
+                needed += c.headcount
+                filled += on
+                table[c.project_id].needed += c.headcount
+                table[c.project_id].filled += on
+            elif next_start <= day <= next_end:
+                needed_next += c.headcount
+                filled_next += on
+                table[c.project_id].needed_next += c.headcount
+                table[c.project_id].filled_next += on
 
         # An Admin sees the whole organisation; a Manager the people of their own projects.
         staff = await self._rows.staff(
@@ -267,6 +314,9 @@ class OverviewService:
             needed=needed,
             filled=filled,
             projects_with_gaps=sum(1 for r in table.values() if r.needed > r.filled),
+            needed_next=needed_next,
+            filled_next=filled_next,
+            projects_with_gaps_next=sum(1 for r in table.values() if r.needed_next > r.filled_next),
             active=len(staff),
             working_this_week=len(working),
             temporary=sum(1 for _, kind, _ in staff if kind == "temporary"),
@@ -278,8 +328,29 @@ class OverviewService:
             near_weekly_limit=sum(1 for h in week_hours.values() if h >= limit),
             weeks=sorted(weeks.items()),
             days=sorted(days.items()),
-            projects=[r for r in rows if r.money.hours_forecast or r.needed],
+            projects=[r for r in rows if r.money.hours_forecast or r.needed or r.needed_next],
             terms_estimated=any(
                 r.project.terms_estimated for r in rows if r.money.hours_forecast or r.needed
             ),
+            previous=await self._previous(actor, first, last, today, now) if compare else None,
+        )
+
+    async def _previous(
+        self, actor: User, first: date, last: date, today: date, now: datetime
+    ) -> Previous:
+        """The period before, and how far it had got by the same day (for "so far" deltas)."""
+        prev_first, prev_last = previous_range(first, last)
+        before = await self.overview(actor, prev_first, prev_last, now, compare=False)
+        cutoff = prev_first + (today - first)
+        so_far = [m for day, m in before.days if day <= cutoff]
+        return Previous(
+            first=prev_first,
+            last=prev_last,
+            money=before.money,
+            billing_to_date=(
+                sum((m.billing_forecast for m in so_far), ZERO)
+                if before.money.money_shown
+                else None
+            ),
+            hours_to_date=sum((m.hours_forecast for m in so_far), ZERO),
         )

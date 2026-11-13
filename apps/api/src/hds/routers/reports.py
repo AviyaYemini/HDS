@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from hds.core.deps import require_manager
 from hds.core.types import Amount, HoursOut, IsoDate, ShareOut
 from hds.models.user import User
-from hds.services.overview import Money, Overview, OverviewService
+from hds.services.overview import Money, Overview, OverviewService, Previous
 from hds.services.reports import Group, HoursReport, ReportsService, Row, WorkLog
 from hds.wiring import overview, reports
 
@@ -266,6 +266,31 @@ class OverviewDayRead(BaseModel):
     forecast: bool = Field(description="True from today on: still a forecast from the roster.")
 
 
+class OverviewProjectWeekRead(BaseModel):
+    """One week of one project, for its trend line."""
+
+    week_start: date
+    hours: HoursOut
+    billing: Amount | None = None
+
+
+class OverviewPreviousRead(BaseModel):
+    """The period before, for the key figures' change: whole months back for a month range."""
+
+    first: date = Field(serialization_alias="from")
+    last: date = Field(serialization_alias="to")
+    hours: HoursOut
+    billing: Amount | None = None
+    pay: Amount | None = None
+    margin_pct: ShareOut | None = None
+    hours_to_date: HoursOut = Field(
+        description="Its hours up to the same day as today in this range."
+    )
+    billing_to_date: Amount | None = Field(
+        default=None, description="Its billing up to the same day as today in this range."
+    )
+
+
 class OverviewProjectRead(BaseModel):
     """One project's row: its money in the range and this week's cover."""
 
@@ -282,9 +307,11 @@ class OverviewProjectRead(BaseModel):
         default=None, description="Null when no places this week."
     )
     empty_places: int
+    empty_places_next: int = Field(description="Empty places next week.")
     temporary_workers: int
     terms_estimated: bool
     status: Literal["ok", "gaps", "loss", "no_rate"]
+    weeks: list[OverviewProjectWeekRead]
 
 
 class OverviewRead(BaseModel):
@@ -301,11 +328,13 @@ class OverviewRead(BaseModel):
     hours_actual: HoursOut
     hours_forecast: HoursOut
     coverage: CoverageRead
+    coverage_next: CoverageRead = Field(description="Next week's places, the week being prepared.")
     people: PeopleRead
     weeks: list[OverviewWeekRead]
     days: list[OverviewDayRead]
     projects: list[OverviewProjectRead]
     terms_estimated: bool
+    previous: OverviewPreviousRead | None = None
 
 
 def _money(m: Money) -> dict[str, Any]:
@@ -335,6 +364,13 @@ def read_overview(o: Overview) -> OverviewRead:
             needed=o.needed,
             empty_places=o.needed - o.filled,
             projects_with_gaps=o.projects_with_gaps,
+        ),
+        coverage_next=CoverageRead(
+            week_start=o.week_start + timedelta(days=7),
+            filled=o.filled_next,
+            needed=o.needed_next,
+            empty_places=o.needed_next - o.filled_next,
+            projects_with_gaps=o.projects_with_gaps_next,
         ),
         people=PeopleRead(
             active=o.active,
@@ -376,14 +412,43 @@ def read_overview(o: Overview) -> OverviewRead:
                 margin_pct=r.margin_pct,
                 coverage_pct=(r.filled * 100 / r.needed) if r.needed else None,
                 empty_places=r.needed - r.filled,
+                empty_places_next=r.needed_next - r.filled_next,
                 temporary_workers=r.temporary_workers,
                 terms_estimated=r.project.terms_estimated,
                 status=r.status,  # type: ignore[arg-type]
+                weeks=[
+                    OverviewProjectWeekRead(
+                        week_start=start,
+                        hours=m.hours_forecast,
+                        billing=m.billing_forecast if m.money_shown else None,
+                    )
+                    for start, m in sorted(r.weeks.items())
+                ],
             )
             for r in o.projects
         ],
         terms_estimated=o.terms_estimated,
+        previous=_previous(o.previous) if o.previous else None,
         **_money(o.money),
+    )
+
+
+def _previous(prev: Previous) -> OverviewPreviousRead:
+    m = prev.money
+    shown = m.money_shown
+    return OverviewPreviousRead(
+        first=prev.first,
+        last=prev.last,
+        hours=m.hours_forecast,
+        billing=m.billing_forecast if shown else None,
+        pay=m.pay_forecast if shown else None,
+        margin_pct=(
+            (m.billing_forecast - m.pay_forecast) * 100 / m.billing_forecast
+            if shown and m.billing_forecast
+            else None
+        ),
+        hours_to_date=prev.hours_to_date,
+        billing_to_date=prev.billing_to_date,
     )
 
 

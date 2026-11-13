@@ -3552,6 +3552,44 @@ export interface components {
             pay?: string | null;
         };
         /**
+         * OverviewPreviousRead
+         * @description The period before, for the key figures' change: whole months back for a month range.
+         */
+        OverviewPreviousRead: {
+            /** Billing */
+            billing?: string | null;
+            /**
+             * Billing To Date
+             * @description Its billing up to the same day as today in this range.
+             */
+            billing_to_date?: string | null;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Hours To Date
+             * @description Its hours up to the same day as today in this range.
+             * @example 7.50
+             */
+            hours_to_date: string;
+            /** Margin Pct */
+            margin_pct?: string | null;
+            /** Pay */
+            pay?: string | null;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /**
          * OverviewProjectRead
          * @description One project's row: its money in the range and this week's cover.
          */
@@ -3567,6 +3605,11 @@ export interface components {
             coverage_pct?: string | null;
             /** Empty Places */
             empty_places: number;
+            /**
+             * Empty Places Next
+             * @description Empty places next week.
+             */
+            empty_places_next: number;
             /**
              * Hours
              * @example 7.50
@@ -3602,6 +3645,26 @@ export interface components {
              * @enum {string}
              */
             type: "security" | "training";
+            /** Weeks */
+            weeks: components["schemas"]["OverviewProjectWeekRead"][];
+        };
+        /**
+         * OverviewProjectWeekRead
+         * @description One week of one project, for its trend line.
+         */
+        OverviewProjectWeekRead: {
+            /** Billing */
+            billing?: string | null;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
         };
         /**
          * OverviewRead
@@ -3613,6 +3676,8 @@ export interface components {
             /** Billing Forecast */
             billing_forecast?: string | null;
             coverage: components["schemas"]["CoverageRead"];
+            /** @description Next week's places, the week being prepared. */
+            coverage_next: components["schemas"]["CoverageRead"];
             /** Days */
             days: components["schemas"]["OverviewDayRead"][];
             /**
@@ -3637,6 +3702,7 @@ export interface components {
             /** Pay Forecast */
             pay_forecast?: string | null;
             people: components["schemas"]["PeopleRead"];
+            previous?: components["schemas"]["OverviewPreviousRead"] | null;
             /** Projects */
             projects: components["schemas"]["OverviewProjectRead"][];
             /** Terms Estimated */

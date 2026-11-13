@@ -150,6 +150,10 @@ async def test_an_admin_sees_actual_and_forecast_billing_cover_and_people(
     assert {p["name"] for p in body["projects"]} == {"Managed Patrol", "Other Patrol"}
     assert {p["status"] for p in body["projects"]} == {"gaps"}
     assert [w["forecast"] for w in body["weeks"]] == [False, True]
+    assert body["coverage_next"]["needed"] == 0
+    assert {len(p["weeks"]) for p in body["projects"]} == {2}
+    assert body["previous"]["billing"] == "0.00"
+    assert {p["empty_places_next"] for p in body["projects"]} == {0}
     # One day of each week has work: last week's (done) and this Saturday's (to come).
     assert [(d["billing"], d["forecast"]) for d in body["days"]] == [
         ("1600.00", False),

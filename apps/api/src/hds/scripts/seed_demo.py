@@ -39,6 +39,7 @@ from hds.models.shift import Assignment, Shift
 from hds.models.shift_type import ShiftType, project_shift_types
 from hds.models.site import Site
 from hds.models.staffing_need import StaffingNeed
+from hds.models.submission_window import SubmissionWindow
 from hds.models.user import User, UserRole
 
 ZONE_NAME = "Asia/Jerusalem"
@@ -173,6 +174,12 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
     await db.flush()
     db.add_all(projects.values())
     await db.flush()
+    last_weeks = set(data["weeks"][-2:])
+    recent = {
+        s["project"]
+        for s in data["shifts"]
+        if str(_sunday(dt.date.fromisoformat(s["date"]))) in last_weeks and s["people"]
+    }
     for p in data["projects"]:
         project = projects[p["key"]]
         for start, end in p["windows"]:
@@ -187,6 +194,10 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
                 ProjectManager(organisation_id=org.id, project_id=project.id, user_id=manager.id)
             )
         first = types[tuple(p["windows"][0])]
+        # Needs only for tasks still running (work in the last two weeks of the sheet), so a
+        # schedule run fills what is live, not tasks that have ended.
+        if p["key"] not in recent:
+            continue
         for weekday, count in p["needs_by_weekday"].items():
             if count:
                 db.add(
@@ -199,6 +210,20 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
                         headcount=int(count),
                     )
                 )
+
+    # An availability window open for the week after next, as the managers would have it.
+    after_next = _sunday(today) + dt.timedelta(days=14)
+    db.add(
+        SubmissionWindow(
+            id=uuid.uuid4(),
+            organisation_id=org.id,
+            starts_on=after_next,
+            ends_on=after_next + dt.timedelta(days=6),
+            deadline=dt.datetime.combine(
+                after_next - dt.timedelta(days=4), dt.time(18), ZONE
+            ).astimezone(dt.UTC),
+        )
+    )
 
     people: dict[str, User] = {}
     for n, person in enumerate(data["people"], start=1):
