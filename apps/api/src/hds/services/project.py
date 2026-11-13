@@ -18,6 +18,7 @@ from hds.models.project import Project, ProjectStatus
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.project import ProjectRepository
+from hds.repositories.project_manager import ProjectManagerRepository
 from hds.repositories.site import SiteRepository
 from hds.services.pay_settings import PaySettingsService
 
@@ -47,6 +48,7 @@ class ProjectService:
         client_repo: ClientRepository,
         site_repo: SiteRepository,
         pay_settings: PaySettingsService,
+        manager_repo: ProjectManagerRepository | None = None,
     ) -> None:
         """Wire the service.
 
@@ -56,7 +58,9 @@ class ProjectService:
             site_repo: Used to verify site ids.
             pay_settings: Checks the pay settings sent with a new project (Admin only) and
                 freezes a project's pay when it ends (005 FR-006a, FR-007).
+            manager_repo: Names each project's managers in the list (CEO demo).
         """
+        self._managers = manager_repo
         self._repo = project_repo
         self._client_repo = client_repo
         self._site_repo = site_repo
@@ -257,3 +261,11 @@ class ProjectService:
                     detail="Access to this project is not allowed.",
                 )
         return project
+
+    async def managers_of(
+        self, actor: User, project_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, str]]]:
+        """The managers of ``project_ids`` for staff readers; nothing for a Client (CEO demo)."""
+        if self._managers is None or actor.role == UserRole.client:
+            return {}
+        return await self._managers.names_for(actor.organisation_id, project_ids)

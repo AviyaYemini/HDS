@@ -4,7 +4,10 @@ Layer: routers. Delegates to ``InvitationService``. Accepting an invite and both
 endpoints are public because the caller has no session yet; the one-time token is the credential.
 """
 
+import uuid
 from collections.abc import Callable
+from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
@@ -18,10 +21,16 @@ from hds.core.deps import require_manager
 from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
 from hds.core.types import Email, Password, Token
 from hds.models.user import User, UserRole
+from hds.repositories.client import ClientRepository
+from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
+from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.project_member import ProjectMemberRepository
+from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.services.employee import EmployeeService
 from hds.services.invitation import InvitationService
 
 router = APIRouter(prefix="/auth", tags=["invitations"])
@@ -32,6 +41,12 @@ class InviteRequest(BaseModel):
 
     email: Email
     role: UserRole = UserRole.employee
+    employment_type: Literal["permanent", "temporary"] | None = Field(
+        default=None, description="Temporary for a worker on given projects for up to 3 months."
+    )
+    engaged_from: date | None = None
+    engaged_until: date | None = None
+    project_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
 
 class AcceptInviteRequest(BaseModel):
@@ -123,9 +138,26 @@ async def create_invitation(
     Answers 503 (`service.busy`) with `Retry-After` when the password-hashing queue is full;
     nothing is changed.
     """
-    await _svc(db, mailer).create_invitation(
+    user_id = await _svc(db, mailer).create_invitation(
         actor=current_user, email=str(body.email), role=body.role
     )
+    engagement = body.model_dump(
+        include={"employment_type", "engaged_from", "engaged_until", "project_ids"},
+        exclude_none=True,
+    )
+    if engagement:
+        # The invitee is a temporary worker from the start (CEO demo): the same rules as editing
+        # one; a refusal undoes the invitation too, as it is one unit of work.
+        await EmployeeService(
+            user_repo=UserRepository(db),
+            token_repo=RefreshTokenRepository(db),
+            link_repo=InvitationTokenRepository(db),
+            group_repo=GroupRepository(db),
+            qualification_repo=QualificationRepository(db),
+            client_repo=ClientRepository(db),
+            project_manager_repo=ProjectManagerRepository(db),
+            member_repo=ProjectMemberRepository(db),
+        ).set_engagement(current_user, user_id, engagement)
     return Response(status_code=202)
 
 

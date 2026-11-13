@@ -259,6 +259,7 @@ def projects(
         client_repo=ClientRepository(db),
         site_repo=SiteRepository(db),
         pay_settings=pay_settings_service(db),
+        manager_repo=ProjectManagerRepository(db),
     )
 
 

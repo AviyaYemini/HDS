@@ -2900,6 +2900,17 @@ export interface components {
              * Format: email
              */
             email: string;
+            /**
+             * Employment Type
+             * @description Temporary for a worker on given projects for up to 3 months.
+             */
+            employment_type?: ("permanent" | "temporary") | null;
+            /** Engaged From */
+            engaged_from?: string | null;
+            /** Engaged Until */
+            engaged_until?: string | null;
+            /** Project Ids */
+            project_ids?: string[] | null;
             /** @default employee */
             role: components["schemas"]["UserRole"];
         };
@@ -4174,6 +4185,19 @@ export interface components {
             items: components["schemas"]["ProjectRead"][];
         };
         /**
+         * ProjectManagerName
+         * @description A manager of a project, for showing who runs it (CEO demo).
+         */
+        ProjectManagerName: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
          * ProjectPayChanges
          * @description A project's switches and overrides; omitted fields stay as they are.
          */
@@ -4224,6 +4248,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Managers
+             * @description The project's managers, in the list for staff readers (CEO demo).
+             */
+            managers?: components["schemas"]["ProjectManagerName"][];
             /** Name */
             name: string;
             /**

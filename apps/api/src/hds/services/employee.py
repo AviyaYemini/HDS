@@ -545,6 +545,29 @@ class EmployeeService:
 
     # ── Guards ───────────────────────────────────────────────────────────────
 
+    async def set_engagement(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> None:
+        """Set a temporary worker's type, dates and projects on an existing (or pending) account.
+
+        Used when an invitation marks the invitee temporary (CEO demo); the same rules as
+        ``edit_employee``.
+
+        Raises:
+            As ``edit_employee`` for the engagement fields.
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        target = await self._user_repo.get_by_id(target_id, actor.organisation_id)
+        if target is None:
+            raise NotFoundError(resource="User", id=target_id)
+        fields = dict(data)
+        engagement = await self._engagement(actor, target, fields)
+        if engagement is None:
+            return
+        await self._user_repo.update(target_id, actor.organisation_id, **fields)
+        if self._members is not None:
+            await self._members.replace_for_user(
+                actor.organisation_id, target_id, engagement["project_ids"]
+            )
+
     async def _engagement(
         self, actor: User, target: User | None, data: dict[str, Any]
     ) -> dict[str, Any] | None:

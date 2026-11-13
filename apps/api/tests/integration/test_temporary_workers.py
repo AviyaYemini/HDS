@@ -254,3 +254,87 @@ async def test_the_week_s_warnings_list_a_temporary_worker_outside_their_project
         f"/api/v1/roster/warnings?from={TODAY}&to={TODAY + timedelta(days=40)}", headers=admin
     )
     assert too_long.status_code == 422
+
+
+async def test_an_invitation_can_mark_the_invitee_temporary(
+    async_client: AsyncClient, projects: dict[str, Project], test_db: AsyncSession
+) -> None:
+    admin = await _headers(async_client, "admin@hds.test")
+    first = TODAY
+    r = await async_client.post(
+        "/auth/invite",
+        json={
+            "email": "new.temp@hds.test",
+            "employment_type": "temporary",
+            "engaged_from": str(first),
+            "engaged_until": str(first + timedelta(days=30)),
+            "project_ids": [str(projects["north"].id)],
+        },
+        headers=admin,
+    )
+    assert r.status_code == 202, r.text
+    invited = (
+        await test_db.execute(select(User).where(User.email == "new.temp@hds.test"))
+    ).scalar_one()
+    assert invited.employment_type == "temporary"
+    assert invited.engaged_until == first + timedelta(days=30)
+
+
+async def test_an_invitation_with_a_bad_period_invites_nobody(
+    async_client: AsyncClient, projects: dict[str, Project], test_db: AsyncSession
+) -> None:
+    admin = await _headers(async_client, "admin@hds.test")
+    r = await async_client.post(
+        "/auth/invite",
+        json={
+            "email": "too.long@hds.test",
+            "employment_type": "temporary",
+            "engaged_from": str(TODAY),
+            "engaged_until": str(TODAY + timedelta(days=120)),
+            "project_ids": [str(projects["north"].id)],
+        },
+        headers=admin,
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "employees.temporary_period_invalid"
+    found = await test_db.execute(select(User).where(User.email == "too.long@hds.test"))
+    assert found.scalar_one_or_none() is None
+
+
+async def test_an_invitation_without_a_type_is_a_regular_worker(
+    async_client: AsyncClient, test_db: AsyncSession, seed_users: dict[str, User]
+) -> None:
+    admin = await _headers(async_client, "admin@hds.test")
+    r = await async_client.post("/auth/invite", json={"email": "plain@hds.test"}, headers=admin)
+    assert r.status_code == 202, r.text
+    invited = (
+        await test_db.execute(select(User).where(User.email == "plain@hds.test"))
+    ).scalar_one()
+    assert invited.employment_type == "permanent"
+
+
+async def test_the_project_list_names_each_project_s_managers(
+    async_client: AsyncClient,
+    projects: dict[str, Project],
+    test_db: AsyncSession,
+    seed_org: Organisation,
+    seed_users: dict[str, User],
+) -> None:
+    from hds.models.project_manager import ProjectManager
+
+    test_db.add(
+        ProjectManager(
+            organisation_id=seed_org.id,
+            project_id=projects["north"].id,
+            user_id=seed_users["manager"].id,
+        )
+    )
+    await test_db.commit()
+    admin = await _headers(async_client, "admin@hds.test")
+    r = await async_client.get("/api/v1/projects", headers=admin)
+    assert r.status_code == 200, r.text
+    by_id = {p["id"]: p for p in r.json()["items"]}
+    assert [m["id"] for m in by_id[str(projects["north"].id)]["managers"]] == [
+        str(seed_users["manager"].id)
+    ]
+    assert by_id[str(projects["south"].id)]["managers"] == []

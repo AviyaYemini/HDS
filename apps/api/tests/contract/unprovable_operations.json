@@ -315,6 +315,13 @@
       "operation_id": "roster_warnings_api_v1_roster_warnings_get",
       "suites": ["pytest", "cli"],
       "reason": "to on or after from and at most 31 days later spans two parameters (CEO demo); answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/invite",
+      "operation_id": "create_invitation_auth_invite_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a temporary invitee needs both dates at most three months apart and a project (CEO demo), which span several fields; answered 422 employees.temporary_period_invalid or employees.temporary_projects_required"
     }
   ]
 }

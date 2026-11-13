@@ -10,7 +10,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hds.core.deps import require_admin, require_manager, require_manager_or_client
 from hds.core.types import ChangeRequest, Money, Name, StrictDate, omittable
@@ -21,6 +21,13 @@ from hds.services.project import ProjectService
 from hds.wiring import projects
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
+
+
+class ProjectManagerName(BaseModel):
+    """A manager of a project, for showing who runs it (CEO demo)."""
+
+    id: uuid.UUID
+    full_name: str
 
 
 class ProjectRead(BaseModel):
@@ -38,6 +45,10 @@ class ProjectRead(BaseModel):
     status: ProjectStatus
     created_at: datetime
     updated_at: datetime
+    managers: list[ProjectManagerName] = Field(
+        default_factory=list,
+        description="The project's managers, in the list for staff readers (CEO demo).",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -103,7 +114,16 @@ async def list_projects(
         status=status,
         client_id=client_id,
     )
-    return ProjectListResponse(items=projects)  # type: ignore[arg-type]
+    names = await svc.managers_of(current_user, [p.id for p in projects])
+    items = [
+        ProjectRead.model_validate(p).model_copy(
+            update={
+                "managers": [ProjectManagerName(id=i, full_name=n) for i, n in names.get(p.id, [])]
+            }
+        )
+        for p in projects
+    ]
+    return ProjectListResponse(items=items)
 
 
 @router.post(
