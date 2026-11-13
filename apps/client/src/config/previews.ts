@@ -17,7 +17,6 @@ export const PREVIEW_PATHS: readonly string[] = [
   "/client/billing",
   "/client/requests",
   "/manage/requests",
-  "/manage/overview",
   "/manage/approvals",
   "/my/requests",
   "/inbox",

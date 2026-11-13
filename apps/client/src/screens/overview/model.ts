@@ -1,0 +1,94 @@
+/**
+ * The snapshot dashboard's data (specs/demo-ceo/plan.md, "API changes" §2): the shape of
+ * `GET /api/v1/reports/overview`, written out by hand until the generated client carries it, and
+ * the pure parts the screen needs: the period's range and how a project's status reads. Money is
+ * an `Amount` and hours are `HoursOut`, strings with two decimals; the client never adds them up.
+ */
+import { addDays } from "../../locale";
+
+export type Amount = string;
+export type HoursOut = string;
+export type ProjectHealth = "ok" | "gaps" | "loss" | "no_rate";
+
+export interface OverviewWeek {
+  week_start: string;
+  hours: HoursOut;
+  billing: Amount;
+  pay: Amount | null;
+  forecast: boolean;
+}
+
+export interface OverviewProject {
+  id: string;
+  name: string;
+  client_name: string;
+  managers: string[];
+  type: "security" | "training";
+  hours: HoursOut;
+  billing: Amount;
+  pay: Amount | null;
+  margin_pct: string | null;
+  coverage_pct: string | null;
+  empty_places: number;
+  temporary_workers: number;
+  rates_estimated: boolean;
+  status: ProjectHealth;
+}
+
+export interface Overview {
+  from: string;
+  to: string;
+  today: string;
+  billing_actual: Amount;
+  billing_forecast: Amount;
+  pay_actual: Amount | null;
+  pay_forecast: Amount | null;
+  margin_pct: string | null;
+  hours_actual: HoursOut;
+  hours_forecast: HoursOut;
+  coverage: { week_start: string; filled: number; needed: number; empty_places: number; projects_with_gaps: number };
+  people: { active: number; working_this_week: number; temporary: number; temporary_ending_soon: number; near_weekly_limit: number };
+  weeks: OverviewWeek[];
+  projects: OverviewProject[];
+  rates_estimated: boolean;
+}
+
+export type Period = "month" | "quarter" | "year";
+
+/** The period holding `today`: its first and last dates. */
+export function periodRange(period: Period, today: string): { from: string; to: string } {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const first = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}-01`;
+  const lastOf = (y: number, m: number) => addDays(m === 12 ? first(y + 1, 1) : first(y, m + 1), -1);
+  if (period === "month") return { from: first(year, month), to: lastOf(year, month) };
+  if (period === "quarter") {
+    const start = Math.floor((month - 1) / 3) * 3 + 1;
+    return { from: first(year, start), to: lastOf(year, start + 2) };
+  }
+  return { from: first(year, 1), to: lastOf(year, 12) };
+}
+
+/** This week's coverage as a whole percent, or null when nothing is needed. */
+export function coveragePercent(coverage: Overview["coverage"]): number | null {
+  if (coverage.needed <= 0) return null;
+  return Math.round((Math.min(coverage.filled, coverage.needed) / coverage.needed) * 100);
+}
+
+/** A "12.50" percent as the table shows it: "12.5%", a loss with a true minus sign. */
+export function formatPercent(value: string | null): string {
+  if (value === null) return "—";
+  const n = Number(value);
+  const text = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(Math.abs(n));
+  return `${n < 0 ? "−" : ""}${text}%`;
+}
+
+/** The chip a project's status shows. */
+export function healthChip(status: ProjectHealth): "success" | "warning" | "danger" | "neutral" {
+  return status === "ok" ? "success" : status === "gaps" ? "warning" : status === "loss" ? "danger" : "neutral";
+}
+
+/** "1.11": a week's label, day and month. */
+export function weekLabel(weekStart: string): string {
+  return `${Number(weekStart.slice(8))}.${Number(weekStart.slice(5, 7))}`;
+}

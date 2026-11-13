@@ -37,12 +37,13 @@ export const STAFF_DESTINATIONS: readonly Destination[] = [
   { key: "my-shifts", href: "/my/shifts", labelKey: "nav.shifts", icon: "clock", group: "my-work", need: ["my_work.read"] },
   { key: "pay", href: "/my/pay", labelKey: "nav.pay", icon: "wallet", group: "my-work", need: ["my_work.read"] },
   { key: "requests", href: "/my/requests", labelKey: "nav.requests", icon: "mail", group: "my-work", need: ["my_work.read"], preview: true },
+  // The snapshot dashboard comes first: an Admin or a Manager lands on it (CEO demo).
+  { key: "overview", href: "/manage/overview", labelKey: "nav.overview", icon: "chart", group: "manage", need: ["reports.read"] },
   { key: "roster", href: "/roster", labelKey: "nav.roster", icon: "grid", group: "manage", need: ["roster.read"], also: ["/roster/"] },
   { key: "submissions", href: "/roster/submissions", labelKey: "nav.submissions", icon: "list", group: "manage", need: ["availability.read_others"] },
   { key: "runs", href: "/runs", labelKey: "nav.runs", icon: "play", group: "manage", need: ["schedule.generate"] },
   { key: "work-log", href: "/reports/work-log", labelKey: "nav.work_log", icon: "chart", group: "manage", need: ["reports.read"] },
   { key: "hours", href: "/reports/hours", labelKey: "nav.hours", icon: "clock", group: "manage", need: ["reports.read"] },
-  { key: "overview", href: "/manage/overview", labelKey: "nav.overview", icon: "chart", group: "manage", need: ["roster.read"], preview: true },
   { key: "manage-requests", href: "/manage/requests", labelKey: "nav.client_requests", icon: "mail", group: "manage", need: ["client_requests.answer"], preview: true },
   { key: "approvals", href: "/manage/approvals", labelKey: "nav.approvals", icon: "check", group: "manage", need: ["client_requests.answer"], preview: true },
   { key: "staff", href: "/admin/staff", labelKey: "nav.staff", icon: "people", group: "admin", need: ["staff.manage"] },
@@ -79,7 +80,9 @@ export function shellFor(capabilities: Capabilities): "staff" | "client" | "none
 
 /** The person's home address. */
 export function homeFor(capabilities: Capabilities): string {
-  return shellFor(capabilities) === "client" ? "/client" : "/home";
+  if (shellFor(capabilities) === "client") return "/client";
+  // Admins and Managers land on the snapshot dashboard (CEO demo, slide 14).
+  return capabilities.has("reports.read") ? "/manage/overview" : "/home";
 }
 
 /** The destinations a person may open, in navigation order. */
