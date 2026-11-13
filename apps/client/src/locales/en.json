@@ -1128,5 +1128,8 @@
   "snapshot.col.trend": "Trend",
   "snapshot.next_empty": "Next week: {{count}} empty",
   "snapshot.next_empty_one": "Next week: 1 empty",
-  "snapshot.next_empty_other": "Next week: {{count}} empty"
+  "snapshot.next_empty_other": "Next week: {{count}} empty",
+  "hc.figure.margin": "Margin",
+  "hc.figure.margin_detail": "billing less pay, of billing",
+  "hc.col.margin": "Margin"
 }

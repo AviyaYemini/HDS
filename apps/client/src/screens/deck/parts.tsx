@@ -236,6 +236,14 @@ const styles = StyleSheet.create({
   bar: { flex: 1 },
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
+  hbars: { gap: 10 },
+  hrow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  hrowPhone: { gap: 4 },
+  hlabel: { width: "34%", flexShrink: 0 },
+  htrackRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  htrack: { flex: 1, height: 10 },
+  hfill: { height: 10 },
+  hvalue: { minWidth: 64, textAlign: "left" },
   cards: { borderTopWidth: 0 },
   card: { gap: 6, paddingVertical: 12, borderBottomWidth: 1, minHeight: 48 },
   cardFigures: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
@@ -245,6 +253,55 @@ const styles = StyleSheet.create({
   splitCol: { gap: 24 },
   stacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });
+
+/** One horizontal bar: a full name, its share against the largest, and its value. */
+export interface HBar {
+  key: string;
+  label: string;
+  value: number;
+  valueText: string;
+  /** Drawn light (training against security). */
+  light?: boolean;
+  onPress?: () => void;
+}
+
+/** Horizontal bars with the full names, nothing cut (the owner, 2026-11-13); they grow on entrance. */
+export function HBars({ bars, legend, progress = 1, testID }: { bars: readonly HBar[]; legend: string; progress?: number; testID?: string }) {
+  const { colors, isDesktop } = useTheme();
+  const largest = Math.max(1, ...bars.map((b) => b.value));
+  return (
+    <View style={styles.hbars} testID={testID}>
+      {bars.map((b) => {
+        const fill = <View style={[styles.hfill, { width: `${(b.value / largest) * 100 * progress}%`, backgroundColor: b.light ? colors.border.strong : colors.text.primary }]} />;
+        const row = (
+          <View style={isDesktop ? styles.hrow : styles.hrowPhone}>
+            <Txt role="label" style={isDesktop ? styles.hlabel : null}>
+              {b.label}
+            </Txt>
+            <View style={styles.htrackRow}>
+              <View style={[styles.htrack, { backgroundColor: colors.bg.selected }]}>{fill}</View>
+              <Txt role="meta" tone="secondary" numeric style={styles.hvalue}>
+                {b.valueText}
+              </Txt>
+            </View>
+          </View>
+        );
+        return b.onPress ? (
+          <Pressable key={b.key} role="link" testID="hbar" onPress={b.onPress} accessibilityLabel={`${b.label}: ${b.valueText}`}>
+            {row}
+          </Pressable>
+        ) : (
+          <View key={b.key} testID="hbar">
+            {row}
+          </View>
+        );
+      })}
+      <Txt role="meta" tone="secondary">
+        {legend}
+      </Txt>
+    </View>
+  );
+}
 
 /** A small trend line (hours by week), time running with the reading direction. */
 export function Sparkline({ values, rtl, width = 72, height = 22, testID }: { values: readonly number[]; rtl: boolean; width?: number; height?: number; testID?: string }) {

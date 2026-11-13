@@ -5,14 +5,16 @@
  */
 import { screen } from "@testing-library/react-native";
 
+import { setReducedMotionForTests } from "../../src/design/motion";
 import { setupI18n } from "../../src/i18n";
-import { HoursCostsScreen, formatHoursFigure, topGroups } from "../../src/screens/reports/HoursCostsScreen";
+import { HoursCostsScreen, formatHoursFigure, marginOf, topGroups } from "../../src/screens/reports/HoursCostsScreen";
 import { FakeApi, json, renderWith, signedIn } from "./fakeApi";
 
 const group = (id: string, name: string, hours: string, extra: Record<string, unknown> = {}) => ({ id, name, hours, shifts: 2, pay: null, shifts_missing_rate: 0, rows: [], ...extra });
 
 beforeEach(async () => {
   await setupI18n("en");
+  setReducedMotionForTests(true);
 });
 
 test("without pay or billing from the API, neither figure nor column shows", async () => {
@@ -38,6 +40,17 @@ test("billing and pay show as the API sends them, and a group without a rate say
   expect(await screen.findByTestId("figure-billing", {}, { timeout: 5000 })).toHaveTextContent(/02\s*Billing/);
   expect(screen.getByTestId("figure-pay")).toHaveTextContent(/03\s*Gross pay/);
   expect(screen.getByText("No rate · 1")).toBeTruthy();
+  // Whole shekels in the figures, the margin as the fourth, and every name in full on its bar.
+  expect(screen.getByTestId("figure-billing")).toHaveTextContent(/₪2,200(?![.,]\d)/);
+  expect(screen.getByTestId("figure-margin")).toHaveTextContent(/04\s*Margin\s*.*31\.8%/);
+  expect(screen.getAllByTestId("hbar").map((b) => b.props.accessibilityLabel)).toEqual(["Harbour gate: 12 h", "City museum: 8 h"]);
+});
+
+test("a group's margin from its billing and pay", () => {
+  expect(marginOf({ billing: "100.00", pay: "80.00" })).toBe("20.00");
+  expect(marginOf({ billing: "100.00", pay: "110.00" })).toBe("-10.00");
+  expect(marginOf({ billing: "0.00", pay: "10.00" })).toBeNull();
+  expect(marginOf({ billing: "100.00", pay: null })).toBeNull();
 });
 
 test("hours figures and the bars' order", () => {

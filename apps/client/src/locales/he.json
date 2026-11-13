@@ -1128,5 +1128,8 @@
   "snapshot.col.trend": "מגמה",
   "snapshot.next_empty": "שבוע הבא: {{count}} ריקים",
   "snapshot.next_empty_one": "שבוע הבא: מקום ריק אחד",
-  "snapshot.next_empty_other": "שבוע הבא: {{count}} ריקים"
+  "snapshot.next_empty_other": "שבוע הבא: {{count}} ריקים",
+  "hc.figure.margin": "מרווח",
+  "hc.figure.margin_detail": "חיוב פחות שכר, מתוך החיוב",
+  "hc.col.margin": "מרווח"
 }
