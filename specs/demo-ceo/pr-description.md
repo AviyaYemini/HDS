@@ -45,7 +45,8 @@ This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry
   - the project editor titled by project with all seven days in view;
   - management ahead of "my work" in the menu;
   - the employee's pay compared like for like, and time ranges that never break inside Hebrew names;
-  - a sign-in that returns to the page you were on.
+  - a sign-in that returns to the page you were on;
+  - time ranges that never split across lines, and table headers that wrap instead of ending in "…".
 - **Hours and costs** in the deck's style. The hours report now includes billing.
 - **The demo data:**
   - `scripts/demo/parse_roster.py` reads the weekly Google Sheets export. It handles tasks, clients, managers, hours, sums, open places and merged spellings.
