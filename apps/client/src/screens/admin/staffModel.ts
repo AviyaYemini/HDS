@@ -75,3 +75,20 @@ export function maxEngagedUntil(from: string): string {
 export function daysLeft(today: string, until: string): number {
   return Math.round((Date.parse(`${until}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
+
+/** Initials for an avatar: the first letters of the first and last words ("Dana Levi" → "DL"). */
+export function initials(full: string): string {
+  const words = full.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const first = [...words[0]!][0] ?? "";
+  const last = words.length > 1 ? ([...words[words.length - 1]!][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
+
+/** How many days a temporary worker has left when the end is within `within` days (else null). */
+export function endingSoon(person: object, today: string, within = 14): number | null {
+  const job = employmentOf(person);
+  if (job.employment_type !== "temporary" || !job.engaged_until) return null;
+  const left = daysLeft(today, job.engaged_until);
+  return left >= 0 && left <= within ? left : null;
+}

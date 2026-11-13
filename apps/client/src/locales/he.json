@@ -1060,8 +1060,8 @@
   "snapshot.status.loss": "שלילי",
   "snapshot.status.no_rate": "אין תעריף",
   "snapshot.estimated_note": "* חלק מהתעריפים הם הערכה: בפרויקטים המסומנים התעריף לא הופיע בגיליון הסידור.",
-  "staff.col.week": "השבוע · בסידור",
-  "staff.col.month": "החודש · בפועל",
+  "staff.col.week": "השבוע",
+  "staff.col.month": "החודש",
   "staff.temporary": "זמני",
   "staff.temporary_until": "זמני · עד {{date}}",
   "staff.type_filter": "סוג העסקה",
@@ -1137,5 +1137,8 @@
   "sheet.total.empty": "ריקים",
   "sheet.total.published": "פורסמו",
   "sheet.total.temporary": "זמניים",
-  "sheet.card_hours": "{{hours}} שעות בסידור השבוע"
+  "sheet.card_hours": "{{hours}} שעות בסידור השבוע",
+  "staff.ending_soon": "מסתיים בעוד {{count}} ימים",
+  "staff.ending_soon_one": "מסתיים מחר",
+  "staff.ending_soon_other": "מסתיים בעוד {{count}} ימים"
 }

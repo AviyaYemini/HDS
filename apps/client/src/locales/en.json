@@ -1060,8 +1060,8 @@
   "snapshot.status.loss": "Loss",
   "snapshot.status.no_rate": "No rate",
   "snapshot.estimated_note": "* Some rates are estimates: the marked projects had no rate in the roster sheet.",
-  "staff.col.week": "This week · rostered",
-  "staff.col.month": "This month · worked",
+  "staff.col.week": "This week",
+  "staff.col.month": "This month",
   "staff.temporary": "Temporary",
   "staff.temporary_until": "Temporary · until {{date}}",
   "staff.type_filter": "Employment",
@@ -1137,5 +1137,8 @@
   "sheet.total.empty": "Empty",
   "sheet.total.published": "Published",
   "sheet.total.temporary": "Temporary",
-  "sheet.card_hours": "{{hours}} h rostered this week"
+  "sheet.card_hours": "{{hours}} h rostered this week",
+  "staff.ending_soon": "Ends in {{count}} days",
+  "staff.ending_soon_one": "Ends tomorrow",
+  "staff.ending_soon_other": "Ends in {{count}} days"
 }

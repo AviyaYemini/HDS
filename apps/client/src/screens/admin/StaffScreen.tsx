@@ -11,14 +11,15 @@ import { StyleSheet, View } from "react-native";
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { SegmentedControl, StatusChip, type Column } from "../../design/components";
+import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
+import { useTheme } from "../../design/theme/ThemeProvider";
 import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
 import { allShifts } from "../roster/allShifts";
 import { useLoad } from "../useLoad";
 import { AdminTable } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec } from "./RecordForm";
-import { dayMonth, employmentOf, maxEngagedUntil, passesType, scheduledHours, typeFilterOf, type TypeFilter } from "./staffModel";
+import { dayMonth, employmentOf, endingSoon, initials, maxEngagedUntil, passesType, scheduledHours, typeFilterOf, type TypeFilter } from "./staffModel";
 import { orNull } from "./text";
 
 /** Hours by person over `from`–`to`, from the hours report (published shifts that are over). */
@@ -32,6 +33,7 @@ function useHoursByPerson(from: string, to: string): Map<string, number> | null 
 
 export function StaffScreen() {
   const { t, i18n } = useTranslation();
+  const { colors } = useTheme();
   const session = useSession();
   const { api } = session;
   const capabilities = useCapabilities();
@@ -84,26 +86,47 @@ export function StaffScreen() {
     ...employmentFields,
   ];
   const columns: Column<Row>[] = [
-    { key: "name", title: t("entity.full_name"), sortable: true, render: (u) => u.full_name },
-    { key: "email", title: t("entity.email"), sortable: true, render: (u) => isolateLtr(u.email) },
-    { key: "role", title: t("entity.role"), sortable: true, render: (u) => t(`role.${u.role}`) },
-    { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
+    {
+      key: "name",
+      title: t("entity.full_name"),
+      sortable: true,
+      text: (u) => u.full_name,
+      // An initials avatar beside the name (the owner, 2026-11-13).
+      render: (u) => (
+        <View style={styles.nameCell}>
+          <View style={[styles.avatar, { backgroundColor: colors.bg.selected, borderColor: colors.border.subtle }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Txt role="eyebrow" tone="secondary">
+              {initials(u.full_name)}
+            </Txt>
+          </View>
+          <Txt role="label" numberOfLines={1} style={styles.name}>
+            {u.full_name}
+          </Txt>
+        </View>
+      ),
+    },
+    { key: "email", title: t("entity.email"), sortable: true, width: 200, render: (u) => isolateLtr(u.email) },
+    { key: "role", title: t("entity.role"), sortable: true, width: 80, render: (u) => t(`role.${u.role}`) },
+    { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, width: 96, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
     {
       key: "week",
       title: t("staff.col.week"),
       sortable: true,
       numeric: true,
+      width: 90,
       render: (u) => hoursText(weekHours, u.id),
     },
-    { key: "month", title: t("staff.col.month"), sortable: true, numeric: true, render: (u) => hoursText(monthHours, u.id) },
+    { key: "month", title: t("staff.col.month"), sortable: true, numeric: true, width: 90, render: (u) => hoursText(monthHours, u.id) },
     {
       key: "active",
       title: t("entity.status"),
       sortable: true,
+      width: 210,
       text: (u) => {
         const job = employmentOf(u);
         const temp = job.employment_type === "temporary" ? (job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")) : "";
-        return [u.is_active ? t("entity.active") : t("entity.inactive"), temp].filter(Boolean).join(" · ");
+        const soon = endingSoon(u, today);
+        return [u.is_active ? t("entity.active") : t("entity.inactive"), temp, soon === null ? "" : t("staff.ending_soon", { count: soon })].filter(Boolean).join(" · ");
       },
       render: (u) => {
         const job = employmentOf(u);
@@ -113,6 +136,7 @@ export function StaffScreen() {
             {job.employment_type === "temporary" ? (
               <StatusChip status="info" label={job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")} testID={`chip-temporary-${u.id}`} />
             ) : null}
+            {endingSoon(u, today) !== null ? <StatusChip status="warning" label={t("staff.ending_soon", { count: endingSoon(u, today)! })} testID={`chip-ending-${u.id}`} /> : null}
           </View>
         );
       },
@@ -151,6 +175,7 @@ export function StaffScreen() {
               {job.employment_type === "temporary" ? (
                 <StatusChip status="info" label={job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")} testID={`card-temporary-${u.id}`} />
               ) : null}
+              {endingSoon(u, today) !== null ? <StatusChip status="warning" label={t("staff.ending_soon", { count: endingSoon(u, today)! })} testID={`card-ending-${u.id}`} /> : null}
             </>
           ),
         };
@@ -225,4 +250,7 @@ export function StaffScreen() {
 
 const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  nameCell: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
+  avatar: { width: 30, height: 30, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  name: { flexShrink: 1 },
 });
