@@ -272,6 +272,15 @@ def _hours(window) -> float:
     return (b - a) % 24 or 24
 
 
+def three_months_on(day: dt.date) -> dt.date:
+    """``day`` three calendar months on, on the month's last day when it is shorter."""
+    import calendar
+
+    month = day.month + 2
+    year, month = day.year + month // 12, month % 12 + 1
+    return dt.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
 def _sunday(day: str) -> str:
     d = dt.date.fromisoformat(day)
     return str(d - dt.timedelta(days=d.isoweekday() % 7))
@@ -437,17 +446,17 @@ def main() -> int:
                 break
         last_seen = dt.date.fromisoformat(dates[-1])
         span = (last_seen - first_seen).days
-        # New in the last 10 weeks, still working in the last 3, on one or two projects.
+        # New in the last twelve weeks, still working in the last three, on one or two projects.
         temp = (span < TEMP_MAX_DAYS and len(info["projects"]) <= 2
-                and first_seen >= today - dt.timedelta(days=70) and last_seen >= today - dt.timedelta(days=21))
+                and first_seen >= today - dt.timedelta(days=84) and last_seen >= today - dt.timedelta(days=21))
         temp = overrides.get("temporary", {}).get(name, temp)
         person = {"name": name, "aliases": sorted(a for a, c in canon.items() if c == name and a != name),
                   "first_seen": str(first_seen), "last_seen": str(last_seen), "shifts": len(dates),
                   "projects": [k for k, _ in info["projects"].most_common()], "temporary": temp}
         if temp:
             person["engaged_from"] = str(first_seen)
-            person["engaged_until"] = str(min(first_seen + dt.timedelta(days=TEMP_MAX_DAYS - 2),
-                                              max(last_seen, today) + dt.timedelta(days=21)))
+            # Three calendar months from their first week, the longest a temporary engagement runs.
+            person["engaged_until"] = str(three_months_on(first_seen) - dt.timedelta(days=1))
             person["projects"] = person["projects"][:2]
         people_out.append(person)
 
