@@ -101,7 +101,7 @@ jest.mock("react-native-safe-area-context", () => {
 jest.mock("react-native-svg", () => {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const React = require("react");
-  const { View } = require("react-native");
+  const { Text, View } = require("react-native");
   /* eslint-enable @typescript-eslint/no-require-imports */
   const stub = (name: string) => {
     const Stub = (props: Record<string, unknown>) => React.createElement(View, { ...props, testID: props.testID ?? `svg-${name}` });
@@ -118,6 +118,9 @@ jest.mock("react-native-svg", () => {
     Line: stub("Line"),
     Circle: stub("Circle"),
     Rect: stub("Rect"),
+    G: stub("G"),
+    // SVG text holds strings, so it draws as text (the overview charts' scale and labels).
+    Text: (props: Record<string, unknown>) => React.createElement(Text, { testID: "svg-Text" }, props.children),
   };
 });
 

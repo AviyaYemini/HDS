@@ -49,6 +49,12 @@ test("the dashboard asks this month and shows the API's figures, the panel, the 
   expect(screen.getByText("Seaside mall *")).toBeTruthy();
   expect(screen.getByTestId("note-estimated")).toBeTruthy();
   expect(screen.getAllByTestId("bar-column")).toHaveLength(2);
+  // The charts, each named by a one-line summary: billing by client, and the staff mix.
+  expect(screen.getByTestId("chart-clients").props.accessibilityLabel).toMatch(/155,000\.00.* billed in 2 slices; Alpha Security leads with 74%/);
+  expect(screen.getAllByTestId("chart-clients-legend").map((r) => r.props.children)).toHaveLength(2);
+  expect(screen.getByTestId("chart-people").props.accessibilityLabel).toBe("11 permanent and 3 temporary: 21% of staff are temporary.");
+  // The fixture has no days, so no candles.
+  expect(screen.queryByTestId("chart-candles")).toBeNull();
 });
 
 test("where pay is hidden the API sends no money: hours stand in, with no margin or money anywhere", async () => {
@@ -63,6 +69,22 @@ test("where pay is hidden the API sends no money: hours stand in, with no margin
   expect(screen.queryByText(/margin/i)).toBeNull();
   expect(screen.queryByText(/₪/)).toBeNull();
   expect(screen.getByText("Hours · by week")).toBeTruthy();
+  expect(screen.queryByTestId("chart-clients")).toBeNull();
+  expect(screen.queryByTestId("chart-candles")).toBeNull();
+  expect(screen.getByTestId("chart-people")).toBeTruthy();
+});
+
+test("candles from the daily series, named by their summary", async () => {
+  const days = [
+    { date: "2026-11-01", hours: "80.00", billing: "8000.00", pay: "6000.00", forecast: false },
+    { date: "2026-11-05", hours: "90.00", billing: "9500.00", pay: "7000.00", forecast: false },
+    { date: "2026-11-08", hours: "70.00", billing: "7000.00", pay: "5000.00", forecast: false },
+    { date: "2026-11-14", hours: "60.00", billing: "6000.00", pay: "4500.00", forecast: true },
+  ];
+  const api = new FakeApi().on("GET", "/api/v1/reports/overview", json(200, { ...OVERVIEW, days }));
+  await renderWith(await signedIn(api), <OverviewScreen />);
+  const chart = await screen.findByTestId("chart-candles", {}, { timeout: 5000 });
+  expect(chart.props.accessibilityLabel).toMatch(/Daily billing over 2 weeks, from .*6,000\.00.* to .*9,500\.00.* a day; 1 weeks rising\./);
 });
 
 test("switching to the quarter asks the quarter", async () => {

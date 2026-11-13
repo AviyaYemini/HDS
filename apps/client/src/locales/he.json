@@ -1100,5 +1100,13 @@
   "snapshot.figure.coverage_full": "כל המקומות מאוישים",
   "snapshot.col.hours": "שעות",
   "snapshot.col.billing": "חיוב",
-  "snapshot.figure.people_detail": "עובדים השבוע"
+  "snapshot.figure.people_detail": "עובדים השבוע",
+  "snapshot.chart.candles_title": "חיוב יומי לפי שבוע",
+  "snapshot.chart.candles_legend": "פתיחה וסגירה: היום הראשון והאחרון בשבוע; קו: המקסימום והמינימום · מלא = עלייה, חלול = ירידה · בהיר = תחזית",
+  "snapshot.chart.candles_summary": "חיוב יומי ב-{{count}} שבועות, בין {{low}} ל-{{high}} ליום; {{rising}} שבועות בעלייה.",
+  "snapshot.chart.clients_title": "חיוב לפי לקוח",
+  "snapshot.chart.others": "אחרים",
+  "snapshot.chart.clients_summary": "חיוב של {{total}} ב-{{count}} פלחים; {{client}} מוביל עם {{pct}}%.",
+  "snapshot.chart.people_title": "הרכב כוח אדם",
+  "snapshot.chart.people_summary": "{{permanent}} קבועים ו-{{temporary}} זמניים: {{pct}}% מכוח האדם זמני."
 }

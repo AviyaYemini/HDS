@@ -17,9 +17,14 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, formatMoney, todayIn } from "../../locale";
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
+import { Candles, Donut } from "../deck/Charts";
+import { pieSlices, sumAmounts, weeklyCandles } from "../deck/chartMath";
 import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { useLoad } from "../useLoad";
 import { coveragePercent, formatPercent, healthChip, periodRange, weekLabel, type OverviewProject, type Period } from "./model";
+
+/** The temporary slice's key: the one the accent highlights. */
+const TEMPORARY = "temporary";
 
 export function OverviewScreen() {
   const { t, i18n } = useTranslation();
@@ -96,6 +101,29 @@ export function OverviewScreen() {
     title: `${weekLabel(w.week_start)}: ${w.billing != null ? t("snapshot.bar_title", { billing: money(w.billing) }) : t("pay.hours", { hours: w.hours })}${w.pay != null ? ` · ${t("snapshot.bar_pay", { pay: money(w.pay) })}` : ""}`,
   }));
 
+  // Candles: a week of daily billing each; none where the money is hidden.
+  const candles = weeklyCandles(d?.days ?? []);
+  const tickText = (v: number) => (Math.abs(v) >= 1000 ? `₪${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}K` : `₪${v}`);
+  const candlesSummary =
+    candles.length > 0
+      ? t("snapshot.chart.candles_summary", {
+          count: candles.length,
+          low: money(Math.min(...candles.map((c) => c.low)).toFixed(2)),
+          high: money(Math.max(...candles.map((c) => c.high)).toFixed(2)),
+          rising: candles.filter((c) => c.rising).length,
+        })
+      : "";
+  // Billing by client, the five largest and the rest; only where money is shown.
+  const clientSlices = d && d.projects.every((p) => p.billing != null) ? pieSlices(d.projects.map((p) => ({ label: p.client_name, amount: p.billing! })), 5, t("snapshot.chart.others")) : [];
+  const clientsSummary =
+    clientSlices.length > 0
+      ? t("snapshot.chart.clients_summary", { client: clientSlices[0]!.label, pct: Math.round(clientSlices[0]!.pct), total: money(sumAmounts(clientSlices.map((sl) => sl.amount))), count: clientSlices.length })
+      : "";
+  // Permanent against temporary, from the people the API counts.
+  const permanent = d ? Math.max(0, d.people.active - d.people.temporary) : 0;
+  const peopleSlices = d && d.people.active > 0 ? pieSlices([{ label: t("staff.type.permanent"), amount: String(permanent) }, { label: t("staff.type.temporary"), amount: String(d.people.temporary) }], 2, "").map((sl) => ({ ...sl, key: sl.label === t("staff.type.temporary") ? TEMPORARY : "permanent" })) : [];
+  const peopleSummary = d ? t("snapshot.chart.people_summary", { permanent, temporary: d.people.temporary, pct: d.people.active > 0 ? Math.round((d.people.temporary / d.people.active) * 100) : 0 }) : "";
+
   const columns: Column<OverviewProject>[] = [
     {
       key: "name",
@@ -148,12 +176,42 @@ export function OverviewScreen() {
         <View style={styles.body}>
           <KeyFigures figures={figures} />
           <Split>
-            <View style={styles.bars}>
+            <View style={styles.chart}>
               <SectionHead title={showPay ? t("snapshot.bars_title") : showBilling ? t("snapshot.bars_title_billing") : t("snapshot.bars_title_hours")} />
               <ColumnBars columns={bars} legend={showPay ? t("snapshot.legend") : t("snapshot.legend_billing")} />
             </View>
+            {candles.length > 0 ? (
+              <View style={styles.chartWide}>
+                <SectionHead title={t("snapshot.chart.candles_title")} />
+                <Candles candles={candles} labelOf={(c) => weekLabel(c.week)} tickText={tickText} summary={candlesSummary} testID="chart-candles" />
+                <Txt role="meta" tone="secondary">
+                  {t("snapshot.chart.candles_legend")}
+                </Txt>
+              </View>
+            ) : null}
+          </Split>
+          <Split>
+            {clientSlices.length > 0 ? (
+              <View style={styles.chart}>
+                <SectionHead title={t("snapshot.chart.clients_title")} />
+                <Donut slices={clientSlices} amountText={(sl) => money(sl.amount)} summary={clientsSummary} testID="chart-clients" />
+              </View>
+            ) : null}
+            {peopleSlices.length > 0 ? (
+              <View style={styles.chart}>
+                <SectionHead title={t("snapshot.chart.people_title")} />
+                <Donut
+                  slices={peopleSlices}
+                  colorOf={(sl) => (sl.key === TEMPORARY ? colors.accent.default : colors.text.primary)}
+                  amountText={(sl) => String(Math.round(sl.value))}
+                  centre={String(d.people.active)}
+                  summary={peopleSummary}
+                  testID="chart-people"
+                />
+              </View>
+            ) : null}
             {d.people.temporary > 0 ? (
-              <View style={styles.panel}>
+              <View style={styles.chart}>
                 <FeaturePanel testID="panel-temporary">
                   <Txt role="eyebrow" tone="accent">
                     {t("snapshot.temp_eyebrow")}
@@ -193,8 +251,8 @@ export function OverviewScreen() {
 
 const styles = StyleSheet.create({
   body: { gap: 28 },
-  bars: { flex: 1.8, gap: 12, minWidth: 0 },
-  panel: { flex: 1, minWidth: 0 },
+  chart: { flex: 1, gap: 12, minWidth: 0 },
+  chartWide: { flex: 1.4, gap: 8, minWidth: 0 },
   table: { gap: 8 },
   nameCell: { minWidth: 0 },
   note: { borderTopWidth: 1, paddingTop: 8 },
