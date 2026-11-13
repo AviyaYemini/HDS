@@ -30,6 +30,7 @@ About ten minutes, in Hebrew, on a laptop. The data comes from the team's real r
 | 6a | **הרצות שיבוץ** (schedule runs): **הרצה חדשה**, "השבוע הבא", **כל פרויקטי האבטחה**, **הפקה** | In a few seconds every place is filled (68/68 on the demo data), keeping temporary workers on their own projects and dates. Show the proposal as a roster week, then accept or discard. | A whole company's week, drafted in seconds; the manager reviews and accepts. |
 | 7 | On a phone (or a narrow window) | The roster one day at a time with a day strip; the overview and staff as cards. | The same tool in the field. |
 | 8 | **צוות** (staff) | Hours this week and this month, the permanent/temporary filter, and the "זמני · עד …" chip. Then open a temporary worker's card: type, dates (3 months at most) and projects. | Staff control in one table. A temporary worker stays on their projects and dates; the auto-scheduler never places them outside. |
+| 8a | On a phone, sign in as `emp001@demo.hds.test` (the employee with the most shifts) | The guard's app: the next shift, the availability deadline, my shifts, and the expected gross pay for the month by rate. | Every guard sees their own week and pay on their phone. |
 | 9 | **דוח שעות** (hours and costs) | Hours, billing and gross pay by project, with bars. | What used to take a day of spreadsheet work. |
 | 10 | Second tab, as a manager | The same overview, showing only that manager's projects. | Each manager sees their own work, nothing else. |
 
