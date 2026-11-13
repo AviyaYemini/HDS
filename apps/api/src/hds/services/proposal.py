@@ -32,6 +32,7 @@ from hds.services import proposal_copy
 from hds.services.roster_cover import cover_answer
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService, check_version, stored_chip
+from hds.services.temporary import as_employee
 
 OPS = ("assign", "unassign", "move", "swap", "lock", "unlock")
 STAFF = (UserRole.employee, UserRole.manager, UserRole.admin)
@@ -214,7 +215,7 @@ class ProposalService:
             raise NotFoundError(resource="Slot", id=slot_id(key))
         staff = await self._users.staff_of(job.organisation_id)
         base = await self._copy_problem(job, work, also={u.id for u in staff})
-        problem = replace(base, candidates=tuple(Employee(u.id, True) for u in staff))
+        problem = replace(base, candidates=tuple(as_employee(u, active=True) for u in staff))
         assigned = {
             s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
         }
@@ -299,7 +300,7 @@ class ProposalService:
         for person in ids:
             if person not in found:
                 raise NotFoundError(resource="User", id=person)
-        return {u.id: Employee(u.id, u.is_active) for u in found.values()}
+        return {u.id: as_employee(u) for u in found.values()}
 
     async def _check(
         self,

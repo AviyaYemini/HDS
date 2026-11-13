@@ -42,6 +42,7 @@ from hds.scheduling import Employee, Result, generate, validate
 from hds.scheduling.problem import Chip, Controls
 from hds.services import proposal_copy
 from hds.services.schedule_inputs import Built, ScheduleInputService, surroundings
+from hds.services.temporary import as_employee
 
 logger = logging.getLogger(__name__)
 
@@ -756,7 +757,7 @@ class ScheduleJobService:
     async def _people(self, org_id: uuid.UUID, ids: set[str]) -> dict[uuid.UUID, Employee]:
         """The people a part places, as the rules see them: deleted or inactive is inactive (R2)."""
         users = await self._users.get_many({uuid.UUID(p) for p in ids}, org_id) if ids else []
-        return {u.id: Employee(u.id, u.is_active and not u.is_deleted) for u in users}
+        return {u.id: as_employee(u, active=u.is_active and not u.is_deleted) for u in users}
 
     async def _check_part(
         self,

@@ -67,6 +67,8 @@ function me(role: Me["role"], capabilities: Capability[]): Me {
     updated_at: "2026-01-01T00:00:00Z",
     capabilities,
     managed_project_ids: [],
+    employment_type: "permanent",
+    project_ids: [],
   };
 }
 

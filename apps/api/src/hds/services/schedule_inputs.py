@@ -31,8 +31,9 @@ from hds.repositories.scheduling_inputs import (
 )
 from hds.repositories.shift_type import ShiftTypeRepository
 from hds.repositories.staffing_need import StaffingNeedRepository
-from hds.scheduling import Employee, Entry, Problem, Settings, ShiftSlot, Slot, local_span
+from hds.scheduling import Entry, Problem, Settings, ShiftSlot, Slot, local_span
 from hds.scheduling.rules import local_day, sunday_index, week_start
+from hds.services.temporary import as_employee
 
 if TYPE_CHECKING:
     from hds.services.availability_submission import AvailabilitySubmissionService
@@ -293,7 +294,7 @@ class ScheduleInputService:
         problem = Problem(
             slots=tuple(sorted(slots, key=lambda s: (s.starts_at, s.key))),
             fixed=fixed,
-            candidates=tuple(Employee(u.id, u.is_active) for u in people),
+            candidates=tuple(as_employee(u) for u in people),
             entries=entries,
             settings=settings,
             first_day=first,

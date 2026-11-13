@@ -287,6 +287,20 @@
       "operation_id": "undo_edit_api_v1_schedule_jobs__id__edits_undo_post",
       "suites": ["pytest", "cli"],
       "reason": "undoing depends on the stored run record: there must be an edit not yet undone whose shifts have no part accepted since (409 schedule.nothing_to_undo), and an If-Match that is not the stored version is answered 412 schedule.version_stale (008 FR-011, FR-007)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees",
+      "operation_id": "create_employee_api_v1_employees_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a temporary worker needs both dates at most three months apart and at least one project (CEO demo), which span several fields; answered 422 employees.temporary_period_invalid or employees.temporary_projects_required"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/employees/{id}",
+      "operation_id": "edit_employee_api_v1_employees__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same engagement rules as the create (CEO demo), judged with the stored fields not sent"
     }
   ]
 }

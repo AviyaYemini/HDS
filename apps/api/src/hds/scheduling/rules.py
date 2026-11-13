@@ -77,7 +77,8 @@ def validate(
     not. For each employee on a focus shift: overlap with any of their shifts; rest below
     ``settings.min_rest`` between two consecutive shifts of theirs; hours above
     ``settings.max_weekly`` in a week that holds a focus shift; a blocked entry, absence or close
-    preference covering the shift; and being no longer active. For each focus shift: more or fewer
+    preference covering the shift; being no longer active; and, for a temporary worker, a shift
+    outside their projects or dates. For each focus shift: more or fewer
     people than its headcount.
 
     Args:
@@ -131,6 +132,11 @@ def validate(
             found |= _entries(original[slot.id], person, entries_by_employee.get(person, ()))
             if not employee.is_active:
                 found.add(RuleWarning("warnings.employee_inactive", person, (slot.id,)))
+            engagement = employee.engagement
+            if engagement is not None and not engagement.covers(
+                slot.project_id, local_day(slot.starts_at, slot.zone)
+            ):
+                found.add(RuleWarning("warnings.temporary_outside", person, (slot.id,)))
     for slot in all_shifts:
         if slot.id in focus:
             found |= _headcount(slot)
