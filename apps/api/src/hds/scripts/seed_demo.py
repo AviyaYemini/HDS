@@ -86,28 +86,37 @@ def _own_span(
     start: str | None,
     end: str | None,
 ) -> tuple[dt.datetime, dt.datetime]:
-    """A person's own times on a shift, each on the shift's own night.
+    """A person's own times on a shift, on the right calendar day.
 
-    02:00 on a 20:00-06:00 shift is the next morning; a start with no end runs to the shift's
-    end, and an end with no start begins at the shift's start.
+    A window stays on the cell's day unless only the next day's overlaps the shift: 02:00-06:00
+    on a 20:00-06:00 shift is the next morning, while a day's 06:00-18:00 beside a night task stays
+    that day. A start alone runs to the shift's end, from the day it falls inside the shift; an end
+    alone runs from the shift's start to its first such time after it.
     """
 
-    def near(clock: str) -> dt.datetime:
-        # The day or the next, whichever puts the time nearest the shift.
-        def gap(moment: dt.datetime) -> dt.timedelta:
-            return max(shift_start - moment, moment - shift_end, dt.timedelta(0))
+    def at(offset: int, clock: str) -> dt.datetime:
+        moment = dt.datetime.combine(day + dt.timedelta(days=offset), _time(clock), ZONE)
+        return moment.astimezone(dt.UTC)
 
-        options = [
-            dt.datetime.combine(day + dt.timedelta(days=d), _time(clock), ZONE).astimezone(dt.UTC)
-            for d in (0, 1)
-        ]
-        return min(options, key=gap)
+    def overlap(window: tuple[dt.datetime, dt.datetime]) -> dt.timedelta:
+        return max(min(window[1], shift_end) - max(window[0], shift_start), dt.timedelta(0))
 
-    own_start = near(start) if start else shift_start
-    own_end = near(end) if end else shift_end
-    if own_end <= own_start:
-        own_end += dt.timedelta(days=1)
-    return own_start, own_end
+    if start is None:
+        assert end is not None, "a start or an end"
+        until = at(0, end)
+        while until <= shift_start:
+            until += dt.timedelta(days=1)
+        return shift_start, until
+    if end is None:
+        inside = [at(d, start) for d in (0, 1) if shift_start <= at(d, start) < shift_end]
+        return (inside[0] if inside else at(0, start)), shift_end
+
+    def window(offset: int) -> tuple[dt.datetime, dt.datetime]:
+        begins, ends = at(offset, start), at(offset, end)
+        return begins, ends if ends > begins else ends + dt.timedelta(days=1)
+
+    same, next_day = window(0), window(1)
+    return next_day if overlap(next_day) > overlap(same) else same
 
 
 def _sunday(day: dt.date) -> dt.date:
