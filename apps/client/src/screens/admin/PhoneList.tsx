@@ -74,7 +74,8 @@ export function PhoneList<Row>({
             label={t("admin.sort_by")}
             items={sortable.map((c) => ({ id: c.key, label: c.title }))}
             value={sort?.key ?? null}
-            onChange={(key) => onSort(key, direction)}
+            // A new order starts ascending; the same one keeps its direction.
+            onChange={(key) => onSort(key, key === sort?.key ? direction : "asc")}
             placeholder={t("admin.sort_none")}
             testID="sort-by"
             style={styles.sortPick}
