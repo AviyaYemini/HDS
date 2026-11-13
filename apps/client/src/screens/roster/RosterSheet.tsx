@@ -5,18 +5,20 @@
  * (warnings are out of the app's scope, the owner, 2026-11-13). A project's name opens its own week for editing.
  */
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { createContext, useContext, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, Txt, showToast } from "../../design/components";
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
+import { dayMonth, scheduledHours } from "../admin/staffModel";
+import { SmallFigures } from "../deck/parts";
 import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
 import { weekDays, type Shift } from "./model";
@@ -52,6 +54,10 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const clients = useLoad(async () => (await call(api.GET("/api/v1/clients"))).items, []);
   const shifts = useLoad(() => allShifts(api, week, addDays(week, 6)), [week]);
 
+  // A name block's card: the full name, the temporary chip with its end, and the week's hours.
+  const temporaries = useLoad(async () => (await call(api.GET("/api/v1/employees", { params: { query: { employment_type: "temporary" } } }))).items, []);
+  const [card, setCard] = useState<PersonCardState | null>(null);
+  const weekHours = scheduledHours(shifts.data ?? []);
   // Plain values: the React Compiler memoizes them.
   const allGroups = projects.data && clients.data && shifts.data ? buildSheet(projects.data, clients.data, shifts.data, days, i18n.language) : null;
   const totals = allGroups ? sheetTotals(allGroups) : null;
@@ -109,6 +115,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const rangeText = `${formatDay(days[0]!)} – ${formatDay(days[6]!)}`;
 
   return (
+    <PersonCardContext.Provider value={setCard}>
     <Screen testID="screen-roster-sheet" fixed={false}>
       <PageTitle eyebrow={[t("app.name"), t("nav.roster")]} title={rangeText}>
         <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => goWeek(addDays(week, -7))} testID="action-prev-week" />
@@ -117,10 +124,17 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
         {editable.length > 0 ? <Button variant="secondary" icon="layers" label={t("sheet.copy_last_week")} busy={copying} onPress={() => void planCopy()} testID="action-copy-last-week" /> : null}
       </PageTitle>
       {totals ? (
-        <Txt role="body" tone="secondary" numeric testID="sheet-totals">
-          {t("sheet.totals", { places: totals.places, filled: totals.filled, empty: totals.empty, published: totals.published, shifts: totals.shifts })}
-          {totals.temporary > 0 ? ` · ${t("sheet.temporary_count", { count: totals.temporary })}` : ""}
-        </Txt>
+        // The week's summary as small numbered figures, as on the deck (the owner, 2026-11-13).
+        <SmallFigures
+          testID="sheet-totals"
+          items={[
+            { key: "places", label: t("sheet.total.places"), value: String(totals.places) },
+            { key: "filled", label: t("sheet.total.filled"), value: String(totals.filled) },
+            { key: "empty", label: t("sheet.total.empty"), value: String(totals.empty) },
+            { key: "published", label: t("sheet.total.published"), value: `${totals.published}/${totals.shifts}` },
+            ...(totals.temporary > 0 ? [{ key: "temporary", label: t("sheet.total.temporary"), value: String(totals.temporary) }] : []),
+          ]}
+        />
       ) : null}
       {isDesktop && trimmed && trimmed.hidden > 0 && (groups?.length ?? 0) > 0 ? (
         <View style={styles.toggle}>
@@ -166,13 +180,23 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
                   </Txt>
                 </View>
                 {g.rows.map((row) => (
-                  <ProjectRow key={row.project.id} row={row} week={week} nameOf={nameOf} />
+                  <ProjectRow key={row.project.id} row={row} week={week} today={today} nameOf={nameOf} />
                 ))}
               </View>
             ))}
           </View>
         </ScrollView>
       )}
+      {card ? (
+        <PersonCard
+          state={card}
+          name={names.get(card.userId) ?? ""}
+          until={temporaries.data?.find((u) => u.id === card.userId)?.engaged_until ?? null}
+          temporary={card.temporary}
+          hours={weekHours.get(card.userId) ?? 0}
+          onClose={() => setCard(null)}
+        />
+      ) : null}
       <Sheet open={copyPlan !== null} onClose={() => setCopyPlan(null)} title={t("sheet.copy_last_week")} testID="copy-last-week-confirm">
         <Txt role="body">{t("sheet.copy_plan", { shifts: copyPlan?.shifts ?? 0, projects: copyPlan?.projects ?? 0 })}</Txt>
         <View style={styles.actions}>
@@ -181,6 +205,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
         </View>
       </Sheet>
     </Screen>
+    </PersonCardContext.Provider>
   );
 }
 
@@ -189,7 +214,7 @@ function formatDay(date: string): string {
   return `⁦${Number(date.slice(8))}.${Number(date.slice(5, 7))}⁩`;
 }
 
-function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf: (id: string, full?: string | null) => string }) {
+function ProjectRow({ row, week, today, nameOf }: { row: SheetRow; week: string; today: string; nameOf: (id: string, full?: string | null) => string }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const widths = useWidths();
@@ -205,7 +230,7 @@ function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf
         </Txt>
       </LinkPressable>
       {row.cells.map((cell, i) => (
-        <View key={i} style={[styles.cell, styles.day, widths.day, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+        <View key={i} style={[styles.cell, styles.day, widths.day, { borderColor: colors.border.subtle, backgroundColor: weekDays(week)[i] === today ? colors.bg.selected : colors.bg.surface }]}>
           {cell.map((shift) => (
             <ShiftBlock key={shift.id} shift={shift} showTime={cell.length > 1 || shift.headcount > 2} nameOf={nameOf} />
           ))}
@@ -288,10 +313,57 @@ function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: read
   );
 }
 
+/** Where a name block's card shows: at the pointer; pinned by a tap, passing on hover. */
+interface PersonCardState {
+  userId: string;
+  temporary: boolean;
+  x: number;
+  y: number;
+  pinned: boolean;
+}
+
+const PersonCardContext = createContext<Dispatch<SetStateAction<PersonCardState | null>> | null>(null);
+
+const CARD_WIDTH = 240;
+
+/** The small card: the full name, the temporary chip with its end date, and the hours this week. */
+function PersonCard({ state, name, until, temporary, hours, onClose }: { state: PersonCardState; name: string; until: string | null; temporary: boolean; hours: number; onClose: () => void }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const { width, height } = useWindowDimensions();
+  // Beside the pointer, kept inside the window; fixed to the window on the web.
+  const wantLeft = Math.max(8, Math.min(state.x + 12, width - CARD_WIDTH - 8));
+  const wantTop = Math.max(8, Math.min(state.y + 12, height - 140));
+  const position = (Platform.OS === "web" ? "fixed" : "absolute") as "absolute";
+  // A transformed ancestor in the shell makes "fixed" relative to itself: measure where the card
+  // landed once, and take that offset off, so the card sits by the pointer.
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
+  const measure = (node: unknown) => {
+    if (!node || origin || Platform.OS !== "web") return;
+    const rect = (node as unknown as { getBoundingClientRect?: () => { left: number; top: number } }).getBoundingClientRect?.();
+    if (rect) setOrigin({ x: rect.left - wantLeft, y: rect.top - wantTop });
+  };
+  const left = wantLeft - (origin?.x ?? 0);
+  const top = wantTop - (origin?.y ?? 0);
+  return (
+    <>
+      {state.pinned ? <Pressable accessibilityLabel={t("common.close")} onPress={onClose} style={[StyleSheet.absoluteFill, { position }]} testID="person-card-scrim" /> : null}
+      <View ref={measure} testID="person-card" pointerEvents={state.pinned ? "auto" : "none"} style={[styles.personCard, { position, left, top, opacity: origin || Platform.OS !== "web" ? 1 : 0, width: CARD_WIDTH, backgroundColor: colors.bg.surface, borderColor: colors.border.strong }]}>
+        <Txt role="label">{name}</Txt>
+        {temporary ? <StatusChip status="info" label={until ? t("staff.temporary_until", { date: dayMonth(until) }) : t("staff.temporary")} testID="person-card-temporary" /> : null}
+        <Txt role="meta" tone="secondary" numeric>
+          {t("sheet.card_hours", { hours: Math.round(hours * 10) / 10 })}
+        </Txt>
+      </View>
+    </>
+  );
+}
+
 /** One shift: its times when needed, its people as blocks (with the temporary chip) and its empty places dashed. */
 function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boolean; nameOf: (id: string, full?: string | null) => string }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const showCard = useContext(PersonCardContext);
     const open = Math.max(0, shift.headcount - shift.assignments.length);
     const published = shift.status === "published";
     return (
@@ -303,10 +375,19 @@ function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boole
         ) : null}
         {shift.assignments.map((a) => {
           const temp = isTemporary(a);
+          const at = (e: { nativeEvent?: { pageX?: number; pageY?: number; clientX?: number; clientY?: number } }, pinned: boolean) => {
+            const n = e.nativeEvent ?? {};
+            showCard?.({ userId: a.user_id, temporary: temp, x: n.clientX ?? n.pageX ?? 0, y: n.clientY ?? n.pageY ?? 0, pinned });
+          };
           return (
-            <View
+            <Pressable
               key={a.id}
               testID="sheet-person"
+              role="button"
+              accessibilityLabel={nameOf(a.user_id, a.full_name)}
+              onPress={(e) => at(e as never, true)}
+              onHoverIn={(e) => at(e as never, false)}
+              onHoverOut={() => showCard?.((c) => (c && c.pinned ? c : null))}
               {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp) } })}
               style={[
                 styles.blk,
@@ -324,7 +405,7 @@ function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boole
                   </Txt>
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           );
         })}
         {open > 0 ? (
@@ -341,6 +422,7 @@ function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boole
 const styles = StyleSheet.create({
   scroller: { flexGrow: 1 },
   dayView: { gap: 16 },
+  personCard: { borderWidth: 1, padding: 12, gap: 6, zIndex: 50, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   strip: { flexDirection: "row", borderBottomWidth: 1 },
   stripDay: { flex: 1, alignItems: "center", paddingVertical: 6, borderTopWidth: 2, minHeight: 48, justifyContent: "center" },
   dayClient: { gap: 8 },

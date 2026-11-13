@@ -1131,5 +1131,11 @@
   "snapshot.next_empty_other": "Next week: {{count}} empty",
   "hc.figure.margin": "Margin",
   "hc.figure.margin_detail": "billing less pay, of billing",
-  "hc.col.margin": "Margin"
+  "hc.col.margin": "Margin",
+  "sheet.total.places": "Places",
+  "sheet.total.filled": "Filled",
+  "sheet.total.empty": "Empty",
+  "sheet.total.published": "Published",
+  "sheet.total.temporary": "Temporary",
+  "sheet.card_hours": "{{hours}} h rostered this week"
 }

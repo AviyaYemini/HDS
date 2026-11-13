@@ -44,6 +44,7 @@ function api() {
       { id: "p1", name: "Harbour gate", client_id: "c1", status: "active" },
       { id: "p2", name: "City museum", client_id: "c2", status: "active" },
     ] }))
+    .on("GET", "/api/v1/employees", json(200, { items: [{ id: "u2", full_name: "Omer Katz", employment_type: "temporary", engaged_from: "2026-11-13", engaged_until: "2027-02-12", project_ids: ["p1"] }] }))
     .on("GET", "/api/v1/clients", json(200, { items: [{ id: "c1", name: "Alpha Security" }, { id: "c2", name: "Beta Guarding" }] }))
     .on("GET", "/api/v1/shifts", json(200, { items: [shift("s1", "p1", 3, [{ user: "u1", name: "Dana Levi" }, { user: "u2", name: "Omer Katz", temporary: true }])], next_cursor: null }));
 }
@@ -59,7 +60,10 @@ test("on a phone, one day at a time: the day strip, then that day's projects und
   // The tests run at phone width: the week is a day strip, Sunday first, with no grid.
   expect(await screen.findByTestId("day-strip", {}, { timeout: 5000 })).toBeTruthy();
   expect(screen.queryByTestId("roster-sheet")).toBeNull();
-  expect(screen.getByTestId("sheet-totals")).toHaveTextContent(/3 places · 2 filled · 1 empty/);
+  // The week's summary as small numbered figures.
+  expect(screen.getByTestId("total-places")).toHaveTextContent(/01\s*Places\s*3/);
+  expect(screen.getByTestId("total-filled")).toHaveTextContent(/02\s*Filled\s*2/);
+  expect(screen.getByTestId("total-empty")).toHaveTextContent(/03\s*Empty\s*1/);
   // Sunday has no shifts; Monday has the harbour gate's.
   expect(screen.getByTestId("day-empty")).toBeTruthy();
   await fireEvent.press(screen.getByTestId("day-2026-12-07"));
@@ -69,6 +73,14 @@ test("on a phone, one day at a time: the day strip, then that day's projects und
   expect(screen.getByText("Dana L.")).toBeTruthy();
   expect(screen.getAllByTestId("chip-temporary")).toHaveLength(1);
   expect(screen.getByTestId("sheet-empty")).toHaveTextContent("1 empty");
+  // A name block opens a small card: the full name, the temporary chip with its end, the week's hours.
+  await fireEvent.press(screen.getAllByTestId("sheet-person")[1]!);
+  const card = await screen.findByTestId("person-card");
+  expect(card).toHaveTextContent(/Omer Katz/);
+  expect(card).toHaveTextContent(/Temporary · until 12\.02/);
+  expect(card).toHaveTextContent(/8 h rostered this week/);
+  await fireEvent.press(screen.getByTestId("person-card-scrim"));
+  expect(screen.queryByTestId("person-card")).toBeNull();
   // Warnings are out of the app's scope (the owner, 2026-11-13): no strip, no count, no call.
   expect(screen.queryByTestId("warnings-strip")).toBeNull();
   expect(screen.getByTestId("sheet-totals")).not.toHaveTextContent(/warning/i);

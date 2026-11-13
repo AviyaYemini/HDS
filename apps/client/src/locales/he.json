@@ -1131,5 +1131,11 @@
   "snapshot.next_empty_other": "שבוע הבא: {{count}} ריקים",
   "hc.figure.margin": "מרווח",
   "hc.figure.margin_detail": "חיוב פחות שכר, מתוך החיוב",
-  "hc.col.margin": "מרווח"
+  "hc.col.margin": "מרווח",
+  "sheet.total.places": "מקומות",
+  "sheet.total.filled": "מאוישים",
+  "sheet.total.empty": "ריקים",
+  "sheet.total.published": "פורסמו",
+  "sheet.total.temporary": "זמניים",
+  "sheet.card_hours": "{{hours}} שעות בסידור השבוע"
 }

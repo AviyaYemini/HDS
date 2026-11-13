@@ -86,6 +86,30 @@ export function KeyFigures({ figures, progress = 1 }: { figures: readonly KeyFig
   );
 }
 
+/** Small numbered figures in a row (a week's summary): "01 PLACES" over a modest number. */
+export function SmallFigures({ items, testID }: { items: readonly { key: string; label: string; value: string }[]; testID?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.small} testID={testID}>
+      {items.map((f, i) => (
+        <View key={f.key} style={[styles.smallItem, { borderTopColor: colors.border.strong }]} testID={`total-${f.key}`}>
+          <View style={styles.figureLabel}>
+            <Txt role="eyebrow" tone="secondary" numeric>
+              {ordinal(i)}
+            </Txt>
+            <Txt role="eyebrow" tone="accent">
+              {f.label}
+            </Txt>
+          </View>
+          <Txt role="section" numeric dir="ltr">
+            {f.value}
+          </Txt>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** A section's heading: an eyebrow over a strong rule, with an optional note at the far end. */
 export function SectionHead({ title, note }: { title: string; note?: string }) {
   const { colors } = useTheme();
@@ -236,6 +260,8 @@ const styles = StyleSheet.create({
   bar: { flex: 1 },
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
+  small: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  smallItem: { borderTopWidth: 1, paddingTop: 6, minWidth: 96, flexGrow: 1, flexBasis: 96 },
   hbars: { gap: 10 },
   hrow: { flexDirection: "row", alignItems: "center", gap: 16 },
   hrowPhone: { gap: 4 },
