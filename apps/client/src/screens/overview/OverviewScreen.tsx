@@ -93,7 +93,7 @@ export function OverviewScreen() {
       title: t("snapshot.col.project"),
       render: (p) => (
         <View>
-          <Txt role="label">{p.rates_estimated ? `${p.name} *` : p.name}</Txt>
+          <Txt role="label">{p.terms_estimated ? `${p.name} *` : p.name}</Txt>
           <Txt role="meta" tone="secondary" numberOfLines={1}>
             {p.client_name}
             {p.temporary_workers > 0 ? ` · ${t("snapshot.temp_on_project", { count: p.temporary_workers })}` : ""}
@@ -158,7 +158,7 @@ export function OverviewScreen() {
               <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
             </View>
           </Split>
-          {d.rates_estimated ? (
+          {d.terms_estimated ? (
             <View testID="note-estimated" style={[styles.note, { borderColor: colors.border.strong }]}>
               <Txt role="meta" tone="secondary">
                 {t("snapshot.estimated_note")}

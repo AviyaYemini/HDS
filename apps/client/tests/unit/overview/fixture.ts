@@ -19,9 +19,9 @@ export const OVERVIEW: Overview = {
     { week_start: "2026-11-08", hours: "1004.00", billing: "111860.00", pay: "90060.00", forecast: true },
   ],
   projects: [
-    { id: "p1", name: "Harbour gate", client_name: "Alpha Security", managers: ["Dana L."], type: "security", hours: "868.00", billing: "95000.00", pay: "75000.00", margin_pct: "21.00", coverage_pct: "98.00", empty_places: 0, temporary_workers: 1, rates_estimated: false, status: "ok" },
-    { id: "p2", name: "Seaside mall", client_name: "Beta Guarding", managers: ["Omer K."], type: "security", hours: "372.00", billing: "40000.00", pay: "36400.00", margin_pct: "9.00", coverage_pct: "89.00", empty_places: 2, temporary_workers: 0, rates_estimated: true, status: "gaps" },
-    { id: "p3", name: "Training · course 7", client_name: "Alpha Security", managers: [], type: "training", hours: "228.00", billing: "20000.00", pay: "20800.00", margin_pct: "-4.00", coverage_pct: null, empty_places: 0, temporary_workers: 0, rates_estimated: false, status: "loss" },
+    { id: "p1", name: "Harbour gate", client_name: "Alpha Security", managers: ["Dana L."], type: "security", hours: "868.00", billing: "95000.00", pay: "75000.00", margin_pct: "21.00", coverage_pct: "98.00", empty_places: 0, temporary_workers: 1, terms_estimated: false, status: "ok" },
+    { id: "p2", name: "Seaside mall", client_name: "Beta Guarding", managers: ["Omer K."], type: "security", hours: "372.00", billing: "40000.00", pay: "36400.00", margin_pct: "9.00", coverage_pct: "89.00", empty_places: 2, temporary_workers: 0, terms_estimated: true, status: "gaps" },
+    { id: "p3", name: "Training · course 7", client_name: "Alpha Security", managers: [], type: "training", hours: "228.00", billing: "20000.00", pay: "20800.00", margin_pct: "-4.00", coverage_pct: null, empty_places: 0, temporary_workers: 0, terms_estimated: false, status: "loss" },
   ],
-  rates_estimated: true,
+  terms_estimated: true,
 };

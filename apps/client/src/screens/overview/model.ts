@@ -31,7 +31,7 @@ export interface OverviewProject {
   coverage_pct: string | null;
   empty_places: number;
   temporary_workers: number;
-  rates_estimated: boolean;
+  terms_estimated: boolean;
   status: ProjectHealth;
 }
 
@@ -50,7 +50,7 @@ export interface Overview {
   people: { active: number; working_this_week: number; temporary: number; temporary_ending_soon: number; near_weekly_limit: number };
   weeks: OverviewWeek[];
   projects: OverviewProject[];
-  rates_estimated: boolean;
+  terms_estimated: boolean;
 }
 
 export type Period = "month" | "quarter" | "year";

@@ -1085,5 +1085,7 @@
   "staff.until_too_far": "עד 3 חודשים: לכל המאוחר {{date}}.",
   "staff.projects": "פרויקטים",
   "employees.temporary_period_invalid": "להעסקה זמנית צריך תאריך התחלה ותאריך סוף, עד 3 חודשים ביניהם.",
-  "employees.temporary_projects_required": "להעסקה זמנית צריך לבחור לפחות פרויקט אחד."
+  "employees.temporary_projects_required": "להעסקה זמנית צריך לבחור לפחות פרויקט אחד.",
+  "employees.project_invalid": "אחד הפרויקטים שנבחרו לא קיים או שהסתיים.",
+  "warnings.temporary_outside": "עובד זמני משובץ מחוץ לפרויקטים או לתאריכים שלו."
 }

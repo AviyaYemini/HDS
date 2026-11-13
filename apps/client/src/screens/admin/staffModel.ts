@@ -1,6 +1,6 @@
 /**
  * Staff control's pure parts (specs/demo-ceo/plan.md, screen 3): a person's employment as the API
- * gives it (read defensively until the generated client carries the fields), the near-the-weekly-
+ * gives it (permanent when a field is missing, as in older fixtures), the near-the-weekly-
  * limit flag, the permanent/temporary filter, and the 3-month cap on a temporary period.
  */
 import { addDays } from "../../locale";

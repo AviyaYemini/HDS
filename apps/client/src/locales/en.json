@@ -1085,5 +1085,7 @@
   "staff.until_too_far": "At most 3 months: {{date}} at the latest.",
   "staff.projects": "Projects",
   "employees.temporary_period_invalid": "A temporary worker needs a start and an end, at most 3 months apart.",
-  "employees.temporary_projects_required": "A temporary worker needs at least one project."
+  "employees.temporary_projects_required": "A temporary worker needs at least one project.",
+  "employees.project_invalid": "One of the chosen projects does not exist or has ended.",
+  "warnings.temporary_outside": "A temporary worker is placed outside their projects or dates."
 }

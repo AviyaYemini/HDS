@@ -39,12 +39,9 @@ export interface SheetTotals {
   shifts: number;
 }
 
-/**
- * A temporary worker's assignment (`AssignmentRead.temporary`, demo plan §1). Read defensively, so
- * the sheet works before the field reaches the generated client.
- */
-export function isTemporary(assignment: Assignment): boolean {
-  return (assignment as Assignment & { temporary?: boolean }).temporary === true;
+/** A temporary worker's assignment (`AssignmentRead.temporary`, demo plan §1; filled on the shifts list). */
+export function isTemporary(assignment: Pick<Assignment, "temporary">): boolean {
+  return assignment.temporary === true;
 }
 
 /** "Dana Levi" → "Dana L.", as the managers' sheet writes names; one word stays whole. */
