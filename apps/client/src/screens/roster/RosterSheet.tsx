@@ -19,12 +19,21 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
-import { weekDays } from "./model";
+import { shiftDays, weekDays, type Shift } from "./model";
 import { rosterHref } from "./ProjectChooser";
-import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, withShifts, type SheetRow } from "./sheet";
+import { buildSheet, flagKey, isTemporary, rowEmpty, sheetTotals, shortName, weekWarnings, withShifts, type SheetRow } from "./sheet";
+import { numbersOf } from "./WarningSheet";
 
 const LABEL_WIDTH = 176;
 const DAY_MIN_WIDTH = 124;
+/** How many warning lines the strip shows before "and N more". */
+const STRIP_LINES = 8;
+
+/** "Tue 10 · 07:00–15:00": a shift's day and times, for the warnings strip. */
+function formatDayTime(shift: Shift): string {
+  return `${Number(shiftDays(shift).start.slice(8))}.${Number(shiftDays(shift).start.slice(5, 7))} · ${formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}`;
+}
+
 /** On a phone the sheet scrolls sideways; narrower columns show more of it at once. */
 const PHONE_LABEL_WIDTH = 120;
 const PHONE_DAY_MIN_WIDTH = 104;
@@ -59,7 +68,10 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const [showAll, setShowAll] = useState(false);
   const trimmed = allGroups ? withShifts(allGroups) : null;
   const groups = allGroups && trimmed ? (showAll ? allGroups : trimmed.groups) : null;
-  const kept = keptWarnings(shifts.data ?? []);
+  // The week's warnings across projects, judged as an edit would be (drafts included).
+  const warningsLoad = useLoad(async () => (await call(api.GET("/api/v1/roster/warnings", { params: { query: { from: week, to: addDays(week, 6) } } }))).warnings, [week]);
+  const warns = weekWarnings(warningsLoad.data ?? []);
+  const shiftById = new Map((shifts.data ?? []).map((s) => [s.id, s]));
   const names = new Map<string, string>();
   for (const s of shifts.data ?? []) for (const a of s.assignments) if (a.full_name) names.set(a.user_id, a.full_name);
   const projectName = (id: string) => projects.data?.find((p) => p.id === id)?.name ?? "";
@@ -116,7 +128,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
       </PageTitle>
       {totals ? (
         <Txt role="body" tone="secondary" numeric testID="sheet-totals">
-          {t("sheet.totals", { places: totals.places, filled: totals.filled, empty: totals.empty, warnings: kept.length, published: totals.published, shifts: totals.shifts })}
+          {t("sheet.totals", { places: totals.places, filled: totals.filled, empty: totals.empty, warnings: warns.open.length, published: totals.published, shifts: totals.shifts })}
           {totals.temporary > 0 ? ` · ${t("sheet.temporary_count", { count: totals.temporary })}` : ""}
         </Txt>
       ) : null}
@@ -162,23 +174,37 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
                   </Txt>
                 </View>
                 {g.rows.map((row) => (
-                  <ProjectRow key={row.project.id} row={row} week={week} nameOf={(id, full) => full ?? names.get(id) ?? ""} />
+                  <ProjectRow key={row.project.id} row={row} week={week} flagged={warns.flagged} nameOf={(id, full) => full ?? names.get(id) ?? ""} />
                 ))}
               </View>
             ))}
           </View>
         </ScrollView>
       )}
-      {kept.length > 0 ? (
+      {warns.open.length > 0 || warns.kept > 0 ? (
         <View testID="warnings-strip" style={[styles.warnbox, { borderColor: colors.status.warning, backgroundColor: colors.bg.surface }]}>
           <Txt role="label" tone="warning">
-            {t("sheet.kept_warnings", { count: kept.length })}
+            {t("sheet.warnings_open", { count: warns.open.length })}
+            {warns.kept > 0 ? ` · ${t("sheet.warnings_kept", { count: warns.kept })}` : ""}
           </Txt>
-          {kept.slice(0, 6).map((w) => (
-            <Txt key={w.key} role="meta" testID="kept-warning">
-              {`${names.get(w.userId) ?? ""} · ${projectName(w.shift.project_id)} · ${formatTimeRange(w.shift.starts_at, w.shift.ends_at, w.shift.timezone)} — ${t(`warnings.${w.code}`, { defaultValue: w.code })} · "${w.reason}"`}
+          {warns.open.slice(0, STRIP_LINES).map(({ first: w, values }) => {
+            const shift = shiftById.get(w.shift_ids[0] ?? "");
+            const where = shift ? `${projectName(shift.project_id)} · ${formatDayTime(shift)}` : "";
+            const numbers = numbersOf(w);
+            return (
+              <Txt key={`${w.employee_id ?? w.shift_ids[0]}|${w.code}`} role="meta" testID="sheet-warning">
+                <Txt role="meta" weight={500}>
+                  {w.employee_id ? names.get(w.employee_id) ?? "" : t("roster.the_shift")}
+                </Txt>
+                {` · ${where} — ${t(w.code)}${numbers ? ` ${values.map((v) => t(numbers, v)).join(" ")}` : ""}`}
+              </Txt>
+            );
+          })}
+          {warns.open.length > STRIP_LINES ? (
+            <Txt role="meta" tone="secondary">
+              {t("sheet.warnings_more", { count: warns.open.length - STRIP_LINES })}
             </Txt>
-          ))}
+          ) : null}
         </View>
       ) : null}
       <Sheet open={copyPlan !== null} onClose={() => setCopyPlan(null)} title={t("sheet.copy_last_week")} testID="copy-last-week-confirm">
@@ -197,7 +223,7 @@ function formatDay(date: string): string {
   return `⁦${Number(date.slice(8))}.${Number(date.slice(5, 7))}⁩`;
 }
 
-function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf: (id: string, full?: string | null) => string }) {
+function ProjectRow({ row, week, flagged, nameOf }: { row: SheetRow; week: string; flagged: Set<string>; nameOf: (id: string, full?: string | null) => string }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const widths = useWidths();
@@ -226,15 +252,18 @@ function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf
                 ) : null}
                 {shift.assignments.map((a) => {
                   const temp = isTemporary(a);
+                  const warned = flagged.has(flagKey(shift.id, a.user_id));
                   return (
                     <View
                       key={a.id}
                       testID="sheet-person"
-                      {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp) } })}
+                      {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp), warning: String(warned) } })}
                       style={[
                         styles.blk,
                         { borderStartColor: colors.text.primary, backgroundColor: published ? colors.bg.surface : colors.bg.selected },
                         published ? { borderColor: colors.border.strong, borderWidth: 1, borderStartWidth: 3 } : null,
+                        // An open warning, as the deck draws it: the warning colour on the block's edge.
+                        warned ? { borderColor: colors.status.warning, borderStartColor: colors.status.warning, borderWidth: 1, borderStartWidth: 3 } : null,
                       ]}
                     >
                       <Txt role="meta" numberOfLines={1} style={styles.name}>

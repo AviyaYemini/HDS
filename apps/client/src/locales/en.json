@@ -977,9 +977,6 @@
   "sheet.row_empty_other": "{{count}} empty places",
   "sheet.row_full": "Fully staffed",
   "sheet.no_client": "No client",
-  "sheet.kept_warnings": "{{count}} warnings kept with a reason",
-  "sheet.kept_warnings_one": "1 warning kept with a reason",
-  "sheet.kept_warnings_other": "{{count}} warnings kept with a reason",
   "sheet.weekday.0": "Sun",
   "sheet.weekday.1": "Mon",
   "sheet.weekday.2": "Tue",
@@ -1104,5 +1101,12 @@
   "snapshot.figure.forecast_hours.quarter": "Hours · forecast to quarter end",
   "snapshot.figure.forecast_hours.year": "Hours · forecast to year end",
   "snapshot.bars_title_hours": "Hours · by week",
-  "snapshot.figure.coverage_full": "Every place is filled"
+  "snapshot.figure.coverage_full": "Every place is filled",
+  "sheet.warnings_open": "{{count}} warnings",
+  "sheet.warnings_open_one": "1 warning",
+  "sheet.warnings_open_other": "{{count}} warnings",
+  "sheet.warnings_kept": "{{count}} kept with a reason",
+  "sheet.warnings_kept_one": "1 kept with a reason",
+  "sheet.warnings_kept_other": "{{count}} kept with a reason",
+  "sheet.warnings_more": "and {{count}} more"
 }

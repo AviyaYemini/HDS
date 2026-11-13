@@ -12,7 +12,7 @@ import { Button, Sheet, TextField, Txt, showToast } from "../../design/component
 import { groupWarnings, type Shift, type Warning } from "./model";
 
 /** The text that says a warning's numbers, when the rule sends them. */
-function numbersOf(w: Warning): string | null {
+export function numbersOf(w: Pick<Warning, "values">): string | null {
   const values = w.values ?? {};
   if ("rest_hours" in values) return "roster.warning.rest";
   if ("maximum_hours" in values) return "roster.warning.weekly";

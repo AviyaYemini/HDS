@@ -4,7 +4,7 @@
  * once, and names written the way the managers' sheet writes them. Made-up names only.
  */
 import type { Assignment, Shift } from "../../../src/screens/roster/model";
-import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, withShifts } from "../../../src/screens/roster/sheet";
+import { buildSheet, flagKey, isTemporary, rowEmpty, sheetTotals, shortName, weekWarnings, withShifts } from "../../../src/screens/roster/sheet";
 import { weekDays } from "../../../src/screens/roster/model";
 
 const ZONE = "Asia/Jerusalem";
@@ -72,10 +72,24 @@ test("names as the sheet writes them", () => {
   expect(shortName("")).toBe("");
 });
 
-test("kept warnings: one line per person, rule and shift", () => {
-  const override = { warning_code: "rest_too_short", reason: "phone ok", created_at: "", created_by: "" };
-  const s = shift("k", "p1", "2026-12-07T05:00:00Z", 1, [person("u1", { overrides: [override, override] })]);
-  expect(keptWarnings([s]).map((w) => [w.userId, w.code, w.reason])).toEqual([["u1", "rest_too_short", "phone ok"]]);
+test("week warnings: open ones grouped by person and rule, kept ones counted, blocks flagged", () => {
+  const w = (employee: string | null, code: string, shifts: string[], overridden = false, values = {}) => ({ code, detail: "", employee_id: employee, shift_ids: shifts, overridden, values });
+  const { open, kept, flagged } = weekWarnings([
+    w("u1", "warnings.overlap", ["s1", "s2"]),
+    w("u1", "warnings.overlap", ["s2", "s3"]),
+    w("u2", "warnings.rest_too_short", ["s4"], true),
+    w(null, "warnings.under_headcount", ["s5"]),
+    w(null, "warnings.over_headcount", ["s6"]),
+    w(null, "warnings.over_headcount", ["s7"]),
+  ]);
+  // Open places are the sheet's dashed blocks, not strip lines; a shift's own warning shows per shift.
+  expect(open.map((g) => [g.first.employee_id, g.first.code, g.first.shift_ids[0]])).toEqual([
+    ["u1", "warnings.overlap", "s1"],
+    [null, "warnings.over_headcount", "s6"],
+    [null, "warnings.over_headcount", "s7"],
+  ]);
+  expect(kept).toBe(1);
+  expect([...flagged].sort()).toEqual([flagKey("s1", "u1"), flagKey("s2", "u1"), flagKey("s3", "u1")]);
 });
 
 test("the default view keeps only projects with shifts, and counts the rest", () => {
