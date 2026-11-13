@@ -1141,5 +1141,11 @@
   "staff.ending_soon": "Ends in {{count}} days",
   "staff.ending_soon_one": "Ends tomorrow",
   "staff.ending_soon_other": "Ends in {{count}} days",
-  "home.unpublished": "Unpublished shifts"
+  "home.unpublished": "Unpublished shifts",
+  "snapshot.change_span.month": "{{change}} vs the same days of {{month}}",
+  "snapshot.change_span.quarter": "{{change}} vs the same days of the previous quarter",
+  "snapshot.change_span.year": "{{change}} vs the same days of the previous year",
+  "snapshot.rostered_until": "rostered to {{date}}",
+  "snapshot.margin_is": "margin {{margin}}",
+  "snapshot.change.margin_short": "({{change}} pt)"
 }

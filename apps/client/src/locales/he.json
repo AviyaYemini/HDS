@@ -1141,5 +1141,11 @@
   "staff.ending_soon": "מסתיים בעוד {{count}} ימים",
   "staff.ending_soon_one": "מסתיים מחר",
   "staff.ending_soon_other": "מסתיים בעוד {{count}} ימים",
-  "home.unpublished": "משמרות שטרם פורסמו"
+  "home.unpublished": "משמרות שטרם פורסמו",
+  "snapshot.change_span.month": "{{change}} מול אותם ימים ב{{month}}",
+  "snapshot.change_span.quarter": "{{change}} מול אותם ימים ברבעון הקודם",
+  "snapshot.change_span.year": "{{change}} מול אותם ימים בשנה הקודמת",
+  "snapshot.rostered_until": "הסידור עד {{date}}",
+  "snapshot.margin_is": "מרווח {{margin}}",
+  "snapshot.change.margin_short": "({{change}} נק׳)"
 }

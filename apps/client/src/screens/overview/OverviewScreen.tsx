@@ -55,6 +55,14 @@ export function OverviewScreen() {
     // Isolated left to right, so the arrow stays before its number inside Hebrew.
     return shown ? t(`snapshot.change.${period}`, { change: isolateLtr(shown) }) : null;
   };
+  // The forecast's comparison: the same days of the period before, up to where the roster runs.
+  const previousName =
+    prev && period === "month" ? new Intl.DateTimeFormat(i18n.language === "he" ? "he-IL" : "en-GB", { month: "long", timeZone: "UTC" }).format(new Date(`${prev.from}T12:00:00Z`)) : "";
+  const vsSameSpan = (pct: number | null) => {
+    const shown = formatChange(pct);
+    return shown ? t(`snapshot.change_span.${period}`, { change: isolateLtr(shown), month: previousName }) : null;
+  };
+  const rosteredTo = d?.rostered_until ? t("snapshot.rostered_until", { date: weekLabel(d.rostered_until) }) : null;
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: DEFAULT_TIME_ZONE }).format(new Date()));
   const greeting = `${t(greetingKey(hour), { name: firstName(session.user?.full_name) })} · ${formatHeaderDate(today, i18n.language)}`;
 
@@ -88,13 +96,15 @@ export function OverviewScreen() {
                 value: whole(d.billing_forecast),
                 raw: d.billing_forecast,
                 count: { to: Number(d.billing_forecast), format: countMoney },
-                change: (() => {
-                  const billing = vsPrevious(changePct(d.billing_forecast, prev?.billing));
+                // Against the same span of the period before: the forecast runs only as far as the roster.
+                change: vsSameSpan(changePct(d.billing_forecast, prev?.billing_to_rostered)),
+                // Where the roster (and so the forecast) stops, and the margin with its change.
+                detail: (() => {
                   const points = changePoints(d.margin_pct, prev?.margin_pct);
-                  const margin = points === null ? null : t("snapshot.change.margin", { change: isolateLtr(formatChange(points)!.replace("%", "")) });
-                  return [billing, margin].filter(Boolean).join(" · ") || null;
+                  const margin = d.margin_pct != null ? t("snapshot.margin_is", { margin: formatPercent(d.margin_pct) }) : null;
+                  const change = points === null || margin === null ? null : t("snapshot.change.margin_short", { change: isolateLtr(formatChange(points)!.replace("%", "")) });
+                  return [rosteredTo ?? t("snapshot.figure.forecast_detail"), [margin, change].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
                 })(),
-                detail: d.margin_pct != null ? t("snapshot.figure.forecast_margin", { margin: formatPercent(d.margin_pct) }) : t("snapshot.figure.forecast_detail"),
                 tone: (d.margin_pct != null && Number(d.margin_pct) < 0 ? "danger" : "primary") as KeyFigure["tone"],
               },
             ]
@@ -114,8 +124,8 @@ export function OverviewScreen() {
                 value: formatHoursFigure(d.hours_forecast, i18n.language),
                 raw: d.hours_forecast,
                 count: { to: Number(d.hours_forecast), format: (n: number) => formatHoursFigure(n.toFixed(2), i18n.language) },
-                change: vsPrevious(changePct(d.hours_forecast, prev?.hours)),
-                detail: t("snapshot.figure.forecast_detail"),
+                change: vsSameSpan(changePct(d.hours_forecast, prev?.hours_to_rostered)),
+                detail: rosteredTo ?? t("snapshot.figure.forecast_detail"),
               },
             ]),
         {
