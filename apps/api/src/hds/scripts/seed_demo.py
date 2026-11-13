@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import uuid
+from collections import Counter, defaultdict
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -120,7 +121,23 @@ def _own_span(
         return begins, ends if ends > begins else at(offset + 1, end)
 
     same, next_day = window(0), window(1)
-    return next_day if overlap(next_day) > overlap(same) else same
+    nothing = dt.timedelta(0)
+    return next_day if overlap(same) == nothing and overlap(next_day) > nothing else same
+
+
+def _stated_rates(shifts: list[dict[str, Any]]) -> dict[str, Decimal]:
+    """Each person's usual hourly pay as the roster's cells state it: the rate they have most often.
+
+    An assignment holds no rate of its own, so this is their default; a shift where everyone has
+    the same stated rate keeps it as the shift's rate.
+    """
+    seen: dict[str, Counter[Decimal]] = defaultdict(Counter)
+    for shift in shifts:
+        for entry in shift["people"]:
+            if "hourly" in entry:
+                seen[entry["name"]][Decimal(str(entry["hourly"])).quantize(FOUR)] += 1
+    # The most frequent; between equals, the higher, so a tie never understates pay.
+    return {name: max(rates, key=lambda r: (rates[r], r)) for name, rates in seen.items()}
 
 
 def _sunday(day: dt.date) -> dt.date:
@@ -271,6 +288,7 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
     )
 
     people: dict[str, User] = {}
+    stated = _stated_rates(data["shifts"])
     for n, person in enumerate(data["people"], start=1):
         if person["name"] in managers:
             people[person["name"]] = managers[person["name"]]
@@ -281,7 +299,8 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
             f"emp{n:03d}@demo.hds.test",
             person["name"],
             UserRole.employee,
-            default_hourly_rate=pay_of.get(main) if main else None,
+            # Their own rate from the cells where stated, else their first project's.
+            default_hourly_rate=stated.get(person["name"]) or (pay_of.get(main) if main else None),
             employment_type="temporary" if temporary else "permanent",
             engaged_from=dt.date.fromisoformat(person["engaged_from"]) if temporary else None,
             engaged_until=dt.date.fromisoformat(person["engaged_until"]) if temporary else None,
