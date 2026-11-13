@@ -1114,5 +1114,19 @@
   "brand.tagline": "The Human Advantage.\nThe Technological Solution.",
   "brand.line_product": "Rosters · staff · clients · reports",
   "brand.line_platforms": "Web · iOS · Android · Hebrew and English",
-  "brand.company": "HDS 2.0"
+  "brand.company": "HDS 2.0",
+  "greeting.morning": "Good morning, {{name}}",
+  "greeting.afternoon": "Good afternoon, {{name}}",
+  "greeting.evening": "Good evening, {{name}}",
+  "snapshot.change.month": "{{change}} vs the previous month",
+  "snapshot.change.quarter": "{{change}} vs the previous quarter",
+  "snapshot.change.year": "{{change}} vs the previous year",
+  "snapshot.change.margin": "margin {{change}} pt",
+  "snapshot.figure.coverage_next": "Next week {{pct}}% · {{count}} empty",
+  "snapshot.figure.coverage_next_one": "Next week {{pct}}% · 1 empty",
+  "snapshot.figure.coverage_next_other": "Next week {{pct}}% · {{count}} empty",
+  "snapshot.col.trend": "Trend",
+  "snapshot.next_empty": "Next week: {{count}} empty",
+  "snapshot.next_empty_one": "Next week: 1 empty",
+  "snapshot.next_empty_other": "Next week: {{count}} empty"
 }

@@ -6,10 +6,12 @@
  */
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import Svg, { Circle, Polyline } from "react-native-svg";
 
 import { Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
+import { sparkPoints } from "./polish";
 
 /** One numbered key figure. */
 export interface KeyFigure {
@@ -22,6 +24,10 @@ export interface KeyFigure {
   /** The API's own value, as `data-value` for the tests. */
   raw?: string;
   tone?: "primary" | "danger" | "success";
+  /** Against the previous period: "▲ 12% vs the previous month", in a neutral colour. */
+  change?: string | null;
+  /** Counts up to `to` on entrance, drawn by `format`; `value` once the entrance is done. */
+  count?: { to: number; format: (n: number) => string };
 }
 
 /** "01", "02"… the deck's numbering. */
@@ -39,7 +45,7 @@ export function figureSize(values: readonly string[], desktop: boolean): { fontS
   return { fontSize: size, lineHeight: Math.round(size * 1.15) };
 }
 
-export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
+export function KeyFigures({ figures, progress = 1 }: { figures: readonly KeyFigure[]; progress?: number }) {
   const { colors, isDesktop } = useTheme();
   const size = figureSize(figures.map((f) => f.value), isDesktop);
   return (
@@ -56,7 +62,7 @@ export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
           </View>
           <View style={styles.valueRow}>
             <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr" style={size}>
-              {f.value}
+              {f.count && progress < 1 ? f.count.format(f.count.to * progress) : f.value}
             </Txt>
             {f.unit ? (
               <Txt role="meta" tone="secondary">
@@ -64,6 +70,11 @@ export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
               </Txt>
             ) : null}
           </View>
+          {f.change ? (
+            <Txt role="meta" tone="secondary" numeric testID={`figure-${f.key}-change`}>
+              {f.change}
+            </Txt>
+          ) : null}
           {f.detail ? (
             <Txt role="meta" tone="secondary">
               {f.detail}
@@ -105,10 +116,11 @@ export interface BarColumn {
 }
 
 /** Vertical paired bars, scaled against the largest value shown. */
-export function ColumnBars({ columns, legend, height = 120 }: { columns: readonly BarColumn[]; legend: string; height?: number }) {
+export function ColumnBars({ columns, legend, height = 120, progress = 1 }: { columns: readonly BarColumn[]; legend: string; height?: number; progress?: number }) {
   const { colors } = useTheme();
   const largest = Math.max(1, ...columns.flatMap((c) => [c.dark, c.light ?? 0]));
-  const pct = (v: number) => `${Math.max(0, (v / largest) * 100)}%` as const;
+  // The bars grow from the baseline on entrance; the box keeps its height, so nothing moves.
+  const pct = (v: number) => `${Math.max(0, (v / largest) * 100 * progress)}%` as const;
   return (
     <View style={styles.barsBlock}>
       <View style={[styles.bars, { height, borderBottomColor: colors.border.strong }]} testID="column-bars">
@@ -233,3 +245,20 @@ const styles = StyleSheet.create({
   splitCol: { gap: 24 },
   stacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });
+
+/** A small trend line (hours by week), time running with the reading direction. */
+export function Sparkline({ values, rtl, width = 72, height = 22, testID }: { values: readonly number[]; rtl: boolean; width?: number; height?: number; testID?: string }) {
+  const { colors } = useTheme();
+  if (values.length < 2) return null;
+  // Oldest first, left to right; in Hebrew the oldest sits on the right, as the bars and candles do.
+  const points = sparkPoints(rtl ? [...values].reverse() : values, width, height);
+  const last = points.split(" ")[rtl ? 0 : values.length - 1]!.split(",");
+  return (
+    <View testID={testID} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...webProps({ "aria-hidden": String(true) })}>
+      <Svg width={width} height={height}>
+        <Polyline points={points} fill="none" stroke={colors.border.strong} strokeWidth={1.5} />
+        <Circle cx={Number(last[0])} cy={Number(last[1])} r={2.5} fill={colors.text.primary} />
+      </Svg>
+    </View>
+  );
+}

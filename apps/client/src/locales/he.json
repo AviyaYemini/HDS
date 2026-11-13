@@ -1114,5 +1114,19 @@
   "brand.tagline": "היתרון האנושי.\nהפתרון הטכנולוגי.",
   "brand.line_product": "סידור עבודה · צוות · לקוחות · דוחות",
   "brand.line_platforms": "ווב · iOS · Android · עברית ואנגלית",
-  "brand.company": "HDS 2.0"
+  "brand.company": "HDS 2.0",
+  "greeting.morning": "בוקר טוב, {{name}}",
+  "greeting.afternoon": "צהריים טובים, {{name}}",
+  "greeting.evening": "ערב טוב, {{name}}",
+  "snapshot.change.month": "{{change}} מול החודש הקודם",
+  "snapshot.change.quarter": "{{change}} מול הרבעון הקודם",
+  "snapshot.change.year": "{{change}} מול השנה הקודמת",
+  "snapshot.change.margin": "מרווח {{change}} נק׳",
+  "snapshot.figure.coverage_next": "שבוע הבא {{pct}}% · {{count}} ריקים",
+  "snapshot.figure.coverage_next_one": "שבוע הבא {{pct}}% · מקום ריק אחד",
+  "snapshot.figure.coverage_next_other": "שבוע הבא {{pct}}% · {{count}} ריקים",
+  "snapshot.col.trend": "מגמה",
+  "snapshot.next_empty": "שבוע הבא: {{count}} ריקים",
+  "snapshot.next_empty_one": "שבוע הבא: מקום ריק אחד",
+  "snapshot.next_empty_other": "שבוע הבא: {{count}} ריקים"
 }

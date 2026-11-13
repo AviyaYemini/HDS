@@ -4,7 +4,9 @@
  * table's chips, the estimated-rates note, and no pay where the API hides it. Made-up names only.
  */
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import * as Router from "expo-router";
 
+import { setReducedMotionForTests } from "../../../src/design/motion";
 import { setupI18n } from "../../../src/i18n";
 import { DEFAULT_TIME_ZONE, isolateLtr, todayIn } from "../../../src/locale";
 import { coveragePercent, formatPercent, healthChip, periodRange } from "../../../src/screens/overview/model";
@@ -12,8 +14,12 @@ import { OverviewScreen } from "../../../src/screens/overview/OverviewScreen";
 import { FakeApi, json, renderWith, signedIn } from "../fakeApi";
 import { OVERVIEW } from "./fixture";
 
+const router = Router as unknown as { __router: { push: jest.Mock } };
+
 beforeEach(async () => {
   await setupI18n("en");
+  // The entrance counts and grows; the tests read the final figures.
+  setReducedMotionForTests(true);
 });
 
 test("periods: the month, quarter and year holding today", () => {
@@ -49,6 +55,16 @@ test("the dashboard asks this month and shows the API's figures, the panel, the 
   expect(screen.getByText("Seaside mall *")).toBeTruthy();
   expect(screen.getByTestId("note-estimated")).toBeTruthy();
   expect(screen.getAllByTestId("bar-column")).toHaveLength(2);
+  // Whole shekels on the dashboard, and each figure against the previous period (the owner, 2026-11-13).
+  expect(screen.getByTestId("figure-billing")).toHaveTextContent(/₪219,860(?![.,]\d)/);
+  expect(screen.getByTestId("figure-billing-change")).toHaveTextContent("\u2066▲ 9.4%\u2069 vs the previous month");
+  expect(screen.getByTestId("figure-forecast-change")).toHaveTextContent("\u2066▲ 6.2%\u2069 vs the previous month · margin \u2066▲ 0.1\u2069 pt");
+  expect(screen.getByTestId("figure-coverage-change")).toHaveTextContent("Next week 90% · 10 empty");
+  expect(screen.getByTestId("greeting")).toHaveTextContent(/^Good (morning|afternoon|evening), Dana · /);
+  // A project's card opens its roster week, and says next week's empty places.
+  expect(screen.getAllByText(/Next week: 3 empty/).length).toBeGreaterThan(0);
+  await fireEvent.press(screen.getAllByTestId("card")[1]!);
+  expect(router.__router.push).toHaveBeenCalledWith("/roster?project=p2");
   // The charts, each named by a one-line summary: billing by client, and the staff mix.
   expect(screen.getByTestId("chart-clients").props.accessibilityLabel).toMatch(/155,000\.00.* billed in 2 slices; Alpha Security leads with 74%/);
   expect(screen.getAllByTestId("chart-clients-legend").map((r) => r.props.children)).toHaveLength(2);

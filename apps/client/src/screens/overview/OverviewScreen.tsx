@@ -5,6 +5,7 @@
  * weekly bars of billing against pay with the forecast weeks lighter; and the project table with
  * coverage, margin and a status chip. Every amount is the API's own; pay shows only where sent.
  */
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
@@ -15,11 +16,15 @@ import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl,
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { DEFAULT_TIME_ZONE, formatMoney, todayIn } from "../../locale";
+import { isRtl } from "../../i18n";
+import { DEFAULT_TIME_ZONE, formatHeaderDate, formatMoney, isolateLtr, todayIn } from "../../locale";
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { Candles, Donut } from "../deck/Charts";
 import { pieSlices, sumAmounts, weeklyCandles } from "../deck/chartMath";
-import { CardList, ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { CardList, ColumnBars, KeyFigures, SectionHead, Sparkline, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { changePct, changePoints, firstName, formatChange, formatMoneyWhole, greetingKey } from "../deck/polish";
+import { useEntrance } from "../deck/useEntrance";
+import { rosterHref } from "../roster/ProjectChooser";
 import { useLoad } from "../useLoad";
 import { coveragePercent, formatPercent, healthChip, periodRange, weekLabel, type OverviewProject, type Period } from "./model";
 
@@ -28,7 +33,9 @@ const TEMPORARY = "temporary";
 
 export function OverviewScreen() {
   const { t, i18n } = useTranslation();
-  const { api } = useSession();
+  const session = useSession();
+  const { api } = session;
+  const router = useRouter();
   const errorText = useErrorText();
   const { colors, isDesktop } = useTheme();
   const today = todayIn(DEFAULT_TIME_ZONE);
@@ -36,7 +43,20 @@ export function OverviewScreen() {
   const range = periodRange(period, today);
   const overview = useLoad(async () => call(api.GET("/api/v1/reports/overview", { params: { query: range } })), [range.from, range.to]);
   const money = (amount: string) => formatMoney(amount, i18n.language);
+  // On the dashboard, whole shekels; the detailed tables keep their agorot (the owner, 2026-11-13).
+  const whole = (amount: string) => formatMoneyWhole(amount, i18n.language);
+  const countMoney = (n: number) => formatMoneyWhole(Math.round(n).toFixed(2), i18n.language);
   const d = overview.data;
+  // Numbers count up, bars, candles and donuts grow, once per answer (reduced motion: at once).
+  const progress = useEntrance(d ? `${d.from}|${d.to}` : null);
+  const prev = d?.previous ?? null;
+  const vsPrevious = (pct: number | null) => {
+    const shown = formatChange(pct);
+    // Isolated left to right, so the arrow stays before its number inside Hebrew.
+    return shown ? t(`snapshot.change.${period}`, { change: isolateLtr(shown) }) : null;
+  };
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: DEFAULT_TIME_ZONE }).format(new Date()));
+  const greeting = `${t(greetingKey(hour), { name: firstName(session.user?.full_name) })} · ${formatHeaderDate(today, i18n.language)}`;
 
   const title =
     period === "month"
@@ -46,6 +66,7 @@ export function OverviewScreen() {
         : range.from.slice(0, 4);
 
   const coverage = d ? coveragePercent(d.coverage) : null;
+  const coverageNext = d ? coveragePercent(d.coverage_next) : null;
   const figures: KeyFigure[] = d
     ? [
         // Where pay is hidden the API sends no money at all: the first two figures are hours then.
@@ -54,34 +75,64 @@ export function OverviewScreen() {
               {
                 key: "billing",
                 label: t("snapshot.figure.billing"),
-                value: money(d.billing_actual),
+                value: whole(d.billing_actual),
                 raw: d.billing_actual,
-                detail: d.pay_actual != null ? t("snapshot.figure.billing_detail", { pay: money(d.pay_actual), hours: formatHoursFigure(d.hours_actual, i18n.language) }) : t("snapshot.figure.billing_hours", { hours: formatHoursFigure(d.hours_actual, i18n.language) }),
+                count: { to: Number(d.billing_actual), format: countMoney },
+                // Against the same days of the previous period, so "so far" compares fairly.
+                change: vsPrevious(changePct(d.billing_actual, prev?.billing_to_date)),
+                detail: d.pay_actual != null ? t("snapshot.figure.billing_detail", { pay: whole(d.pay_actual), hours: formatHoursFigure(d.hours_actual, i18n.language) }) : t("snapshot.figure.billing_hours", { hours: formatHoursFigure(d.hours_actual, i18n.language) }),
               },
               {
                 key: "forecast",
                 label: t(`snapshot.figure.forecast.${period}`),
-                value: money(d.billing_forecast),
+                value: whole(d.billing_forecast),
                 raw: d.billing_forecast,
+                count: { to: Number(d.billing_forecast), format: countMoney },
+                change: (() => {
+                  const billing = vsPrevious(changePct(d.billing_forecast, prev?.billing));
+                  const points = changePoints(d.margin_pct, prev?.margin_pct);
+                  const margin = points === null ? null : t("snapshot.change.margin", { change: isolateLtr(formatChange(points)!.replace("%", "")) });
+                  return [billing, margin].filter(Boolean).join(" · ") || null;
+                })(),
                 detail: d.margin_pct != null ? t("snapshot.figure.forecast_margin", { margin: formatPercent(d.margin_pct) }) : t("snapshot.figure.forecast_detail"),
                 tone: (d.margin_pct != null && Number(d.margin_pct) < 0 ? "danger" : "primary") as KeyFigure["tone"],
               },
             ]
           : [
-              { key: "hours", label: t("snapshot.figure.hours"), value: formatHoursFigure(d.hours_actual, i18n.language), raw: d.hours_actual, detail: t("snapshot.figure.hours_detail") },
-              { key: "forecast", label: t(`snapshot.figure.forecast_hours.${period}`), value: formatHoursFigure(d.hours_forecast, i18n.language), raw: d.hours_forecast, detail: t("snapshot.figure.forecast_detail") },
+              {
+                key: "hours",
+                label: t("snapshot.figure.hours"),
+                value: formatHoursFigure(d.hours_actual, i18n.language),
+                raw: d.hours_actual,
+                count: { to: Number(d.hours_actual), format: (n: number) => formatHoursFigure(n.toFixed(2), i18n.language) },
+                change: vsPrevious(changePct(d.hours_actual, prev?.hours_to_date)),
+                detail: t("snapshot.figure.hours_detail"),
+              },
+              {
+                key: "forecast",
+                label: t(`snapshot.figure.forecast_hours.${period}`),
+                value: formatHoursFigure(d.hours_forecast, i18n.language),
+                raw: d.hours_forecast,
+                count: { to: Number(d.hours_forecast), format: (n: number) => formatHoursFigure(n.toFixed(2), i18n.language) },
+                change: vsPrevious(changePct(d.hours_forecast, prev?.hours)),
+                detail: t("snapshot.figure.forecast_detail"),
+              },
             ]),
         {
           key: "coverage",
           label: t("snapshot.figure.coverage"),
           value: coverage === null ? "—" : `${coverage}%`,
           raw: coverage === null ? "" : String(coverage),
+          ...(coverage === null ? {} : { count: { to: coverage, format: (n: number) => `${Math.round(n)}%` } }),
           detail: d.coverage.empty_places === 0 ? t("snapshot.figure.coverage_full") : t("snapshot.figure.coverage_detail", { count: d.coverage.empty_places, projects: d.coverage.projects_with_gaps }),
+          // Next week, where the open places are (the drafts not yet filled).
+          change: coverageNext === null ? null : t("snapshot.figure.coverage_next", { pct: coverageNext, count: d.coverage_next.empty_places }),
         },
         {
           key: "people",
           label: t("snapshot.figure.people"),
           value: String(d.people.working_this_week),
+          count: { to: d.people.working_this_week, format: (n: number) => String(Math.round(n)) },
           unit: t("snapshot.figure.people_unit", { active: d.people.active }),
           raw: String(d.people.working_this_week),
           detail: t("snapshot.figure.people_detail"),
@@ -124,6 +175,9 @@ export function OverviewScreen() {
   const peopleSlices = d && d.people.active > 0 ? pieSlices([{ label: t("staff.type.permanent"), amount: String(permanent) }, { label: t("staff.type.temporary"), amount: String(d.people.temporary) }], 2, "").map((sl) => ({ ...sl, key: sl.label === t("staff.type.temporary") ? TEMPORARY : "permanent" })) : [];
   const peopleSummary = d ? t("snapshot.chart.people_summary", { permanent, temporary: d.people.temporary, pct: d.people.active > 0 ? Math.round((d.people.temporary / d.people.active) * 100) : 0 }) : "";
 
+  /** A project's row opens its roster week (this week). */
+  const openProject = (id: string) => router.push(rosterHref(id) as never);
+
   const columns: Column<OverviewProject>[] = [
     {
       key: "name",
@@ -145,7 +199,30 @@ export function OverviewScreen() {
     ...(d?.projects.some((p) => p.billing != null)
       ? [{ key: "billing", title: t("snapshot.col.billing"), numeric: true, width: 140, render: (p: OverviewProject) => <Txt role="body" numeric numberOfLines={1}>{p.billing != null ? money(p.billing) : "—"}</Txt> }]
       : []),
-    { key: "coverage", title: t("snapshot.col.coverage"), numeric: true, width: 90, render: (p) => <Txt role="body" numeric>{formatPercent(p.coverage_pct)}</Txt> },
+    {
+      key: "trend",
+      title: t("snapshot.col.trend"),
+      width: 96,
+      render: (p) => <Sparkline values={p.weeks.map((w) => Number(w.hours))} rtl={isRtl()} testID={`trend-${p.id}`} />,
+    },
+    {
+      key: "coverage",
+      title: t("snapshot.col.coverage"),
+      numeric: true,
+      width: 110,
+      render: (p) => (
+        <View style={styles.coverageCell}>
+          <Txt role="body" numeric>
+            {formatPercent(p.coverage_pct)}
+          </Txt>
+          {p.empty_places_next > 0 ? (
+            <Txt role="meta" tone="secondary" testID={`next-${p.id}`}>
+              {t("snapshot.next_empty", { count: p.empty_places_next })}
+            </Txt>
+          ) : null}
+        </View>
+      ),
+    },
     // Margin needs pay: where the API hides pay there is no margin column at all, never a dash.
     ...(d?.projects.some((p) => p.margin_pct != null)
       ? [{ key: "margin", title: t("snapshot.col.margin"), numeric: true, width: 90, render: (p: OverviewProject) => <Txt role="body" numeric tone={p.margin_pct != null && Number(p.margin_pct) < 0 ? "danger" : "primary"}>{formatPercent(p.margin_pct)}</Txt> }]
@@ -160,6 +237,9 @@ export function OverviewScreen() {
 
   return (
     <Screen testID="screen-overview">
+      <Txt role="body" tone="secondary" testID="greeting">
+        {greeting}
+      </Txt>
       <PageTitle eyebrow={[t("app.name"), t("nav.overview")]} title={title}>
         <SegmentedControl<Period>
           label={t("snapshot.period")}
@@ -174,16 +254,16 @@ export function OverviewScreen() {
         <SkeletonRows rows={6} />
       ) : (
         <View style={styles.body}>
-          <KeyFigures figures={figures} />
+          <KeyFigures figures={figures} progress={progress} />
           <Split>
             <View style={styles.chart}>
               <SectionHead title={showPay ? t("snapshot.bars_title") : showBilling ? t("snapshot.bars_title_billing") : t("snapshot.bars_title_hours")} />
-              <ColumnBars columns={bars} legend={showPay ? t("snapshot.legend") : t("snapshot.legend_billing")} />
+              <ColumnBars columns={bars} legend={showPay ? t("snapshot.legend") : t("snapshot.legend_billing")} progress={progress} />
             </View>
             {candles.length > 0 ? (
               <View style={styles.chartWide}>
                 <SectionHead title={t("snapshot.chart.candles_title")} />
-                <Candles candles={candles} labelOf={(c) => weekLabel(c.week)} tickText={tickText} summary={candlesSummary} testID="chart-candles" />
+                <Candles candles={candles} labelOf={(c) => weekLabel(c.week)} tickText={tickText} summary={candlesSummary} testID="chart-candles" progress={progress} />
                 <Txt role="meta" tone="secondary">
                   {t("snapshot.chart.candles_legend")}
                 </Txt>
@@ -194,7 +274,7 @@ export function OverviewScreen() {
             {clientSlices.length > 0 ? (
               <View style={styles.chart}>
                 <SectionHead title={t("snapshot.chart.clients_title")} />
-                <Donut slices={clientSlices} amountText={(sl) => money(sl.amount)} summary={clientsSummary} testID="chart-clients" />
+                <Donut slices={clientSlices} amountText={(sl) => whole(sl.amount)} summary={clientsSummary} testID="chart-clients" progress={progress} />
               </View>
             ) : null}
             {peopleSlices.length > 0 ? (
@@ -207,6 +287,7 @@ export function OverviewScreen() {
                   centre={String(d.people.active)}
                   summary={peopleSummary}
                   testID="chart-people"
+                  progress={progress}
                 />
               </View>
             ) : null}
@@ -235,7 +316,7 @@ export function OverviewScreen() {
           <View style={styles.table}>
             <SectionHead title={t("snapshot.projects_title")} note={t("snapshot.projects_note", { count: d.projects.length })} />
             {isDesktop ? (
-              <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
+              <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" onRowPress={(p) => openProject(p.id)} />
             ) : (
               // A phone: a card a project, the name on top, its key numbers and its status (the owner, 2026-11-13).
               <CardList
@@ -246,9 +327,10 @@ export function OverviewScreen() {
                   subtitle: `${p.client_name}${p.temporary_workers > 0 ? ` · ${t("snapshot.temp_on_project", { count: p.temporary_workers })}` : ""}`,
                   figures: [
                     ...(p.billing != null ? [{ label: t("snapshot.col.billing"), value: money(p.billing) }] : [{ label: t("snapshot.col.hours"), value: formatHoursFigure(p.hours, i18n.language) }]),
-                    { label: t("snapshot.col.coverage"), value: formatPercent(p.coverage_pct) },
+                    { label: t("snapshot.col.coverage"), value: p.empty_places_next > 0 ? `${formatPercent(p.coverage_pct)} · ${t("snapshot.next_empty", { count: p.empty_places_next })}` : formatPercent(p.coverage_pct) },
                     ...(p.margin_pct != null ? [{ label: t("snapshot.col.margin"), value: formatPercent(p.margin_pct), tone: (Number(p.margin_pct) < 0 ? "danger" : "primary") as "danger" | "primary" }] : []),
                   ],
+                  onPress: () => openProject(p.id),
                   chips: <StatusChip status={healthChip(p.status)} label={p.status === "gaps" ? t("snapshot.status.gaps", { count: p.empty_places }) : t(`snapshot.status.${p.status}`)} testID={`status-${p.id}`} />,
                 }))}
               />
@@ -273,5 +355,6 @@ const styles = StyleSheet.create({
   chartWide: { flex: 1.4, gap: 8, minWidth: 0 },
   table: { gap: 8 },
   nameCell: { minWidth: 0 },
+  coverageCell: { alignItems: "flex-end" },
   note: { borderTopWidth: 1, paddingTop: 8 },
 });
