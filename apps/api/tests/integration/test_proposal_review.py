@@ -181,7 +181,38 @@ async def test_a_change_on_one_day_leaves_the_other_days_acceptable(
     assert await roster_count(test_db) == 1
 
 
-async def test_a_rule_break_needs_a_reason_which_becomes_an_override(
+async def test_a_rule_break_without_a_reason_is_kept_as_made(
+    async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
+) -> None:
+    """CEO demo: rule warnings are out of scope, so the edit is stored and accepted as made."""
+    admin = await headers_for(async_client, "admin")
+    await staffed_project(async_client, admin)
+    job = await proposed(async_client, admin)
+    dana = await employee(async_client, admin, "Dana Levi")
+    blocked = await async_client.post(
+        constraints(dana), json=body("blocked", WEDNESDAY), headers=admin
+    )
+    assert blocked.status_code == 201, blocked.text
+    key = slot_on((await review(async_client, admin, job)).json(), WEDNESDAY)["key"]
+
+    kept = await async_client.post(
+        f"{JOBS}/{job['id']}/edits",
+        json={"op": "assign", "key": key, "user_id": dana},
+        headers=admin,
+    )
+
+    assert kept.status_code == 200, kept.text
+    placed = slot_on(kept.json()["proposal"], WEDNESDAY)["people"]
+    assert dana in [p["user_id"] for p in placed]
+    accepted = await async_client.post(
+        f"{JOBS}/{job['id']}/accept", json={"days": [WEDNESDAY.isoformat()]}, headers=admin
+    )
+    assert accepted.status_code == 200, accepted.text
+    reasons = await test_db.execute(text("SELECT count(*) FROM rule_overrides"))
+    assert reasons.scalar() == 0
+
+
+async def test_a_reason_sent_with_a_rule_break_becomes_an_override(
     async_client: AsyncClient, seed_users: dict[str, User], test_db: AsyncSession
 ) -> None:
     admin = await headers_for(async_client, "admin")
@@ -194,12 +225,6 @@ async def test_a_rule_break_needs_a_reason_which_becomes_an_override(
     assert blocked.status_code == 201, blocked.text
     key = slot_on((await review(async_client, admin, job)).json(), WEDNESDAY)["key"]
     edit = {"op": "assign", "key": key, "user_id": dana}
-
-    refused = await async_client.post(f"{JOBS}/{job['id']}/edits", json=edit, headers=admin)
-
-    assert refused.status_code == 422, refused.text
-    assert refused.json()["code"] == "schedule.override_reason_required"
-    assert {e["code"] for e in refused.json()["errors"]} >= {"warnings.blocked"}
 
     kept = await async_client.post(
         f"{JOBS}/{job['id']}/edits",
@@ -429,7 +454,7 @@ async def test_a_proposal_with_nothing_to_change_is_accepted_and_closed(
     assert named.json()["code"] == "schedule.proposal_closed"
 
 
-async def test_one_more_than_the_headcount_needs_a_reason(
+async def test_one_more_than_the_headcount_is_kept_as_made(
     async_client: AsyncClient, seed_users: dict[str, User]
 ) -> None:
     admin = await headers_for(async_client, "admin")
@@ -444,8 +469,11 @@ async def test_one_more_than_the_headcount_needs_a_reason(
         headers=admin,
     )
 
-    assert answer.status_code == 422, answer.text
-    assert [e["code"] for e in answer.json()["errors"]] == ["warnings.over_headcount"]
+    # CEO demo: kept as made; the answer still names the break, excused.
+    assert answer.status_code == 200, answer.text
+    assert [(w["code"], w["excused"]) for w in answer.json()["warnings"]] == [
+        ("warnings.over_headcount", True)
+    ]
 
 
 async def test_an_edit_checks_the_persons_shifts_in_projects_outside_the_run(
@@ -473,8 +501,9 @@ async def test_an_edit_checks_the_persons_shifts_in_projects_outside_the_run(
         headers=admin,
     )
 
-    assert answer.status_code == 422, answer.text
-    assert "warnings.overlap" in [e["code"] for e in answer.json()["errors"]]
+    # CEO demo: kept as made; the answer still names the overlap found outside the run.
+    assert answer.status_code == 200, answer.text
+    assert "warnings.overlap" in [w["code"] for w in answer.json()["warnings"]]
 
 
 async def test_an_empty_body_is_the_whole_proposal_and_still_refused_out_of_date(
@@ -556,8 +585,9 @@ async def test_a_manager_placed_by_hand_is_judged_by_all_their_shifts(
         headers=admin,
     )
 
-    assert answer.status_code == 422, answer.text
-    assert "warnings.overlap" in [e["code"] for e in answer.json()["errors"]]
+    # CEO demo: kept as made; the answer still names the overlap with their other shifts.
+    assert answer.status_code == 200, answer.text
+    assert "warnings.overlap" in [w["code"] for w in answer.json()["warnings"]]
 
 
 async def test_a_need_whose_headcount_changed_is_out_of_date(

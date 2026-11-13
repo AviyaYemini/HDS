@@ -29,7 +29,7 @@ class Override(BaseModel):
     """Why a person keeps a rule break in the proposal, and which rules it covers."""
 
     codes: list[str]
-    reason: str
+    reason: str | None = None  # None: kept as made, no reason (CEO demo)
 
 
 class Placed(BaseModel):
@@ -229,9 +229,9 @@ async def read_proposal(
     description=(
         "Manager or Admin, of every project in the run. Assign, unassign, move or swap a person in "
         "an open proposal; the roster does not change until it is accepted. The answer gives the "
-        "rules the placed people break on the shifts the edit touched. A break the roster lets a "
-        "person override needs `override_reason` (422 `schedule.override_reason_required`, with "
-        "the breaks in `errors`); an inactive employee is refused (422 "
+        "rules the placed people break on the shifts the edit touched. A person-rule break is kept "
+        "as the manager made it (CEO demo); `override_reason`, when sent, is recorded with it. An "
+        "inactive employee is refused (422 "
         "`warnings.employee_inactive`); an edit that does not fit the proposal is 422 "
         "(`schedule.edit_invalid`); a shift with a part accepted is 409 "
         "(`schedule.part_accepted`); a stale `If-Match` is 412 (`schedule.version_stale`)."

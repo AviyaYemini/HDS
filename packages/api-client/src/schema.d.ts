@@ -1121,7 +1121,7 @@ export interface paths {
         put?: never;
         /**
          * Edit a proposal
-         * @description Manager or Admin, of every project in the run. Assign, unassign, move or swap a person in an open proposal; the roster does not change until it is accepted. The answer gives the rules the placed people break on the shifts the edit touched. A break the roster lets a person override needs `override_reason` (422 `schedule.override_reason_required`, with the breaks in `errors`); an inactive employee is refused (422 `warnings.employee_inactive`); an edit that does not fit the proposal is 422 (`schedule.edit_invalid`); a shift with a part accepted is 409 (`schedule.part_accepted`); a stale `If-Match` is 412 (`schedule.version_stale`).
+         * @description Manager or Admin, of every project in the run. Assign, unassign, move or swap a person in an open proposal; the roster does not change until it is accepted. The answer gives the rules the placed people break on the shifts the edit touched. A person-rule break is kept as the manager made it (CEO demo); `override_reason`, when sent, is recorded with it. An inactive employee is refused (422 `warnings.employee_inactive`); an edit that does not fit the proposal is 422 (`schedule.edit_invalid`); a shift with a part accepted is 409 (`schedule.part_accepted`); a stale `If-Match` is 412 (`schedule.version_stale`).
          */
         post: operations["edit_proposal_api_v1_schedule_jobs__id__edits_post"];
         delete?: never;
@@ -3464,7 +3464,7 @@ export interface components {
             /** Codes */
             codes: string[];
             /** Reason */
-            reason: string;
+            reason?: string | null;
         };
         /**
          * OverrideCreated

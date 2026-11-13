@@ -279,7 +279,7 @@
       "path": "/api/v1/schedule-jobs/{id}/edits",
       "operation_id": "edit_proposal_api_v1_schedule_jobs__id__edits_post",
       "suites": ["pytest", "cli"],
-      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) and the stored roster (a rule break needs override_reason), which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid or schedule.override_reason_required (008 FR-008 to FR-010); an If-Match that is not the stored version is answered 412 schedule.version_stale"
+      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid (a rule break is kept as made, CEO demo) (008 FR-008 to FR-010); an If-Match that is not the stored version is answered 412 schedule.version_stale"
     },
     {
       "method": "POST",

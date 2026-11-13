@@ -707,7 +707,8 @@ class ScheduleJobService:
                         "locked_at": self._now() if entry.get("locked") else None,
                     }
                 )
-                if entry.get("override"):
+                # A break kept with no reason (CEO demo) has no override record to write.
+                if entry.get("override") and entry["override"].get("reason"):
                     for code in entry["override"]["codes"]:
                         overrides.append(
                             {

@@ -112,8 +112,9 @@ class ProposalService:
             PreconditionFailedError: ``schedule.version_stale`` (HTTP 412).
             ConflictError: ``schedule.not_ready``, ``schedule.proposal_closed`` or
                 ``schedule.part_accepted`` (HTTP 409).
-            DomainValidationError: ``schedule.edit_invalid``, ``warnings.employee_inactive`` or
-                ``schedule.override_reason_required`` with the breaks (HTTP 422).
+            DomainValidationError: ``schedule.edit_invalid`` or ``warnings.employee_inactive``
+                (HTTP 422). A person-rule break is kept as made (CEO demo), with the reason if one
+                is sent.
         """
         job = await self._jobs.open_for(actor, id)
         check_version(job, if_match)
@@ -139,21 +140,17 @@ class ProposalService:
         found = await self._check(job, work, touched, known)
         causes = proposal_copy.unexcused(found, work, touched)
         reason = (op.get("override_reason") or "").strip()
-        if causes and not reason:
-            raise DomainValidationError(
-                code="schedule.override_reason_required",
-                detail="This edit breaks a rule; give a reason to keep it.",
-                errors=causes,
-            )
+        # CEO demo: rule warnings are out of scope, so a hand edit that breaks a person rule is
+        # kept as the manager made it; a reason, when one is sent, is still recorded with it.
         if causes:
-            override(work, causes, reason)
+            override(work, causes, reason or None)
         job.current = work
         job.version += 1
         await self._jobs.save(job)
         recorded_op = {k: v for k, v in op.items() if k != "override_reason"}
         body = {"op": recorded_op, "before": before, "breaks": [c["code"] for c in causes]}
         await self._jobs.record(job, "edited", body, actor=actor, version=job.version)
-        if causes:
+        if causes and reason:
             await self._jobs.record(
                 job,
                 "overridden",
@@ -426,8 +423,12 @@ def apply(
     return before, touched
 
 
-def override(work: dict[str, Any], causes: list[dict[str, Any]], reason: str) -> None:
-    """Record ``reason`` on each person whose break ``causes`` names, with the codes it excuses."""
+def override(work: dict[str, Any], causes: list[dict[str, Any]], reason: str | None) -> None:
+    """Record ``reason`` on each person whose break ``causes`` names, with the codes it excuses.
+
+    ``None`` keeps the break as the manager made it with no reason (CEO demo): it is excused in
+    the proposal, and accepting adds no override record for it.
+    """
     for cause in causes:
         slot = proposal_copy.find(work, cause["key"])
         assert slot is not None
