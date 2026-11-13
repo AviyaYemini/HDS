@@ -1,0 +1,139 @@
+/**
+ * The roster week in the sheet's layout (specs/demo-ceo/plan.md, screen 2; slide 7): projects as
+ * rows grouped by client, the seven days as columns, and in each cell the day's shifts with their
+ * people and empty places. Pure, so the grouping and the counts are tested on their own.
+ */
+import type { components } from "@hds/api-client";
+
+import { groupWarnings, shiftDays, type Assignment, type Shift, type WarningGroup } from "./model";
+
+/** What the sheet needs of a project and a client. */
+export interface SheetProject {
+  id: string;
+  name: string;
+  client_id: string;
+  status?: string;
+}
+export interface SheetClient {
+  id: string;
+  name: string;
+}
+
+/** One project's row: its shifts per day, Sunday first. */
+export interface SheetRow {
+  project: SheetProject;
+  cells: Shift[][];
+}
+
+export interface ClientGroup {
+  clientId: string;
+  clientName: string;
+  rows: SheetRow[];
+}
+
+/** The week's counts, for the line under the title. */
+export interface SheetTotals {
+  places: number;
+  filled: number;
+  empty: number;
+  temporary: number;
+  published: number;
+  shifts: number;
+}
+
+/** A temporary worker's assignment (`AssignmentRead.temporary`, demo plan §1; filled on the shifts list). */
+export function isTemporary(assignment: Pick<Assignment, "temporary">): boolean {
+  return assignment.temporary === true;
+}
+
+/** "Dana Levi" → "Dana L.", as the managers' sheet writes names; one word stays whole. */
+export function shortName(full: string): string {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? "";
+  return `${parts[0]} ${parts[parts.length - 1]![0]}.`;
+}
+
+/**
+ * Projects grouped by client, both by name. An active project shows even with no shifts this
+ * week (an empty row is news); an ended one only when it has shifts.
+ */
+export function buildSheet(projects: readonly SheetProject[], clients: readonly SheetClient[], shifts: readonly Shift[], days: readonly string[], locale = "he"): ClientGroup[] {
+  const byProject = new Map<string, Shift[]>();
+  for (const s of shifts) byProject.set(s.project_id, [...(byProject.get(s.project_id) ?? []), s]);
+  const clientName = new Map(clients.map((c) => [c.id, c.name]));
+  const compare = (a: string, b: string) => a.localeCompare(b, locale);
+  const groups = new Map<string, ClientGroup>();
+  for (const project of projects) {
+    const own = byProject.get(project.id) ?? [];
+    if (project.status === "ended" && own.length === 0) continue;
+    const cells = days.map((day) => own.filter((s) => shiftDays(s).start === day).sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
+    const group = groups.get(project.client_id) ?? { clientId: project.client_id, clientName: clientName.get(project.client_id) ?? "", rows: [] };
+    group.rows.push({ project, cells });
+    groups.set(project.client_id, group);
+  }
+  const out = [...groups.values()].sort((a, b) => compare(a.clientName, b.clientName));
+  for (const g of out) g.rows.sort((a, b) => compare(a.project.name, b.project.name));
+  return out;
+}
+
+/** Places, filled and empty over the shifts shown; an over-filled shift never hides another's gap. */
+export function sheetTotals(groups: readonly ClientGroup[]): SheetTotals {
+  const totals: SheetTotals = { places: 0, filled: 0, empty: 0, temporary: 0, published: 0, shifts: 0 };
+  const temporary = new Set<string>();
+  for (const g of groups)
+    for (const r of g.rows)
+      for (const cell of r.cells)
+        for (const s of cell) {
+          totals.shifts += 1;
+          if (s.status === "published") totals.published += 1;
+          totals.places += s.headcount;
+          totals.filled += Math.min(s.headcount, s.assignments.length);
+          totals.empty += Math.max(0, s.headcount - s.assignments.length);
+          for (const a of s.assignments) if (isTemporary(a)) temporary.add(a.user_id);
+        }
+  totals.temporary = temporary.size;
+  return totals;
+}
+
+/** A row's empty places this week. */
+export function rowEmpty(row: SheetRow): number {
+  return row.cells.flat().reduce((n, s) => n + Math.max(0, s.headcount - s.assignments.length), 0);
+}
+
+/** The week's warnings across projects (`GET /api/v1/roster/warnings`). */
+export type RosterWarning = components["schemas"]["RosterWarningRead"];
+
+/**
+ * The strip's view of the week's warnings: the open ones grouped by person and rule (one line each,
+ * however many shifts clash), how many were kept with a reason, and which person's block on which
+ * shift carries an open warning.
+ */
+export function weekWarnings(warnings: readonly RosterWarning[]): { open: WarningGroup<RosterWarning>[]; kept: number; flagged: Set<string> } {
+  // An open place is drawn and counted as an empty place already; the strip is for the rest.
+  const shown = warnings.filter((w) => w.code !== UNDER_HEADCOUNT);
+  const openOnes = shown.filter((w) => !w.overridden);
+  const flagged = new Set<string>();
+  for (const w of openOnes) if (w.employee_id) for (const id of w.shift_ids) flagged.add(flagKey(id, w.employee_id));
+  // A person's rule once, however many shifts clash; a warning about a shift itself, once per shift.
+  return { open: groupWarnings(openOnes, (w) => w.employee_id ?? `shift:${w.shift_ids[0] ?? ""}`), kept: shown.length - openOnes.length, flagged };
+}
+
+/** The rule an open place breaks; the sheet shows it as a dashed empty place instead. */
+export const UNDER_HEADCOUNT = "warnings.under_headcount";
+
+/** The key of a person's block on a shift, for `flagged`. */
+export function flagKey(shiftId: string, userId: string): string {
+  return `${shiftId}|${userId}`;
+}
+
+/** Only the projects with shifts this week, and how many were left out (the sheet's default view). */
+export function withShifts(groups: readonly ClientGroup[]): { groups: ClientGroup[]; hidden: number } {
+  let hidden = 0;
+  const out: ClientGroup[] = [];
+  for (const g of groups) {
+    const rows = g.rows.filter((r) => r.cells.some((c) => c.length > 0));
+    hidden += g.rows.length - rows.length;
+    if (rows.length > 0) out.push({ ...g, rows });
+  }
+  return { groups: out, hidden };
+}

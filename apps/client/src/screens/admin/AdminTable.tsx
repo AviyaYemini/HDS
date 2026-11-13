@@ -58,6 +58,10 @@ export interface AdminTableProps<Row> {
   active?: { of: (row: Row) => boolean; set: (row: Row, active: boolean) => Promise<void>; keep?: (row: Row) => string | null } | null;
   emptyTitle: string;
   emptyBody: string;
+  /** Extra controls beside the search (a filter of the screen's own). */
+  toolbar?: ReactNode;
+  /** Rows to keep, after loading and before the search (the screen's own filter). */
+  filter?: (row: Row) => boolean;
 }
 
 type Saved = { id: string; name: string; query: string };
@@ -88,6 +92,8 @@ export function AdminTable<Row>({
   active = null,
   emptyTitle,
   emptyBody,
+  toolbar,
+  filter,
 }: AdminTableProps<Row>) {
   const { t, i18n } = useTranslation();
   const session = useSession();
@@ -131,7 +137,7 @@ export function AdminTable<Row>({
   const [viewName, setViewName] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
 
-  const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)));
+  const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)) && (filter ? filter(r) : true));
   const shown = sorted(searched(listed, state.q, searchText), state.sort, sortValue, i18n.language);
   const openRow = state.open && state.open !== "new" ? ((rows.data ?? []).find((r) => keyOf(r) === state.open) ?? null) : null;
   const panelOpen = state.open === "new" || openRow !== null;
@@ -345,6 +351,7 @@ export function AdminTable<Row>({
           testID="table-search"
           containerStyle={styles.search}
         />
+        {toolbar}
         {state.q ? (
           <View testID="filters-on" style={[styles.chip, { borderColor: colors.accent.default }]}>
             <Txt role="meta">{t("admin.filtered", { shown: shown.length, all: rows.data?.length ?? 0 })}</Txt>

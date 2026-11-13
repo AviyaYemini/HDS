@@ -38,20 +38,16 @@ for (const language of LANGUAGES) {
     await checkA11y(page, `work log (${language})`);
   });
 
-  test(`${language}: the hours report opens a bar into its rows`, async ({ page }) => {
+  // demo/ceo: hours and costs in the deck's style (numbered figures, bars, a table by project).
+  test(`${language}: hours and costs shows the API's figures and its table`, async ({ page }) => {
     const manager = await apiAs("manager");
-    const api = await ok<{ hours: string; shifts: number }>(manager.get("/api/v1/reports/hours", { params: { ...thisMonth(), group_by: "employee" } }));
+    const api = await ok<{ hours: string; shifts: number; groups: unknown[] }>(manager.get("/api/v1/reports/hours", { params: { ...thisMonth(), group_by: "project" } }));
     await manager.dispose();
     await signIn(page, "manager", language);
     await page.goto(at("/reports/hours", language));
-    await expect(page.getByTestId("screen-hours")).toBeVisible();
+    await expect(page.getByTestId("screen-hours-costs")).toBeVisible();
     await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", api.hours);
-    await expect(page.getByTestId("figure-shifts")).toHaveAttribute("data-value", String(api.shifts));
-    const bars = page.getByTestId("report-bar");
-    if ((await bars.count()) > 0) {
-      await bars.first().click();
-      await expect(page.getByTestId("report-rows").first()).toBeVisible();
-    }
+    if (api.groups.length > 0) await expect(page.getByTestId("hc-table")).toBeVisible();
     await checkA11y(page, `hours report (${language})`);
   });
 }
@@ -69,5 +65,4 @@ test("the work log opens on the whole company, and the hours report groups by cl
   await page.goto(at("/reports/hours", "en"));
   await page.getByTestId("group-client").click();
   await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", byClient.hours);
-  await expect(page.getByTestId("figure-shifts")).toHaveAttribute("data-value", String(byClient.shifts));
 });

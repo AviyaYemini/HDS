@@ -356,19 +356,19 @@ for (const language of LANGUAGES) {
 }
 
 // The roster opened from the navigation, with no project in the address (CodeRabbit, PR 18; R113):
-// a list of projects to open, or the one project the manager runs, never a dead end.
+// on demo/ceo the whole week in the sheet layout, whose project names open a project's week.
 for (const language of LANGUAGES) {
   for (const role of ["manager", "admin"] as const) {
     test(`${language}: ${role} opens the roster from the navigation and reaches a project's week`, async ({ page }, testInfo) => {
       await openAs(page, role, language, "/home");
       const nav = page.getByTestId("nav-side").or(page.getByTestId("nav-tabs")).first();
       await nav.locator('a[href^="/roster"]').first().click();
-      const list = page.getByTestId("roster-project").first();
+      const list = page.getByTestId("sheet-project").first();
       const week = page.getByTestId(isPhone(testInfo) ? "roster-agenda" : "roster-day").first();
       await expect(list.or(week).first()).toBeVisible();
       if (await list.isVisible()) {
         await checkA11y(page, `roster projects (${role}, ${language})`);
-        await page.locator('[data-testid="roster-project"][data-editable="true"]').first().click();
+        await list.click();
       }
       await expect(page).toHaveURL(/[?&]project=/);
       await expect(week).toBeVisible();

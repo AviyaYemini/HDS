@@ -15,6 +15,7 @@ import { shared } from "./tableStyles";
 
 /** A column's value as text (every admin column renders text, so a phone can show it in a line). */
 export function cellText<Row>(column: Column<Row>, row: Row): string {
+  if (column.text) return column.text(row);
   const value = column.render ? column.render(row) : (row as Record<string, unknown>)[column.key];
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }

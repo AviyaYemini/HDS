@@ -23,7 +23,8 @@ describe("with previews off (the Jest build)", () => {
       expect(tabsFor(caps(list)).filter((tab) => tab.preview)).toEqual([]);
       expect(destinationsFor(caps(list)).filter((item) => item.preview)).toEqual([]);
     }
-    expect(destinationsFor(caps(MANAGER)).map((item) => item.key)).not.toContain("overview");
+    // The snapshot dashboard is no longer a preview (CEO demo).
+    expect(destinationsFor(caps(MANAGER)).map((item) => item.key)).toContain("overview");
   });
 
   it("keeps the staff tabs, each behind its capability", () => {
