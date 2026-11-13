@@ -327,8 +327,8 @@ def _position(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
     ),
 )
 async def list_shifts(
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     project_id: uuid.UUID | None = None,
     status: Literal["draft", "published"] | None = None,
     cursor: str | None = Query(default=None, max_length=200),

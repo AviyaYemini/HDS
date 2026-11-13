@@ -7,7 +7,7 @@ and Admins only (005 FR-023 to FR-028).
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -171,8 +171,8 @@ async def work_log(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
     group_id: uuid.UUID | None = None,
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     current_user: User = Depends(require_manager),
     svc: ReportsService = Depends(reports),
 ) -> WorkLogRead:
@@ -207,8 +207,8 @@ async def work_log(
     ),
 )
 async def hours(
-    first: IsoDate = Query(alias="from"),
-    last: IsoDate = Query(alias="to"),
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
     group_by: Literal["employee", "project", "client"] = Query(),
     current_user: User = Depends(require_manager),
     svc: ReportsService = Depends(reports),
@@ -482,8 +482,8 @@ def _previous(prev: Previous) -> OverviewPreviousRead:
     ),
 )
 async def get_overview(
-    first: IsoDate = Query(alias="from"),
-    last: IsoDate = Query(alias="to"),
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
     current_user: User = Depends(require_manager),
     svc: OverviewService = Depends(overview),
 ) -> OverviewRead:

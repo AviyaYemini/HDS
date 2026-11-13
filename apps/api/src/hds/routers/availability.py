@@ -142,8 +142,8 @@ def _window(svc: AvailabilityService, window: SubmissionWindow) -> WindowRead:
     ),
 )
 async def list_windows(
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     current_user: User = Depends(require_staff),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> WindowListResponse:
@@ -234,8 +234,8 @@ async def remove_window(
 )
 async def list_entries(
     id: uuid.UUID,
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     current_user: User = Depends(require_staff),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> EntryListResponse:

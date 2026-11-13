@@ -209,8 +209,8 @@ async def override(
 )
 async def publish_preview(
     id: uuid.UUID,
-    first: IsoDate = Query(alias="from"),
-    last: IsoDate = Query(alias="to"),
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
     current_user: User = Depends(require_manager),
     tools: RosterToolsService = Depends(roster_tools_service),
 ) -> PublishPreviewRead:
@@ -430,8 +430,8 @@ class RosterWarningsRead(BaseModel):
     ),
 )
 async def roster_warnings(
-    first: IsoDate = Query(alias="from"),
-    last: IsoDate = Query(alias="to"),
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
     current_user: User = Depends(require_manager),
     tools: RosterToolsService = Depends(roster_tools_service),
 ) -> RosterWarningsRead:
