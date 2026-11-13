@@ -51,7 +51,7 @@ How it maps onto HDS:
 - where the sheet states one (a billing/pay pair, an hourly rate, or a sum for a shift), it is used;
 - elsewhere an estimate is used and the project carries `terms_estimated`, which the screens show.
 
-**Temporary workers in the demo data:** a person seen for under 3 months, on one or two projects, is made temporary for those projects. Their period starts at their first week.
+**Temporary workers in the demo data:** none are inferred (the owner, 2026-11-13). Everyone is permanent until an Admin marks them temporary, at invitation, at creation or later in the worker's card; `demo-data/overrides.json` may name some for a rehearsal.
 
 ## API changes (helper)
 

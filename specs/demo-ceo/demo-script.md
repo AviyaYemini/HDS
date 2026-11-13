@@ -5,15 +5,16 @@ About ten minutes, in Hebrew, on a laptop. The data comes from the team's real r
 ## Before the meeting (5 minutes)
 
 1. Start Docker Desktop.
-2. Start the demo. It parses the workbook and loads it the first time (use `DEMO_FRESH=1` before the meeting, so test runs and edits are cleared):
+2. Start the demo on clean data. The first run parses the workbook and loads it; `DEMO_FRESH=1` loads it again into a new, empty database, so test runs and edits are cleared:
 
    ```bash
-   scripts/demo/run_demo.sh "/path/to/the roster workbook.xlsx"
+   DEMO_FRESH=1 scripts/demo/run_demo.sh "/path/to/the roster workbook.xlsx"
    ```
 
-   After that, `scripts/demo/run_demo.sh` alone reuses the data. `DEMO_FRESH=1` reloads it into a new, empty database.
+   After that, `scripts/demo/run_demo.sh` alone reuses the data as it is.
 3. Open http://localhost:8081, switch the language to עברית, and sign in as `admin@hds.test` with the development password.
-4. Keep a second tab signed in as `manager1@hds.test`, for the "each manager sees only their own projects" point.
+4. Mark one or two workers temporary, so the panel, the chips and the filter have something to show: in **צוות**, open a worker on one project, choose **זמני**, set dates within three months that cover this week and next, choose the project, and save.
+5. Keep a second tab signed in as `manager1@hds.test`, for the "each manager sees only their own projects" point.
 
 ## The walkthrough
 
@@ -40,7 +41,7 @@ Say these if asked:
 - **Billing:** person-hours × the project's billing rate.
 - **Pay:** gross, with night, overtime and rest-day premiums.
 - **Rates:** where the sheet states them (a billing/pay pair or a pay rate), they're used. Elsewhere they're estimates of 110 ₪ billing and 75 ₪ pay an hour, marked with "*".
-- **Who is temporary:** nobody, until an admin marks them, at invitation, creation or later in the worker's card. The demo data starts with no temporary workers.
+- **Who is temporary:** nobody, until an admin marks them, at invitation, creation or later in the worker's card. The demo data starts with none; step 4 of the setup marks one or two.
 - **The client portal** is not in this demo; it is the next feature (009).
 
 ## The walkthrough videos
