@@ -290,17 +290,21 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
     people: dict[str, User] = {}
     stated = _stated_rates(data["shifts"])
     for n, person in enumerate(data["people"], start=1):
-        if person["name"] in managers:
-            people[person["name"]] = managers[person["name"]]
-            continue
         main = person["projects"][0] if person["projects"] else None
+        # Their own rate from the cells where stated, else their first project's.
+        rate = stated.get(person["name"]) or (pay_of.get(main) if main else None)
+        if person["name"] in managers:
+            # A manager who also works shifts keeps their account, with the same rate.
+            manager = managers[person["name"]]
+            manager.default_hourly_rate = rate
+            people[person["name"]] = manager
+            continue
         temporary = bool(person["temporary"])
         user = account(
             f"emp{n:03d}@demo.hds.test",
             person["name"],
             UserRole.employee,
-            # Their own rate from the cells where stated, else their first project's.
-            default_hourly_rate=stated.get(person["name"]) or (pay_of.get(main) if main else None),
+            default_hourly_rate=rate,
             employment_type="temporary" if temporary else "permanent",
             engaged_from=dt.date.fromisoformat(person["engaged_from"]) if temporary else None,
             engaged_until=dt.date.fromisoformat(person["engaged_until"]) if temporary else None,
