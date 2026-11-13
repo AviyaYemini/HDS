@@ -74,6 +74,7 @@ class Roster:
     def __init__(self, problem: Problem) -> None:
         """Index ``problem``'s entries, fixed shifts and kept people by employee."""
         self._settings = problem.settings
+        self._engagements = {c.id: c.engagement for c in problem.candidates if c.engagement}
         self._entries: dict[uuid.UUID, list[Entry]] = {}
         for entry in problem.entries:
             self._entries.setdefault(entry.employee_id, []).append(entry)
@@ -119,7 +120,14 @@ class Roster:
         return self._booked.get(person, {}).values()
 
     def unavailable(self, person: uuid.UUID, slot: Slot) -> bool:
-        """Whether a blocked entry or an absence of ``person`` covers ``slot``."""
+        """Whether ``person`` may not work ``slot`` whatever else they do.
+
+        A blocked entry or an absence covers it, or it is outside a temporary worker's projects or
+        dates.
+        """
+        engagement = self._engagements.get(person)
+        if engagement is not None and not engagement.covers(slot.project_id, slot.day):
+            return True
         return any(
             e.kind in _BLOCKING and entry_covers(e, slot.day, slot.shift_type_id)
             for e in self._entries.get(person, ())

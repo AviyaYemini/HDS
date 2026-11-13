@@ -74,3 +74,6 @@ apps/api/.dev-mail/
 .expo/
 apps/client/coverage/
 apps/client/.jest-cache/
+
+# Demo data parsed from real workbooks (real names and pay): never committed
+demo-data/

@@ -279,7 +279,7 @@
       "path": "/api/v1/schedule-jobs/{id}/edits",
       "operation_id": "edit_proposal_api_v1_schedule_jobs__id__edits_post",
       "suites": ["pytest", "cli"],
-      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) and the stored roster (a rule break needs override_reason), which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid or schedule.override_reason_required (008 FR-008 to FR-010); an If-Match that is not the stored version is answered 412 schedule.version_stale"
+      "reason": "whether an edit fits depends on the stored proposal (the person must be on, or not on, the named shift) which no schema can state; a schema-valid edit is answered 422 schedule.edit_invalid (a rule break is kept as made, CEO demo) (008 FR-008 to FR-010); an If-Match that is not the stored version is answered 412 schedule.version_stale"
     },
     {
       "method": "POST",
@@ -287,6 +287,41 @@
       "operation_id": "undo_edit_api_v1_schedule_jobs__id__edits_undo_post",
       "suites": ["pytest", "cli"],
       "reason": "undoing depends on the stored run record: there must be an edit not yet undone whose shifts have no part accepted since (409 schedule.nothing_to_undo), and an If-Match that is not the stored version is answered 412 schedule.version_stale (008 FR-011, FR-007)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees",
+      "operation_id": "create_employee_api_v1_employees_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a temporary worker needs both dates at most three months apart and at least one project (CEO demo), which span several fields; answered 422 employees.temporary_period_invalid or employees.temporary_projects_required"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/employees/{id}",
+      "operation_id": "edit_employee_api_v1_employees__id__patch",
+      "suites": ["pytest", "cli"],
+      "reason": "the same engagement rules as the create (CEO demo), judged with the stored fields not sent"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/overview",
+      "operation_id": "get_overview_api_v1_reports_overview_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to on or after from and at most 366 days later spans two parameters, as the hours report (CEO demo); answered 422 reports.range_invalid"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/roster/warnings",
+      "operation_id": "roster_warnings_api_v1_roster_warnings_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to on or after from and at most 31 days later spans two parameters (CEO demo); answered 422 shifts.date_range_invalid"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/invite",
+      "operation_id": "create_invitation_auth_invite_post",
+      "suites": ["pytest", "cli"],
+      "reason": "a temporary invitee needs both dates at most three months apart and a project (CEO demo), which span several fields; answered 422 employees.temporary_period_invalid or employees.temporary_projects_required"
     }
   ]
 }

@@ -6,6 +6,7 @@ caller's organisation, because the services take that user id as already verifie
 """
 
 import uuid
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ from hds.core.types import (
     Name,
     Password,
     Phone,
+    StrictDate,
     omittable,
 )
 from hds.models.group import Group
@@ -30,6 +32,7 @@ from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.project_member import ProjectMemberRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
@@ -39,6 +42,10 @@ from hds.services.group import GroupService
 from hds.services.qualification import QualificationService
 
 router = APIRouter(prefix="/api/v1/employees", tags=["employees"])
+
+
+EmploymentType = Literal["permanent", "temporary"]
+"""Permanent staff, or a temporary worker on their projects for at most three months (CEO demo)."""
 
 
 class UserCreateRequest(BaseModel):
@@ -54,6 +61,12 @@ class UserCreateRequest(BaseModel):
     role: AssignableRole = "employee"
     initial_password: Password = Field(min_length=12)
     default_hourly_rate: Money | None = None
+    employment_type: EmploymentType | None = Field(
+        default=None, description="Permanent when left out (CEO demo)."
+    )
+    engaged_from: StrictDate | None = None
+    engaged_until: StrictDate | None = None
+    project_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
 
 class UserUpdateRequest(ChangeRequest):
@@ -63,6 +76,10 @@ class UserUpdateRequest(ChangeRequest):
     phone: Phone | None = None
     role: AssignableRole = omittable()
     default_hourly_rate: Money | None = None
+    employment_type: EmploymentType = omittable()
+    engaged_from: StrictDate | None = None
+    engaged_until: StrictDate | None = None
+    project_ids: Annotated[list[uuid.UUID], Field(max_length=50)] = omittable()
 
 
 class IDListRequest(BaseModel):
@@ -110,6 +127,7 @@ def _employee_svc(db: AsyncSession) -> EmployeeService:
         qualification_repo=QualificationRepository(db),
         client_repo=ClientRepository(db),
         project_manager_repo=ProjectManagerRepository(db),
+        member_repo=ProjectMemberRepository(db),
     )
 
 
@@ -130,6 +148,7 @@ async def list_employees(
     is_active: bool | None = None,
     group_id: uuid.UUID | None = None,
     qualification_id: uuid.UUID | None = None,
+    employment_type: EmploymentType | None = None,
     current_user: User = Depends(require_manager),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> UserListResponse:
@@ -147,6 +166,7 @@ async def list_employees(
         is_active=is_active,
         group_id=group_id,
         qualification_id=qualification_id,
+        employment_type=employment_type,
     )
     return UserListResponse(items=[_read(current_user, u) for u in users], total=len(users))
 

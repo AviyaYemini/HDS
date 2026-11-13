@@ -72,7 +72,8 @@ export function StatusChip({ status, label, testID, style }: StatusChipProps) {
       style={[
         styles.chip,
         { borderColor: border, borderWidth: component.chip.border },
-        status === "ready" ? { backgroundColor: colors.cta.bg } : null,
+        // Its own surface, so the status colour keeps its contrast on a selected or hovered row.
+        { backgroundColor: status === "ready" ? colors.cta.bg : colors.bg.surface },
         style,
       ]}
     >

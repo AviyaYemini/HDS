@@ -15,14 +15,13 @@ import { startOfWeek } from "../../locale";
 import { rosterHref } from "../roster/ProjectChooser";
 import { useLoad } from "../useLoad";
 import { projectsOf, type Job } from "./model";
-import { breaksOf, pairsOf, type AcceptPart, type Cover, type Edit, type EditWarning, type Pair, type Review, type ReviewSlot } from "./review";
+import { pairsOf, type AcceptPart, type Cover, type Edit, type Pair, type Review, type ReviewSlot } from "./review";
 
 export interface PersonOn {
   slot: ReviewSlot;
   userId: string;
 }
 
-export type Pending = { edit: Edit; breaks: EditWarning[] };
 
 export function useProposalReview(job: Job, onDecided: () => void, onVersion?: (version: number) => void) {
   const { t } = useTranslation();
@@ -40,8 +39,6 @@ export function useProposalReview(job: Job, onDecided: () => void, onVersion?: (
   const [personOn, setPersonOn] = useState<PersonOn | null>(null);
   const [assignTo, setAssignTo] = useState<ReviewSlot | null>(null);
   const [moving, setMoving] = useState<{ from: PersonOn; swap: boolean } | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [reason, setReason] = useState("");
   // Who else could cover the slot being assigned to (FR-014): read each time the sheet opens on a
   // slot, since the working copy changes with every edit.
   const [fetched, setFetched] = useState<{ key: string; version: number; attempt: number; data: Cover | null; error: unknown } | null>(null);
@@ -124,8 +121,6 @@ export function useProposalReview(job: Job, onDecided: () => void, onVersion?: (
     setPersonOn(null);
     setAssignTo(null);
     setMoving(null);
-    setPending(null);
-    setReason("");
   };
 
   const send = async (edit: Edit) => {
@@ -146,18 +141,13 @@ export function useProposalReview(job: Job, onDecided: () => void, onVersion?: (
       setBusy(null);
     }
     if (outcome.response.ok && outcome.data) {
+      // The edit is stored as made: a rule it breaks is not a warning to answer (the owner,
+      // 2026-11-13; the API no longer asks for a reason).
       setReview(outcome.data.proposal);
       closePanels();
-      const kept = outcome.data.warnings.filter((w) => !w.excused && w.code === "warnings.close_preference");
-      if (kept.length > 0) showToast(t("warnings.close_preference"), { tone: "warning" });
       return;
     }
     const code = codeOf(outcome.error);
-    if (code === "schedule.override_reason_required") {
-      // The same sheet turns to the reason: one sheet open at a time, never one closing under another.
-      setPending({ edit, breaks: breaksOf(outcome.error) });
-      return;
-    }
     closePanels();
     setProblem(code);
     stale(code);
@@ -195,9 +185,6 @@ export function useProposalReview(job: Job, onDecided: () => void, onVersion?: (
     setAssignTo,
     moving,
     setMoving,
-    pending,
-    reason,
-    setReason,
     setAttempt,
     cover,
     accept,

@@ -3235,6 +3235,12 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/UUIDv4"
+        - name: employment_type
+          in: query
+          description: Permanent staff only, or temporary workers only (CEO demo).
+          schema:
+            type: string
+            enum: [permanent, temporary]
       responses:
         "200":
           description: Paginated employee list.
@@ -6965,6 +6971,76 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /roster/warnings:
+
+    get:
+      operationId: roster_warnings
+      summary: The rules the roster breaks in a range (Manager+, CEO demo)
+      description: >
+        Every warning the shifts that start on from to to (at most 31 days, else 422
+        shifts.date_range_invalid) have now, across projects, drafts and published alike, judged
+        as an edit would be; overridden says it was kept with a reason. The response schema is
+        the served document's RosterWarningsRead (CEO demo, Proposed).
+      tags: [Roster]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: to
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+      responses:
+        "200":
+          description: The warnings.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /reports/overview:
+
+    get:
+      operationId: reports_overview
+      summary: The snapshot, money, cover and people (Manager+, CEO demo)
+      description: >
+        From from to to (at most 366 days, 422 reports.range_invalid): billing (person-hours ×
+        the project's billing rate) and gross pay, actual (published shifts that have ended) and
+        forecast (plus every shift still to come), by week and by project; this week's cover;
+        and the people, temporary workers included. A Manager sees only the projects they
+        manage; money appears only where the reader may see the project's pay. The response
+        schema is the served document's OverviewRead (CEO demo, Proposed).
+      tags: [Reports]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: to
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+      responses:
+        "200":
+          description: The snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 

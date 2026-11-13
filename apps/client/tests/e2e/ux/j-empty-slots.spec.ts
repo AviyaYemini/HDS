@@ -4,8 +4,8 @@
  *
  * Covers FR-013 to FR-016 and US3, in Hebrew and English, at desktop and phone sizes: the empty
  * place's reasons name a guard kept off by rest, with the numbers; "Who else could cover" lists the
- * free first and the guard after, with the rule; picking a free person places them; picking the
- * guard asks for a reason, and the override is kept.
+ * free first and the guard after; picking a free person places them; picking the
+ * guard is simply stored, with no reason asked.
  */
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
@@ -89,13 +89,12 @@ LANGUAGES.forEach((language, index) => {
     await first.click();
     await expect(block.locator(`[data-testid="proposal-person"][data-user-id="${picked}"]`)).toBeVisible();
 
-    // Picking the guard breaks the rest rule: a reason is asked, then the override is kept.
+    // Picking the guard breaks the rest rule, and the edit is simply stored: no reason asked, no
+    // warning (the owner, 2026-11-13).
     await block.getByTestId("action-review-assign").click();
     await sheet.locator(`[data-testid="review-assign-option"][data-user-id="${tired.id}"]`).click();
-    await expect(page.getByTestId("review-override-sheet").getByTestId("review-break").first()).toBeVisible();
-    await page.getByTestId("review-override-reason").fill(language === "he" ? "ביקש להישאר" : "Asked to stay on");
-    await page.getByTestId("action-keep-anyway").click();
-    await expect(block.locator(`[data-testid="proposal-person"][data-user-id="${tired.id}"]`).getByTestId("mark-override")).toBeVisible();
+    await expect(block.locator(`[data-testid="proposal-person"][data-user-id="${tired.id}"]`)).toBeVisible();
+    await expect(page.getByTestId("review-override-sheet")).toHaveCount(0);
 
     await ok(manager.post(`/api/v1/schedule-jobs/${job.id}/discard`));
     await admin.dispose();

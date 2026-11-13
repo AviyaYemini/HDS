@@ -29,9 +29,11 @@ from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.project_member import ProjectMemberRepository
 from hds.repositories.qualification import QualificationRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.user import UserRepository
+from hds.services import temporary
 
 # Fields that an employee is permitted to edit on their own profile
 _ALLOWED_SELF_FIELDS = frozenset({"full_name", "phone"})
@@ -132,6 +134,7 @@ class EmployeeService:
         qualification_repo: QualificationRepository,
         client_repo: ClientRepository,
         project_manager_repo: ProjectManagerRepository,
+        member_repo: ProjectMemberRepository | None = None,
     ) -> None:
         """Wire the service.
 
@@ -146,6 +149,7 @@ class EmployeeService:
             client_repo: Used to refuse reactivating a portal user whose client is gone.
             project_manager_repo: Used to remove a demoted Manager from their projects (005
                 FR-022).
+            member_repo: Used to set a temporary worker's projects (CEO demo).
         """
         self._user_repo = user_repo
         self._token_repo = token_repo
@@ -154,6 +158,7 @@ class EmployeeService:
         self._group_repo = group_repo
         self._qualification_repo = qualification_repo
         self._client_repo = client_repo
+        self._members = member_repo
 
     # ── Self-service ─────────────────────────────────────────────────────────
 
@@ -183,6 +188,7 @@ class EmployeeService:
         is_active: bool | None = None,
         group_id: uuid.UUID | None = None,
         qualification_id: uuid.UUID | None = None,
+        employment_type: str | None = None,
     ) -> list[User]:
         """Search and filter the organisation's employees (FR-013; Manager or Admin).
 
@@ -193,6 +199,7 @@ class EmployeeService:
             is_active: Keep only active or inactive users.
             group_id: Keep only members of this group.
             qualification_id: Keep only holders of this qualification.
+            employment_type: Keep only permanent staff or only temporary workers.
 
         Returns:
             Matching users, ordered by name.
@@ -218,6 +225,7 @@ class EmployeeService:
             is_active=is_active,
             group_id=group_id,
             qualification_id=qualification_id,
+            employment_type=employment_type,
         )
 
     async def update_own_profile(self, current_user: User, data: dict[str, Any]) -> User:
@@ -341,6 +349,7 @@ class EmployeeService:
         """
         ensure_role(actor, *MANAGER_ROLES)
         data = dict(data)
+        engagement = await self._engagement(actor, None, data)
         role = UserRole(data.get("role", UserRole.employee))
         self._check_assignable_role(actor, role)
         guard_rate_change(actor, data, clearing_counts=False)
@@ -365,6 +374,10 @@ class EmployeeService:
                 code="users.duplicate_email",
                 detail=f"Email '{email}' is already in use.",
                 field="email",
+            )
+        if engagement is not None and self._members is not None:
+            await self._members.replace_for_user(
+                actor.organisation_id, user.id, engagement["project_ids"]
             )
         return user
 
@@ -395,6 +408,7 @@ class EmployeeService:
         target = await self._get_target(actor, target_id)
         self._guard_admin_target(actor, target)
         data = dict(data)
+        engagement = await self._engagement(actor, target, data)
         guard_rate_change(actor, data, clearing_counts=True)
         validate_hourly_rate(data.get("default_hourly_rate"))
 
@@ -409,6 +423,10 @@ class EmployeeService:
                 if target.role == UserRole.admin:
                     await self._guard_last_admin(target)
         updated = await self._user_repo.update(target_id, actor.organisation_id, **data)
+        if engagement is not None and self._members is not None:
+            await self._members.replace_for_user(
+                actor.organisation_id, target_id, engagement["project_ids"]
+            )
         if role_changed:
             await self._token_repo.revoke_all_for_user(target_id, RevocationReason.account)
             if data["role"] == UserRole.employee:
@@ -526,6 +544,65 @@ class EmployeeService:
         await self._link_repo.cancel_for_user(target_id)
 
     # ── Guards ───────────────────────────────────────────────────────────────
+
+    async def set_engagement(self, actor: User, target_id: uuid.UUID, data: dict[str, Any]) -> None:
+        """Set a temporary worker's type, dates and projects on an existing (or pending) account.
+
+        Used when an invitation marks the invitee temporary (CEO demo); the same rules as
+        ``edit_employee``.
+
+        Raises:
+            As ``edit_employee`` for the engagement fields.
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        target = await self._user_repo.get_by_id(target_id, actor.organisation_id)
+        if target is None:
+            raise NotFoundError(resource="User", id=target_id)
+        fields = dict(data)
+        engagement = await self._engagement(actor, target, fields)
+        if engagement is None:
+            return
+        await self._user_repo.update(target_id, actor.organisation_id, **fields)
+        if self._members is not None:
+            await self._members.replace_for_user(
+                actor.organisation_id, target_id, engagement["project_ids"]
+            )
+
+    async def _engagement(
+        self, actor: User, target: User | None, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Settle a temporary worker's engagement from ``data`` (CEO demo), in place.
+
+        Takes the engagement fields out of ``data``, puts the resolved type and dates back, and
+        returns the resolved engagement (with its projects), or ``None`` when ``data`` touches none
+        of it. A Manager may only put someone on projects they manage.
+
+        Raises:
+            DomainValidationError: See ``temporary.resolve``; ``employees.project_invalid`` for a
+                project that is not the organisation's (HTTP 422).
+            ForbiddenError: ``roster.project_not_managed`` (HTTP 403).
+        """
+        given = {f: data.pop(f) for f in temporary.FIELDS if f in data}
+        engagement = temporary.resolve(target, given)
+        if engagement is None:
+            return None
+        projects = engagement["project_ids"]
+        if projects:
+            if self._members is None:
+                raise DomainValidationError(
+                    code="employees.project_invalid", detail="Projects cannot be set here."
+                )
+            found = await self._members.existing_projects(actor.organisation_id, projects)
+            temporary.project_ids_valid(found, projects)
+            if actor.role != UserRole.admin:
+                managed = await self._project_managers.manages(actor.id, projects)
+                if set(projects) - managed:
+                    raise ForbiddenError(
+                        code="roster.project_not_managed",
+                        detail="A Manager adds people only to projects they manage.",
+                    )
+        data.update({k: v for k, v in engagement.items() if k != "project_ids"})
+        return engagement
 
     async def _get_target(self, actor: User, target_id: uuid.UUID) -> User:
         target = await self._user_repo.get_by_id(target_id, actor.organisation_id)

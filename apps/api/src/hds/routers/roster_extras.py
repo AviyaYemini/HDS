@@ -5,7 +5,7 @@ Admins; changes to a project's roster need ``roster.edit:project`` (its Managers
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 from hds.core.deps import require_manager
 from hds.core.types import IsoDate, StrictDate, text
 from hds.models.user import User
+from hds.routers.shifts import WarningRead
 from hds.services.roster_tools import PlanResult, RosterToolsService
 from hds.wiring import roster_tools_service
 
@@ -208,8 +209,8 @@ async def override(
 )
 async def publish_preview(
     id: uuid.UUID,
-    first: IsoDate = Query(alias="from"),
-    last: IsoDate = Query(alias="to"),
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
     current_user: User = Depends(require_manager),
     tools: RosterToolsService = Depends(roster_tools_service),
 ) -> PublishPreviewRead:
@@ -399,3 +400,43 @@ async def tracker(
     """
     rows = await tools.tracker(current_user, id)
     return TrackerRead(items=[TrackedRead(**vars(r)) for r in rows])
+
+
+class RosterWarningRead(WarningRead):
+    """A rule the roster breaks now; ``overridden`` when it was kept with a reason."""
+
+    overridden: bool
+
+
+class RosterWarningsRead(BaseModel):
+    """Every rule the roster's shifts in the range break (CEO demo)."""
+
+    first: date = Field(serialization_alias="from")
+    last: date = Field(serialization_alias="to")
+    warnings: list[RosterWarningRead]
+
+
+@router.get(
+    "/roster/warnings",
+    response_model=RosterWarningsRead,
+    response_model_by_alias=True,
+    summary="The rules the roster breaks in a range (CEO demo)",
+    description=(
+        "Manager or Admin. Every warning the shifts that start on `from` to `to` (dates in the "
+        "organisation's time zone, at most 31 days, else 422 `shifts.date_range_invalid`) have "
+        "now, across projects, drafts and published alike, judged as an edit would be: rest, "
+        "overlap, weekly hours, availability, headcount, inactive people and temporary workers "
+        "outside their projects or dates. `overridden` says it was kept with a reason."
+    ),
+)
+async def roster_warnings(
+    first: Annotated[IsoDate, Query(alias="from")],
+    last: Annotated[IsoDate, Query(alias="to")],
+    current_user: User = Depends(require_manager),
+    tools: RosterToolsService = Depends(roster_tools_service),
+) -> RosterWarningsRead:
+    """The rules the roster breaks in a range (CEO demo). Changes nothing."""
+    found = await tools.warnings_in_range(current_user, first, last)
+    return RosterWarningsRead(
+        first=first, last=last, warnings=[RosterWarningRead(**w) for w in found]
+    )

@@ -144,5 +144,9 @@
   "views.duplicate_name": "כבר קיימת כאן תצוגה בשם הזה.",
   "assignments.move_same_shift": "העובד כבר במשמרת הזו.",
   "schedule.chip_invalid": "העדפה צריכה את הערך שהסוג שלה דורש, ולציין אדם מהצוות.",
-  "schedule.not_running": "ההרצה כבר הסתיימה."
+  "schedule.not_running": "ההרצה כבר הסתיימה.",
+  "warnings.temporary_outside": "עובד זמני משובץ מחוץ לפרויקטים או לתאריכים שלו.",
+  "employees.temporary_period_invalid": "לעובד זמני נדרשים תאריך התחלה ותאריך סיום של עד שלושה חודשים אחריו.",
+  "employees.temporary_projects_required": "לעובד זמני נדרש לפחות פרויקט אחד.",
+  "employees.project_invalid": "הפרויקט אינו שייך לארגון."
 }

@@ -8,11 +8,9 @@ import { StyleSheet, View } from "react-native";
 import { Txt } from "../../design/components";
 import { webProps } from "../../design/web";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import { DEFAULT_TIME_ZONE, formatNumericDate, formatTimeRange } from "../../locale";
-import { HonestyLabel } from "./HonestyLabel";
+import { nameText, DEFAULT_TIME_ZONE, formatNumericDate, formatTimeRange } from "../../locale";
 import { numbersOf, reasonKey } from "./review";
-import { filled, type Job, type Names } from "./model";
-import { shared } from "./runStyles";
+import type { Job, Names } from "./model";
 
 
 export function Proposal({ job, names }: { job: Job; names: Names }) {
@@ -22,21 +20,10 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
   const { colors } = useTheme();
   const proposal = job.proposal;
   if (proposal === null) return null;
-  const count = filled(proposal);
   const slots = new Map(proposal.slots.map((slot) => [slot.key, slot]));
   return (
     <View style={styles.section}>
-      <View style={shared.summary}>
-        <HonestyLabel job={job} />
-        <Txt role="section" numeric testID="run-filled">
-          {t("runs.filled", { filled: count.filled, required: count.required })}
-        </Txt>
-      </View>
-      {proposal.unfilled.length === 0 ? (
-        <Txt role="body" tone="secondary">
-          {t("runs.all_filled")}
-        </Txt>
-      ) : (
+      {proposal.unfilled.length === 0 ? null : (
         <View style={styles.list}>
           <Txt role="label" heading={2}>
             {t("runs.unfilled_title")}
@@ -47,7 +34,7 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
               <View key={gap.key} testID="unfilled" style={[styles.row, { borderColor: colors.border.subtle }]}>
                 {slot ? (
                   <View style={styles.when}>
-                    <Txt role="label">{[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}</Txt>
+                    <Txt role="label">{[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter((x): x is string => Boolean(x)).map(nameText).join(" · ")}</Txt>
                     <Txt role="meta" tone="secondary" numeric>
                       {`${formatNumericDate(slot.date)} ${formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}`}
                     </Txt>
@@ -78,16 +65,6 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
           })}
         </View>
       )}
-      {proposal.no_availability.length > 0 ? (
-        <View testID="no-availability" style={styles.list}>
-          <Txt role="label" heading={2}>
-            {t("runs.no_availability", { count: proposal.no_availability.length })}
-          </Txt>
-          <Txt role="body" tone="secondary">
-            {proposal.no_availability.map((id) => names.people.get(id) ?? t("runs.unknown_person")).join(", ")}
-          </Txt>
-        </View>
-      ) : null}
       {proposal.short_published.length > 0 ? (
         <Txt role="meta" tone="secondary">
           {t("runs.short_published", { count: proposal.short_published.length })}

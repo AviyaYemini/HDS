@@ -80,22 +80,12 @@ const fake = () => new FakeApi().on("GET", FAIRNESS, json(200, FAIR));
 const job = { id: JOB, from: "2027-06-06", to: "2027-06-12", status: "succeeded", proposal_state: "open" } as unknown as Job;
 const names = { projects: new Map([[PROJECT, "North Gate"]]), types: new Map(), people: new Map([[ANN, "Ann"], [BEN, "Ben"]]) };
 
-test("a break asks for a reason, and keeping it sends the reason with the same edit", async () => {
+test("an edit that breaks a rule is stored as made: no reason asked, no warning (the owner, 2026-11-13)", async () => {
   const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [ANN])));
   api.on("GET", COVER, json(200, cover(option(BEN))));
-  api.on(
-    "POST",
-    `/api/v1/schedule-jobs/${JOB}/edits`,
-    json(422, {
-      type: "x",
-      title: "x",
-      status: 422,
-      code: "schedule.override_reason_required",
-      errors: [{ key: KEY, date: "2027-06-07", user_id: null, code: "warnings.over_headcount", values: {}, shift_ids: [] }],
-    }),
-    json(200, { proposal: review(1, [ANN, BEN]), warnings: [] }),
-  );
+  // The API stores the break and lists it as excused.
+  api.on("POST", `/api/v1/schedule-jobs/${JOB}/edits`, json(200, { proposal: review(1, [ANN, BEN]), warnings: [{ key: KEY, date: "2027-06-07", user_id: BEN, code: "warnings.close_preference", values: {}, shift_ids: [], excused: true }] }));
   const session = await signedIn(api);
   await renderWith(session, <><ReviewWeek job={job} names={names} people={[{ id: ANN, full_name: "Ann" }, { id: BEN, full_name: "Ben" }]} onDecided={() => undefined} /><ToastHost /></>);
 
@@ -106,19 +96,10 @@ test("a break asks for a reason, and keeping it sends the reason with the same e
     fireEvent.press(await screen.findByTestId("review-assign-option"));
   });
 
-  expect(await screen.findByTestId("review-break")).toBeTruthy();
-  await act(async () => {
-    fireEvent.changeText(screen.getByTestId("review-override-reason"), "One more is needed");
-  });
-  await act(async () => {
-    fireEvent.press(screen.getByTestId("action-keep-anyway"));
-  });
-
-  const sent = api.calls("POST", `/api/v1/schedule-jobs/${JOB}/edits`).map((c) => c.body);
-  expect(sent).toEqual([
-    { op: "assign", key: KEY, user_id: BEN },
-    { op: "assign", key: KEY, user_id: BEN, override_reason: "One more is needed" },
-  ]);
+  expect(api.calls("POST", `/api/v1/schedule-jobs/${JOB}/edits`).map((c) => c.body)).toEqual([{ op: "assign", key: KEY, user_id: BEN }]);
+  expect(screen.queryByTestId("review-override-sheet")).toBeNull();
+  expect(screen.queryByTestId("action-keep-anyway")).toBeNull();
+  expect(screen.queryByText(/rather not work/i)).toBeNull();
 });
 
 test("staff kept on a draft the run could not place are shown, and not offered for edits", async () => {
@@ -136,7 +117,7 @@ test("staff kept on a draft the run could not place are shown, and not offered f
 });
 
 
-test("who else could cover: free people with their load, then a rule with its numbers in words", async () => {
+test("who else could cover: free people with their load; never the rule someone would break", async () => {
   const api = fake();
   api.on("GET", `/api/v1/schedule-jobs/${JOB}/proposal`, json(200, review(0, [])));
   api.on(
@@ -155,10 +136,11 @@ test("who else could cover: free people with their load, then a rule with its nu
   const options = await screen.findAllByTestId("review-assign-option");
   expect(options.map((o) => o.props.accessibilityLabel ?? "")).toHaveLength(2);
   expect(screen.getByText("Free then")).toBeTruthy();
-  expect(screen.getByText("Rest between shifts · 9 h rest, needs 11 h")).toBeTruthy();
+  expect(screen.queryByText(/Rest between shifts/)).toBeNull();
+  expect(screen.queryByText(/Assign .* anyway/)).toBeNull();
   expect(screen.getAllByText("After it: 8 h, 0 nights, 0 weekend shifts (average 4 h)")).toHaveLength(2);
   await act(async () => {
-    fireEvent.press(screen.getByText("Assign Ann anyway"));
+    fireEvent.press(screen.getByText("Ann"));
   });
   expect(api.calls("POST", `/api/v1/schedule-jobs/${JOB}/edits`).map((c) => c.body)).toEqual([{ op: "assign", key: KEY, user_id: ANN }]);
 });

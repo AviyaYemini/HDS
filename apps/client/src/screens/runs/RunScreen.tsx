@@ -21,8 +21,9 @@ import { formatNumericRange, startOfWeek } from "../../locale";
 import { rosterHref } from "../roster/ProjectChooser";
 import { RecordPanel } from "./RecordPanel";
 import { ReviewWeek } from "./ReviewWeek";
-import { STATUS_TONE, coveredText, isActive, projectsOf } from "./model";
+import { STATUS_TONE, isActive, projectsOf } from "./model";
 import { Proposal } from "./RunProposal";
+import { RunScope } from "./RunScope";
 import { RunStop } from "./RunStop";
 import { useJob, useNames, useRunBar } from "./useRun";
 import { shared } from "./runStyles";
@@ -41,7 +42,9 @@ export function RunScreen() {
   const stamp = job ? `${job.status}:${job.ended ?? ""}:${String(job.stop_requested)}:${job.proposal_state ?? ""}:${version}` : "";
 
   return (
-    <Screen testID="screen-run">
+    // No scroll view of its own: the shell's is the one that scrolls, so the review's action bar can
+    // stick to the bottom of a phone's screen (the owner, 2026-11-13).
+    <Screen testID="screen-run" fixed>
       <PageTitle eyebrow={[t("app.name"), t("nav.runs")]} title={job ? formatNumericRange(job.from, job.to) : t("nav.runs")} />
       {error ? (
         <InlineBanner tone="warning" title={errorText(error)} action={{ label: t("common.retry"), onPress: reload }} />
@@ -49,9 +52,8 @@ export function RunScreen() {
         <SkeletonRows rows={4} />
       ) : (
         <View style={styles.section}>
-          <Txt role="body" testID="run-projects-covered">
-            {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
-          </Txt>
+          {/* While it works, the same one-line scope as the finished page (the owner, 2026-11-13). */}
+          {job.status !== "succeeded" ? <RunScope job={job} names={names} /> : null}
           <View style={shared.summary}>
             <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (
@@ -74,6 +76,8 @@ export function RunScreen() {
           ) : null}
           {job.status === "failed" ? <InlineBanner tone="danger" title={t("runs.failed")} /> : null}
           {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
+          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
+          {/* Below the week: the places left empty, with the run's reasons (coverage, not warnings). */}
           {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
           {job.status === "succeeded" && (job.proposal_state === "accepted" || job.proposal_state === "partly_accepted") ? (
             <View style={shared.summary}>
@@ -99,7 +103,6 @@ export function RunScreen() {
               <Txt role="label">{t("runs.run_again")}</Txt>
             </LinkPressable>
           ) : null}
-          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
           {/* Every run's record, once it has one (FR-030). */}
           <RecordPanel jobId={job.id} stamp={stamp} name={(person) => names.people.get(person) ?? t("runs.unknown_person")} />
         </View>

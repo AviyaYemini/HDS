@@ -10,6 +10,7 @@ import { getLoadingState, resetLoading } from "../../../src/design/loading/loadi
 import { ThemeProvider } from "../../../src/design/theme/ThemeProvider";
 import { resetThemeStore } from "../../../src/design/theme/themeStore";
 import { GalleryScreen } from "../../../src/screens/gallery/GalleryScreen";
+import { joinedPattern } from "../ranges";
 
 /** Saturday 7 November 2026, the fixed today every date test uses (review finding R18). */
 const TODAY = "2026-11-07";
@@ -36,7 +37,7 @@ describe("GalleryScreen (FR-067)", () => {
     }
     expect(screen.getByTestId("gallery-title")).toHaveTextContent("Building blocks");
     expect(screen.getByTestId("gallery-cta")).toBeTruthy();
-    expect(screen.getByTestId("gallery-time")).toHaveTextContent(/06:00–14:00/);
+    expect(screen.getByTestId("gallery-time")).toHaveTextContent(joinedPattern("06:00–14:00"));
   });
 
   it("switches the theme, the segment and the sort, and shows a toast", async () => {

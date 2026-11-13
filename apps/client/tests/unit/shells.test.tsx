@@ -67,6 +67,8 @@ function me(role: Me["role"], capabilities: Capability[]): Me {
     updated_at: "2026-01-01T00:00:00Z",
     capabilities,
     managed_project_ids: [],
+    employment_type: "permanent",
+    project_ids: [],
   };
 }
 
@@ -75,11 +77,12 @@ const keys = (list: { key: string; preview?: boolean }[]) => list.filter((item) 
 describe("destinations by capability (FR-001)", () => {
   it("gives each role exactly the contract's side-navigation set", () => {
     expect(keys(destinationsFor(capabilitiesOf(me("employee", EMPLOYEE))))).toEqual(["availability", "home", "my-shifts", "pay"]);
+    // The snapshot dashboard is a real screen for whoever reads reports (CEO demo).
     expect(keys(destinationsFor(capabilitiesOf(me("manager", MANAGER))))).toEqual(
-      ["availability", "home", "my-shifts", "pay", "roster", "submissions", "runs", "work-log", "hours", "staff", "clients", "sites", "projects", "shift-templates", "staffing-needs", "pay-settings"].sort(),
+      ["availability", "home", "my-shifts", "pay", "overview", "roster", "submissions", "runs", "work-log", "hours", "staff", "clients", "sites", "projects", "shift-templates", "staffing-needs", "pay-settings"].sort(),
     );
     expect(keys(destinationsFor(capabilitiesOf(me("admin", ADMIN))))).toEqual(
-      ["availability", "home", "my-shifts", "pay", "roster", "submissions", "runs", "work-log", "hours", "staff", "clients", "sites", "projects", "shift-templates", "staffing-needs", "pay-settings", "special-days"].sort(),
+      ["availability", "home", "my-shifts", "pay", "overview", "roster", "submissions", "runs", "work-log", "hours", "staff", "clients", "sites", "projects", "shift-templates", "staffing-needs", "pay-settings", "special-days"].sort(),
     );
     // The client's Billing and Requests are previews of 009 (PR 2 review): marked, and gone without previews.
     expect(keys(destinationsFor(capabilitiesOf(me("client", CLIENT))))).toEqual(["client-home", "contact"]);
@@ -103,14 +106,17 @@ describe("destinations by capability (FR-001)", () => {
     expect(shellFor(capabilitiesOf(me("client", CLIENT)))).toBe("client");
     expect(homeFor(capabilitiesOf(me("client", CLIENT)))).toBe("/client");
     expect(homeFor(capabilitiesOf(me("employee", EMPLOYEE)))).toBe("/home");
+    // A Manager lands on the snapshot dashboard (CEO demo).
+    expect(homeFor(capabilitiesOf(me("manager", MANAGER)))).toBe("/manage/overview");
     expect(shellFor(capabilitiesOf(null))).toBe("none");
   });
 
   it("groups the staff navigation and marks previews", () => {
     const groups = groupsFor(capabilitiesOf(me("admin", ADMIN)));
-    expect(groups.map((group) => group.group)).toEqual(["my-work", "manage", "admin"]);
+    // Whoever manages sees the management first and their own work last (the owner, 2026-11-13).
+    expect(groups.map((group) => group.group)).toEqual(["manage", "admin", "my-work"]);
     const previews = destinationsFor(capabilitiesOf(me("admin", ADMIN))).filter((item) => item.preview);
-    expect(previews.map((item) => item.key).sort()).toEqual(["approvals", "audit-log", "manage-requests", "overview", "requests"]);
+    expect(previews.map((item) => item.key).sort()).toEqual(["approvals", "audit-log", "manage-requests", "requests"]);
     expect(groupsFor(capabilitiesOf(me("employee", EMPLOYEE))).map((group) => group.group)).toEqual(["my-work"]);
   });
 

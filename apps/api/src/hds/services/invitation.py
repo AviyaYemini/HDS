@@ -70,7 +70,7 @@ class InvitationService:
         self._throttle_repo = throttle_repo
         self._config = config
 
-    async def create_invitation(self, actor: User, email: str, role: UserRole) -> None:
+    async def create_invitation(self, actor: User, email: str, role: UserRole) -> uuid.UUID:
         """Invite an email address to the actor's organisation and mail them a token.
 
         What happens depends on who already holds the address:
@@ -189,6 +189,7 @@ class InvitationService:
             purpose="invite",
             expires_at=expires_at,
         )
+        return user_id
 
     async def accept_invitation(self, raw_token: str, new_password: str) -> User:
         """Redeem an invite token: set the password and activate the account.

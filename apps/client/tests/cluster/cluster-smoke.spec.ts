@@ -5,8 +5,9 @@
  * passes its address and password in `HDS_CLUSTER_EMAIL` and `HDS_CLUSTER_PASSWORD`; neither is
  * written down.
  *
- * The navigation is 007's staff shell (specs/007-ux-redesign FR-003): an Admin lands on /home, and
- * the desktop's side navigation (`nav-<destination>`) leads to My work's screens under /my.
+ * The navigation is 007's staff shell (specs/007-ux-redesign FR-003): since the CEO demo an Admin
+ * lands on the snapshot dashboard, /manage/overview, and the desktop's side navigation
+ * (`nav-<destination>`) leads to My work's screens under /my.
  *
  * Screens are reached by clicking, as a person moves through the app; /me and /auth are the API's
  * paths on the same host (the ingress's apiPrefixes). The web keeps its tokens per tab (ADR 019), so
@@ -25,7 +26,7 @@ test("the first Admin signs in, opens the main screens and signs out", async ({ 
   await page.fill('[data-testid="email"]', email);
   await page.fill('[data-testid="password"]', password);
   await page.click('[data-testid="sign-in-btn"]');
-  await expect(page).toHaveURL(/\/home$/);
+  await expect(page).toHaveURL(/\/manage\/overview$/);
   const nav = page.getByTestId("nav-side");
   for (const [destination, path] of [
     ["my-shifts", /\/my\/shifts$/],

@@ -93,6 +93,10 @@ class Project(TimestampedBase):
     managers_see_pay: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    # CEO demo: the billing and pay terms are estimates, so screens say so (migration 038).
+    terms_estimated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     pay_day_normal_minutes: Mapped[int | None] = mapped_column(SmallInteger)
     pay_night_normal_minutes: Mapped[int | None] = mapped_column(SmallInteger)
     pay_tier1_minutes: Mapped[int | None] = mapped_column(SmallInteger)

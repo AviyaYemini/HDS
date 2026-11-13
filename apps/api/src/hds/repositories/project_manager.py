@@ -99,3 +99,23 @@ class ProjectManagerRepository(BaseRepository[ProjectManager]):
             .order_by(ProjectManager.project_id)
         )
         return list((await self.session.execute(query)).scalars())
+
+    async def names_for(
+        self, org_id: uuid.UUID, project_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, str]]]:
+        """Each of ``project_ids``' managers, as (id, name), by name (CEO demo)."""
+        if not project_ids:
+            return {}
+        query = (
+            select(ProjectManager.project_id, User.id, User.full_name)
+            .join(User, User.id == ProjectManager.user_id)
+            .where(
+                ProjectManager.organisation_id == org_id,
+                ProjectManager.project_id.in_(list(project_ids)),
+            )
+            .order_by(User.full_name, User.id)
+        )
+        found: dict[uuid.UUID, list[tuple[uuid.UUID, str]]] = {}
+        for project_id, user_id, name in (await self.session.execute(query)).all():
+            found.setdefault(project_id, []).append((user_id, name))
+        return found

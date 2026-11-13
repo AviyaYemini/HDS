@@ -12,7 +12,7 @@ import { LANGUAGES, type Role, apiAs, at, checkA11y, ok, signIn } from "./suppor
 
 const SHARED = ["/account", "/help", "/accessibility", "/contact"];
 const MY_WORK = ["/my/availability", "/my/shifts", "/my/shifts?view=past", "/my/pay"];
-const MANAGE = ["/roster", "/roster?all=1", "/roster/submissions", "/runs", "/reports/work-log", "/reports/hours"];
+const MANAGE = ["/manage/overview", "/roster", "/roster?all=1", "/roster/submissions", "/runs", "/reports/work-log", "/reports/hours"];
 const ADMIN = ["/admin/staff", "/admin/clients", "/admin/sites", "/admin/projects", "/admin/shift-templates", "/admin/staffing-needs", "/admin/pay-settings"];
 
 /** Every route of contracts/ui-routes.md each role can reach (group H review: all of them). */

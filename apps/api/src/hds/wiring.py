@@ -25,9 +25,11 @@ from hds.repositories.idempotency_key import IdempotencyKeyRepository
 from hds.repositories.invitation_token import InvitationTokenRepository
 from hds.repositories.login_throttle import LoginThrottleRepository
 from hds.repositories.organisation import OrganisationRepository
+from hds.repositories.overview import OverviewRepository
 from hds.repositories.pay_reports import PayReportRepository, ReportShiftRepository
 from hds.repositories.project import ProjectRepository
 from hds.repositories.project_manager import ProjectManagerRepository
+from hds.repositories.project_member import ProjectMemberRepository
 from hds.repositories.refresh_token import RefreshTokenRepository
 from hds.repositories.roster_extras import (
     PublishEventRepository,
@@ -51,6 +53,7 @@ from hds.services.availability_submission import AvailabilitySubmissionService
 from hds.services.health import HealthService
 from hds.services.idempotency import IdempotencyService
 from hds.services.organisation_contact import OrganisationContactService
+from hds.services.overview import OverviewService
 from hds.services.pay import PayService
 from hds.services.pay_settings import PaySettingsService
 from hds.services.project import ProjectService
@@ -256,6 +259,7 @@ def projects(
         client_repo=ClientRepository(db),
         site_repo=SiteRepository(db),
         pay_settings=pay_settings_service(db),
+        manager_repo=ProjectManagerRepository(db),
     )
 
 
@@ -303,6 +307,21 @@ def reports(
         site_repo=SiteRepository(db),
         group_repo=GroupRepository(db),
         client_repo=ClientRepository(db),
+    )
+
+
+def overview(
+    db: AsyncSession = Depends(get_unit_of_work, scope="function"),
+) -> OverviewService:
+    """FastAPI dependency: the snapshot dashboard, in the request's unit of work (CEO demo)."""
+    return OverviewService(
+        overview_repo=OverviewRepository(db),
+        organisation_repo=OrganisationRepository(db),
+        special_day_repo=SpecialDayRepository(db),
+        project_manager_repo=ProjectManagerRepository(db),
+        project_repo=ProjectRepository(db),
+        client_repo=ClientRepository(db),
+        member_repo=ProjectMemberRepository(db),
     )
 
 

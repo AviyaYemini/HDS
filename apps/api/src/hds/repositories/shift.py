@@ -34,7 +34,7 @@ class ShiftView:
     assignments: list[Assignment]
     rate_shown: bool = True
     """Whether the reader may see the shift's own ``pay_rate`` (005 FR-022a); services decide."""
-    people: dict[uuid.UUID, tuple[str, bool]] = field(default_factory=dict)
+    people: dict[uuid.UUID, tuple[str, bool, bool]] = field(default_factory=dict)
     """Each assigned person's name and whether they are active, deactivated ones included."""
 
 
@@ -171,12 +171,18 @@ class ShiftRepository(OrgScopedRepository[Shift]):
         ).scalars():
             assigned[assignment.shift_id].append(assignment)
         user_ids = {a.user_id for group in assigned.values() for a in group}
-        people: dict[uuid.UUID, tuple[str, bool]] = {}
+        # Name, still active, and a temporary worker (CEO demo), per person on these shifts.
+        people: dict[uuid.UUID, tuple[str, bool, bool]] = {}
         if user_ids:
             rows = await self.session.execute(
-                select(User.id, User.full_name, User.is_active).where(User.id.in_(user_ids))
+                select(User.id, User.full_name, User.is_active, User.employment_type).where(
+                    User.id.in_(user_ids)
+                )
             )
-            people = {row.id: (row.full_name, row.is_active) for row in rows}
+            people = {
+                row.id: (row.full_name, row.is_active, row.employment_type == "temporary")
+                for row in rows
+            }
         return [
             ShiftView(
                 s,

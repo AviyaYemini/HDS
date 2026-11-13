@@ -4,6 +4,7 @@
  * in a left-to-right isolate, money is formatted from the decimal string without arithmetic, and
  * Israeli holidays and eves are found.
  */
+import { joined } from "./ranges";
 import {
   FORWARD_PRESETS,
   FSI,
@@ -137,14 +138,14 @@ describe("range presets (US5, FR-051)", () => {
 describe("times (FR-053, D5, D8)", () => {
   it("prints 24-hour times in the site's zone inside a left-to-right isolate", () => {
     expect(formatTime("2026-11-07T04:00:00Z", ZONE)).toBe(`${LRI}06:00${PDI}`);
-    expect(formatTimeRange("2026-11-07T04:00:00Z", "2026-11-07T12:00:00Z", ZONE)).toBe(`${LRI}06:00–14:00${PDI}`);
+    expect(formatTimeRange("2026-11-07T04:00:00Z", "2026-11-07T12:00:00Z", ZONE)).toBe(`${LRI}${joined("06:00–14:00")}${PDI}`);
   });
 
   it("marks an end on the next day with +1", () => {
     const start = "2026-11-07T20:00:00Z"; // 22:00 in Jerusalem
     const end = "2026-11-08T04:00:00Z"; // 06:00 the next day
     expect(dayOffset(start, end, ZONE)).toBe(1);
-    expect(stripIsolates(formatTimeRange(start, end, ZONE))).toBe("22:00–06:00 +1");
+    expect(stripIsolates(formatTimeRange(start, end, ZONE))).toBe(joined("22:00–06:00 +1"));
   });
 
   it("splits durations and notices a clock change", () => {
@@ -213,4 +214,11 @@ describe("Israeli holidays (FR-054, D6)", () => {
 test("a short range drops the first date's year when both share it (R79)", () => {
   expect(formatShortNumericRange("2026-12-06", "2026-12-12")).toBe("⁦06/12 – 12/12/2026⁩");
   expect(formatShortNumericRange("2026-12-27", "2027-01-02")).toBe("⁦27/12/2026 – 02/01/2027⁩");
+});
+
+test("a typed name keeps its times and dates whole inside text of either direction", () => {
+  const { nameText, LRI, PDI, FSI } = jest.requireActual<typeof import("../../src/locale")>("../../src/locale");
+  expect(nameText("בוקר 07:00–19:00")).toBe(`${FSI}בוקר ${LRI}07:00\u2060–\u206019:00${PDI}${PDI}`);
+  expect(nameText("Gate 3")).toBe(`${FSI}Gate 3${PDI}`);
+  expect(nameText("קורס 7 · 15/11")).toBe(`${FSI}קורס 7 · ${LRI}15/11${PDI}${PDI}`);
 });

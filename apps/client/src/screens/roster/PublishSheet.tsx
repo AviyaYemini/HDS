@@ -1,6 +1,6 @@
 /**
  * The publish review (specs/007-ux-redesign FR-034 to FR-036): the week's shifts, people, empty places
- * and open warnings, and whether everyone is told; then publish.
+ * (no warnings: out of scope, the owner, 2026-11-13), and whether everyone is told; then publish.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -43,7 +43,6 @@ export function PublishSheet({ open, project, first, last, onClose, onPublished 
           <Count label={t("roster.review_shifts")} value={counts.shifts} testID="review-shifts" />
           <Count label={t("roster.review_people")} value={counts.people} testID="review-people" />
           <Count label={t("roster.review_unfilled")} value={counts.unfilled} testID="review-unfilled" />
-          <Count label={t("roster.review_warnings")} value={counts.open_warnings} testID="review-warnings" />
         </View>
       )}
       <View role="radiogroup" accessibilityLabel={t("roster.notify_label")} style={styles.radios}>

@@ -104,12 +104,10 @@ LANGUAGES.forEach((language, index) => {
     const target = page.locator(`[data-testid="proposal-block"][data-slot-key="${full.key}"]`);
     await target.getByTestId("action-review-assign").click();
     await page.locator(`[data-testid="review-assign-option"][data-user-id="${extra}"]`).click();
-    const sheet = page.getByTestId("review-override-sheet");
-    await expect(sheet.getByTestId("review-break").first()).toBeVisible();
-    await expect(page.getByTestId("action-keep-anyway")).toBeDisabled();
-    await page.getByTestId("review-override-reason").fill(language === "he" ? "צריך עוד אדם" : "One more is needed");
-    await page.getByTestId("action-keep-anyway").click();
-    await expect(target.locator(`[data-testid="proposal-person"][data-user-id="${extra}"]`).getByTestId("mark-override")).toBeVisible();
+    // Over the headcount, the edit is simply stored: no reason asked, no warning (the owner, 2026-11-13).
+    await expect(target.locator(`[data-testid="proposal-person"][data-user-id="${extra}"]`)).toBeVisible();
+    await expect(page.getByTestId("review-override-sheet")).toHaveCount(0);
+    await expect(target.getByTestId("mark-override")).toHaveCount(0);
     await checkA11y(page, `proposal edited (${language})`);
 
     await page.getByTestId("action-discard").click();

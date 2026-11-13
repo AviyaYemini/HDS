@@ -16,6 +16,8 @@ import { DEFAULT_TIME_ZONE, addDays, compareDates, presetRange, todayIn, type Da
 import { ChipEditor } from "./ChipEditor";
 import { digest, fromPreset, typesOf, type Again, type Offered } from "./model";
 import { DEFAULT_CONTROLS, type Chip, type Controls } from "./steering";
+import { allShifts } from "../roster/allShifts";
+import { useLoad } from "../useLoad";
 
 
 /** A run covers at most this many days (the API's limit, 004 FR-005). */
@@ -35,6 +37,9 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
   );
   // The two plain controls and the chips (FR-017, FR-020); a rerun starts with the earlier run's.
   const [controls, setControls] = useState<Controls>(() => again?.controls ?? DEFAULT_CONTROLS);
+  // Until the manager picks, a range that already holds drafts defaults to few changes, so a run
+  // fills the gaps instead of reshuffling the managers' drafts (the owner, 2026-11-13).
+  const [touched, setTouched] = useState(again !== null && again !== undefined);
   const [chips, setChips] = useState<Chip[]>(() => again?.chips ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +57,6 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
   // lost answer) answers the same run, and any change of range or projects (the offered list
   // arriving late included) is a new request, never a reused key (group O review).
   const [form] = useState(() => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
-  const key = `run-${form}-${digest(`${range.start}|${range.end}|${projects.join(",")}|${JSON.stringify(controls)}|${JSON.stringify(chips)}|${again?.id ?? ""}`)}`;
   const summary =
     projects.length === offered.length
       ? t("runs.projects_all", { count: offered.length })
@@ -60,6 +64,16 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
         ? t("runs.projects_none")
         : offered.filter((p) => projects.includes(p.id)).map((p) => p.name).join(", ");
   const noProjects = projects.length === 0;
+  const drafts = useLoad(
+    async () => (noProjects ? 0 : (await allShifts(session.api, range.start, range.end, "draft")).filter((x) => projects.includes(x.project_id)).length),
+    [range.start, range.end, projects.join(",")],
+  );
+  const hasDrafts = (drafts.data ?? 0) > 0;
+  // Untouched controls wait for the drafts count: a run sent before it would reshuffle the
+  // drafts the default protects (CodeRabbit, PR 28). A failed count offers a retry.
+  const waitingForDrafts = !touched && !noProjects && drafts.data === null;
+  const effective: Controls = touched || !hasDrafts ? controls : { ...controls, keep_changes_small: true };
+  const key = `run-${form}-${digest(`${range.start}|${range.end}|${projects.join(",")}|${JSON.stringify(effective)}|${JSON.stringify(chips)}|${again?.id ?? ""}`)}`;
 
   const tooLong = compareDates(range.end, addDays(range.start, MAX_DAYS - 1)) > 0;
 
@@ -69,7 +83,7 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
     try {
       const job = await call(
         session.api.POST("/api/v1/schedule-jobs", {
-          body: { from: range.start, to: range.end, project_ids: projects, solver: "cpsat", controls, chips, ...(again ? { based_on: again.id } : {}) },
+          body: { from: range.start, to: range.end, project_ids: projects, solver: "cpsat", controls: effective, chips, ...(again ? { based_on: again.id } : {}) },
           params: { header: { "idempotency-key": key } },
         }),
       );
@@ -112,10 +126,23 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
           {t("runs.again_note")}
         </Txt>
       ) : null}
-      <ChipEditor controls={controls} onControls={setControls} chips={chips} onChips={setChips} projects={offered.filter((p) => projects.includes(p.id))} />
+      {hasDrafts && !touched ? (
+        <Txt role="meta" tone="secondary" testID="run-drafts-note">
+          {t("runs.drafts_keep_small", { count: drafts.data ?? 0 })}
+        </Txt>
+      ) : null}
+      <ChipEditor
+        controls={effective}
+        onControls={(next) => {
+          setTouched(true);
+          setControls(next);
+        }}
+        chips={chips}
+        onChips={setChips} projects={offered.filter((p) => projects.includes(p.id))} />
       {error ? <InlineBanner tone="warning" title={errorText(error)} /> : null}
+      {!touched && drafts.error ? <InlineBanner tone="warning" title={errorText(drafts.error)} action={{ label: t("common.retry"), onPress: () => void drafts.reload() }} testID="run-drafts-error" /> : null}
       <View style={styles.formActions}>
-        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong || noProjects} disabledReason={tooLong ? t("schedule.range_invalid") : noProjects ? t("runs.projects_none") : undefined} testID="action-generate" />
+        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong || noProjects || waitingForDrafts} disabledReason={tooLong ? t("schedule.range_invalid") : noProjects ? t("runs.projects_none") : waitingForDrafts && drafts.error ? t("runs.drafts_unknown") : undefined} testID="action-generate" />
         <Button label={t("common.cancel")} onPress={onCancel} testID="action-cancel-run" />
       </View>
     </View>

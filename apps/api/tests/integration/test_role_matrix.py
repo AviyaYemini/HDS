@@ -153,6 +153,9 @@ MATRIX: dict[tuple[str, str], frozenset[str] | None] = {
     ("GET", "/me/pay"): STAFF,
     ("GET", "/api/v1/reports/work-log"): MGR,
     ("GET", "/api/v1/reports/hours"): MGR,
+    # the CEO demo: the snapshot dashboard and the roster's rule warnings
+    ("GET", "/api/v1/reports/overview"): MGR,
+    ("GET", "/api/v1/roster/warnings"): MGR,
     # the manual roster (003 FR-113 to FR-120); managers edit their own projects' since 007
     # (FR-028): another project's answers roster.project_not_managed, which is not a role gate
     ("GET", "/api/v1/shifts"): MGR,

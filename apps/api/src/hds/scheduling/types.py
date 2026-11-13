@@ -48,11 +48,32 @@ class ShiftSlot:
 
 
 @dataclass(frozen=True)
+class Engagement:
+    """A temporary worker's engagement (CEO demo): the projects and the local dates they work.
+
+    Outside it they are unavailable to a run, and a hand assignment there is a warning
+    (``warnings.temporary_outside``).
+    """
+
+    projects: frozenset[uuid.UUID]
+    first_day: date
+    last_day: date
+
+    def covers(self, project_id: uuid.UUID, day: date) -> bool:
+        """Whether they may work at ``project_id`` on the local date ``day``."""
+        return project_id in self.projects and self.first_day <= day <= self.last_day
+
+
+@dataclass(frozen=True)
 class Employee:
-    """An employee on a shift: only whether they are still active matters to the rules."""
+    """An employee on a shift: whether they are still active, and a temporary worker's engagement.
+
+    ``engagement`` is ``None`` for permanent staff, who may work anywhere.
+    """
 
     id: uuid.UUID
     is_active: bool
+    engagement: Engagement | None = None
 
 
 @dataclass(frozen=True)

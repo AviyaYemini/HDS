@@ -34,3 +34,16 @@ export function isolateLtr(text: string): string {
 export function stripIsolates(text: string): string {
   return text.replace(/[⁦⁧⁨⁩]/g, "");
 }
+
+/** Times, time ranges and dates inside a name someone typed ("בוקר 07:00–19:00", "קורס 7 · 15.11"). */
+const NUMERIC_RUN = /\d{1,2}[:.]\d{2}(?:\s*[–-]\s*\d{1,2}[:.]\d{2})?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/g;
+
+/**
+ * A name someone typed, ready to sit inside text of either direction: its times and dates held left
+ * to right, and the whole name isolated, taking its direction from its own first letter. Without it
+ * an English line breaks "בוקר 07:00–19:00" into "–07:00 / 19:00" (the owner, 2026-11-13).
+ */
+export function nameText(name: string): string {
+  // Word joiners hold a range's dash to its times, so a narrow line never breaks "07:00–" from "19:00".
+  return isolate(name.replace(NUMERIC_RUN, (run) => isolateLtr(run.replace(/\s*([–-])\s*/, "\u2060$1\u2060"))));
+}

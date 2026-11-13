@@ -7,6 +7,7 @@
  * is no one's page, so it shows the 404 page instead (FR-068).
  */
 import { Redirect, useGlobalSearchParams, usePathname, useSegments } from "expo-router";
+import { useEffect } from "react";
 
 import { isPreviewPath, previewsEnabled } from "../config/previews";
 import { NotFoundScreen } from "../screens/misc/NotFoundScreen";
@@ -29,13 +30,37 @@ export function queryOnly(params: Record<string, string | string[] | undefined>,
   return Object.fromEntries(Object.entries(params).filter(([key]) => !drop.has(key)));
 }
 
-/** Redirect to sign-in, remembering the current address. */
+/**
+ * The address the shell last showed while signed in. When a session ends on a page, the section's
+ * layout stops rendering its routes, and the router rewrites the address to the section's first
+ * route (/home) before the redirect reads it, keeping the old page's params (`/home?id=…`). So the
+ * shell remembers where it was, and the redirect prefers that (the owner, 2026-11-13).
+ */
+let remembered: string | null = null;
+
+/** Keep the shown address while signed in (the shells call it). */
+export function useRememberLocation(): void {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams<Record<string, string | string[]>>();
+  const segments = useSegments() as string[];
+  const next = encodeReturnPath(pathname, queryOnly(params, segments));
+  useEffect(() => {
+    remembered = next;
+  }, [next]);
+}
+
+/** Forget the remembered address: a sign-out or a new sign-in starts afresh. */
+export function forgetLocation(): void {
+  remembered = null;
+}
+
+/** Redirect to sign-in, back to where the person was. */
 export function SignInRedirect() {
   const pathname = usePathname();
   const params = useGlobalSearchParams<Record<string, string | string[]>>();
   const segments = useSegments() as string[];
   if (!previewsEnabled && isPreviewPath(pathname)) return <NotFoundScreen />;
-  const next = encodeReturnPath(pathname, queryOnly(params, segments));
+  const next = remembered ?? encodeReturnPath(pathname, queryOnly(params, segments));
   const lang = typeof params.lang === "string" ? `&lang=${encodeURIComponent(params.lang)}` : "";
   return <Redirect href={`/sign-in?next=${next}${lang}` as never} />;
 }

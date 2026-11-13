@@ -10,7 +10,6 @@ import { StyleSheet, View } from "react-native";
 import { previewsEnabled } from "../../config/previews";
 import { Button, EmptyState, Sheet, TextField, Txt } from "../../design/components";
 import { DEFAULT_TIME_ZONE, formatTimeRange } from "../../locale";
-import { numbersOf as coverNumbers, reasonKey } from "../runs/review";
 import { AlertChoice } from "./AlertChoice";
 import type { Alert, BusyOn, Cover, Person, Shift } from "./model";
 
@@ -70,11 +69,9 @@ export function AssignSheet({
   const reasonOf = (id: string): string | null => {
     const o = why.get(id);
     if (!o) return null;
-    // Someone busy then is said once, with where (busyText), not again as the ranking's reason.
-    if (busyBy.has(id) && reasonKey(o.code ?? "", (key) => i18n.exists(key)) === "runs.reasons.overlap") return null;
-    if (o.free) return t(o.close ? "review.cover_would_rather_not" : "review.cover_free");
-    const numbers = coverNumbers(o, i18n.language);
-    return [t(reasonKey(o.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ");
+    // Only who is free (and who would rather not): the rules someone would break are warnings,
+    // out of the app's scope (the owner, 2026-11-13).
+    return o.free ? t(o.close ? "review.cover_would_rather_not" : "review.cover_free") : null;
   };
   const close = () => {
     setQuery("");
@@ -131,12 +128,12 @@ export function AssignSheet({
             <View key={person.id} style={styles.option}>
               <Button variant="quiet" icon="user" label={person.full_name} testID="assign-option" web={{ dataSet: { userId: person.id, busy: String(busyBy.has(person.id)) } }} onPress={() => choose(person)} />
               {busyBy.has(person.id) ? (
-                <Txt role="meta" tone="warning" testID="assign-busy">
+                <Txt role="meta" tone="secondary" testID="assign-busy">
                   {busyText(busyBy.get(person.id)!)}
                 </Txt>
               ) : null}
               {reasonOf(person.id) ? (
-                <Txt role="meta" tone={why.get(person.id)?.free ? "secondary" : "warning"} testID="assign-reason">
+                <Txt role="meta" tone="secondary" testID="assign-reason">
                   {reasonOf(person.id)}
                 </Txt>
               ) : null}

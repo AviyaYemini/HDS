@@ -32,6 +32,7 @@ from hds.services import proposal_copy
 from hds.services.roster_cover import cover_answer
 from hds.services.schedule_inputs import ScheduleInputService
 from hds.services.schedule_job import ScheduleJobService, check_version, stored_chip
+from hds.services.temporary import as_employee
 
 OPS = ("assign", "unassign", "move", "swap", "lock", "unlock")
 STAFF = (UserRole.employee, UserRole.manager, UserRole.admin)
@@ -111,8 +112,9 @@ class ProposalService:
             PreconditionFailedError: ``schedule.version_stale`` (HTTP 412).
             ConflictError: ``schedule.not_ready``, ``schedule.proposal_closed`` or
                 ``schedule.part_accepted`` (HTTP 409).
-            DomainValidationError: ``schedule.edit_invalid``, ``warnings.employee_inactive`` or
-                ``schedule.override_reason_required`` with the breaks (HTTP 422).
+            DomainValidationError: ``schedule.edit_invalid`` or ``warnings.employee_inactive``
+                (HTTP 422). A person-rule break is kept as made (CEO demo), with the reason if one
+                is sent.
         """
         job = await self._jobs.open_for(actor, id)
         check_version(job, if_match)
@@ -138,21 +140,17 @@ class ProposalService:
         found = await self._check(job, work, touched, known)
         causes = proposal_copy.unexcused(found, work, touched)
         reason = (op.get("override_reason") or "").strip()
-        if causes and not reason:
-            raise DomainValidationError(
-                code="schedule.override_reason_required",
-                detail="This edit breaks a rule; give a reason to keep it.",
-                errors=causes,
-            )
+        # CEO demo: rule warnings are out of scope, so a hand edit that breaks a person rule is
+        # kept as the manager made it; a reason, when one is sent, is still recorded with it.
         if causes:
-            override(work, causes, reason)
+            override(work, causes, reason or None)
         job.current = work
         job.version += 1
         await self._jobs.save(job)
         recorded_op = {k: v for k, v in op.items() if k != "override_reason"}
         body = {"op": recorded_op, "before": before, "breaks": [c["code"] for c in causes]}
         await self._jobs.record(job, "edited", body, actor=actor, version=job.version)
-        if causes:
+        if causes and reason:
             await self._jobs.record(
                 job,
                 "overridden",
@@ -214,7 +212,7 @@ class ProposalService:
             raise NotFoundError(resource="Slot", id=slot_id(key))
         staff = await self._users.staff_of(job.organisation_id)
         base = await self._copy_problem(job, work, also={u.id for u in staff})
-        problem = replace(base, candidates=tuple(Employee(u.id, True) for u in staff))
+        problem = replace(base, candidates=tuple(as_employee(u, active=True) for u in staff))
         assigned = {
             s["key"]: [uuid.UUID(p) for p in proposal_copy.people(s)] for s in work["slots"]
         }
@@ -299,7 +297,7 @@ class ProposalService:
         for person in ids:
             if person not in found:
                 raise NotFoundError(resource="User", id=person)
-        return {u.id: Employee(u.id, u.is_active) for u in found.values()}
+        return {u.id: as_employee(u) for u in found.values()}
 
     async def _check(
         self,
@@ -425,8 +423,12 @@ def apply(
     return before, touched
 
 
-def override(work: dict[str, Any], causes: list[dict[str, Any]], reason: str) -> None:
-    """Record ``reason`` on each person whose break ``causes`` names, with the codes it excuses."""
+def override(work: dict[str, Any], causes: list[dict[str, Any]], reason: str | None) -> None:
+    """Record ``reason`` on each person whose break ``causes`` names, with the codes it excuses.
+
+    ``None`` keeps the break as the manager made it with no reason (CEO demo): it is excused in
+    the proposal, and accepting adds no override record for it.
+    """
     for cause in causes:
         slot = proposal_copy.find(work, cause["key"])
         assert slot is not None

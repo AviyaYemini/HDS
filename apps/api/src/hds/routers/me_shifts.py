@@ -6,6 +6,7 @@ other people, so it cannot leak them (research R7).
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -57,8 +58,8 @@ class MyShiftList(BaseModel):
     ),
 )
 async def my_shifts(
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     current_user: User = Depends(require_staff),
     db: AsyncSession = Depends(get_unit_of_work, scope="function"),
 ) -> MyShiftList:

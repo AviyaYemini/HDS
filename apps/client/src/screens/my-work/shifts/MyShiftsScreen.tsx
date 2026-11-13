@@ -19,7 +19,7 @@ import { useKeyboardMode } from "../../../design/focus";
 import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
 import { webProps } from "../../../design/web";
-import { DEFAULT_TIME_ZONE, addDays, durationParts, formatLongDate, formatMoney, formatMonthYear, formatNumericDate, formatNumericRange, formatTime, formatTimeRange, todayIn, weekdayNames } from "../../../locale";
+import { nameText, DEFAULT_TIME_ZONE, addDays, durationParts, formatLongDate, formatMoney, formatMonthYear, formatNumericDate, formatNumericRange, formatTime, formatTimeRange, todayIn, weekdayNames } from "../../../locale";
 import { useLoad } from "../../useLoad";
 import { byPeriod, byWeek, countdown, endsNextDay, nextShift, past, pastRange, shiftDate, upcoming, upcomingRange, type Shift } from "./model";
 import { loadCached, saveCached, type CachedShifts } from "./shiftsCache";
@@ -180,7 +180,7 @@ function NextShiftCard({ shift, now }: { shift: Shift; now: Date }) {
       <Txt role="body" numeric>
         {formatTimeRange(shift.starts_at, shift.ends_at, shift.timezone)}
       </Txt>
-      <Txt role="body">{`${shift.site.name} · ${shift.project.name} · ${shift.shift_type}`}</Txt>
+      <Txt role="body">{`${nameText(shift.site.name)} · ${nameText(shift.project.name)} · ${nameText(shift.shift_type)}`}</Txt>
       <Txt role="meta" tone="secondary" numeric testID="next-shift-countdown">
         {left === "started" ? t("shifts.started") : t("shifts.in_days_hours", { days: left.days, hours: left.hours })}
       </Txt>
@@ -222,7 +222,7 @@ function ShiftRow({ shift }: { shift: Shift }) {
           {`${shift.project.name} · ${shift.site.name}`}
         </Txt>
       </View>
-      <StatusChip status="neutral" label={shift.shift_type} />
+      <StatusChip status="neutral" label={nameText(shift.shift_type)} />
       <Icon name="chevron-next" size={18} color={colors.text.secondary} label={t("common.open")} />
     </LinkPressable>
   );

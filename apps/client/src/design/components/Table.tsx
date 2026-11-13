@@ -33,6 +33,8 @@ export interface Column<Row> {
   sortable?: boolean;
   /** The cell; the row's value under `key` by default. */
   render?: (row: Row) => ReactNode;
+  /** The cell as plain text, where `render` draws more than text (a phone's list line). */
+  text?: (row: Row) => string;
 }
 
 export interface TableProps<Row> {
@@ -88,6 +90,8 @@ export function Table<Row>({
   const { colors, spacing, density, isDesktop } = useTheme();
   const keyboard = useKeyboardMode();
   const [hovered, setHovered] = useState<string | null>(null);
+  // The header's drawn height: a title may wrap to two lines, and the frozen copy must match it.
+  const [headHeight, setHeadHeight] = useState<number | null>(null);
   const rowHeight = Math.max(spacing.rowHeight, component.target.dense);
   const first = columns[0];
   const frozen = scrollable && frozenFirstColumn && first?.width !== undefined;
@@ -101,7 +105,8 @@ export function Table<Row>({
     const sortable = interactive && column.sortable && onSort;
     const sortProps = webProps({ "aria-sort": sortable ? ariaSort(active) : undefined });
     const label = (
-      <Txt role="eyebrow" tone={active ? "primary" : "secondary"} numberOfLines={1} style={column.numeric ? styles.end : null}>
+      // Up to two lines, never cut to "…" (the owner, 2026-11-13); the full title on hover as well.
+      <Txt role="eyebrow" tone={active ? "primary" : "secondary"} numberOfLines={2} style={[styles.headLabel, column.numeric ? styles.end : null]} {...webProps({ title: column.title })}>
         {column.title}
       </Txt>
     );
@@ -224,7 +229,11 @@ export function Table<Row>({
       accessibilityLabel={caption}
       style={[styles.table, !scrollable ? styles.fill : null]}
     >
-      <View role={loading ? undefined : "row"} style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}>
+      <View
+        role={loading ? undefined : "row"}
+        onLayout={frozen ? (e) => setHeadHeight(e.nativeEvent.layout.height) : undefined}
+        style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}
+      >
         {columns.map((column, index) => header(column, index, loading))}
       </View>
       {body}
@@ -245,7 +254,7 @@ export function Table<Row>({
           {...webProps(HIDDEN)}
           style={[styles.frozen, { width: first.width, backgroundColor: colors.bg.canvas, borderEndColor: colors.border.subtle }]}
         >
-          <View style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}>
+          <View style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }, headHeight !== null ? { height: headHeight } : null]}>
             {header(first, 0, true, false)}
           </View>
           {loading || rows.length === 0 ? null : rows.map((row) => line(row, [first], false))}
@@ -256,6 +265,7 @@ export function Table<Row>({
 }
 
 const styles = StyleSheet.create({
+  headLabel: { flexShrink: 1 },
   fill: { alignSelf: "stretch" },
   table: { alignSelf: "stretch" },
   scrollContent: { flexGrow: 1 },

@@ -19,7 +19,7 @@ import { webProps } from "../../design/web";
 import { hold } from "../../design/heldActions";
 import { mayLeaveFor } from "../../design/unsaved";
 import { useLoad } from "../useLoad";
-import { PhoneList } from "./PhoneList";
+import { PhoneList, type PhoneCard } from "./PhoneList";
 import { fromViewQuery, readState, searched, sorted, toParams, viewQuery, type TableState } from "./tableState";
 import { shared } from "./tableStyles";
 
@@ -58,6 +58,16 @@ export interface AdminTableProps<Row> {
   active?: { of: (row: Row) => boolean; set: (row: Row, active: boolean) => Promise<void>; keep?: (row: Row) => string | null } | null;
   emptyTitle: string;
   emptyBody: string;
+  /** Extra controls beside the search (a filter of the screen's own). */
+  toolbar?: ReactNode;
+  /** Rows to keep, after loading and before the search (the screen's own filter). */
+  filter?: (row: Row) => boolean;
+  /** On a phone: the card's second line, key numbers and chips, in place of the columns as one line. */
+  phoneCard?: (row: Row) => PhoneCard;
+  /** The order before the reader picks one (the address has no sort yet). */
+  defaultSort?: { key: string; direction: "asc" | "desc" };
+  /** What an empty list says when the screen's own filter leaves nothing (no search on). */
+  filteredEmpty?: string | null;
 }
 
 type Saved = { id: string; name: string; query: string };
@@ -88,6 +98,11 @@ export function AdminTable<Row>({
   active = null,
   emptyTitle,
   emptyBody,
+  toolbar,
+  filter,
+  phoneCard,
+  defaultSort,
+  filteredEmpty = null,
 }: AdminTableProps<Row>) {
   const { t, i18n } = useTranslation();
   const session = useSession();
@@ -131,8 +146,9 @@ export function AdminTable<Row>({
   const [viewName, setViewName] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
 
-  const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)));
-  const shown = sorted(searched(listed, state.q, searchText), state.sort, sortValue, i18n.language);
+  const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)) && (filter ? filter(r) : true));
+  const sort = state.sort ?? defaultSort ?? null;
+  const shown = sorted(searched(listed, state.q, searchText), sort, sortValue, i18n.language);
   const openRow = state.open && state.open !== "new" ? ((rows.data ?? []).find((r) => keyOf(r) === state.open) ?? null) : null;
   const panelOpen = state.open === "new" || openRow !== null;
   // Closing a record with unsaved changes asks first, as leaving the screen does (FR-045).
@@ -261,7 +277,8 @@ export function AdminTable<Row>({
           {
             key: "__select",
             title: t("admin.select"),
-            width: 56,
+            // Wide enough for its title on one line in either language, never "SELE / CT".
+            width: 76,
             render: (row) => (
               <Pressable
                 role="checkbox"
@@ -345,6 +362,7 @@ export function AdminTable<Row>({
           testID="table-search"
           containerStyle={styles.search}
         />
+        {toolbar}
         {state.q ? (
           <View testID="filters-on" style={[styles.chip, { borderColor: colors.accent.default }]}>
             <Txt role="meta">{t("admin.filtered", { shown: shown.length, all: rows.data?.length ?? 0 })}</Txt>
@@ -400,17 +418,18 @@ export function AdminTable<Row>({
         />
       ) : !isDesktop ? (
         <PhoneList
+          card={phoneCard}
           columns={columns}
           rows={shown}
           loading={rows.data === null}
           keyOf={keyOf}
-          sort={state.sort}
+          sort={sort}
           onSort={(key, direction) => go({ sort: { key, direction }, view: null })}
           onOpen={(row) => {
             const openIt = () => go({ open: keyOf(row) });
             if (mayLeaveFor(openIt)) openIt();
           }}
-          emptyText={t("admin.no_match")}
+          emptyText={!state.q && filteredEmpty ? filteredEmpty : t("admin.no_match")}
           selecting={selecting}
           selected={chosen}
           onToggle={toggle}
@@ -422,7 +441,7 @@ export function AdminTable<Row>({
           rows={shown}
           keyOf={keyOf}
           loading={rows.data === null}
-          sort={state.sort}
+          sort={sort}
           onSort={(key: string, direction: SortDirection) => go({ sort: { key, direction }, view: null })}
           onRowPress={(row) => {
             // Another record while this one has unsaved edits: ask first (group F review).
@@ -430,7 +449,7 @@ export function AdminTable<Row>({
             if (mayLeaveFor(openIt)) openIt();
           }}
           selectedKey={openRow ? keyOf(openRow) : null}
-          empty={<Txt role="body" tone="secondary">{t("admin.no_match")}</Txt>}
+          empty={<Txt role="body" tone="secondary">{!state.q && filteredEmpty ? filteredEmpty : t("admin.no_match")}</Txt>}
         />
       )}
       {isDesktop ? (

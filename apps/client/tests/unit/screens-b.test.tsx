@@ -20,6 +20,7 @@ import { NotFoundScreen } from "../../src/screens/misc/NotFoundScreen";
 import { NoAccessScreen } from "../../src/screens/no-access/NoAccessScreen";
 import { BASE, FakeApi, ME, TOKENS, json, problem, renderWith, signedIn } from "./fakeApi";
 import * as Router from "expo-router";
+import { joinedPattern } from "./ranges";
 
 const router = (Router as unknown as { __router: { replace: jest.Mock; push: jest.Mock } }).__router;
 
@@ -74,12 +75,32 @@ describe("HomeScreen (FR-006)", () => {
       .on("GET", "/api/v1/availability-windows", json(200, { items: [{ id: "w", starts_on: "2026-11-15", ends_on: "2026-11-21", deadline: "2026-11-12T10:00:00Z", is_open: true }] }));
     await renderWith(await signedIn(api), <HomeScreen />);
     expect(await screen.findByTestId("home-next-shift")).toBeTruthy();
-    expect(screen.getByText("Night Watch · Night")).toBeTruthy();
-    expect(screen.getByText(/22:00–06:00 \+1/)).toBeTruthy();
+    expect(screen.getByText("\u2068Night Watch\u2069 · \u2068Night\u2069")).toBeTruthy();
+    expect(screen.getByText(joinedPattern("22:00–06:00 +1"))).toBeTruthy();
     expect(await screen.findByTestId("home-deadline")).toHaveTextContent(/12\/11\/2026/);
     // "Open availability" goes to the availability screen (R27).
     await fireEvent.press(screen.getByTestId("home-deadline-open"));
     expect(router.push).toHaveBeenCalledWith("/my/availability");
+  });
+
+  it("an Admin's home counts drafts across the coming weeks and hides set-up once there are projects and staff", async () => {
+    const admin: Me = { ...EMPLOYEE_ME, role: "admin", capabilities: [...EMPLOYEE_ME.capabilities, "roster.read", "special_days.edit", "staff.manage"] };
+    const draft = (id: string, starts: string) => ({ id, project_id: "p", shift_type_id: "t", starts_at: starts, ends_at: starts, timezone: "Asia/Jerusalem", headcount: 1, status: "draft", etag: "e", pay_rate: null, published_at: null, assignments: [] });
+    const api = new FakeApi()
+      .on("GET", "/me", json(200, admin))
+      .on("GET", "/me/shifts", json(200, { items: [] }))
+      .on("GET", "/api/v1/availability-windows", json(200, { items: [] }))
+      .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p", name: "Harbour gate" }] }))
+      .on("GET", "/api/v1/employees", json(200, { items: [{ id: "u9", role: "employee", full_name: "Dana Levi" }] }))
+      .on("GET", "/api/v1/shifts", (seen) =>
+        json(200, new URLSearchParams(seen.query).get("status") === "draft" ? { items: [draft("d2", "2026-12-15T05:00:00Z"), draft("d1", "2026-12-08T05:00:00Z")], next_cursor: null } : { items: [], next_cursor: null }),
+      );
+    await renderWith(await signedIn(api), <HomeScreen />);
+    // Two drafts in two weeks; the card opens the first of those weeks.
+    await waitFor(() => expect(screen.getByTestId("home-card-unpublished")).toHaveTextContent(/2$/));
+    const asked = new URLSearchParams(api.calls("GET", "/api/v1/shifts").find((c) => c.query.includes("status=draft"))!.query);
+    expect(Number(new Date(asked.get("to")!)) - Number(new Date(asked.get("from")!))).toBe(27 * 86_400_000);
+    await waitFor(() => expect(screen.queryByTestId("home-setup")).toBeNull());
   });
 
   it("shows placeholders, never numbers, on the manager's cards", async () => {

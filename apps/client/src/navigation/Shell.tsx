@@ -16,6 +16,7 @@ import { Pressable, ScrollView, StyleSheet, View, type ViewStyle } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useSession } from "../api/SessionContext";
+import { forgetLocation, useRememberLocation } from "../auth/SignInRedirect";
 import { useCapabilities } from "../capabilities";
 import { previewsEnabled } from "../config/previews";
 import { Button, LinkPressable, Txt, focusRing, type PressState } from "../design/components";
@@ -220,6 +221,8 @@ function Header() {
     // Unsaved changes on screen: ask first, as any other way out does (FR-045).
     if (!mayLeaveFor(() => void signOut())) return;
     await session.signOut();
+    // A chosen sign-out starts the next sign-in at home, never at this page.
+    forgetLocation();
     router.replace("/sign-in");
   };
   return (
@@ -273,6 +276,8 @@ export function Footer() {
 /** The shell around every signed-in screen. */
 export function Shell({ children }: { children: ReactNode }) {
   const { colors, isDesktop, spacing } = useTheme();
+  // Where the person is, for the sign-in to bring them back if the session ends here.
+  useRememberLocation();
   const direction = useDirectionProps();
   const capabilities = useCapabilities();
   const phone = !isDesktop;

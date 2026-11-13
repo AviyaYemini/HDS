@@ -78,6 +78,10 @@ class AssignmentRead(BaseModel):
         default=False,
         description="Locked: later runs keep this assignment until it is unlocked (008 FR-018).",
     )
+    temporary: bool = Field(
+        default=False,
+        description="A temporary worker, on their projects for at most three months (CEO demo).",
+    )
 
 
 class ShiftRead(BaseModel):
@@ -245,7 +249,7 @@ def _assignment(
     a: Any,
     shift: Any,
     overrides: list[Any] | None = None,
-    person: tuple[str, bool] | None = None,
+    person: tuple[str, bool, bool] | None = None,
 ) -> AssignmentRead:
     own = a.starts_at is not None and a.ends_at is not None
     return AssignmentRead(
@@ -267,6 +271,7 @@ def _assignment(
         ],
         full_name=person[0] if person else None,
         active=person[1] if person else None,
+        temporary=person[2] if person else False,
     )
 
 
@@ -322,8 +327,8 @@ def _position(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
     ),
 )
 async def list_shifts(
-    first: IsoDate | None = Query(default=None, alias="from"),
-    last: IsoDate | None = Query(default=None, alias="to"),
+    first: Annotated[IsoDate | None, Query(alias="from")] = None,
+    last: Annotated[IsoDate | None, Query(alias="to")] = None,
     project_id: uuid.UUID | None = None,
     status: Literal["draft", "published"] | None = None,
     cursor: str | None = Query(default=None, max_length=200),
@@ -530,7 +535,9 @@ async def assign(
         )
         shift = await svc.fresh_shift(current_user, id)
         answer = AssignmentAnswer(
-            assignment=_assignment(judged.record, shift),
+            assignment=_assignment(
+                judged.record, shift, None, await svc.person(current_user, judged.record.user_id)
+            ),
             warnings=judged.warnings,  # type: ignore[arg-type]
             shift_etag=etag(shift),
         )
@@ -666,7 +673,9 @@ async def change_assignment_times(
     )
     shift = await svc.fresh_shift(current_user, judged.record.shift_id)
     return AssignmentAnswer(
-        assignment=_assignment(judged.record, shift),
+        assignment=_assignment(
+            judged.record, shift, None, await svc.person(current_user, judged.record.user_id)
+        ),
         warnings=judged.warnings,  # type: ignore[arg-type]
         shift_etag=etag(shift),
     )
@@ -691,9 +700,11 @@ async def lock(
 
     A Manager of the project, or an Admin.
     """
-    assignment, shift = await roster_service(db).lock(current_user, id, True)
+    svc = roster_service(db)
+    assignment, shift = await svc.lock(current_user, id, True)
+    person = await svc.person(current_user, assignment.user_id)
     return AssignmentAnswer(
-        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
+        assignment=_assignment(assignment, shift, None, person), warnings=[], shift_etag=etag(shift)
     )
 
 
@@ -715,7 +726,9 @@ async def unlock(
 
     A Manager of the project, or an Admin.
     """
-    assignment, shift = await roster_service(db).lock(current_user, id, False)
+    svc = roster_service(db)
+    assignment, shift = await svc.lock(current_user, id, False)
+    person = await svc.person(current_user, assignment.user_id)
     return AssignmentAnswer(
-        assignment=_assignment(assignment, shift), warnings=[], shift_etag=etag(shift)
+        assignment=_assignment(assignment, shift, None, person), warnings=[], shift_etag=etag(shift)
     )

@@ -18,7 +18,7 @@ import { useTheme } from "../../../design/theme/ThemeProvider";
 import { webProps } from "../../../design/web";
 import { DEFAULT_TIME_ZONE, durationParts, endOfMonth, formatMoney, formatMonthYear, minutesBetween, todayIn } from "../../../locale";
 import { useLoad } from "../../useLoad";
-import { breakdownByRate, changeSince, nextPeriod, previousPeriod, shortHours } from "./model";
+import { breakdownByRate, changeSince, nextPeriod, payUpTo, previousPeriod, sameDayBefore, shortHours } from "./model";
 
 type Mode = "hours" | "pay";
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -29,7 +29,8 @@ export function MyPayScreen() {
   const errorText = useErrorText();
   const { colors, isDesktop } = useTheme();
   const { period: askedPeriod, view: askedView } = useLocalSearchParams<{ period?: string; view?: string }>();
-  const current = todayIn(DEFAULT_TIME_ZONE).slice(0, 7);
+  const today = todayIn(DEFAULT_TIME_ZONE);
+  const current = today.slice(0, 7);
   const [period, setPeriod] = useState(askedPeriod && PERIOD.test(askedPeriod) ? askedPeriod : current);
   const [view, setView] = useState<Mode>(askedView === "hours" ? "hours" : "pay");
 
@@ -78,7 +79,11 @@ export function MyPayScreen() {
             </Txt>
             {previous.data ? (
               <Txt role="meta" tone="secondary" numeric testID="pay-change">
-                {changeText(changeSince(pay.data.pay ?? "0", previous.data.pay ?? "0"))}
+                {period === current
+                  ? // A month in progress against the same days of the month before, never its whole.
+                    changeText(changeSince(pay.data.pay ?? "0", payUpTo(previous.data, sameDayBefore(period, Number(today.slice(8))))))
+                  : // A finished month: last month's total, said plainly.
+                    t("pay.previous_total", { amount: money(previous.data.pay ?? "0") })}
               </Txt>
             ) : null}
           </FeaturePanel>
@@ -132,7 +137,7 @@ export function MyPayScreen() {
     if (change === null) return "";
     const up = !change.startsWith("-");
     const abs = up ? change : change.slice(1);
-    return up ? t("pay.change_up", { amount: money(abs) }) : t("pay.change_down", { amount: money(abs) });
+    return up ? t("pay.change_up_same", { amount: money(abs) }) : t("pay.change_down_same", { amount: money(abs) });
   }
 }
 

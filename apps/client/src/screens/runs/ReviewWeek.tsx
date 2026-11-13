@@ -3,27 +3,38 @@
  * a change to the roster when the run was made: each person marked added, changed, removed or
  * unchanged, in words and an icon, never colour alone, with counts and each day's places filled
  * over needed. A proposal still open is accepted whole, by day, by project or by chosen pairs, and
- * the rest discarded; a person's menu assigns, unassigns, moves or swaps, and a rule break asks for
- * a reason before it is kept. Every edit and accept sends the version read, so two people never
+ * the rest discarded; a person's menu assigns, unassigns, moves or swaps, each stored as made (no
+ * rule warnings: out of scope, the owner, 2026-11-13). Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
+import { useRef, useState, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
-import { codeOf, useErrorText } from "../../api/errors";
-import { Button, InlineBanner, Sheet, SkeletonRows, TextField, Txt } from "../../design/components";
+import { call, codeOf, useErrorText } from "../../api/errors";
+import { useSession } from "../../api/SessionContext";
+import { Button, InlineBanner, Sheet, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { formatHeaderDate } from "../../locale";
+import { nameText, formatHeaderDate } from "../../locale";
+import { Disclosure, KeyFigures, SectionHead, type KeyFigure } from "../deck/parts";
+import { useEntrance } from "../deck/useEntrance";
+import { useLoad } from "../useLoad";
+import { HonestyLabel } from "./HonestyLabel";
+import { RunScope } from "./RunScope";
+import { useStickyClearance } from "./useStickyClearance";
+import { peoplePlaced, proposalSheet, solveSeconds } from "./runSummary";
 import { FairnessPanel } from "./FairnessPanel";
-import { groupWarnings } from "../roster/model";
 import { weeksOf, type Job, type Names } from "./model";
-import { hasOpen, menuFor, hours, numbersKey, numbersOf, openDaysAndProjects, partOfPairs, reasonKey, slotsByDay, type ReviewSlot } from "./review";
+import { hasOpen, menuFor, hours, openDaysAndProjects, partOfPairs, slotsByDay, type ReviewSlot } from "./review";
 
 import { styles } from "./reviewStyles";
 import { EmptyReasons } from "./EmptyReasons";
 import { SlotBlock } from "./SlotBlock";
 import { useProposalReview } from "./useProposalReview";
+
+/** The phone bar sticks to the bottom: the accessibility check knows what it covers by this mark. */
+const STICKY = webProps({ dataSet: { sticky: "bottom" } as const });
 
 interface Props {
   job: Job;
@@ -40,6 +51,7 @@ interface Props {
 export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) {
   const { t, i18n } = useTranslation();
   const { colors, isDesktop } = useTheme();
+  const session = useSession();
   const errorText = useErrorText();
   const {
     loaded,
@@ -53,9 +65,6 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     setAssignTo,
     moving,
     setMoving,
-    pending,
-    reason,
-    setReason,
     setAttempt,
     cover,
     accept,
@@ -65,6 +74,15 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     undo,
     toggle,
   } = useProposalReview(job, onDecided, onVersion);
+  // The projects' clients and types: the scope line and the week as the roster sheet.
+  const projects = useLoad(async () => (await call(session.api.GET("/api/v1/projects"))).items, []);
+  const clients = useLoad(async () => (await call(session.api.GET("/api/v1/clients"))).items, []);
+  const [byProject, setByProject] = useState(false);
+  const [sheetWidth, setSheetWidth] = useState(0);
+  const progress = useEntrance(shown ? `${job.id}|${shown.version}` : null);
+  // A focused element scrolls above the phone's sticky bar, never under it (WCAG 2.4.11).
+  const barRef = useRef<ComponentRef<typeof View>>(null);
+  useStickyClearance(barRef, !isDesktop && shown?.state === "open");
 
   if (loaded.error && !shown) {
     return <InlineBanner tone="warning" title={errorText(loaded.error)} action={{ label: t("common.retry"), onPress: loaded.reload }} />;
@@ -74,7 +92,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   const open = shown.state === "open";
   const name = (id: string) => names.people.get(id) ?? people.find((p) => p.id === id)?.full_name ?? t("runs.unknown_person");
   const placeName = (slot: ReviewSlot) =>
-    [names.projects.get(slot.project_id), names.types.get(slot.shift_type_id), formatHeaderDate(slot.date, i18n.language)].filter(Boolean).join(" · ");
+    [names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter((x): x is string => Boolean(x)).map(nameText).concat(formatHeaderDate(slot.date, i18n.language)).join(" · ");
 
   const byDay = slotsByDay(shown);
   const empty = shown.slots.filter((slot) => slot.places > 0);
@@ -89,24 +107,123 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   const { days: openDays, projects: openProjects } = openDaysAndProjects(shown);
   const anyOpen = open && hasOpen(shown);
   const showBar = open;
-  const marksText = t("review.counts", shown.counts);
+  // Filled over needed from the review's slots: each slot's places are the ones still empty.
+  const count = { filled: shown.slots.reduce((n, sl) => n + (sl.headcount - sl.places), 0), required: shown.slots.reduce((n, sl) => n + sl.headcount, 0) };
+  const seconds = solveSeconds(job);
+  const figures: KeyFigure[] = [
+    {
+      key: "filled",
+      label: t("runsum.figure.filled"),
+      value: `${count.filled}/${count.required}`,
+      valueTestID: "run-filled",
+      chip: <HonestyLabel job={job} />,
+      detail: count.required - count.filled > 0 ? t("runsum.figure.filled_detail", { count: count.required - count.filled }) : t("runsum.figure.filled_full"),
+    },
+    {
+      key: "changes",
+      testID: "review-counts",
+      label: t("runsum.figure.changes"),
+      value: String(shown.counts.added),
+      unit: t("runsum.added"),
+      count: { to: shown.counts.added, format: (n: number) => String(Math.round(n)) },
+      detail: t("runsum.figure.changes_detail", { changed: shown.counts.changed, removed: shown.counts.removed, unchanged: shown.counts.unchanged }),
+    },
+    {
+      key: "people",
+      label: t("runsum.figure.people"),
+      value: String(peoplePlaced(shown.slots)),
+      count: { to: peoplePlaced(shown.slots), format: (n: number) => String(Math.round(n)) },
+      detail: t("runsum.figure.people_detail", { count: people.length }),
+    },
+    { key: "time", label: t("runsum.figure.time"), value: seconds === null ? "—" : t("runsum.figure.seconds", { count: seconds }) },
+  ];
+
+  const projectButtons =
+    showBar && byProject && openProjects.length > 1 ? <View style={styles.bar}>{openProjects.map((project) => (
+                <Button
+                  key={project}
+                  label={t("review.accept_project", { project: names.projects.get(project) ?? "" })}
+                  busy={busy === project}
+                  disabled={busy !== null}
+                  onPress={() => void accept({ project_ids: [project] }, project)}
+                  testID="action-accept-project"
+                  web={{ dataSet: { projectId: project } }}
+                />
+              ))}</View> : null;
+  // On a phone the two labelled actions share the sticky row and wrap rather than push past it.
+  const acceptAllButton = (phone = false) => (
+    <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" wrap={phone} style={phone ? sheetStyles.phoneAction : undefined} />
+  );
+  const acceptAll = acceptAllButton();
+  const byProjectToggle =
+    openProjects.length > 1 ? (
+      // One project at a time behind a toggle, not a wall of buttons (the owner, 2026-11-13).
+      <Button
+        variant="quiet"
+        icon={byProject ? "chevron-up" : "chevron-down"}
+        label={t("runsum.accept_by_project", { count: openProjects.length })}
+        onPress={() => setByProject(!byProject)}
+        testID="action-accept-by-project"
+        web={{ "aria-expanded": String(byProject) }}
+      />
+    ) : null;
+  const acceptChosen = (
+    <Button
+      label={t("review.accept_selected", { count: chosen.length })}
+      disabled={busy !== null || chosen.length === 0}
+      disabledReason={chosen.length === 0 ? t("review.choose_first") : undefined}
+      busy={busy === "selected"}
+      onPress={() => void accept(partOfPairs(chosen), "selected")}
+      testID="action-accept-selected"
+    />
+  );
+  const undoButton = (compact: boolean) => (
+    <Button variant="quiet" icon="undo" label={compact ? "" : t("review.undo")} accessibilityLabel={t("review.undo")} busy={busy === "undo"} disabled={busy !== null} onPress={() => void undo()} testID="action-undo" />
+  );
+  const discardButtonFor = (phone = false) => (
+    <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" wrap={phone} style={phone ? sheetStyles.phoneAction : undefined} />
+  );
+  const discardButton = discardButtonFor();
+  // A desktop's bar after the figures: every action in one row.
+  const actionBar = showBar ? (
+    <View testID="accept-bar" style={styles.bar}>
+      {acceptAll}
+      {byProjectToggle}
+      {undoButton(false)}
+      {discardButton}
+    </View>
+  ) : null;
+  // A phone's bar sticks to the bottom: one compact row; the rarer actions sit just above it.
+  const phoneMore = showBar ? (
+    <View style={styles.bar}>
+      {byProjectToggle}
+      {acceptChosen}
+    </View>
+  ) : null;
+  // Who had no availability for the range, behind a disclosure (the owner, 2026-11-13).
+  const noAvailability =
+    shown.no_availability.length > 0 ? (
+      <Disclosure testID="no-availability" summary={t("runsum.no_availability", { count: shown.no_availability.length })} showLabel={t("runsum.show_names")} hideLabel={t("runsum.hide")}>
+        <Txt role="meta" tone="secondary">
+          {shown.no_availability.map((id) => name(id)).join(", ")}
+        </Txt>
+      </Disclosure>
+    ) : null;
+  const phoneBar = showBar ? (
+    <View ref={barRef} testID="accept-bar" {...STICKY} style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
+      {acceptAllButton(true)}
+      {discardButtonFor(true)}
+      {undoButton(true)}
+    </View>
+  ) : null;
 
   return (
     <View style={styles.weeks} testID="proposal-review" {...webProps({ dataSet: { version: String(shown.version) } })}>
-      <Txt role="section" heading={2}>
-        {t("runs.proposal_title")}
-      </Txt>
-      <Txt role="body" numeric testID="review-counts">
-        {marksText}
-      </Txt>
+      {/* The run at a glance, as the deck draws figures (the owner, 2026-11-13). */}
+      <KeyFigures figures={figures} progress={progress} />
+      <RunScope job={job} names={names} />
+      {isDesktop ? noAvailability : null}
       {problem ? <InlineBanner tone="warning" testID="review-problem" title={errorText(problem)} /> : null}
-      <FairnessPanel
-        jobId={job.id}
-        version={shown.version}
-        name={name}
-        place={(id) => names.projects.get(id) ?? ""}
-        type={(id) => names.types.get(id) ?? ""}
-      />
       {empty.length > 0 ? (
         // The slots left with empty places, first and in red with an icon and words; each opens
         // its slot with "Who else could cover" (T042b, FR-014).
@@ -126,39 +243,104 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
           ))}
         </InlineBanner>
       ) : null}
-      {showBar ? (
-        <View style={styles.bar} testID="accept-bar">
-          <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />
-          {openProjects.length > 1
-            ? openProjects.map((project) => (
-                <Button
-                  key={project}
-                  label={t("review.accept_project", { project: names.projects.get(project) ?? "" })}
-                  busy={busy === project}
-                  disabled={busy !== null}
-                  onPress={() => void accept({ project_ids: [project] }, project)}
-                  testID="action-accept-project"
-                  web={{ dataSet: { projectId: project } }}
-                />
-              ))
-            : null}
-          <Button
-            label={t("review.accept_selected", { count: chosen.length })}
-            disabled={busy !== null || chosen.length === 0}
-            disabledReason={chosen.length === 0 ? t("review.choose_first") : undefined}
-            busy={busy === "selected"}
-            onPress={() => void accept(partOfPairs(chosen), "selected")}
-            testID="action-accept-selected"
-          />
-          <Button variant="quiet" icon="undo" label={t("review.undo")} busy={busy === "undo"} disabled={busy !== null} onPress={() => void undo()} testID="action-undo" />
-          <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />
-        </View>
-      ) : null}
+      {/* The actions right after the figures, before the long week, on every width. Pinning them to
+          a phone's bottom waits on the shell: its page wrapper keeps a transform, which holds any
+          "fixed" element inside the page instead of the window. */}
+      {isDesktop ? actionBar : null}
+      {isDesktop ? projectButtons : null}
       {/* Only the weeks that hold a slot of the run: calendar weeks with none add nothing (T042a). */}
       {weeksOf(job.from, job.to)
         .filter((days) => days.some((day) => byDay.has(day)))
         .map((days) => {
         const visible = isDesktop ? days : days.filter((day) => byDay.has(day));
+        if (isDesktop) {
+          // The week as the roster sheet: projects as rows by client, days as columns (the owner, 2026-11-13).
+          const groups = proposalSheet(shown.slots, days, projects.data ?? [], clients.data ?? [], i18n.language);
+          return (
+            <ScrollView key={days[0]} horizontal focusable accessibilityLabel={t("review.week_label")} testID="proposal-week" contentContainerStyle={sheetStyles.sheetScroll} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
+              {/* A definite width: in a sideways scroll the columns would otherwise grow to fit every
+                  name on one line instead of sharing the space and wrapping. */}
+              <View testID="proposal-sheet" style={[sheetStyles.sheet, { borderColor: colors.border.strong, width: Math.max(sheetWidth, SHEET_LABEL + SHEET_DAY * 7) }]}>
+                <View style={sheetStyles.sheetLine}>
+                  <View style={[sheetStyles.sheetHead, sheetStyles.sheetLabel, { borderColor: colors.border.subtle, backgroundColor: colors.bg.canvas }]} />
+                  {days.map((day) => {
+                    const cover = shown.coverage.filter((c) => c.date === day);
+                    const filledDay = cover.reduce((n, c) => n + c.filled, 0);
+                    const needed = cover.reduce((n, c) => n + c.needed, 0);
+                    return (
+                      <View key={day} testID="proposal-day-head" {...webProps({ dataSet: { date: day } })} style={[sheetStyles.sheetHead, sheetStyles.sheetDay, { borderColor: colors.border.subtle, backgroundColor: colors.bg.canvas }]}>
+                        {/* Short, as on the roster sheet: the weekday and the date, so seven columns fit. */}
+                        <Txt role="eyebrow" tone="secondary">
+                          {t(`sheet.weekday.${new Date(`${day}T12:00:00Z`).getUTCDay()}`)}
+                        </Txt>
+                        <Txt role="section" numeric tone={day >= job.from && day <= job.to ? "primary" : "secondary"}>
+                          {`${Number(day.slice(8))}.${Number(day.slice(5, 7))}`}
+                        </Txt>
+                        {needed > 0 ? (
+                          <Txt role="meta" tone="secondary" numeric testID="day-coverage">
+                            {t("runs.filled", { filled: filledDay, required: needed })}
+                          </Txt>
+                        ) : null}
+                        {anyOpen && openDays.includes(day) ? (
+                          <Button
+                            variant="quiet"
+                            icon="check"
+                            // Short in the narrow column; the spoken label names the day.
+                            label={t("runsum.accept_short")}
+                            accessibilityLabel={`${t("review.accept_day")} · ${formatHeaderDate(day, i18n.language)}`}
+                            busy={busy === day}
+                            disabled={busy !== null}
+                            onPress={() => void accept({ days: [day] }, day)}
+                            testID="action-accept-day"
+                            web={{ dataSet: { date: day } }}
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+                {groups.map((g) => (
+                  <View key={g.clientId} testID="proposal-client">
+                    <View style={[sheetStyles.sheetClient, { borderColor: colors.border.subtle, backgroundColor: colors.bg.canvas }]}>
+                      <Txt role="eyebrow" tone="accent">
+                        {g.clientName || t("sheet.no_client")}
+                      </Txt>
+                    </View>
+                    {g.rows.map((row) => (
+                      <View key={row.projectId} style={sheetStyles.sheetLine} testID="proposal-row">
+                        <View style={[sheetStyles.sheetCell, sheetStyles.sheetLabel, { borderColor: colors.border.subtle, backgroundColor: colors.bg.canvas }]}>
+                          <Txt role="label" numberOfLines={3}>
+                            {row.name}
+                          </Txt>
+                        </View>
+                        {row.cells.map((cell, i) => (
+                          <View key={days[i]} testID="proposal-day" {...webProps({ dataSet: { date: days[i]! } })} style={[sheetStyles.sheetCell, sheetStyles.sheetDay, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+                            {cell.map((slot) => (
+                              <SlotBlock
+                                key={slot.key}
+                                compact
+                                slot={slot}
+                                names={names}
+                                name={name}
+                                editable={open && menuFor(shown, slot).canEdit}
+                                // Choosing single pairs is the phone list's; the sheet accepts by day or project.
+                                selectable={false}
+                                chosen={chosen}
+                                onToggle={(mark) => toggle(slot, mark)}
+                                onPerson={(userId) => setPersonOn({ slot, userId })}
+                                onAssign={() => setAssignTo(slot)}
+                              />
+                            ))}
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          );
+        }
         return (
           <View key={days[0]} testID="proposal-week" style={[styles.week, isDesktop ? styles.weekRow : null]}>
             {visible.map((day) => {
@@ -213,13 +395,26 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
           </View>
         );
       })}
+      {/* On a phone the actions follow the week and stick to the bottom while it scrolls past. */}
+      {/* A phone keeps who had no availability with the rarer actions, never under the sticky bar. */}
+      {!isDesktop ? noAvailability : null}
+      {!isDesktop ? phoneMore : null}
+      {!isDesktop ? projectButtons : null}
+      {!isDesktop ? phoneBar : null}
+      {/* The details below the week: fairness, the trade-offs and the chips. */}
+      <SectionHead title={t("runsum.details")} />
+      <FairnessPanel
+        jobId={job.id}
+        version={shown.version}
+        name={name}
+        place={(id) => names.projects.get(id) ?? ""}
+        type={(id) => names.types.get(id) ?? ""}
+      />
       <Sheet
-        open={personOn !== null || moving !== null || assignTo !== null || pending !== null}
+        open={personOn !== null || moving !== null || assignTo !== null}
         onClose={closePanels}
         title={
-          pending
-            ? t("review.override_title")
-            : moving
+          moving
               ? moving.swap
                 ? t("review.swap_title")
                 : t("review.move_title")
@@ -229,38 +424,8 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
                   ? name(personOn.userId)
                   : ""
         }
-        footer={
-          pending ? (
-            <Button
-              variant="primary"
-              label={t("review.keep_anyway")}
-              disabled={reason.trim() === "" || busy !== null}
-              busy={busy === "edit"}
-              onPress={() => void send({ ...pending.edit, override_reason: reason.trim() })}
-              testID="action-keep-anyway"
-            />
-          ) : undefined
-        }
       >
-        {pending ? (
-          <View testID="review-override-sheet" style={styles.panel}>
-            {/* One row per person and rule, as on the roster: one reason covers them all. */}
-            {groupWarnings(pending.breaks, (w) => w.user_id ?? null).map(({ first: w, values }) => (
-              <View key={`${w.user_id ?? "shift"}-${w.code}`} style={styles.break} testID="review-break">
-                <Txt role="label">{w.user_id ? name(w.user_id) : t("roster.the_shift")}</Txt>
-                <Txt role="body">{t(w.code)}</Txt>
-                {numbersKey(w.values)
-                  ? values.map((v) => (
-                      <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
-                        {t(numbersKey(v)!, v)}
-                      </Txt>
-                    ))
-                  : null}
-              </View>
-            ))}
-            <TextField label={t("roster.override_reason")} value={reason} onChangeText={setReason} maxLength={500} testID="review-override-reason" />
-          </View>
-        ) : moving ? (
+        {moving ? (
           <View testID="review-move-sheet" style={styles.panel}>
             {menuFor(shown, moving.from.slot).targets.flatMap((target) =>
               moving.swap
@@ -319,23 +484,23 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
               <SkeletonRows rows={3} />
             ) : (
               cover.data.options.map((option) => {
-                const numbers = numbersOf(option, i18n.language);
                 const totals = cover.data!.totals;
                 return (
                   <View key={option.user_id} style={styles.option} testID="review-cover-option" {...webProps({ dataSet: { userId: option.user_id, free: String(option.free) } })}>
                     <Button
                       variant="quiet"
                       icon="user"
-                      label={option.free ? name(option.user_id) : t("review.assign_anyway_person", { person: name(option.user_id) })}
+                      label={name(option.user_id)}
                       testID="review-assign-option"
                       web={{ dataSet: { userId: option.user_id, free: String(option.free) } }}
                       onPress={() => void send({ op: "assign", key: assignTo.key, user_id: option.user_id })}
                     />
-                    <Txt role="meta" tone={option.free ? "secondary" : "warning"}>
-                      {option.free
-                        ? t(option.close ? "review.cover_would_rather_not" : "review.cover_free")
-                        : [t(reasonKey(option.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ")}
-                    </Txt>
+                    {/* Who is free (or would rather not); never the rule someone would break (the owner, 2026-11-13). */}
+                    {option.free ? (
+                      <Txt role="meta" tone="secondary">
+                        {t(option.close ? "review.cover_would_rather_not" : "review.cover_free")}
+                      </Txt>
+                    ) : null}
                     <Txt role="meta" tone="secondary" numeric>
                       {t("review.cover_load", {
                         hours: hours(option.minutes, i18n.language),
@@ -370,3 +535,21 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     </View>
   );
 }
+
+const SHEET_LABEL = 170;
+const SHEET_DAY = 120;
+
+const sheetStyles = StyleSheet.create({
+  sheetScroll: { flexGrow: 1 },
+  // "sticky" is the web's; React Native's types know only absolute and relative.
+  sticky: { position: "sticky" as "relative", bottom: 0, zIndex: 5, borderTopWidth: 1, paddingVertical: 8 },
+  phoneBar: { flexDirection: "row", alignItems: "center", gap: 8 },
+  phoneAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
+  sheet: { borderWidth: 1, flexGrow: 1 },
+  sheetLine: { flexDirection: "row" },
+  sheetHead: { padding: 6, borderStartWidth: 1, borderTopWidth: 1, gap: 2 },
+  sheetLabel: { width: SHEET_LABEL, flexShrink: 0 },
+  sheetDay: { flex: 1, minWidth: SHEET_DAY, flexBasis: 0 },
+  sheetClient: { paddingVertical: 4, paddingHorizontal: 8, borderTopWidth: 1 },
+  sheetCell: { padding: 6, borderStartWidth: 1, borderTopWidth: 1, gap: 6, minHeight: 56 },
+});

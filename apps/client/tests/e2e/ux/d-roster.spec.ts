@@ -52,16 +52,9 @@ async function assign(admin: APIRequestContext, s: Shift, who: Me, hours?: [numb
   await ok(admin.post(`/api/v1/shifts/${s.id}/assignments`, { data }), 201);
 }
 
-/** Close the warning dialog when a change broke a rule; it only informs (T042d). */
-async function dismissWarnings(page: Page): Promise<void> {
-  const shown = await page
-    .getByTestId("warning-detail")
-    .waitFor({ state: "visible", timeout: 1_000 })
-    .then(
-      () => true,
-      () => false,
-    );
-  if (shown) await page.getByTestId("action-warnings-ok").click();
+/** No rule warning opens after a change: warnings are out of the app's scope (the owner, 2026-11-13). */
+async function expectNoWarning(page: Page): Promise<void> {
+  await expect(page.getByTestId("warning-detail")).toHaveCount(0);
 }
 
 /**
@@ -167,20 +160,14 @@ for (const language of LANGUAGES) {
       const b = block(page, morning.id);
       await expect(b.locator(`[data-testid="block-person"][data-user-id="${employee.id}"]`)).toBeVisible();
 
-      // The assignment is made, and the rule it breaks opens by itself, only to inform (T042d).
-      await expect(b.getByTestId("block-warning-badge")).toBeVisible();
-      const detail = page.getByTestId("warning-detail");
-      await expect(detail).toBeVisible();
-      await expect(detail).toContainText("11"); // the rule's hours
-      await expect(detail).toContainText(/0|00:00/); // the rest actually scheduled
-      await page.getByTestId("action-override").first().click();
-      await page.getByTestId("override-reason").fill(language === "he" ? "החלפה מוסכמת" : "Agreed handover");
-      await page.getByTestId("action-confirm-override").click();
-      await expect(detail).not.toBeVisible();
+      // The assignment is simply stored: a rule it breaks (a short rest here) shows no badge and opens
+      // no dialog; warnings are out of the app's scope (the owner, 2026-11-13).
+      await expect(b.getByTestId("block-warning-badge")).toHaveCount(0);
+      await expect(page.getByTestId("warning-detail")).toHaveCount(0);
       await checkA11y(page, `roster after assigning (${language})`);
     });
 
-    test("assigning someone who missed the availability deadline shows the not-submitted warning", async ({ page }) => {
+    test("assigning someone who missed the availability deadline stores it with no warning", async ({ page }) => {
       const p = await project(admin, `Roster missed ${language}`);
       await ok(admin.put(`/api/v1/projects/${p.id}/managers`, { data: { user_ids: [manager.id] } }));
       const first = addDays(WEEK, language === "he" ? 7 : 14);
@@ -195,9 +182,8 @@ for (const language of LANGUAGES) {
       await openRoster(page, language, p, first);
       await block(page, s.id).getByTestId("empty-seat").first().click();
       await pick(page, extra.id);
-      await expect(page.getByTestId("warning-detail")).toContainText(
-        language === "he" ? "לא הוגשה" : "did not submit",
-      );
+      await expect(block(page, s.id).locator(`[data-testid="block-person"][data-user-id="${extra.id}"]`)).toBeVisible();
+      await expect(page.getByTestId("warning-detail")).toHaveCount(0);
     });
 
     test("publishes through a review whose counts match, and undo steps back", async ({ page }) => {
@@ -210,6 +196,8 @@ for (const language of LANGUAGES) {
 
       await signIn(page, "manager", language);
       await openRoster(page, language, p);
+      // Count once the week has drawn its people, not while it is still loading.
+      await expect(block(page, b.id).getByTestId("block-person").first()).toBeVisible();
       const before = await page.locator('[data-testid="block-person"]').count();
       await block(page, b.id).getByTestId("block-person").first().click();
       await page.getByTestId("action-unassign").click();
@@ -302,7 +290,7 @@ for (const language of LANGUAGES) {
       await option.click();
       await sheet.getByTestId("action-busy-move").click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
-      await dismissWarnings(page);
+      await expectNoWarning(page);
       expect(await onShift(b)).not.toContain(guard.id);
 
       // Undo moves them back, in one step.
@@ -318,7 +306,7 @@ for (const language of LANGUAGES) {
       await sheet.locator(`[data-testid="assign-option"][data-user-id="${guard.id}"]`).click();
       await sheet.getByTestId("action-busy-move").click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${guard.id}"]`)).toBeVisible();
-      await dismissWarnings(page);
+      await expectNoWarning(page);
       await expect.poll(() => onShift(b)).toContain(other.id);
       await checkA11y(page, `roster after a swap (${language})`);
 
@@ -330,7 +318,7 @@ for (const language of LANGUAGES) {
       await page.getByTestId("action-replace").click();
       await sheet.locator(`[data-testid="assign-option"][data-user-id="${free.id}"]`).click();
       await expect(block(page, a.id).locator(`[data-testid="block-person"][data-user-id="${free.id}"]`)).toBeVisible();
-      await dismissWarnings(page);
+      await expectNoWarning(page);
       await expect(page.getByTestId("banner-roster-changed")).toHaveCount(0);
     });
 
@@ -346,9 +334,9 @@ for (const language of LANGUAGES) {
       await block(page, s.id).getByTestId("empty-seat").first().click();
       await pick(page, employee.id);
       await expect(block(page, s.id).locator(`[data-testid="block-person"][data-user-id="${employee.id}"]`)).toBeVisible();
-      // A rule this assignment breaks (the employee's other shifts that week) is named, never blocking (T042d).
-      if (await page.getByTestId("warning-detail").isVisible()) await page.getByTestId("action-warnings-ok").click();
       await page.getByTestId("action-publish").click();
+      // The review counts shifts, people and places, and no warnings (the owner, 2026-11-13).
+      await expect(page.getByTestId("publish-review").getByTestId("review-warnings")).toHaveCount(0);
       await page.getByTestId("publish-review").getByTestId("action-confirm-publish").click();
       await expect(block(page, s.id)).toHaveAttribute("data-status", "published");
     });
@@ -356,19 +344,31 @@ for (const language of LANGUAGES) {
 }
 
 // The roster opened from the navigation, with no project in the address (CodeRabbit, PR 18; R113):
-// a list of projects to open, or the one project the manager runs, never a dead end.
+// on demo/ceo the whole week in the sheet layout, whose project names open a project's week.
 for (const language of LANGUAGES) {
   for (const role of ["manager", "admin"] as const) {
     test(`${language}: ${role} opens the roster from the navigation and reaches a project's week`, async ({ page }, testInfo) => {
       await openAs(page, role, language, "/home");
       const nav = page.getByTestId("nav-side").or(page.getByTestId("nav-tabs")).first();
       await nav.locator('a[href^="/roster"]').first().click();
-      const list = page.getByTestId("roster-project").first();
+      const list = page.getByTestId("sheet-project").first();
       const week = page.getByTestId(isPhone(testInfo) ? "roster-agenda" : "roster-day").first();
+      if (isPhone(testInfo)) {
+        // A phone shows the sheet one day at a time: step through the day strip to a day with work.
+        await expect(page.getByTestId("roster-day-view")).toBeVisible();
+        const days = page.getByTestId("day-strip").getByRole("tab");
+        for (let i = 0; i < (await days.count()) && !(await list.isVisible()); i += 1) await days.nth(i).click();
+        if (!(await list.isVisible())) {
+          // A week with no work at all still shows the strip and says so.
+          await expect(page.getByTestId("day-empty")).toBeVisible();
+          await checkA11y(page, `roster day (${role}, ${language})`);
+          return;
+        }
+      }
       await expect(list.or(week).first()).toBeVisible();
       if (await list.isVisible()) {
         await checkA11y(page, `roster projects (${role}, ${language})`);
-        await page.locator('[data-testid="roster-project"][data-editable="true"]').first().click();
+        await list.click();
       }
       await expect(page).toHaveURL(/[?&]project=/);
       await expect(week).toBeVisible();
