@@ -40,6 +40,12 @@ This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry
   - home without the setup card once the company is set up;
   - page titles, loading skeletons and a dark-mode pass;
   - the schedule-run page: numbered figures, the proposal as a roster week with changes marked, fairness as bars, and a clear action bar. A run over a range that already has drafts fills the gaps by default rather than reshuffling them.
+  - the work log opening on this month with key figures, the submission tracker with its window, deadline and progress;
+  - clients with billing this month, projects with manager and hours;
+  - the project editor titled by project with all seven days in view;
+  - management ahead of "my work" in the menu;
+  - the employee's pay compared like for like, and time ranges that never break inside Hebrew names;
+  - a sign-in that returns to the page you were on.
 - **Hours and costs** in the deck's style. The hours report now includes billing.
 - **The demo data:**
   - `scripts/demo/parse_roster.py` reads the weekly Google Sheets export. It handles tasks, clients, managers, hours, sums, open places and merged spellings.
@@ -63,13 +69,13 @@ Open http://localhost:8081 and sign in as `admin@hds.test`, or as `manager1@hds.
 **Checked locally:**
 - API: 1,707 unit, integration and contract tests for what changed (temporary workers, the overview, the hours report, employees, proposal review); lint and format are clean.
 - The OpenAPI contract has no drift, and the generated client is up to date.
-- Client: tsc, ESLint and all 401 unit tests.
+- Client: tsc, ESLint and all 408 unit tests.
 - The demo run from the workbook, from a fresh database:
   - in Hebrew at 1440px and 390px, and in English at 390px;
   - the charts and the phone cards and roster;
   - saving a temporary worker's end date, and the three-month rule on the form.
 
-**Left to CI:** the full suites, Schemathesis, and the end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`, `ux/i-proposal-review`, `ux/j-empty-slots`, `ux/k-*`, `ux/l-run-flow`, `ux/o-owner-requests`).
+**Left to CI:** the full suites, Schemathesis, and the end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`, `ux/i-proposal-review`, `ux/j-empty-slots`, `ux/k-*`, `ux/l-run-flow`, `ux/o-owner-requests`, `test_us_work_log`).
 
 **Not covered:** native iOS and Android builds.
 
