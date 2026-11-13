@@ -143,6 +143,8 @@ test.describe("a run's output", () => {
       const block = page.locator(`[data-testid="proposal-block"][data-slot-key="${slot.key}"]`);
       await expect(block).toContainText(named);
       if (job.proposal!.unfilled.length > 0) await expect(page.getByTestId("unfilled").first()).toBeVisible();
+      // The names sit behind one quiet line; "show names" opens them (the owner, 2026-11-13).
+      if (job.proposal!.no_availability.length > 0) await page.getByTestId("no-availability-toggle").click();
       for (const id of job.proposal!.no_availability.slice(0, 3)) {
         const name = people.items.find((p) => p.id === id)!.full_name;
         await expect(page.getByTestId("no-availability")).toContainText(name);

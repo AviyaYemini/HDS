@@ -49,9 +49,11 @@ export function RunScreen() {
         <SkeletonRows rows={4} />
       ) : (
         <View style={styles.section}>
-          <Txt role="body" testID="run-projects-covered">
-            {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
-          </Txt>
+          {job.status !== "succeeded" ? (
+            <Txt role="body" testID="run-projects-covered">
+              {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
+            </Txt>
+          ) : null}
           <View style={shared.summary}>
             <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (
@@ -74,6 +76,8 @@ export function RunScreen() {
           ) : null}
           {job.status === "failed" ? <InlineBanner tone="danger" title={t("runs.failed")} /> : null}
           {pollError ? <InlineBanner tone="warning" testID="banner-run-poll" title={t("runs.poll_failed")} /> : null}
+          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
+          {/* Below the week: the places left empty, with the run's reasons (coverage, not warnings). */}
           {job.status === "succeeded" ? <Proposal job={job} names={names} /> : null}
           {job.status === "succeeded" && (job.proposal_state === "accepted" || job.proposal_state === "partly_accepted") ? (
             <View style={shared.summary}>
@@ -99,7 +103,6 @@ export function RunScreen() {
               <Txt role="label">{t("runs.run_again")}</Txt>
             </LinkPressable>
           ) : null}
-          {job.status === "succeeded" ? <ReviewWeek job={job} names={names} people={names.staff} onDecided={reload} onVersion={setVersion} /> : null}
           {/* Every run's record, once it has one (FR-030). */}
           <RecordPanel jobId={job.id} stamp={stamp} name={(person) => names.people.get(person) ?? t("runs.unknown_person")} />
         </View>

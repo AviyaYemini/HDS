@@ -25,9 +25,11 @@ interface BlockProps {
   onToggle: (mark: ReviewSlot["marks"][number]) => void;
   onPerson: (userId: string) => void;
   onAssign: () => void;
+  /** In the sheet's cell: the row names the project, and an added person is marked by an edge. */
+  compact?: boolean;
 }
 
-export function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, onPerson, onAssign }: BlockProps) {
+export function SlotBlock({ slot, names, name, editable, selectable, chosen, onToggle, onPerson, onAssign, compact = false }: BlockProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const open = new Set(openMarks(slot).map((m) => m.user_id));
@@ -38,26 +40,40 @@ export function SlotBlock({ slot, names, name, editable, selectable, chosen, onT
       {...webProps({ dataSet: { slotKey: slot.key, projectId: slot.project_id } })}
       style={[styles.block, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}
     >
-      <Txt role="label" numberOfLines={2}>
-        {[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}
-      </Txt>
-      <Txt role="meta" tone="secondary" numeric>
-        {formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}
-      </Txt>
-      <Txt role="meta" tone={slot.places > 0 ? "warning" : "secondary"} numeric>
-        {t("runs.filled", { filled: slot.headcount - slot.places, required: slot.headcount })}
-      </Txt>
+      {compact ? (
+        // In the sheet's cell the row names the project: the time and the places on one quiet line.
+        <Txt role="meta" tone="secondary" numeric>
+          {`${formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)} · ${slot.headcount - slot.places}/${slot.headcount}`}
+        </Txt>
+      ) : (
+        <>
+          <Txt role="label" numberOfLines={2}>
+            {[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}
+          </Txt>
+          <Txt role="meta" tone="secondary" numeric>
+            {formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}
+          </Txt>
+          <Txt role="meta" tone={slot.places > 0 ? "warning" : "secondary"} numeric>
+            {t("runs.filled", { filled: slot.headcount - slot.places, required: slot.headcount })}
+          </Txt>
+        </>
+      )}
       {slot.marks.map((mark) => {
         const who = person.get(mark.user_id);
         const picked = chosen.some((p) => p.key === slot.key && p.userId === mark.user_id);
         const label = mark.mark === "changed" && mark.replaces ? t("review.mark.changed_from", { person: name(mark.replaces) }) : t(`review.mark.${mark.mark}`);
         return (
-          <View key={`${mark.user_id}-${mark.mark}`} style={styles.person} testID="proposal-person" {...webProps({ dataSet: { userId: mark.user_id, change: mark.mark, accepted: String(mark.accepted) } })}>
+          <View
+            key={`${mark.user_id}-${mark.mark}`}
+            // In the sheet, the run's additions and replacements carry the accent edge (the owner, 2026-11-13).
+            style={[styles.person, compact && (mark.mark === "added" || mark.mark === "changed") ? { borderStartWidth: 3, borderStartColor: colors.accent.default, paddingStart: 4 } : null]}
+            testID="proposal-person" {...webProps({ dataSet: { userId: mark.user_id, change: mark.mark, accepted: String(mark.accepted) } })}>
             {selectable && open.has(mark.user_id) ? (
               <Button
                 variant="quiet"
                 icon={picked ? "check" : "plus"}
-                label={picked ? t("review.chosen") : t("review.choose")}
+                // Icon only in the sheet's narrow cell; the spoken label names the pair either way.
+                label={compact ? "" : picked ? t("review.chosen") : t("review.choose")}
                 accessibilityLabel={t(picked ? "review.chosen_pair" : "review.choose_pair", { person: name(mark.user_id) })}
                 onPress={() => onToggle(mark)}
                 testID="action-choose-pair"
@@ -65,13 +81,13 @@ export function SlotBlock({ slot, names, name, editable, selectable, chosen, onT
             ) : null}
             <Icon name={MARK_ICON[mark.mark]} size={14} color={mark.mark === "removed" ? colors.text.secondary : colors.text.primary} />
             {editable && mark.mark !== "removed" ? (
-              <Button variant="quiet" label={name(mark.user_id)} onPress={() => onPerson(mark.user_id)} testID="review-person" accessibilityHint={t("review.person_hint")} />
+              <Button variant={compact ? "link" : "quiet"} wrap={compact} label={name(mark.user_id)} onPress={() => onPerson(mark.user_id)} testID="review-person" accessibilityHint={t("review.person_hint")} />
             ) : (
               <Txt role="meta" tone={mark.mark === "removed" ? "secondary" : "primary"} style={mark.mark === "removed" ? styles.removed : null}>
                 {name(mark.user_id)}
               </Txt>
             )}
-            {mark.mark === "unchanged" ? null : (
+            {mark.mark === "unchanged" || (compact && mark.mark === "added") ? null : (
               <Txt role="meta" tone="secondary">
                 {label}
               </Txt>
@@ -106,7 +122,7 @@ export function SlotBlock({ slot, names, name, editable, selectable, chosen, onT
           <Txt role="meta">{name(userId)}</Txt>
         </View>
       ))}
-      {editable ? <Button variant="quiet" icon="plus" label={t("review.assign")} onPress={onAssign} testID="action-review-assign" /> : null}
+      {editable ? <Button variant="quiet" icon="plus" label={compact ? "" : t("review.assign")} accessibilityLabel={t("review.assign")} onPress={onAssign} testID="action-review-assign" /> : null}
     </View>
   );
 }
