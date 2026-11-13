@@ -242,6 +242,13 @@ PercentOut = Annotated[
 ]
 """A percentage or points in a response, always with two decimals."""
 
+ShareOut = Annotated[
+    Decimal,
+    PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
+    WithJsonSchema({"type": "string", "pattern": r"^-?[0-9]{1,6}\.[0-9]{2}$", "example": "18.40"}),
+]
+"""A share in percent in a response, which may be negative (a loss), two decimals (CEO demo)."""
+
 Amount = Annotated[
     Decimal,
     PlainSerializer(lambda value: f"{value:.2f}", return_type=str),

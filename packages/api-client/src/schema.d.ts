@@ -966,6 +966,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The snapshot: money, cover and people (CEO demo)
+         * @description Manager or Admin; a Manager sees only the projects they manage. From `from` to `to` (at most 366 days, 422 `reports.range_invalid`): billing (person-hours × the project's billing rate) and gross pay, actual (published shifts that have ended) and forecast (plus every shift, draft or published, still to come), by week and by project; this week's cover; and the people, temporary workers included. Money appears only where the reader may see the project's pay.
+         */
+        get: operations["get_overview_api_v1_reports_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/work-log": {
         parameters: {
             query?: never;
@@ -2435,6 +2455,25 @@ export interface components {
             project_id: string;
         };
         /**
+         * CoverageRead
+         * @description This week's places: how many the shifts need and how many are filled.
+         */
+        CoverageRead: {
+            /** Empty Places */
+            empty_places: number;
+            /** Filled */
+            filled: number;
+            /** Needed */
+            needed: number;
+            /** Projects With Gaps */
+            projects_with_gaps: number;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
+        /**
          * DayInEffectRead
          * @description A day as a project's shifts are paid by it: the project's own, or the organisation's.
          */
@@ -2715,6 +2754,11 @@ export interface components {
          */
         HoursGroupRead: {
             /**
+             * Billing
+             * @description Hours × the project's billing rate, where pay is shown (CEO demo).
+             */
+            billing?: string | null;
+            /**
              * Hours
              * @example 7.50
              */
@@ -2746,6 +2790,11 @@ export interface components {
          * @description Hours and shifts by employee or project; pay totals cover only the lines shown with pay.
          */
         HoursReportRead: {
+            /**
+             * Billing
+             * @description Hours × each project's billing rate, where pay is shown (CEO demo).
+             */
+            billing?: string | null;
             /**
              * From
              * Format: date
@@ -2783,6 +2832,11 @@ export interface components {
          * @description One employee at one project; ``pay`` only where the reader may see it.
          */
         HoursRowRead: {
+            /**
+             * Billing
+             * @description Hours × the project's billing rate, where pay is shown (CEO demo).
+             */
+            billing?: string | null;
             /**
              * Hours
              * @example 7.50
@@ -3453,6 +3507,129 @@ export interface components {
             warning_code: string;
         };
         /**
+         * OverviewProjectRead
+         * @description One project's row: its money in the range and this week's cover.
+         */
+        OverviewProjectRead: {
+            /** Billing */
+            billing?: string | null;
+            /** Client Name */
+            client_name: string;
+            /**
+             * Coverage Pct
+             * @description Null when no places this week.
+             */
+            coverage_pct?: string | null;
+            /** Empty Places */
+            empty_places: number;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Managers */
+            managers: string[];
+            /**
+             * Margin Pct
+             * @description Negative for a loss.
+             */
+            margin_pct?: string | null;
+            /** Name */
+            name: string;
+            /** Pay */
+            pay?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "gaps" | "loss" | "no_rate";
+            /** Temporary Workers */
+            temporary_workers: number;
+            /** Terms Estimated */
+            terms_estimated: boolean;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "security" | "training";
+        };
+        /**
+         * OverviewRead
+         * @description The snapshot: money, cover and people, by week and by project (CEO demo).
+         */
+        OverviewRead: {
+            /** Billing Actual */
+            billing_actual?: string | null;
+            /** Billing Forecast */
+            billing_forecast?: string | null;
+            coverage: components["schemas"]["CoverageRead"];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Hours Actual
+             * @example 7.50
+             */
+            hours_actual: string;
+            /**
+             * Hours Forecast
+             * @example 7.50
+             */
+            hours_forecast: string;
+            /** Margin Pct */
+            margin_pct?: string | null;
+            /** Pay Actual */
+            pay_actual?: string | null;
+            /** Pay Forecast */
+            pay_forecast?: string | null;
+            people: components["schemas"]["PeopleRead"];
+            /** Projects */
+            projects: components["schemas"]["OverviewProjectRead"][];
+            /** Terms Estimated */
+            terms_estimated: boolean;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Weeks */
+            weeks: components["schemas"]["OverviewWeekRead"][];
+        };
+        /**
+         * OverviewWeekRead
+         * @description One week of the range: hours, billing and pay, and whether it is still a forecast.
+         */
+        OverviewWeekRead: {
+            /** Billing */
+            billing?: string | null;
+            /** Forecast */
+            forecast: boolean;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** Pay */
+            pay?: string | null;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
+        /**
          * PartPair
          * @description One person on one slot of the proposal.
          */
@@ -3593,6 +3770,28 @@ export interface components {
             pay?: string | null;
             /** Shifts Missing Rate */
             shifts_missing_rate: number;
+        };
+        /**
+         * PeopleRead
+         * @description Active Employees and Managers, who works this week, and the temporary workers.
+         */
+        PeopleRead: {
+            /** Active */
+            active: number;
+            /**
+             * Near Weekly Limit
+             * @description People scheduled this week within 4 hours of the most hours in a week.
+             */
+            near_weekly_limit: number;
+            /** Temporary */
+            temporary: number;
+            /**
+             * Temporary Ending Soon
+             * @description Temporary workers whose last day is within 14 days.
+             */
+            temporary_ending_soon: number;
+            /** Working This Week */
+            working_this_week: number;
         };
         /**
          * Placed
@@ -10069,6 +10268,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HoursReportRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_reports_overview_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewRead"];
                 };
             };
             /** @description Missing, invalid or expired credentials. */
