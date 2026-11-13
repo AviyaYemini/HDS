@@ -1074,5 +1074,16 @@
   "staff.type_filter": "סוג העסקה",
   "staff.type.all": "כולם",
   "staff.type.permanent": "קבועים",
-  "staff.type.temporary": "זמניים"
+  "staff.type.temporary": "זמניים",
+  "staff.employment": "סוג העסקה",
+  "staff.kind.permanent": "קבוע",
+  "staff.kind.temporary": "זמני",
+  "staff.engaged_from": "תחילת ההעסקה",
+  "staff.engaged_until": "סוף ההעסקה",
+  "staff.engaged_until_help": "עד 3 חודשים מתחילת ההעסקה.",
+  "staff.until_before_from": "הסוף לפני ההתחלה.",
+  "staff.until_too_far": "עד 3 חודשים: לכל המאוחר {{date}}.",
+  "staff.projects": "פרויקטים",
+  "employees.temporary_period_invalid": "להעסקה זמנית צריך תאריך התחלה ותאריך סוף, עד 3 חודשים ביניהם.",
+  "employees.temporary_projects_required": "להעסקה זמנית צריך לבחור לפחות פרויקט אחד."
 }

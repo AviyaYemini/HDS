@@ -1074,5 +1074,16 @@
   "staff.type_filter": "Employment",
   "staff.type.all": "All",
   "staff.type.permanent": "Permanent",
-  "staff.type.temporary": "Temporary"
+  "staff.type.temporary": "Temporary",
+  "staff.employment": "Employment",
+  "staff.kind.permanent": "Permanent",
+  "staff.kind.temporary": "Temporary",
+  "staff.engaged_from": "Starts",
+  "staff.engaged_until": "Ends",
+  "staff.engaged_until_help": "At most 3 months after the start.",
+  "staff.until_before_from": "The end is before the start.",
+  "staff.until_too_far": "At most 3 months: {{date}} at the latest.",
+  "staff.projects": "Projects",
+  "employees.temporary_period_invalid": "A temporary worker needs a start and an end, at most 3 months apart.",
+  "employees.temporary_projects_required": "A temporary worker needs at least one project."
 }

@@ -12,12 +12,12 @@ import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
-import { DEFAULT_TIME_ZONE, formatMoney, isolateLtr, startOfWeek, todayIn } from "../../locale";
+import { DEFAULT_TIME_ZONE, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
 import { useLoad } from "../useLoad";
 import { AdminTable } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec } from "./RecordForm";
-import { dayMonth, employmentOf, nearWeeklyLimit, passesType, typeFilterOf, type TypeFilter } from "./staffModel";
+import { dayMonth, employmentOf, maxEngagedUntil, nearWeeklyLimit, passesType, typeFilterOf, type TypeFilter } from "./staffModel";
 import { orNull } from "./text";
 
 /** Hours by person over `from`–`to`, from the hours report (published shifts that are over). */
@@ -50,6 +50,29 @@ export function StaffScreen() {
   const maxWeekly = limits.data ?? null;
   const hoursText = (map: Map<string, number> | null, id: string) => (map === null ? "…" : map.has(id) ? t("pay.hours", { hours: map.get(id)!.toFixed(1).replace(/\.0$/, "") }) : "—");
   const roles = ["employee", "manager", "admin"] as const;
+  // The projects a temporary worker can be on (CEO demo §1): the active ones.
+  const projects = useLoad(async () => (await call(api.GET("/api/v1/projects"))).items.filter((p) => p.status === "active"), []);
+  const temporary = (v: Record<string, string>) => v.employment_type === "temporary";
+  const employmentFields: FieldSpec[] = [
+    { name: "employment_type", label: t("staff.employment"), kind: "choice", options: (["permanent", "temporary"] as const).map((v) => ({ value: v, label: t(`staff.kind.${v}`) })) },
+    { name: "engaged_from", label: t("staff.engaged_from"), kind: "date", required: true, when: temporary },
+    {
+      name: "engaged_until",
+      label: t("staff.engaged_until"),
+      kind: "date",
+      required: true,
+      when: temporary,
+      helper: t("staff.engaged_until_help"),
+      validate: (until, v) => {
+        const from = v.engaged_from ?? "";
+        if (!from) return null;
+        if (until < from) return t("staff.until_before_from");
+        const latest = maxEngagedUntil(from);
+        return until > latest ? t("staff.until_too_far", { date: formatNumericDate(latest) }) : null;
+      },
+    },
+    { name: "project_ids", label: t("staff.projects"), kind: "picks", required: true, when: temporary, items: (projects.data ?? []).map((p) => ({ id: p.id, label: p.name })) },
+  ];
   const fields = (existing: boolean): FieldSpec[] => [
     { name: "full_name", label: t("entity.full_name"), required: true },
     { name: "email", label: t("entity.email"), kind: "email", required: true, fixedOnceSaved: true },
@@ -57,6 +80,7 @@ export function StaffScreen() {
     { name: "phone", label: t("entity.phone") },
     { name: "default_hourly_rate", label: t("entity.default_hourly_rate"), kind: "money", scope: t("scope.hourly_rate") },
     ...(existing ? [] : [{ name: "initial_password", label: t("entity.initial_password"), required: true, helper: t("entity.initial_password_help") }]),
+    ...employmentFields,
   ];
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.full_name"), sortable: true, render: (u) => u.full_name },
@@ -134,7 +158,25 @@ export function StaffScreen() {
         set: async (u, to) => void (await call(to ? api.POST("/api/v1/employees/{id}/reactivate", { params: { path: { id: u.id } } }) : api.POST("/api/v1/employees/{id}/deactivate", { params: { path: { id: u.id } } }))),
       }}
       onDelete={capabilities.has("staff.delete") ? async (u, urgent) => void (await call(api.DELETE("/api/v1/employees/{id}", { params: { path: { id: u.id } }, keepalive: urgent }))) : null}
-      panel={({ row, saved }) => (
+      panel={({ row, saved }) => {
+        const job = row ? employmentOf(row) : null;
+        const jobInitial = {
+          employment_type: job?.employment_type ?? "permanent",
+          engaged_from: job?.engaged_from ?? "",
+          engaged_until: job?.engaged_until ?? "",
+          project_ids: (job?.project_ids ?? []).join(","),
+        };
+        /**
+         * The employment fields (demo plan §1), sent only when one changed: a temporary worker's dates
+         * and projects; permanent clears them on the API's side.
+         */
+        const employment = (v: Record<string, string>): Record<string, unknown> => {
+          const changed = (Object.keys(jobInitial) as (keyof typeof jobInitial)[]).some((k) => (v[k] ?? "") !== jobInitial[k]);
+          if (!changed) return {};
+          if (!temporary(v)) return { employment_type: "permanent" };
+          return { employment_type: "temporary", engaged_from: v.engaged_from, engaged_until: v.engaged_until, project_ids: (v.project_ids ?? "").split(",").filter(Boolean) };
+        };
+        return (
         <RecordForm
           key={row?.id ?? "new"}
           existing={row !== null}
@@ -145,6 +187,7 @@ export function StaffScreen() {
             role: row?.role ?? "employee",
             phone: row?.phone ?? "",
             default_hourly_rate: row?.default_hourly_rate ? moneyText(row.default_hourly_rate) : "",
+            ...jobInitial,
           }}
           onSave={async (v) => {
             const role = v.role as (typeof roles)[number];
@@ -153,15 +196,16 @@ export function StaffScreen() {
             const before = row?.default_hourly_rate ? moneyText(row.default_hourly_rate) : "";
             const rate = (v.default_hourly_rate ?? "") !== before ? { default_hourly_rate: orNull(v.default_hourly_rate) } : {};
             if (row) {
-              await call(api.PATCH("/api/v1/employees/{id}", { params: { path: { id: row.id } }, body: { full_name: v.full_name!.trim(), role, phone: orNull(v.phone), ...rate } }));
+              await call(api.PATCH("/api/v1/employees/{id}", { params: { path: { id: row.id } }, body: { full_name: v.full_name!.trim(), role, phone: orNull(v.phone), ...rate, ...employment(v) } }));
               await saved(row.id);
             } else {
-              const made = await call(api.POST("/api/v1/employees", { body: { full_name: v.full_name!.trim(), email: v.email!.trim(), role, phone: orNull(v.phone), ...rate, initial_password: v.initial_password ?? "" } }));
+              const made = await call(api.POST("/api/v1/employees", { body: { full_name: v.full_name!.trim(), email: v.email!.trim(), role, phone: orNull(v.phone), ...rate, ...employment(v), initial_password: v.initial_password ?? "" } }));
               await saved(made.id);
             }
           }}
         />
-      )}
+        );
+      }}
     />
   );
 }

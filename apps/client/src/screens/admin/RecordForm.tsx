@@ -24,12 +24,14 @@ export type Values = Record<string, string>;
 export interface FieldSpec {
   name: string;
   label: string;
-  kind?: "text" | "email" | "money" | "percent" | "minutes" | "date" | "time" | "choice" | "pick";
+  kind?: "text" | "email" | "money" | "percent" | "minutes" | "date" | "time" | "choice" | "pick" | "picks";
   required?: boolean;
   /** For a `choice`: two to five options, as a segmented control. */
   options?: readonly { value: string; label: string }[];
-  /** For a `pick`: a long list (clients, sites), as the searchable picker. */
+  /** For a `pick`: a long list (clients, sites), as the searchable picker; for `picks`, several, as toggles. */
   items?: readonly PickerItem[];
+  /** Shown, checked and saved only while this holds (a temporary worker's dates). */
+  when?: (values: Values) => boolean;
   /** For a pay field: what its change reaches, named in the confirmation (FR-046). */
   scope?: string;
   /** A further check of the value, given every value; the error's text, or null. */
@@ -57,6 +59,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** The error a field's value has, or null (required, the kind's format, then its own check). */
 export function fieldError(field: FieldSpec, values: Values, t: (key: string) => string): string | null {
+  if (field.when && !field.when(values)) return null;
   const value = (values[field.name] ?? "").trim();
   if (value === "") return field.required ? t("form.required") : null;
   if (field.kind === "money" && !MONEY.test(value)) return t("form.money_invalid");
@@ -177,11 +180,48 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
       ) : null}
       {saveError ? <InlineBanner tone="warning" title={errorText(saveError)} /> : null}
       {fields.map((field) => {
+        if (field.when && !field.when(values)) return null;
         const error = shownErrors[field.name] ?? null;
         const readOnly = existing && field.fixedOnceSaved === true;
         const label = field.required ? `${field.label} *` : field.label;
         let input: ReactNode;
-        if (field.kind === "pick" && field.items) {
+        if (field.kind === "picks" && field.items) {
+          // Several choices, a comma-separated list of ids, each a toggle (a temporary worker's projects).
+          const chosen = new Set((values[field.name] ?? "").split(",").filter(Boolean));
+          input = (
+            <View testID={`field-${field.name}`} style={styles.field}>
+              <Txt role="label">{label}</Txt>
+              <View style={styles.picks}>
+                {field.items.map((item) => {
+                  const on = chosen.has(item.id);
+                  return (
+                    <Button
+                      key={item.id}
+                      variant={on ? "primary" : "secondary"}
+                      icon={on ? "check" : undefined}
+                      label={item.label}
+                      disabled={readOnly}
+                      web={{ "aria-pressed": String(on) }}
+                      onPress={() => {
+                        const next = new Set(chosen);
+                        if (on) next.delete(item.id);
+                        else next.add(item.id);
+                        set(field.name, [...next].join(","));
+                        leave(field);
+                      }}
+                      testID={`field-${field.name}-${item.id}`}
+                    />
+                  );
+                })}
+              </View>
+              {error ? (
+                <Txt role="meta" tone="danger" testID={`field-error-${field.name}`}>
+                  {error}
+                </Txt>
+              ) : null}
+            </View>
+          );
+        } else if (field.kind === "pick" && field.items) {
           input = (
             <SearchablePicker
               label={label}
@@ -286,6 +326,7 @@ export function RecordForm({ fields, initial, existing, onSave, children, testID
 const styles = StyleSheet.create({
   form: { gap: 16 },
   field: { gap: 4 },
+  picks: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   summary: { gap: 4, padding: 12, borderWidth: 2 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   confirm: { gap: 16 },
