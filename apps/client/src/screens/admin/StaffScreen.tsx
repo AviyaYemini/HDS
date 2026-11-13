@@ -12,12 +12,13 @@ import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
-import { DEFAULT_TIME_ZONE, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
+import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
+import { allShifts } from "../roster/allShifts";
 import { useLoad } from "../useLoad";
 import { AdminTable } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec } from "./RecordForm";
-import { dayMonth, employmentOf, maxEngagedUntil, nearWeeklyLimit, passesType, typeFilterOf, type TypeFilter } from "./staffModel";
+import { dayMonth, employmentOf, maxEngagedUntil, nearWeeklyLimit, passesType, scheduledHours, typeFilterOf, type TypeFilter } from "./staffModel";
 import { orNull } from "./text";
 
 /** Hours by person over `from`–`to`, from the hours report (published shifts that are over). */
@@ -43,8 +44,10 @@ export function StaffScreen() {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const week = startOfWeek(today);
   const month = periodRange("month", today);
-  // Reports never ask past today (the hours report counts only shifts that are over).
-  const weekHours = useHoursByPerson(week, today);
+  // This week: scheduled hours, drafts included, the overview's own rule for "near the limit".
+  const weekShifts = useLoad(() => allShifts(api, week, addDays(week, 6)), [week]);
+  const weekHours = weekShifts.error ? new Map<string, number>() : weekShifts.data ? scheduledHours(weekShifts.data) : null;
+  // This month: hours worked, from the report (never past today; only shifts that are over).
   const monthHours = useHoursByPerson(month.from, today);
   const limits = useLoad(async () => (await call(api.GET("/api/v1/organisation/scheduling"))).max_weekly_hours, []);
   const maxWeekly = limits.data ?? null;

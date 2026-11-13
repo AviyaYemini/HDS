@@ -37,6 +37,20 @@ export function typeFilterOf(value: string | undefined): TypeFilter {
   return value === "temporary" || value === "permanent" ? value : "all";
 }
 
+/**
+ * Each person's scheduled hours over `shifts` (drafts and published), by their own times on each
+ * assignment: the same count as the overview's `near_weekly_limit` (the helper, 2026-11-13).
+ */
+export function scheduledHours(shifts: readonly { assignments: readonly { user_id: string; starts_at: string; ends_at: string }[] }[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const s of shifts)
+    for (const a of s.assignments) {
+      const hours = (Date.parse(a.ends_at) - Date.parse(a.starts_at)) / 3_600_000;
+      if (hours > 0) out.set(a.user_id, (out.get(a.user_id) ?? 0) + hours);
+    }
+  return out;
+}
+
 /** How close to the weekly maximum counts as near it (demo plan: within 4 hours). */
 export const NEAR_LIMIT_HOURS = 4;
 

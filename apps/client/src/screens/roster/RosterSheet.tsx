@@ -18,26 +18,13 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { useLoad } from "../useLoad";
-import { weekDays, type Shift } from "./model";
+import { allShifts } from "./allShifts";
+import { weekDays } from "./model";
 import { rosterHref } from "./ProjectChooser";
 import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, type SheetRow } from "./sheet";
 
 const LABEL_WIDTH = 176;
 const DAY_MIN_WIDTH = 124;
-
-/** Every page of the week's shifts across the projects the reader sees. */
-async function allShifts(api: ReturnType<typeof useSession>["api"], from: string, to: string): Promise<Shift[]> {
-  const all: Shift[] = [];
-  let cursor: string | null = null;
-  do {
-    const query: { from: string; to: string; limit: number; cursor?: string } = { from, to, limit: 200 };
-    if (cursor) query.cursor = cursor;
-    const page: { items: Shift[]; next_cursor?: string | null } = await call(api.GET("/api/v1/shifts", { params: { query } }));
-    all.push(...page.items);
-    cursor = page.next_cursor ?? null;
-  } while (cursor);
-  return all;
-}
 
 export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const { t, i18n } = useTranslation();
