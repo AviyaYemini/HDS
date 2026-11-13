@@ -20,8 +20,13 @@ export function useStickyClearance(bar: RefObject<ComponentRef<typeof View> | nu
     while (area && !/(auto|scroll)/.test(getComputedStyle(area).overflowY)) area = area.parentElement;
     const target = area ?? document.documentElement;
     const before = target.style.getPropertyValue("scroll-padding-bottom");
-    target.style.setProperty("scroll-padding-bottom", `${Math.ceil(node.getBoundingClientRect().height) + GAP}px`);
+    const apply = () => target.style.setProperty("scroll-padding-bottom", `${Math.ceil(node.getBoundingClientRect().height) + GAP}px`);
+    apply();
+    // The bar grows when its labels wrap (a narrower screen, another language): follow its height.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    observer?.observe(node);
     return () => {
+      observer?.disconnect();
       target.style.setProperty("scroll-padding-bottom", before);
     };
   }, [bar, on]);

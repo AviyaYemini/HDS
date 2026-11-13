@@ -103,9 +103,12 @@ def _own_span(
 
     if start is None:
         assert end is not None, "a start or an end"
+        # Day by local day, so a clock change overnight keeps the written time.
+        offset = 0
         until = at(0, end)
         while until <= shift_start:
-            until += dt.timedelta(days=1)
+            offset += 1
+            until = at(offset, end)
         return shift_start, until
     if end is None:
         inside = [at(d, start) for d in (0, 1) if shift_start <= at(d, start) < shift_end]
@@ -113,7 +116,8 @@ def _own_span(
 
     def window(offset: int) -> tuple[dt.datetime, dt.datetime]:
         begins, ends = at(offset, start), at(offset, end)
-        return begins, ends if ends > begins else ends + dt.timedelta(days=1)
+        # Past midnight it ends on the next local day (not 24 hours on), across a clock change too.
+        return begins, ends if ends > begins else at(offset + 1, end)
 
     same, next_day = window(0), window(1)
     return next_day if overlap(next_day) > overlap(same) else same
