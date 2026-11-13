@@ -41,7 +41,7 @@ test("percents, coverage and chips", () => {
 });
 
 test("the dashboard asks this month and shows the API's figures, the panel, the chips and the note", async () => {
-  const api = new FakeApi().on("GET", "/api/v1/reports/overview", json(200, OVERVIEW));
+  const api = new FakeApi().on("GET", "/api/v1/reports/overview", json(200, { ...OVERVIEW, rostered_until: "2026-11-21" }));
   await renderWith(await signedIn(api), <OverviewScreen />);
   expect(await screen.findByTestId("figure-billing", {}, { timeout: 5000 })).toHaveTextContent(/01\s*Billing · so far/);
   const asked = new URLSearchParams(api.calls("GET", "/api/v1/reports/overview")[0]!.query);
@@ -58,7 +58,9 @@ test("the dashboard asks this month and shows the API's figures, the panel, the 
   // Whole shekels on the dashboard, and each figure against the previous period (the owner, 2026-11-13).
   expect(screen.getByTestId("figure-billing")).toHaveTextContent(/₪219,860(?![.,]\d)/);
   expect(screen.getByTestId("figure-billing-change")).toHaveTextContent("\u2066▲ 9.4%\u2069 vs the previous month");
-  expect(screen.getByTestId("figure-forecast-change")).toHaveTextContent("\u2066▲ 6.2%\u2069 vs the previous month · margin \u2066▲ 0.1\u2069 pt");
+  // The forecast against the same days of the month before, up to where the roster runs.
+  expect(screen.getByTestId("figure-forecast-change")).toHaveTextContent("\u2066▲ 46%\u2069 vs the same days of October");
+  expect(screen.getByTestId("figure-forecast")).toHaveTextContent(/rostered to 21\.11 · margin \u206618%\u2069 \(\u2066▲ 0\.1\u2069 pt\)/);
   expect(screen.getByTestId("figure-coverage-change")).toHaveTextContent("Next week 90% · 10 empty");
   expect(screen.getByTestId("greeting")).toHaveTextContent(/^Good (morning|afternoon|evening), Dana · /);
   // A project's card opens its roster week, and says next week's empty places.

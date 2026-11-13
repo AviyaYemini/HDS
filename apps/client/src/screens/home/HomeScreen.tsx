@@ -34,9 +34,11 @@ import {
   formatNumericDate,
   formatNumericRange,
   formatTimeRange,
+  startOfWeek,
   todayIn,
 } from "../../locale";
 import { nearestOpenWindow } from "../availability";
+import { allShifts } from "../roster/allShifts";
 import { useLoad } from "../useLoad";
 
 /** The next published shift, as a feature panel (FR-022's first form; group C finishes it). */
@@ -180,6 +182,12 @@ function ManagerCards() {
     const rows = (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id: open.id } } }))).items;
     return { window: open.id, count: rows.filter((r) => r.status === "not_submitted").length };
   }, [today]);
+  // Unpublished shifts across the coming weeks, not only this one (the owner, 2026-11-13).
+  const drafts = useLoad(async () => {
+    const found = await allShifts(session.api, today, addDays(today, 27), "draft");
+    const first = found.map((x) => x.starts_at).sort()[0];
+    return { count: found.length, week: first ? startOfWeek(first.slice(0, 10)) : null };
+  }, [today]);
   // Each shift counts at most its headcount, so an overfilled one never shows more than full.
   const filled = (shifts.data ?? []).reduce((n, s) => n + Math.min(s.assignments.length, s.headcount), 0);
   const required = (shifts.data ?? []).reduce((n, s) => n + s.headcount, 0);
@@ -196,6 +204,11 @@ function ManagerCards() {
           <FigureCard titleKey="home.coverage_today" value={`${filled}/${required}`} href="/roster" testID="home-card-coverage" />
           <FigureCard titleKey="home.unfilled" value={String(open)} href="/roster" testID="home-card-unfilled" />
         </>
+      )}
+      {drafts.data === null && !drafts.error ? (
+        <PendingCard titleKey="home.unpublished" testID="home-card-unpublished" />
+      ) : (
+        <FigureCard titleKey="home.unpublished" value={String(drafts.data?.count ?? 0)} href={drafts.data?.week ? `/roster?week=${drafts.data.week}` : "/roster"} testID="home-card-unpublished" />
       )}
       {missing.data === null && !missing.error ? (
         <PendingCard titleKey="home.not_submitted" testID="home-card-not-submitted" />
@@ -227,6 +240,13 @@ function ManagerHome({ admin }: { admin: boolean }) {
   const { t } = useTranslation();
   const session = useSession();
   const { colors } = useTheme();
+  // "Set up HDS" only until the organisation has projects and staff (the owner, 2026-11-13).
+  const setup = useLoad(async () => {
+    if (!admin) return { projects: 1, staff: 1 };
+    const [projects, staff] = await Promise.all([call(session.api.GET("/api/v1/projects")), call(session.api.GET("/api/v1/employees", { params: { query: { is_active: true } } }))]);
+    return { projects: projects.items.length, staff: staff.items.filter((u) => u.role !== "client" && u.id !== session.user?.id).length };
+  }, [admin]);
+  const needsSetup = setup.data !== null && (setup.data.projects === 0 || setup.data.staff === 0);
   return (
     <Screen testID="screen-home">
       <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("home.greeting", { name: firstName(session.user?.full_name) })} />
@@ -236,7 +256,7 @@ function ManagerHome({ admin }: { admin: boolean }) {
         <QuickLink href="/roster/submissions" icon="list" label={t("nav.submissions")} testID="home-link-submissions" />
         <QuickLink href="/runs" icon="play" label={t("nav.runs")} testID="home-link-runs" />
       </View>
-      {admin ? (
+      {admin && needsSetup ? (
         <View testID="home-setup" style={[styles.card, { borderColor: colors.border.strong }]}>
           <Txt role="eyebrow" tone="secondary">
             {t("nav.group.admin")}

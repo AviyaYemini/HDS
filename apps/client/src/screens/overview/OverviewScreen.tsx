@@ -12,7 +12,7 @@ import { StyleSheet, View } from "react-native";
 
 import { call, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Table, Txt, type Column } from "../../design/components";
+import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, StatusChip, Table, Txt, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
@@ -21,7 +21,7 @@ import { DEFAULT_TIME_ZONE, formatHeaderDate, formatMoney, isolateLtr, todayIn }
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { Candles, Donut } from "../deck/Charts";
 import { pieSlices, sumAmounts, weeklyCandles } from "../deck/chartMath";
-import { CardList, ColumnBars, KeyFigures, SectionHead, Sparkline, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { CardList, DashboardSkeleton, ColumnBars, KeyFigures, SectionHead, Sparkline, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { changePct, changePoints, firstName, formatChange, formatMoneyWhole, greetingKey } from "../deck/polish";
 import { useEntrance } from "../deck/useEntrance";
 import { rosterHref } from "../roster/ProjectChooser";
@@ -55,6 +55,14 @@ export function OverviewScreen() {
     // Isolated left to right, so the arrow stays before its number inside Hebrew.
     return shown ? t(`snapshot.change.${period}`, { change: isolateLtr(shown) }) : null;
   };
+  // The forecast's comparison: the same days of the period before, up to where the roster runs.
+  const previousName =
+    prev && period === "month" ? new Intl.DateTimeFormat(i18n.language === "he" ? "he-IL" : "en-GB", { month: "long", timeZone: "UTC" }).format(new Date(`${prev.from}T12:00:00Z`)) : "";
+  const vsSameSpan = (pct: number | null) => {
+    const shown = formatChange(pct);
+    return shown ? t(`snapshot.change_span.${period}`, { change: isolateLtr(shown), month: previousName }) : null;
+  };
+  const rosteredTo = d?.rostered_until ? t("snapshot.rostered_until", { date: weekLabel(d.rostered_until) }) : null;
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: DEFAULT_TIME_ZONE }).format(new Date()));
   const greeting = `${t(greetingKey(hour), { name: firstName(session.user?.full_name) })} · ${formatHeaderDate(today, i18n.language)}`;
 
@@ -88,13 +96,15 @@ export function OverviewScreen() {
                 value: whole(d.billing_forecast),
                 raw: d.billing_forecast,
                 count: { to: Number(d.billing_forecast), format: countMoney },
-                change: (() => {
-                  const billing = vsPrevious(changePct(d.billing_forecast, prev?.billing));
+                // Against the same span of the period before: the forecast runs only as far as the roster.
+                change: vsSameSpan(changePct(d.billing_forecast, prev?.billing_to_rostered)),
+                // Where the roster (and so the forecast) stops, and the margin with its change.
+                detail: (() => {
                   const points = changePoints(d.margin_pct, prev?.margin_pct);
-                  const margin = points === null ? null : t("snapshot.change.margin", { change: isolateLtr(formatChange(points)!.replace("%", "")) });
-                  return [billing, margin].filter(Boolean).join(" · ") || null;
+                  const margin = d.margin_pct != null ? t("snapshot.margin_is", { margin: formatPercent(d.margin_pct) }) : null;
+                  const change = points === null || margin === null ? null : t("snapshot.change.margin_short", { change: isolateLtr(formatChange(points)!.replace("%", "")) });
+                  return [rosteredTo ?? t("snapshot.figure.forecast_detail"), [margin, change].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
                 })(),
-                detail: d.margin_pct != null ? t("snapshot.figure.forecast_margin", { margin: formatPercent(d.margin_pct) }) : t("snapshot.figure.forecast_detail"),
                 tone: (d.margin_pct != null && Number(d.margin_pct) < 0 ? "danger" : "primary") as KeyFigure["tone"],
               },
             ]
@@ -114,8 +124,8 @@ export function OverviewScreen() {
                 value: formatHoursFigure(d.hours_forecast, i18n.language),
                 raw: d.hours_forecast,
                 count: { to: Number(d.hours_forecast), format: (n: number) => formatHoursFigure(n.toFixed(2), i18n.language) },
-                change: vsPrevious(changePct(d.hours_forecast, prev?.hours)),
-                detail: t("snapshot.figure.forecast_detail"),
+                change: vsSameSpan(changePct(d.hours_forecast, prev?.hours_to_rostered)),
+                detail: rosteredTo ?? t("snapshot.figure.forecast_detail"),
               },
             ]),
         {
@@ -240,7 +250,7 @@ export function OverviewScreen() {
       <Txt role="body" tone="secondary" testID="greeting">
         {greeting}
       </Txt>
-      <PageTitle eyebrow={[t("app.name"), t("nav.overview")]} title={title}>
+      <PageTitle eyebrow={[t("app.name"), t("nav.overview")]} title={title} documentTitle={t("nav.overview")}>
         <SegmentedControl<Period>
           label={t("snapshot.period")}
           options={(["month", "quarter", "year"] as const).map((p) => ({ value: p, label: t(`snapshot.period_${p}`), testID: `period-${p}` }))}
@@ -251,7 +261,7 @@ export function OverviewScreen() {
       {overview.error ? (
         <InlineBanner tone="warning" title={errorText(overview.error)} action={{ label: t("common.retry"), onPress: () => void overview.reload() }} />
       ) : d === null ? (
-        <SkeletonRows rows={6} />
+        <DashboardSkeleton />
       ) : (
         <View style={styles.body}>
           <KeyFigures figures={figures} progress={progress} />

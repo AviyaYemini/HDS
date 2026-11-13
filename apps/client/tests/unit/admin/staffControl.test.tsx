@@ -9,7 +9,7 @@ import * as Router from "expo-router";
 import type { Me } from "../../../src/api/session";
 import { setupI18n } from "../../../src/i18n";
 import { StaffScreen } from "../../../src/screens/admin";
-import { daysLeft, dayMonth, employmentOf, maxEngagedUntil, passesType, scheduledHours, typeFilterOf } from "../../../src/screens/admin/staffModel";
+import { daysLeft, dayMonth, employmentOf, endingSoon, initials, maxEngagedUntil, passesType, scheduledHours, typeFilterOf } from "../../../src/screens/admin/staffModel";
 import { FakeApi, ME, json, renderWith, signedIn } from "../fakeApi";
 
 const router = Router as unknown as { __setSearchParams: (p: Record<string, string>) => void };
@@ -44,7 +44,7 @@ test("hours and the temporary chip, with no weekly-limit flag", async () => {
   expect(screen.queryByTestId("card-temporary-u1")).toBeNull();
   expect(await screen.findByText("45 h", {}, { timeout: 5000 })).toBeTruthy();
   expect(screen.getByText("120 h")).toBeTruthy();
-  expect(screen.getAllByText("This week · rostered").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("This week").length).toBeGreaterThan(0);
   // No weekly-limit flag: warnings are out of the app's scope (the owner, 2026-11-13).
   expect(screen.queryByText(/Near 48/)).toBeNull();
 });
@@ -72,4 +72,27 @@ test("the model: employment, filter, limit, dates", () => {
   expect(daysLeft("2026-11-13", "2026-11-27")).toBe(14);
   const twice = { user_id: "u1", starts_at: "2026-11-10T05:00:00Z", ends_at: "2026-11-10T09:30:00Z" };
   expect(scheduledHours([{ assignments: [twice] }, { assignments: [twice, { ...twice, user_id: "u2" }] }])).toEqual(new Map([["u1", 9], ["u2", 4.5]]));
+});
+
+test("initials and a temporary worker ending soon", () => {
+  expect(initials("Dana Levi")).toBe("DL");
+  expect(initials("Noa Ben David")).toBe("ND");
+  expect(initials("Omer")).toBe("O");
+  expect(initials("")).toBe("");
+  expect(initials("דנה לוי")).toBe("דל");
+  const temp = (until: string) => ({ ...OMER, engaged_until: until });
+  expect(endingSoon(temp("2026-11-27"), "2026-11-13")).toBe(14);
+  expect(endingSoon(temp("2026-11-28"), "2026-11-13")).toBeNull();
+  expect(endingSoon(temp("2026-11-13"), "2026-11-13")).toBe(0);
+  expect(endingSoon(temp("2026-11-12"), "2026-11-13")).toBeNull();
+  expect(endingSoon(DANA, "2026-11-13")).toBeNull();
+});
+
+test("a temporary worker within 14 days of the end gets an 'ending soon' chip", async () => {
+  router.__setSearchParams({});
+  const soon = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
+  const fake = api().on("GET", "/api/v1/employees", json(200, { items: [DANA, { ...OMER, engaged_until: soon }] }));
+  await renderWith(await signedIn(fake), <StaffScreen />);
+  expect(await screen.findByTestId("card-ending-u2", {}, { timeout: 5000 })).toHaveTextContent(/Ends in [45] days/);
+  expect(screen.queryByTestId("card-ending-u1")).toBeNull();
 });
