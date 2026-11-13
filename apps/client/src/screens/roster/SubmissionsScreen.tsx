@@ -35,8 +35,11 @@ export function SubmissionsScreen() {
   const [query, setQuery] = useState("");
   // Without ?window=, the window whose deadline comes next, as the home's card follows (R117).
   const rows = useLoad(async () => {
-    const windows = (await call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: addDays(today, -60), to: addDays(today, 60) } } }))).items;
-    const chosen = window ? (windows.find((w) => w.id === window) ?? null) : nearestOpenWindow(windows, Date.now());
+    const list = async (back: number, ahead: number) => (await call(session.api.GET("/api/v1/availability-windows", { params: { query: { from: addDays(today, -back), to: addDays(today, ahead) } } }))).items;
+    const windows = await list(60, 60);
+    // A window named in the address may lie outside the nearby range: look further for its dates.
+    const named = window ? (windows.find((w) => w.id === window) ?? (await list(730, 365)).find((w) => w.id === window) ?? null) : null;
+    const chosen = window ? named : nearestOpenWindow(windows, Date.now());
     const id = window ?? chosen?.id ?? null;
     if (id === null) return { items: null, window: null };
     return { items: (await call(session.api.GET("/api/v1/availability-windows/{id}/submissions", { params: { path: { id } } }))).items, window: chosen };

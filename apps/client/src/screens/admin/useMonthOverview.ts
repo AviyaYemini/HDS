@@ -10,9 +10,14 @@ import { periodRange, type OverviewProject } from "../overview/model";
 import { useLoad } from "../useLoad";
 
 export function useMonthOverview(): Map<string, OverviewProject> | null {
+  return useMonthOverviewWithReload().byId;
+}
+
+/** The same, with a way to read it again after a change it shows (a project's managers). */
+export function useMonthOverviewWithReload(): { byId: Map<string, OverviewProject> | null; reload: () => Promise<void> } {
   const { api } = useSession();
   const month = periodRange("month", todayIn(DEFAULT_TIME_ZONE));
   const overview = useLoad(async () => (await call(api.GET("/api/v1/reports/overview", { params: { query: month } }))).projects, [month.from]);
-  if (overview.error) return new Map();
-  return overview.data ? new Map(overview.data.map((p) => [p.id, p])) : null;
+  const byId = overview.error ? new Map<string, OverviewProject>() : overview.data ? new Map(overview.data.map((p) => [p.id, p])) : null;
+  return { byId, reload: overview.reload };
 }

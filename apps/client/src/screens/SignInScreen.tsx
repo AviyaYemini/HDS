@@ -6,7 +6,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import { useErrorText } from "../api/errors";
 import { useSession } from "../api/SessionContext";
@@ -117,7 +117,8 @@ export function SignInScreen() {
     // The deck's title slide: the form on the reading side, the dark brand panel beside it.
     return (
       <View testID="screen-sign-in" {...direction.web} style={[styles.split, direction.style, { backgroundColor: colors.bg.canvas }]}>
-        <View style={styles.formSide}>
+        {/* A short window scrolls the form rather than cutting it off (CodeRabbit, PR 28). */}
+        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formSide} keyboardShouldPersistTaps="handled">
           <View style={styles.display}>
             <LanguageToggle />
           </View>
@@ -125,7 +126,7 @@ export function SignInScreen() {
           <Txt role="meta" tone="secondary">
             {t("brand.company")}
           </Txt>
-        </View>
+        </ScrollView>
         <View testID="brand-panel" style={[styles.panel, { backgroundColor: colors.inverse.bg }]}>
           <SurfaceContext.Provider value="inverse">
             <Txt role="eyebrow" tone="accent">
@@ -170,8 +171,9 @@ const styles = StyleSheet.create({
   display: { flexDirection: "row", justifyContent: "flex-end" },
   card: { gap: 16, maxWidth: 420, width: "100%", alignSelf: "center", paddingTop: 24 },
   split: { flex: 1, flexDirection: "row" },
-  formSide: { flex: 1.15, padding: 48, justifyContent: "space-between", gap: 24 },
-  formCentre: { flex: 1, justifyContent: "center" },
+  formScroll: { flex: 1.15 },
+  formSide: { flexGrow: 1, padding: 48, justifyContent: "space-between", gap: 24 },
+  formCentre: { flexGrow: 1, justifyContent: "center" },
   panel: { flex: 1, padding: 64, justifyContent: "center", gap: 20 },
   tagline: { fontSize: 44, lineHeight: 50 },
   quiet: { borderTopWidth: 1, paddingTop: 20, marginTop: 16, gap: 6 },

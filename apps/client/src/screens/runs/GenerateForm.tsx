@@ -69,6 +69,9 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
     [range.start, range.end, projects.join(",")],
   );
   const hasDrafts = (drafts.data ?? 0) > 0;
+  // Untouched controls wait for the drafts count: a run sent before it would reshuffle the
+  // drafts the default protects (CodeRabbit, PR 28). A failed count offers a retry.
+  const waitingForDrafts = !touched && !noProjects && drafts.data === null;
   const effective: Controls = touched || !hasDrafts ? controls : { ...controls, keep_changes_small: true };
   const key = `run-${form}-${digest(`${range.start}|${range.end}|${projects.join(",")}|${JSON.stringify(effective)}|${JSON.stringify(chips)}|${again?.id ?? ""}`)}`;
 
@@ -137,8 +140,9 @@ export function GenerateForm({ onCancel, offered, again, preset }: { onCancel: (
         chips={chips}
         onChips={setChips} projects={offered.filter((p) => projects.includes(p.id))} />
       {error ? <InlineBanner tone="warning" title={errorText(error)} /> : null}
+      {!touched && drafts.error ? <InlineBanner tone="warning" title={errorText(drafts.error)} action={{ label: t("common.retry"), onPress: () => void drafts.reload() }} testID="run-drafts-error" /> : null}
       <View style={styles.formActions}>
-        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong || noProjects} disabledReason={tooLong ? t("schedule.range_invalid") : noProjects ? t("runs.projects_none") : undefined} testID="action-generate" />
+        <Button variant="primary" icon="play" label={t("runs.generate")} onPress={() => void generate()} busy={busy} disabled={tooLong || noProjects || waitingForDrafts} disabledReason={tooLong ? t("schedule.range_invalid") : noProjects ? t("runs.projects_none") : waitingForDrafts && drafts.error ? t("runs.drafts_unknown") : undefined} testID="action-generate" />
         <Button label={t("common.cancel")} onPress={onCancel} testID="action-cancel-run" />
       </View>
     </View>

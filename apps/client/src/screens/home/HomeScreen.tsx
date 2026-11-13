@@ -185,8 +185,9 @@ function ManagerCards() {
   // Unpublished shifts across the coming weeks, not only this one (the owner, 2026-11-13).
   const drafts = useLoad(async () => {
     const found = await allShifts(session.api, today, addDays(today, 27), "draft");
-    const first = found.map((x) => x.starts_at).sort()[0];
-    return { count: found.length, week: first ? startOfWeek(first.slice(0, 10)) : null };
+    // The earliest draft's week, by its own site's calendar day (a late UTC hour is the next day there).
+    const first = [...found].sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
+    return { count: found.length, week: first ? startOfWeek(dateOf(first.starts_at, first.timezone)) : null };
   }, [today]);
   // Each shift counts at most its headcount, so an overfilled one never shows more than full.
   const filled = (shifts.data ?? []).reduce((n, s) => n + Math.min(s.assignments.length, s.headcount), 0);
@@ -208,7 +209,7 @@ function ManagerCards() {
       {drafts.data === null && !drafts.error ? (
         <PendingCard titleKey="home.unpublished" testID="home-card-unpublished" />
       ) : (
-        <FigureCard titleKey="home.unpublished" value={String(drafts.data?.count ?? 0)} href={drafts.data?.week ? `/roster?week=${drafts.data.week}` : "/roster"} testID="home-card-unpublished" />
+        <FigureCard titleKey="home.unpublished" value={drafts.error ? "—" : String(drafts.data?.count ?? 0)} href={drafts.data?.week ? `/roster?week=${drafts.data.week}` : "/roster"} testID="home-card-unpublished" />
       )}
       {missing.data === null && !missing.error ? (
         <PendingCard titleKey="home.not_submitted" testID="home-card-not-submitted" />

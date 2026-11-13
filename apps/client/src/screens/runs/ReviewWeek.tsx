@@ -7,7 +7,7 @@
  * rule warnings: out of scope, the owner, 2026-11-13). Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
-import { useState } from "react";
+import { useRef, useState, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, View } from "react-native";
 
@@ -22,6 +22,7 @@ import { useEntrance } from "../deck/useEntrance";
 import { useLoad } from "../useLoad";
 import { HonestyLabel } from "./HonestyLabel";
 import { RunScope } from "./RunScope";
+import { useStickyClearance } from "./useStickyClearance";
 import { peoplePlaced, proposalSheet, solveSeconds } from "./runSummary";
 import { FairnessPanel } from "./FairnessPanel";
 import { weeksOf, type Job, type Names } from "./model";
@@ -79,6 +80,9 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   const [byProject, setByProject] = useState(false);
   const [sheetWidth, setSheetWidth] = useState(0);
   const progress = useEntrance(shown ? `${job.id}|${shown.version}` : null);
+  // A focused element scrolls above the phone's sticky bar, never under it (WCAG 2.4.11).
+  const barRef = useRef<ComponentRef<typeof View>>(null);
+  useStickyClearance(barRef, !isDesktop && shown?.state === "open");
 
   if (loaded.error && !shown) {
     return <InlineBanner tone="warning" title={errorText(loaded.error)} action={{ label: t("common.retry"), onPress: loaded.reload }} />;
@@ -206,7 +210,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
       </Disclosure>
     ) : null;
   const phoneBar = showBar ? (
-    <View testID="accept-bar" {...STICKY} style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
+    <View ref={barRef} testID="accept-bar" {...STICKY} style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
       {acceptAllButton(true)}
       {discardButtonFor(true)}
       {undoButton(true)}

@@ -131,13 +131,13 @@ export function RosterScreen() {
         </Txt>
       ) : null}
       <View style={styles.weekSwitch} testID="roster-week-switch">
-        <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => router.setParams({ week: addDays(week, -7) } as never)} testID="action-prev-week" />
+        <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => router.setParams({ week: addDays(week, -7), day: undefined } as never)} testID="action-prev-week" />
         <Txt role="section" numeric testID="roster-week-range">
           {`\u2066${Number(days[0]!.slice(8))}.${Number(days[0]!.slice(5, 7))} – ${Number(days[6]!.slice(8))}.${Number(days[6]!.slice(5, 7))}\u2069`}
         </Txt>
-        <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={t("sheet.next_week")} onPress={() => router.setParams({ week: addDays(week, 7) } as never)} testID="action-next-week" />
+        <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={t("sheet.next_week")} onPress={() => router.setParams({ week: addDays(week, 7), day: undefined } as never)} testID="action-next-week" />
         {week !== startOfWeek(todayIn(DEFAULT_TIME_ZONE)) ? (
-          <Button variant="secondary" label={t("sheet.this_week")} onPress={() => router.setParams({ week: startOfWeek(todayIn(DEFAULT_TIME_ZONE)) } as never)} testID="action-this-week" />
+          <Button variant="secondary" label={t("sheet.this_week")} onPress={() => router.setParams({ week: startOfWeek(todayIn(DEFAULT_TIME_ZONE)), day: undefined } as never)} testID="action-this-week" />
         ) : null}
       </View>
       {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={dismissStale} /> : null}

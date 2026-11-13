@@ -90,6 +90,8 @@ export function Table<Row>({
   const { colors, spacing, density, isDesktop } = useTheme();
   const keyboard = useKeyboardMode();
   const [hovered, setHovered] = useState<string | null>(null);
+  // The header's drawn height: a title may wrap to two lines, and the frozen copy must match it.
+  const [headHeight, setHeadHeight] = useState<number | null>(null);
   const rowHeight = Math.max(spacing.rowHeight, component.target.dense);
   const first = columns[0];
   const frozen = scrollable && frozenFirstColumn && first?.width !== undefined;
@@ -227,7 +229,11 @@ export function Table<Row>({
       accessibilityLabel={caption}
       style={[styles.table, !scrollable ? styles.fill : null]}
     >
-      <View role={loading ? undefined : "row"} style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}>
+      <View
+        role={loading ? undefined : "row"}
+        onLayout={frozen ? (e) => setHeadHeight(e.nativeEvent.layout.height) : undefined}
+        style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}
+      >
         {columns.map((column, index) => header(column, index, loading))}
       </View>
       {body}
@@ -248,7 +254,7 @@ export function Table<Row>({
           {...webProps(HIDDEN)}
           style={[styles.frozen, { width: first.width, backgroundColor: colors.bg.canvas, borderEndColor: colors.border.subtle }]}
         >
-          <View style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }]}>
+          <View style={[styles.row, styles.headerRow, { borderBottomColor: colors.border.strong, minHeight: isDesktop ? 36 : 44 }, headHeight !== null ? { height: headHeight } : null]}>
             {header(first, 0, true, false)}
           </View>
           {loading || rows.length === 0 ? null : rows.map((row) => line(row, [first], false))}

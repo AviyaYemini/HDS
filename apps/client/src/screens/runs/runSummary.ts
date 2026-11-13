@@ -20,7 +20,8 @@ export function scopeOf(projectIds: readonly string[], projects: readonly ScopeP
   const chosen = projectIds.map((id) => projects.find((p) => p.id === id)).filter((p): p is ScopeProject => p !== undefined);
   const types = new Set(chosen.map((p) => p.type));
   const type = types.size === 1 ? ([...types][0] === "training" ? "training" : "security") : "mixed";
-  return { all: false, count: projectIds.length, type, names: projectIds.length <= 2 ? chosen.map((p) => p.name) : null };
+  // Names only when every chosen project is known; otherwise the count says it (CodeRabbit, PR 28).
+  return { all: false, count: projectIds.length, type, names: projectIds.length <= 2 && chosen.length === projectIds.length ? chosen.map((p) => p.name) : null };
 }
 
 /** Seconds the run searched, to one decimal (at least 0.1). */
@@ -30,10 +31,13 @@ export function solveSeconds(job: { started_at: string | null; finished_at: stri
   return Math.max(0.1, Math.round(seconds * 10) / 10);
 }
 
-/** How many different people the proposal places (anyone on a slot, not taken off it). */
-export function peoplePlaced(slots: readonly Pick<ReviewSlot, "marks">[]): number {
+/** How many different people the proposal places: anyone on a slot, not taken off it, and anyone it keeps. */
+export function peoplePlaced(slots: readonly Pick<ReviewSlot, "marks" | "kept">[]): number {
   const placed = new Set<string>();
-  for (const slot of slots) for (const mark of slot.marks) if (mark.mark !== "removed") placed.add(mark.user_id);
+  for (const slot of slots) {
+    for (const mark of slot.marks) if (mark.mark !== "removed") placed.add(mark.user_id);
+    for (const id of slot.kept) placed.add(id);
+  }
   return placed.size;
 }
 

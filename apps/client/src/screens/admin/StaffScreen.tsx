@@ -12,7 +12,7 @@ import { StyleSheet, View } from "react-native";
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { Button, SegmentedControl, Sheet, StatusChip, Txt, showToast, type Column } from "../../design/components";
+import { Button, InlineBanner, SegmentedControl, Sheet, StatusChip, Txt, showToast, type Column } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
@@ -75,7 +75,16 @@ export function StaffScreen() {
         return until > latest ? t("staff.until_too_far", { date: formatNumericDate(latest) }) : null;
       },
     },
-    { name: "project_ids", label: t("staff.projects"), kind: "picks", required: true, when: temporary, items: (projects.data ?? []).map((p) => ({ id: p.id, label: p.name })) },
+    {
+      name: "project_ids",
+      label: t("staff.projects"),
+      kind: "picks",
+      required: true,
+      when: temporary,
+      items: (projects.data ?? []).map((p) => ({ id: p.id, label: p.name })),
+      // Say why there is nothing to pick: still loading, failed (retry on the screen), or none active.
+      helper: projects.error ? t("staff.projects_failed") : projects.data === null ? t("common.loading") : projects.data.length === 0 ? t("staff.projects_none") : undefined,
+    },
   ];
   const fields = (existing: boolean): FieldSpec[] => [
     { name: "full_name", label: t("entity.full_name"), required: true },
@@ -213,6 +222,7 @@ export function StaffScreen() {
       }}
       toolbar={
         <>
+          {projects.error ? <InlineBanner tone="warning" title={t("staff.projects_failed")} action={{ label: t("common.retry"), onPress: () => void projects.reload() }} testID="staff-projects-error" /> : null}
           <SegmentedControl<TypeFilter>
             label={t("staff.type_filter")}
             options={(["all", "permanent", "temporary"] as const).map((v) => ({ value: v, label: t(`staff.type.${v}`), testID: `type-${v}` }))}

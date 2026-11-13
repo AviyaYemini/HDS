@@ -16,7 +16,7 @@ import { useLoad } from "../useLoad";
 /** How many people the managers search lists before asking for more letters. */
 const MATCHES_SHOWN = 8;
 
-export function ManagersEditor({ projectId }: { projectId: string }) {
+export function ManagersEditor({ projectId, onSaved }: { projectId: string; onSaved?: () => void }) {
   const { t } = useTranslation();
   const { api } = useSession();
   const errorText = useErrorText();
@@ -36,6 +36,8 @@ export function ManagersEditor({ projectId }: { projectId: string }) {
     try {
       await call(api.PUT("/api/v1/projects/{id}/managers", { params: { path: { id: projectId } }, body: { user_ids: ids } }));
       await managers.reload();
+      // The projects table shows the managers too (CodeRabbit, PR 28).
+      onSaved?.();
       setQuery("");
     } catch (failure) {
       showToast(errorText(codeOf(failure)), { tone: "warning" });

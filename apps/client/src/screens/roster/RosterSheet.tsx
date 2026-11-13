@@ -18,7 +18,7 @@ import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { dayMonth, scheduledHours } from "../admin/staffModel";
-import { DashboardSkeleton, SmallFigures } from "../deck/parts";
+import { DashboardSkeleton, Disclosure, SmallFigures } from "../deck/parts";
 import { Portal } from "../../design/components/Portal";
 import { placeCard } from "../../design/components/placeCard";
 import { useLoad } from "../useLoad";
@@ -71,42 +71,55 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   for (const s of shifts.data ?? []) for (const a of s.assignments) if (a.full_name) names.set(a.user_id, a.full_name);
 
   const editable = (projects.data ?? []).filter((p) => p.status === "active" && capabilities.hasOnProject("roster.edit:project", p.id));
-  const [copyPlan, setCopyPlan] = useState<{ projects: number; shifts: number } | null>(null);
+  // A copy's preview keeps the week it was made for and the projects it would change, so its
+  // confirmation copies that week even after the screen moves on, and a retry after a partial
+  // failure copies only the projects not yet done (CodeRabbit, PR 28).
+  const [copyPlan, setCopyPlan] = useState<{ week: string; ids: string[]; done: string[]; projects: number; shifts: number } | null>(null);
   const [copying, setCopying] = useState(false);
-  const copy = (id: string, dry_run: boolean) =>
-    call(api.POST("/api/v1/projects/{id}/copy-week", { params: { path: { id } }, body: { from_week: addDays(week, -7), to_week: week, on_conflict: "unfilled", dry_run } }));
+  const copy = (id: string, to: string, dry_run: boolean) =>
+    call(api.POST("/api/v1/projects/{id}/copy-week", { params: { path: { id } }, body: { from_week: addDays(to, -7), to_week: to, on_conflict: "unfilled", dry_run } }));
   const planCopy = async () => {
+    const to = week;
     setCopying(true);
     try {
       let count = 0;
-      let touched = 0;
+      const ids: string[] = [];
       for (const p of editable) {
-        const plan = await copy(p.id, true);
+        const plan = await copy(p.id, to, true);
         const n = plan.changes.filter((c) => c.action === "create" || c.action === "replace").length;
         count += n;
-        if (n > 0) touched += 1;
+        if (n > 0) ids.push(p.id);
       }
       if (count === 0) showToast(t("sheet.copy_nothing"), { tone: "info" });
-      else setCopyPlan({ projects: touched, shifts: count });
+      else setCopyPlan({ week: to, ids, done: [], projects: ids.length, shifts: count });
     } catch (failure) {
       showToast(errorText(codeOf(failure)), { tone: "warning" });
     } finally {
       setCopying(false);
     }
   };
-  const runCopy = async () => {
+  const runCopy = async (plan: { week: string; ids: string[]; done: string[] }) => {
     setCopying(true);
+    const done = [...plan.done];
     try {
-      for (const p of editable) await copy(p.id, false);
+      for (const id of plan.ids) {
+        if (done.includes(id)) continue;
+        await copy(id, plan.week, false);
+        done.push(id);
+      }
       setCopyPlan(null);
       showToast(t("sheet.copied"), { tone: "success" });
-      await shifts.reload();
     } catch (failure) {
+      // What was copied stays copied; the confirmation stays open for the rest.
+      setCopyPlan((current) => (current ? { ...current, done } : current));
       showToast(errorText(codeOf(failure)), { tone: "warning" });
     } finally {
       setCopying(false);
+      await shifts.reload();
     }
   };
+  // A preview made for another week is not this week's.
+  const shownPlan = copyPlan && copyPlan.week === week ? copyPlan : null;
 
   // A phone shows one day at a time: today when it is in this week, else the week's Sunday.
   const [pickedDay, setPickedDay] = useState<string | null>(null);
@@ -199,10 +212,10 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
           onClose={() => setCard(null)}
         />
       ) : null}
-      <Sheet open={copyPlan !== null} onClose={() => setCopyPlan(null)} title={t("sheet.copy_last_week")} testID="copy-last-week-confirm">
-        <Txt role="body">{t("sheet.copy_plan", { shifts: copyPlan?.shifts ?? 0, projects: copyPlan?.projects ?? 0 })}</Txt>
+      <Sheet open={shownPlan !== null} onClose={() => setCopyPlan(null)} title={t("sheet.copy_last_week")} testID="copy-last-week-confirm">
+        <Txt role="body">{t("sheet.copy_plan", { shifts: shownPlan?.shifts ?? 0, projects: shownPlan?.projects ?? 0 })}</Txt>
         <View style={styles.actions}>
-          <Button variant="primary" label={t("sheet.copy_confirm")} busy={copying} onPress={() => void runCopy()} testID="action-confirm-copy-last-week" />
+          <Button variant="primary" label={t("sheet.copy_confirm")} busy={copying} onPress={() => (shownPlan ? void runCopy(shownPlan) : undefined)} testID="action-confirm-copy-last-week" />
           <Button label={t("common.cancel")} onPress={() => setCopyPlan(null)} />
         </View>
       </Sheet>
@@ -254,6 +267,7 @@ function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: read
   const { t } = useTranslation();
   const { colors } = useTheme();
   const index = days.indexOf(day);
+  const allRows = groups.flatMap((g) => g.rows);
   const ofDay = groups
     .map((g) => ({ ...g, rows: g.rows.filter((r) => (r.cells[index] ?? []).length > 0) }))
     .filter((g) => g.rows.length > 0);
@@ -319,6 +333,18 @@ function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: read
           </View>
         ))
       )}
+      {/* Every project, with or without shifts this day, so a phone reaches any project's week (CodeRabbit, PR 28). */}
+      <Disclosure testID="day-all-projects" summary={t("sheet.all_projects", { count: allRows.length })} showLabel={t("sheet.all_projects_show")} hideLabel={t("sheet.all_projects_hide")}>
+        <View style={styles.dayClient}>
+          {allRows.map((row) => (
+            <LinkPressable key={row.project.id} href={rosterHref(row.project.id, week)} testID="day-project-link">
+              <Txt role="label" tone="accent">
+                {row.project.name}
+              </Txt>
+            </LinkPressable>
+          ))}
+        </View>
+      </Disclosure>
     </View>
   );
 }

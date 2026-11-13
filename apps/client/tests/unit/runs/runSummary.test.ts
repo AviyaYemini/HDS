@@ -19,6 +19,8 @@ test("the scope: names when two or fewer, else a count by type; none means every
   expect(scopeOf(["p1"], projects)).toEqual({ all: false, count: 1, type: "security", names: ["Harbour gate"] });
   expect(scopeOf(["p1", "p2", "p3"], projects)).toEqual({ all: false, count: 3, type: "mixed", names: null });
   expect(scopeOf(["p1", "p2"], projects)).toEqual({ all: false, count: 2, type: "security", names: ["Harbour gate", "City museum"] });
+  // A project the list does not know (its request failed): the count, not a short list of names.
+  expect(scopeOf(["p1", "p9"], projects).names).toBeNull();
   expect(scopeOf([], projects).all).toBe(true);
 });
 
@@ -26,8 +28,10 @@ test("solve time to a tenth, and the people placed", () => {
   expect(solveSeconds({ started_at: "2026-11-13T10:00:00.000Z", finished_at: "2026-11-13T10:00:02.340Z" })).toBe(2.3);
   expect(solveSeconds({ started_at: "2026-11-13T10:00:00.000Z", finished_at: "2026-11-13T10:00:00.010Z" })).toBe(0.1);
   expect(solveSeconds({ started_at: null, finished_at: null })).toBeNull();
-  const marks = (...m: [string, string][]) => ({ marks: m.map(([user_id, mark]) => ({ user_id, mark, accepted: false, replaces: null })) }) as unknown as Pick<ReviewSlot, "marks">;
+  const marks = (...m: [string, string][]) => ({ marks: m.map(([user_id, mark]) => ({ user_id, mark, accepted: false, replaces: null })), kept: [] as string[] }) as unknown as Pick<ReviewSlot, "marks" | "kept">;
   expect(peoplePlaced([marks(["u1", "added"], ["u2", "removed"]), marks(["u1", "unchanged"], ["u3", "changed"])])).toBe(2);
+  // Someone the run keeps on a slot fills a place too.
+  expect(peoplePlaced([{ marks: [], kept: ["u9"] } as unknown as Pick<ReviewSlot, "marks" | "kept">])).toBe(1);
 });
 
 test("the proposal as the sheet: rows by project under their client, a slot in its day", () => {

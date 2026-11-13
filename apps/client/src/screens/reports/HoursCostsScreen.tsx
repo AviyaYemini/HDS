@@ -45,8 +45,9 @@ interface Group extends Figures {
  * A group's margin, (billing − pay) ÷ billing, as a "12.50" percent; null without both or with no
  * billing. A percentage of the API's amounts, for reading, never an amount itself.
  */
-export function marginOf(g: { billing?: string | null; pay?: string | null }): string | null {
-  if (g.billing == null || g.pay == null) return null;
+export function marginOf(g: { billing?: string | null; pay?: string | null; shifts_missing_rate?: number }): string | null {
+  // A total that leaves out shifts with no rate would read their cost as zero: no margin then.
+  if (g.billing == null || g.pay == null || (g.shifts_missing_rate ?? 0) > 0) return null;
   const billing = Number(g.billing);
   if (billing <= 0) return null;
   return (((billing - Number(g.pay)) / billing) * 100).toFixed(2);

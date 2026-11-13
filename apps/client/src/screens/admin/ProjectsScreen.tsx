@@ -9,7 +9,7 @@ import { useCapabilities } from "../../capabilities";
 import { InlineBanner, SkeletonRows, type Column } from "../../design/components";
 import { formatMoney } from "../../locale";
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
-import { useMonthOverview } from "./useMonthOverview";
+import { useMonthOverviewWithReload } from "./useMonthOverview";
 import { useLoad } from "../useLoad";
 import { AdminTable, orDash } from "./AdminTable";
 import { ManagersEditor } from "./ManagersEditor";
@@ -46,7 +46,7 @@ export function ProjectsScreen() {
     { name: "billing_rate", label: t("entity.billing_rate"), kind: "money", required: true, scope: t("scope.billing_rate"), validate: (rate) => (Number(rate) > 0 ? null : t("projects.billing_rate_positive")) },
   ];
   // This month's hours and the managers, from the snapshot (the owner, 2026-11-13).
-  const month = useMonthOverview();
+  const { byId: month, reload: reloadMonth } = useMonthOverviewWithReload();
   const monthHours = (id: string) => (month?.get(id) ? Number(month.get(id)!.hours) : 0);
   const estimated = (p: Row) => (p as Row & { terms_estimated?: boolean }).terms_estimated ?? month?.get(p.id)?.terms_estimated ?? false;
   const columns: Column<Row>[] = [
@@ -120,7 +120,7 @@ export function ProjectsScreen() {
               }
             }}
           >
-            {row ? <ManagersEditor projectId={row.id} /> : null}
+            {row ? <ManagersEditor projectId={row.id} onSaved={() => void reloadMonth()} /> : null}
           </RecordForm>
         )
       }
