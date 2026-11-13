@@ -289,6 +289,14 @@ class OverviewPreviousRead(BaseModel):
     billing_to_date: Amount | None = Field(
         default=None, description="Its billing up to the same day as today in this range."
     )
+    hours_to_rostered: HoursOut = Field(
+        description="Its hours up to the same day as this range's last rostered day."
+    )
+    billing_to_rostered: Amount | None = Field(
+        default=None,
+        description="Its billing up to the same day as this range's last rostered day: compare "
+        "the forecast with this, as the forecast stops where the roster does.",
+    )
 
 
 class OverviewProjectRead(BaseModel):
@@ -335,6 +343,9 @@ class OverviewRead(BaseModel):
     projects: list[OverviewProjectRead]
     terms_estimated: bool
     previous: OverviewPreviousRead | None = None
+    rostered_until: date | None = Field(
+        default=None, description="The last day in the range with work on the roster."
+    )
 
 
 def _money(m: Money) -> dict[str, Any]:
@@ -429,6 +440,7 @@ def read_overview(o: Overview) -> OverviewRead:
         ],
         terms_estimated=o.terms_estimated,
         previous=_previous(o.previous) if o.previous else None,
+        rostered_until=o.rostered_until,
         **_money(o.money),
     )
 
@@ -449,6 +461,8 @@ def _previous(prev: Previous) -> OverviewPreviousRead:
         ),
         hours_to_date=prev.hours_to_date,
         billing_to_date=prev.billing_to_date,
+        hours_to_rostered=prev.hours_to_rostered,
+        billing_to_rostered=prev.billing_to_rostered,
     )
 
 

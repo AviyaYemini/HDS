@@ -133,6 +133,7 @@ class Overview:
     projects: list[ProjectLine]
     terms_estimated: bool
     previous: "Previous | None" = None
+    rostered_until: date | None = None
 
 
 @dataclass
@@ -144,6 +145,8 @@ class Previous:
     money: Money
     billing_to_date: Decimal | None
     hours_to_date: Decimal
+    billing_to_rostered: Decimal | None = None
+    hours_to_rostered: Decimal = ZERO
 
 
 def previous_range(first: date, last: date) -> tuple[date, date]:
@@ -293,6 +296,8 @@ class OverviewService:
                 table[c.project_id].needed_next += c.headcount
                 table[c.project_id].filled_next += on
 
+        # The last day in the range with work on the roster: the forecast stops there.
+        rostered_until = max((d for d in days if first <= d <= last), default=None)
         # An Admin sees the whole organisation; a Manager the people of their own projects.
         staff = await self._rows.staff(
             org_id,
@@ -332,17 +337,32 @@ class OverviewService:
             terms_estimated=any(
                 r.project.terms_estimated for r in rows if r.money.hours_forecast or r.needed
             ),
-            previous=await self._previous(actor, first, last, today, now) if compare else None,
+            previous=(
+                await self._previous(actor, first, last, today, now, rostered_until)
+                if compare
+                else None
+            ),
+            rostered_until=rostered_until,
         )
 
     async def _previous(
-        self, actor: User, first: date, last: date, today: date, now: datetime
+        self,
+        actor: User,
+        first: date,
+        last: date,
+        today: date,
+        now: datetime,
+        rostered_until: date | None,
     ) -> Previous:
         """The period before, and how far it had got by the same day (for "so far" deltas)."""
         prev_first, prev_last = previous_range(first, last)
         before = await self.overview(actor, prev_first, prev_last, now, compare=False)
         cutoff = prev_first + (today - first)
         so_far = [m for day, m in before.days if day <= cutoff]
+        # The same span the forecast covers: up to the last rostered day, as far into the period.
+        reach = prev_first + ((rostered_until or last) - first)
+        rostered = [m for day, m in before.days if day <= reach]
+        shown = before.money.money_shown
         return Previous(
             first=prev_first,
             last=prev_last,
@@ -353,4 +373,8 @@ class OverviewService:
                 else None
             ),
             hours_to_date=sum((m.hours_forecast for m in so_far), ZERO),
+            billing_to_rostered=(
+                sum((m.billing_forecast for m in rostered), ZERO) if shown else None
+            ),
+            hours_to_rostered=sum((m.hours_forecast for m in rostered), ZERO),
         )
