@@ -31,7 +31,8 @@ test("the guarantees, the summary, the chips and the outliers read in words", as
   await renderWith(session, <FairnessPanel jobId={JOB} version={0} name={(id) => names[id] ?? "?"} place={() => ""} type={() => ""} />);
 
   expect(await screen.findByText("Respects rest hours, weekly maximums, blocked dates and absences.")).toBeTruthy();
-  expect(screen.getByText("1 assignment breaks a rule by someone's reason.")).toBeTruthy();
+  // No count of rule breaks: warnings are out of the app's scope (the owner, 2026-11-13).
+  expect(screen.queryByTestId("review-overridden")).toBeNull();
   expect(screen.getByText("2 locked assignments kept.")).toBeTruthy();
   expect(screen.getByText("1 place left empty.")).toBeTruthy();
   expect(screen.getByText("Ann: at most 2 nights: not met: meeting it would leave a place empty")).toBeTruthy();

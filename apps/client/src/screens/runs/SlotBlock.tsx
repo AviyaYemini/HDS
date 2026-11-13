@@ -1,6 +1,6 @@
 /**
  * One slot of a proposal (specs/008-auto-scheduler-review FR-003 to FR-012): its time and place, each
- * person with their mark, lock and override, the pairs a part accept chooses, and its empty places.
+ * person with their mark and lock, the pairs a part accept chooses, and its empty places.
  */
 import { useTranslation } from "react-i18next";
 import { View } from "react-native";
@@ -89,11 +89,6 @@ export function SlotBlock({ slot, names, name, editable, selectable, chosen, onT
                   {t("review.locked")}
                 </Txt>
               </View>
-            ) : null}
-            {who?.override ? (
-              <Txt role="meta" tone="warning" testID="mark-override">
-                {t("review.overridden")}
-              </Txt>
             ) : null}
             {mark.accepted && mark.mark !== "unchanged" ? (
               <Txt role="meta" tone="success" testID="mark-accepted">

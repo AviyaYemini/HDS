@@ -60,9 +60,6 @@ export function FairnessPanel({ jobId, version, name, place, type }: Props) {
           {t("review.guarantee")}
         </Txt>
       </View>
-      <Txt role="meta" tone={data.overridden > 0 ? "warning" : "secondary"} testID="review-overridden">
-        {t("review.overridden_count", { count: data.overridden })}
-      </Txt>
       {data.locks > 0 ? (
         <Txt role="meta" tone="secondary" testID="review-locks">
           {t("review.locks_kept", { count: data.locks })}

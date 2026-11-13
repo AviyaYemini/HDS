@@ -3,22 +3,21 @@
  * a change to the roster when the run was made: each person marked added, changed, removed or
  * unchanged, in words and an icon, never colour alone, with counts and each day's places filled
  * over needed. A proposal still open is accepted whole, by day, by project or by chosen pairs, and
- * the rest discarded; a person's menu assigns, unassigns, moves or swaps, and a rule break asks for
- * a reason before it is kept. Every edit and accept sends the version read, so two people never
+ * the rest discarded; a person's menu assigns, unassigns, moves or swaps, each stored as made (no
+ * rule warnings: out of scope, the owner, 2026-11-13). Every edit and accept sends the version read, so two people never
  * overwrite each other; a stale one reads the proposal again.
  */
 import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 
 import { codeOf, useErrorText } from "../../api/errors";
-import { Button, InlineBanner, Sheet, SkeletonRows, TextField, Txt } from "../../design/components";
+import { Button, InlineBanner, Sheet, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { formatHeaderDate } from "../../locale";
 import { FairnessPanel } from "./FairnessPanel";
-import { groupWarnings } from "../roster/model";
 import { weeksOf, type Job, type Names } from "./model";
-import { hasOpen, menuFor, hours, numbersKey, numbersOf, openDaysAndProjects, partOfPairs, reasonKey, slotsByDay, type ReviewSlot } from "./review";
+import { hasOpen, menuFor, hours, openDaysAndProjects, partOfPairs, slotsByDay, type ReviewSlot } from "./review";
 
 import { styles } from "./reviewStyles";
 import { EmptyReasons } from "./EmptyReasons";
@@ -53,9 +52,6 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     setAssignTo,
     moving,
     setMoving,
-    pending,
-    reason,
-    setReason,
     setAttempt,
     cover,
     accept,
@@ -214,12 +210,10 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
         );
       })}
       <Sheet
-        open={personOn !== null || moving !== null || assignTo !== null || pending !== null}
+        open={personOn !== null || moving !== null || assignTo !== null}
         onClose={closePanels}
         title={
-          pending
-            ? t("review.override_title")
-            : moving
+          moving
               ? moving.swap
                 ? t("review.swap_title")
                 : t("review.move_title")
@@ -229,38 +223,8 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
                   ? name(personOn.userId)
                   : ""
         }
-        footer={
-          pending ? (
-            <Button
-              variant="primary"
-              label={t("review.keep_anyway")}
-              disabled={reason.trim() === "" || busy !== null}
-              busy={busy === "edit"}
-              onPress={() => void send({ ...pending.edit, override_reason: reason.trim() })}
-              testID="action-keep-anyway"
-            />
-          ) : undefined
-        }
       >
-        {pending ? (
-          <View testID="review-override-sheet" style={styles.panel}>
-            {/* One row per person and rule, as on the roster: one reason covers them all. */}
-            {groupWarnings(pending.breaks, (w) => w.user_id ?? null).map(({ first: w, values }) => (
-              <View key={`${w.user_id ?? "shift"}-${w.code}`} style={styles.break} testID="review-break">
-                <Txt role="label">{w.user_id ? name(w.user_id) : t("roster.the_shift")}</Txt>
-                <Txt role="body">{t(w.code)}</Txt>
-                {numbersKey(w.values)
-                  ? values.map((v) => (
-                      <Txt key={JSON.stringify(v)} role="meta" tone="secondary" numeric>
-                        {t(numbersKey(v)!, v)}
-                      </Txt>
-                    ))
-                  : null}
-              </View>
-            ))}
-            <TextField label={t("roster.override_reason")} value={reason} onChangeText={setReason} maxLength={500} testID="review-override-reason" />
-          </View>
-        ) : moving ? (
+        {moving ? (
           <View testID="review-move-sheet" style={styles.panel}>
             {menuFor(shown, moving.from.slot).targets.flatMap((target) =>
               moving.swap
@@ -319,23 +283,23 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
               <SkeletonRows rows={3} />
             ) : (
               cover.data.options.map((option) => {
-                const numbers = numbersOf(option, i18n.language);
                 const totals = cover.data!.totals;
                 return (
                   <View key={option.user_id} style={styles.option} testID="review-cover-option" {...webProps({ dataSet: { userId: option.user_id, free: String(option.free) } })}>
                     <Button
                       variant="quiet"
                       icon="user"
-                      label={option.free ? name(option.user_id) : t("review.assign_anyway_person", { person: name(option.user_id) })}
+                      label={name(option.user_id)}
                       testID="review-assign-option"
                       web={{ dataSet: { userId: option.user_id, free: String(option.free) } }}
                       onPress={() => void send({ op: "assign", key: assignTo.key, user_id: option.user_id })}
                     />
-                    <Txt role="meta" tone={option.free ? "secondary" : "warning"}>
-                      {option.free
-                        ? t(option.close ? "review.cover_would_rather_not" : "review.cover_free")
-                        : [t(reasonKey(option.code ?? "", (key) => i18n.exists(key))), numbers ? t(numbers.key, numbers.values) : null].filter(Boolean).join(" · ")}
-                    </Txt>
+                    {/* Who is free (or would rather not); never the rule someone would break (the owner, 2026-11-13). */}
+                    {option.free ? (
+                      <Txt role="meta" tone="secondary">
+                        {t(option.close ? "review.cover_would_rather_not" : "review.cover_free")}
+                      </Txt>
+                    ) : null}
                     <Txt role="meta" tone="secondary" numeric>
                       {t("review.cover_load", {
                         hours: hours(option.minutes, i18n.language),
