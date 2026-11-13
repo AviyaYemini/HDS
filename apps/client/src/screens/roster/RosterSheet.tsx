@@ -19,11 +19,13 @@ import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { dayMonth, scheduledHours } from "../admin/staffModel";
 import { DashboardSkeleton, SmallFigures } from "../deck/parts";
+import { Portal } from "../../design/components/Portal";
+import { placeCard } from "../../design/components/placeCard";
 import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
 import { weekDays, type Shift } from "./model";
 import { rosterHref } from "./ProjectChooser";
-import { buildSheet, isTemporary, rowEmpty, sheetTotals, shortName, withShifts, type ClientGroup, type SheetRow } from "./sheet";
+import { buildSheet, isTemporary, managersText, rowEmpty, sheetTotals, shortName, withShifts, type ClientGroup, type SheetRow } from "./sheet";
 
 const LABEL_WIDTH = 176;
 const DAY_MIN_WIDTH = 124;
@@ -225,6 +227,10 @@ function ProjectRow({ row, week, today, nameOf }: { row: SheetRow; week: string;
         <Txt role="label" numberOfLines={2}>
           {row.project.name}
         </Txt>
+        {/* The task's manager, the second line under its name (the owner, 2026-11-13). */}
+        <Txt role="meta" tone="secondary" numberOfLines={2} testID="sheet-managers">
+          {t("sheet.task_manager", { names: managersText(row.project) })}
+        </Txt>
         <Txt role="meta" tone={empty > 0 ? "danger" : "secondary"} numeric>
           {row.cells.every((c) => c.length === 0) ? t("sheet.row_none") : empty > 0 ? t("sheet.row_empty", { count: empty }) : t("sheet.row_full")}
         </Txt>
@@ -293,9 +299,14 @@ function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: read
               return (
                 <View key={row.project.id} testID="day-card" style={[styles.dayCard, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
                   <LinkPressable href={rosterHref(row.project.id, week)} testID="sheet-project" style={styles.dayCardHead}>
-                    <Txt role="label" numberOfLines={2} style={styles.name}>
-                      {row.project.name}
-                    </Txt>
+                    <View style={styles.name}>
+                      <Txt role="label" numberOfLines={2}>
+                        {row.project.name}
+                      </Txt>
+                      <Txt role="meta" tone="secondary" numberOfLines={2} testID="sheet-managers">
+                        {t("sheet.task_manager", { names: managersText(row.project) })}
+                      </Txt>
+                    </View>
                     <Txt role="meta" tone={empty > 0 ? "danger" : "secondary"} numeric>
                       {empty > 0 ? t("sheet.row_empty", { count: empty }) : t("sheet.row_full")}
                     </Txt>
@@ -330,32 +341,28 @@ const CARD_WIDTH = 240;
 function PersonCard({ state, name, until, temporary, hours, onClose }: { state: PersonCardState; name: string; until: string | null; temporary: boolean; hours: number; onClose: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const { width, height } = useWindowDimensions();
-  // Beside the pointer, kept inside the window; fixed to the window on the web.
-  const wantLeft = Math.max(8, Math.min(state.x + 12, width - CARD_WIDTH - 8));
-  const wantTop = Math.max(8, Math.min(state.y + 12, height - 140));
+  const window = useWindowDimensions();
+  // Its height once drawn, for placing it above the point near the window's bottom.
+  const [height, setHeight] = useState(120);
+  // Above everything, beside the point, flipped and shifted to stay in the window (the owner, 2026-11-13).
+  const { left, top } = placeCard({ x: state.x, y: state.y }, { width: CARD_WIDTH, height }, window);
   const position = (Platform.OS === "web" ? "fixed" : "absolute") as "absolute";
-  // A transformed ancestor in the shell makes "fixed" relative to itself: measure where the card
-  // landed once, and take that offset off, so the card sits by the pointer.
-  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
-  const measure = (node: unknown) => {
-    if (!node || origin || Platform.OS !== "web") return;
-    const rect = (node as unknown as { getBoundingClientRect?: () => { left: number; top: number } }).getBoundingClientRect?.();
-    if (rect) setOrigin({ x: rect.left - wantLeft, y: rect.top - wantTop });
-  };
-  const left = wantLeft - (origin?.x ?? 0);
-  const top = wantTop - (origin?.y ?? 0);
   return (
-    <>
+    <Portal>
       {state.pinned ? <Pressable accessibilityLabel={t("common.close")} onPress={onClose} style={[StyleSheet.absoluteFill, { position }]} testID="person-card-scrim" /> : null}
-      <View ref={measure} testID="person-card" pointerEvents={state.pinned ? "auto" : "none"} style={[styles.personCard, { position, left, top, opacity: origin || Platform.OS !== "web" ? 1 : 0, width: CARD_WIDTH, backgroundColor: colors.bg.surface, borderColor: colors.border.strong }]}>
+      <View
+        testID="person-card"
+        pointerEvents={state.pinned ? "auto" : "none"}
+        onLayout={(e) => setHeight(Math.round(e.nativeEvent.layout.height))}
+        style={[styles.personCard, { position, left, top, width: CARD_WIDTH, backgroundColor: colors.bg.surface, borderColor: colors.border.strong }]}
+      >
         <Txt role="label">{name}</Txt>
         {temporary ? <StatusChip status="info" label={until ? t("staff.temporary_until", { date: dayMonth(until) }) : t("staff.temporary")} testID="person-card-temporary" /> : null}
         <Txt role="meta" tone="secondary" numeric>
           {t("sheet.card_hours", { hours: Math.round(hours * 10) / 10 })}
         </Txt>
       </View>
-    </>
+    </Portal>
   );
 }
 
@@ -422,7 +429,7 @@ function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boole
 const styles = StyleSheet.create({
   scroller: { flexGrow: 1 },
   dayView: { gap: 16 },
-  personCard: { borderWidth: 1, padding: 12, gap: 6, zIndex: 50, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  personCard: { borderWidth: 1, padding: 12, gap: 6, zIndex: 1000, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   strip: { flexDirection: "row", borderBottomWidth: 1 },
   stripDay: { flex: 1, alignItems: "center", paddingVertical: 6, borderTopWidth: 2, minHeight: 48, justifyContent: "center" },
   dayClient: { gap: 8 },

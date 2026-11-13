@@ -4,7 +4,7 @@
  * once, and names written the way the managers' sheet writes them. Made-up names only.
  */
 import type { Assignment, Shift } from "../../../src/screens/roster/model";
-import { buildSheet, isTemporary, rowEmpty, sheetTotals, shortName, withShifts } from "../../../src/screens/roster/sheet";
+import { buildSheet, isTemporary, managersText, rowEmpty, sheetTotals, shortName, withShifts } from "../../../src/screens/roster/sheet";
 import { weekDays } from "../../../src/screens/roster/model";
 
 const ZONE = "Asia/Jerusalem";
@@ -78,4 +78,10 @@ test("the default view keeps only projects with shifts, and counts the rest", ()
   expect(shown.map((g) => g.clientName)).toEqual(["Zeta Guarding"]);
   expect(shown[0]!.rows.map((r) => r.project.id)).toEqual(["p2"]);
   expect(hidden).toBe(2);
+});
+
+test("the task manager line: the names, or a dash", () => {
+  expect(managersText({ managers: [{ id: "m1", full_name: "Dana L." }, { id: "m2", full_name: "Omer K." }] })).toBe("Dana L., Omer K.");
+  expect(managersText({ managers: [] })).toBe("—");
+  expect(managersText({})).toBe("—");
 });

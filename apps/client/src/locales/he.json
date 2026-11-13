@@ -1206,5 +1206,13 @@
   "clients.col.projects": "פרויקטים",
   "clients.col.billing": "חיוב החודש",
   "projects.col.manager": "מנהל",
-  "projects.col.hours": "שעות החודש"
+  "projects.col.hours": "שעות החודש",
+  "sheet.task_manager": "מנהל משימה: {{names}}",
+  "invite.open": "הזמנת עובד",
+  "invite.title": "הזמנה בדוא״ל",
+  "invite.sent": "ההזמנה נשלחה אל {{email}}",
+  "staff.no_temporary": "אין עובדים זמניים. אפשר לסמן עובד כזמני בכרטיס העובד או בהזמנה.",
+  "snapshot.temp_none": "אין עובדים זמניים · אפשר לסמן עובד כזמני בכרטיס העובד",
+  "snapshot.temp_staff": "לרשימת הצוות ←",
+  "snapshot.all_regular": "כל {{count}} העובדים קבועים"
 }

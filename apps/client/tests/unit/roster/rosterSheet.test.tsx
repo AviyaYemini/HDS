@@ -41,7 +41,7 @@ function api() {
   return new FakeApi()
     .on("GET", "/me", json(200, ADMIN))
     .on("GET", "/api/v1/projects", json(200, { items: [
-      { id: "p1", name: "Harbour gate", client_id: "c1", status: "active" },
+      { id: "p1", name: "Harbour gate", client_id: "c1", status: "active", managers: [{ id: "m1", full_name: "Dana L." }] },
       { id: "p2", name: "City museum", client_id: "c2", status: "active" },
     ] }))
     .on("GET", "/api/v1/employees", json(200, { items: [{ id: "u2", full_name: "Omer Katz", employment_type: "temporary", engaged_from: "2026-11-13", engaged_until: "2027-02-12", project_ids: ["p1"] }] }))
@@ -70,6 +70,8 @@ test("on a phone, one day at a time: the day strip, then that day's projects und
   expect(await screen.findByText("Alpha Security")).toBeTruthy();
   expect(screen.queryByText("Beta Guarding")).toBeNull();
   expect(screen.getAllByTestId("day-card")).toHaveLength(1);
+  // The task's manager under the project's name (the owner, 2026-11-13).
+  expect(screen.getByTestId("sheet-managers")).toHaveTextContent("Task manager: Dana L.");
   expect(screen.getByText("Dana L.")).toBeTruthy();
   expect(screen.getAllByTestId("chip-temporary")).toHaveLength(1);
   expect(screen.getByTestId("sheet-empty")).toHaveTextContent("1 empty");

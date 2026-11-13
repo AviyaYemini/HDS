@@ -1206,5 +1206,13 @@
   "clients.col.projects": "Projects",
   "clients.col.billing": "Billing this month",
   "projects.col.manager": "Manager",
-  "projects.col.hours": "Hours (month)"
+  "projects.col.hours": "Hours (month)",
+  "sheet.task_manager": "Task manager: {{names}}",
+  "invite.open": "Invite",
+  "invite.title": "Invite by e-mail",
+  "invite.sent": "Invitation sent to {{email}}",
+  "staff.no_temporary": "No temporary workers. Mark someone temporary on their record or when inviting them.",
+  "snapshot.temp_none": "No temporary workers · mark someone temporary on their staff record",
+  "snapshot.temp_staff": "Open the staff list →",
+  "snapshot.all_regular": "All {{count}} people are regular staff"
 }

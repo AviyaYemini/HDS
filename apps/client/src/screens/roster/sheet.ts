@@ -11,6 +11,14 @@ export interface SheetProject {
   name: string;
   client_id: string;
   status?: string;
+  /** The task's managers, named (GET /projects gives them to staff readers). */
+  managers?: readonly { id: string; full_name: string }[];
+}
+
+/** "מנהל משימה" as the sheet shows it: the managers' names, or a dash. */
+export function managersText(project: Pick<SheetProject, "managers">): string {
+  const names = (project.managers ?? []).map((m) => m.full_name).filter(Boolean);
+  return names.length > 0 ? names.join(", ") : "—";
 }
 export interface SheetClient {
   id: string;

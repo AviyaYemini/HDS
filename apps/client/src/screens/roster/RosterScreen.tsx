@@ -25,6 +25,7 @@ import { Block } from "./Block";
 import { PersonSheet } from "./PersonSheet";
 import { PublishSheet } from "./PublishSheet";
 import { RosterSheet } from "./RosterSheet";
+import { managersText } from "./sheet";
 import { useLoad } from "../useLoad";
 import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
 import { useCopyNextWeek } from "./useCopyNextWeek";
@@ -51,6 +52,8 @@ export function RosterScreen() {
   const today = todayIn(DEFAULT_TIME_ZONE);
   // The project's name, client and site for the header.
   const projectInfo = useLoad(async () => (project ? await call(session.api.GET("/api/v1/projects/{id}", { params: { path: { id: project } } })) : null), [project]);
+  // The project list names each project's managers for staff readers (the owner, 2026-11-13).
+  const listed = useLoad(async () => (await call(session.api.GET("/api/v1/projects"))).items, []);
   const places = useLoad(async () => {
     const [clients, sites] = await Promise.all([call(session.api.GET("/api/v1/clients")), call(session.api.GET("/api/v1/sites"))]);
     return { clients: clients.items, sites: sites.items };
@@ -122,6 +125,11 @@ export function RosterScreen() {
           />
         ) : null}
       </PageTitle>
+      {projectInfo.data ? (
+        <Txt role="body" tone="secondary" testID="roster-managers">
+          {t("sheet.task_manager", { names: managersText(listed.data?.find((p) => p.id === project) ?? {}) })}
+        </Txt>
+      ) : null}
       <View style={styles.weekSwitch} testID="roster-week-switch">
         <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => router.setParams({ week: addDays(week, -7) } as never)} testID="action-prev-week" />
         <Txt role="section" numeric testID="roster-week-range">
