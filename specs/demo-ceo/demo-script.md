@@ -29,7 +29,7 @@ About ten minutes, in Hebrew, on a laptop. The data comes from the team's real r
 | 6 | Roster, **שבוע הבא** | Next week's drafts: the dashed "ריק" places are the "?" cells from the sheet. | Gaps show before publishing, not after. |
 | 6a | **הרצות שיבוץ** (schedule runs): **הרצה חדשה**, "השבוע הבא", **כל פרויקטי האבטחה**, **הפקה** | In a few seconds every place is filled (68/68 on the demo data), keeping temporary workers on their own projects and dates. Show the proposal as a roster week, then accept or discard. | A whole company's week, drafted in seconds; the manager reviews and accepts. |
 | 7 | On a phone (or a narrow window) | The roster one day at a time with a day strip; the overview and staff as cards. | The same tool in the field. |
-| 8 | **צוות** (staff) | Hours this week and this month, the permanent/temporary filter, and the "זמני · עד …" chip. Then open a temporary worker's card: type, dates (3 months at most) and projects. | Staff control in one table. A temporary worker stays on their projects and dates; the auto-scheduler never places them outside. |
+| 8 | **צוות** (staff) | Hours this week and this month, and the permanent/temporary filter. Open **הזמנת עובד**: everyone is קבוע unless marked זמני, which brings dates (3 months at most) and projects; the same in a worker's card. | Staff control in one table. A temporary worker stays on their projects and dates; the auto-scheduler never places them outside. |
 | 8a | On a phone, sign in as `emp001@demo.hds.test` (the employee with the most shifts) | The guard's app: the next shift, the availability deadline, my shifts, and the expected gross pay for the month by rate. | Every guard sees their own week and pay on their phone. |
 | 9 | **דוח שעות** (hours and costs) | Hours, billing and gross pay by project, with bars. | What used to take a day of spreadsheet work. |
 | 10 | Second tab, as a manager | The same overview, showing only that manager's projects. | Each manager sees their own work, nothing else. |
@@ -40,8 +40,26 @@ Say these if asked:
 - **Billing:** person-hours × the project's billing rate.
 - **Pay:** gross, with night, overtime and rest-day premiums.
 - **Rates:** where the sheet states them (a billing/pay pair or a pay rate), they're used. Elsewhere they're estimates of 110 ₪ billing and 75 ₪ pay an hour, marked with "*".
-- **Who is temporary:** in the demo data, a person is temporary if they first appeared in the last twelve weeks, still worked in the last three, and worked on one or two projects. Their engagement runs three months from their first week.
+- **Who is temporary:** nobody, until an admin marks them, at invitation, creation or later in the worker's card. The demo data starts with no temporary workers.
 - **The client portal** is not in this demo; it is the next feature (009).
+
+## The walkthrough video
+
+The demo must be running, on clean data. A two-minute walkthrough in Hebrew, with Hebrew captions and no voice-over, comes from:
+
+```bash
+node scripts/demo/record_walkthrough.mjs demo-data/video
+```
+
+```bash
+swiftc -O scripts/demo/compose_video.swift -o demo-data/compose
+```
+
+```bash
+HDS_FONT_DIR="$(ls -d node_modules/.pnpm/@expo-google-fonts+ibm-plex-sans-hebrew*/node_modules/@expo-google-fonts/ibm-plex-sans-hebrew)" demo-data/compose demo-data/video "demo-data/HDS סיור במערכת.mp4"
+```
+
+The recording starts a schedule run, so reload with `DEMO_FRESH=1` afterwards. The video shows real names: it stays in `demo-data/`.
 
 ## Stop
 
