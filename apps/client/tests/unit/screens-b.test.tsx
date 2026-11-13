@@ -20,6 +20,7 @@ import { NotFoundScreen } from "../../src/screens/misc/NotFoundScreen";
 import { NoAccessScreen } from "../../src/screens/no-access/NoAccessScreen";
 import { BASE, FakeApi, ME, TOKENS, json, problem, renderWith, signedIn } from "./fakeApi";
 import * as Router from "expo-router";
+import { joinedPattern } from "./ranges";
 
 const router = (Router as unknown as { __router: { replace: jest.Mock; push: jest.Mock } }).__router;
 
@@ -75,7 +76,7 @@ describe("HomeScreen (FR-006)", () => {
     await renderWith(await signedIn(api), <HomeScreen />);
     expect(await screen.findByTestId("home-next-shift")).toBeTruthy();
     expect(screen.getByText("\u2068Night Watch\u2069 · \u2068Night\u2069")).toBeTruthy();
-    expect(screen.getByText(/22:00–06:00 \+1/)).toBeTruthy();
+    expect(screen.getByText(joinedPattern("22:00–06:00 +1"))).toBeTruthy();
     expect(await screen.findByTestId("home-deadline")).toHaveTextContent(/12\/11\/2026/);
     // "Open availability" goes to the availability screen (R27).
     await fireEvent.press(screen.getByTestId("home-deadline-open"));

@@ -75,9 +75,14 @@ export function dayOffset(start: string | Date, end: string | Date, timeZone: st
 /** The span from `start` to `end` as `HH:mm–HH:mm`, with ` +1` when the end is on the next day. */
 export function formatTimeRange(start: string | Date, end: string | Date, timeZone: string): string {
   const offset = dayOffset(start, end, timeZone);
-  const suffix = offset > 0 ? ` +${offset}` : "";
-  return isolateLtr(`${clockText(start, timeZone)}${RANGE_DASH}${clockText(end, timeZone)}${suffix}`);
+  // A no-break space keeps "+1" with its time.
+  const suffix = offset > 0 ? `\u00a0+${offset}` : "";
+  // Word joiners hold the dash to both times, so "07:00–19:00" never splits across lines (the owner, 2026-11-13).
+  return isolateLtr(`${clockText(start, timeZone)}${WORD_JOINER}${RANGE_DASH}${WORD_JOINER}${clockText(end, timeZone)}${suffix}`);
 }
+
+/** U+2060: no break here, and nothing shown. */
+export const WORD_JOINER = "\u2060";
 
 /** Whole minutes from `start` to `end`. */
 export function minutesBetween(start: string | Date, end: string | Date): number {
