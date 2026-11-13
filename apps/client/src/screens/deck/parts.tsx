@@ -6,10 +6,12 @@
  */
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import Svg, { Circle, Polyline } from "react-native-svg";
 
 import { Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
+import { sparkPoints } from "./polish";
 
 /** One numbered key figure. */
 export interface KeyFigure {
@@ -22,6 +24,10 @@ export interface KeyFigure {
   /** The API's own value, as `data-value` for the tests. */
   raw?: string;
   tone?: "primary" | "danger" | "success";
+  /** Against the previous period: "▲ 12% vs the previous month", in a neutral colour. */
+  change?: string | null;
+  /** Counts up to `to` on entrance, drawn by `format`; `value` once the entrance is done. */
+  count?: { to: number; format: (n: number) => string };
 }
 
 /** "01", "02"… the deck's numbering. */
@@ -39,7 +45,7 @@ export function figureSize(values: readonly string[], desktop: boolean): { fontS
   return { fontSize: size, lineHeight: Math.round(size * 1.15) };
 }
 
-export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
+export function KeyFigures({ figures, progress = 1 }: { figures: readonly KeyFigure[]; progress?: number }) {
   const { colors, isDesktop } = useTheme();
   const size = figureSize(figures.map((f) => f.value), isDesktop);
   return (
@@ -56,7 +62,7 @@ export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
           </View>
           <View style={styles.valueRow}>
             <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr" style={size}>
-              {f.value}
+              {f.count && progress < 1 ? f.count.format(f.count.to * progress) : f.value}
             </Txt>
             {f.unit ? (
               <Txt role="meta" tone="secondary">
@@ -64,11 +70,40 @@ export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
               </Txt>
             ) : null}
           </View>
+          {f.change ? (
+            <Txt role="meta" tone="secondary" numeric testID={`figure-${f.key}-change`}>
+              {f.change}
+            </Txt>
+          ) : null}
           {f.detail ? (
             <Txt role="meta" tone="secondary">
               {f.detail}
             </Txt>
           ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Small numbered figures in a row (a week's summary): "01 PLACES" over a modest number. */
+export function SmallFigures({ items, testID }: { items: readonly { key: string; label: string; value: string }[]; testID?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.small} testID={testID}>
+      {items.map((f, i) => (
+        <View key={f.key} style={[styles.smallItem, { borderTopColor: colors.border.strong }]} testID={`total-${f.key}`}>
+          <View style={styles.figureLabel}>
+            <Txt role="eyebrow" tone="secondary" numeric>
+              {ordinal(i)}
+            </Txt>
+            <Txt role="eyebrow" tone="accent">
+              {f.label}
+            </Txt>
+          </View>
+          <Txt role="section" numeric dir="ltr">
+            {f.value}
+          </Txt>
         </View>
       ))}
     </View>
@@ -105,10 +140,11 @@ export interface BarColumn {
 }
 
 /** Vertical paired bars, scaled against the largest value shown. */
-export function ColumnBars({ columns, legend, height = 120 }: { columns: readonly BarColumn[]; legend: string; height?: number }) {
+export function ColumnBars({ columns, legend, height = 120, progress = 1 }: { columns: readonly BarColumn[]; legend: string; height?: number; progress?: number }) {
   const { colors } = useTheme();
   const largest = Math.max(1, ...columns.flatMap((c) => [c.dark, c.light ?? 0]));
-  const pct = (v: number) => `${Math.max(0, (v / largest) * 100)}%` as const;
+  // The bars grow from the baseline on entrance; the box keeps its height, so nothing moves.
+  const pct = (v: number) => `${Math.max(0, (v / largest) * 100 * progress)}%` as const;
   return (
     <View style={styles.barsBlock}>
       <View style={[styles.bars, { height, borderBottomColor: colors.border.strong }]} testID="column-bars">
@@ -224,6 +260,16 @@ const styles = StyleSheet.create({
   bar: { flex: 1 },
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
+  small: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  smallItem: { borderTopWidth: 1, paddingTop: 6, minWidth: 96, flexGrow: 1, flexBasis: 96 },
+  hbars: { gap: 10 },
+  hrow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  hrowPhone: { gap: 4 },
+  hlabel: { width: "34%", flexShrink: 0 },
+  htrackRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  htrack: { flex: 1, height: 10 },
+  hfill: { height: 10 },
+  hvalue: { minWidth: 64, textAlign: "left" },
   cards: { borderTopWidth: 0 },
   card: { gap: 6, paddingVertical: 12, borderBottomWidth: 1, minHeight: 48 },
   cardFigures: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
@@ -233,3 +279,69 @@ const styles = StyleSheet.create({
   splitCol: { gap: 24 },
   stacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
 });
+
+/** One horizontal bar: a full name, its share against the largest, and its value. */
+export interface HBar {
+  key: string;
+  label: string;
+  value: number;
+  valueText: string;
+  /** Drawn light (training against security). */
+  light?: boolean;
+  onPress?: () => void;
+}
+
+/** Horizontal bars with the full names, nothing cut (the owner, 2026-11-13); they grow on entrance. */
+export function HBars({ bars, legend, progress = 1, testID }: { bars: readonly HBar[]; legend: string; progress?: number; testID?: string }) {
+  const { colors, isDesktop } = useTheme();
+  const largest = Math.max(1, ...bars.map((b) => b.value));
+  return (
+    <View style={styles.hbars} testID={testID}>
+      {bars.map((b) => {
+        const fill = <View style={[styles.hfill, { width: `${(b.value / largest) * 100 * progress}%`, backgroundColor: b.light ? colors.border.strong : colors.text.primary }]} />;
+        const row = (
+          <View style={isDesktop ? styles.hrow : styles.hrowPhone}>
+            <Txt role="label" style={isDesktop ? styles.hlabel : null}>
+              {b.label}
+            </Txt>
+            <View style={styles.htrackRow}>
+              <View style={[styles.htrack, { backgroundColor: colors.bg.selected }]}>{fill}</View>
+              <Txt role="meta" tone="secondary" numeric style={styles.hvalue}>
+                {b.valueText}
+              </Txt>
+            </View>
+          </View>
+        );
+        return b.onPress ? (
+          <Pressable key={b.key} role="link" testID="hbar" onPress={b.onPress} accessibilityLabel={`${b.label}: ${b.valueText}`}>
+            {row}
+          </Pressable>
+        ) : (
+          <View key={b.key} testID="hbar">
+            {row}
+          </View>
+        );
+      })}
+      <Txt role="meta" tone="secondary">
+        {legend}
+      </Txt>
+    </View>
+  );
+}
+
+/** A small trend line (hours by week), time running with the reading direction. */
+export function Sparkline({ values, rtl, width = 72, height = 22, testID }: { values: readonly number[]; rtl: boolean; width?: number; height?: number; testID?: string }) {
+  const { colors } = useTheme();
+  if (values.length < 2) return null;
+  // Oldest first, left to right; in Hebrew the oldest sits on the right, as the bars and candles do.
+  const points = sparkPoints(rtl ? [...values].reverse() : values, width, height);
+  const last = points.split(" ")[rtl ? 0 : values.length - 1]!.split(",");
+  return (
+    <View testID={testID} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...webProps({ "aria-hidden": String(true) })}>
+      <Svg width={width} height={height}>
+        <Polyline points={points} fill="none" stroke={colors.border.strong} strokeWidth={1.5} />
+        <Circle cx={Number(last[0])} cy={Number(last[1])} r={2.5} fill={colors.text.primary} />
+      </Svg>
+    </View>
+  );
+}

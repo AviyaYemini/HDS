@@ -39,9 +39,11 @@ export interface DonutProps {
   centre?: string;
   summary: string;
   testID: string;
+  /** The entrance: the slices sweep round from 12 o'clock (0–1). */
+  progress?: number;
 }
 
-export function Donut({ slices, colorOf, amountText, centre, summary, testID }: DonutProps) {
+export function Donut({ slices, colorOf, amountText, centre, summary, testID, progress = 1 }: DonutProps) {
   const { colors } = useTheme();
   const greys = useSliceColors();
   const size = 148;
@@ -49,10 +51,13 @@ export function Donut({ slices, colorOf, amountText, centre, summary, testID }: 
   const inner = outer * 0.62;
   const colour = (s: Slice, i: number) => colorOf?.(s, i) ?? (s.others ? greys[greys.length - 1]! : greys[Math.min(i, greys.length - 2)]!);
   // Each slice starts where the ones before it end, clockwise from 12 o'clock.
-  const starts = slices.map((_, i) => slices.slice(0, i).reduce((a, p) => a + (p.pct / 100) * Math.PI * 2, 0));
+  const turn = Math.PI * 2 * progress;
+  const starts = slices.map((_, i) => slices.slice(0, i).reduce((a, p) => a + (p.pct / 100) * turn, 0));
   const arcs = slices.map((s, i) => {
     const a0 = starts[i]!;
-    const path = arcPath(size / 2, size / 2, outer, inner, a0, a0 + (s.pct / 100) * Math.PI * 2);
+    const sweep = (s.pct / 100) * turn;
+    if (sweep <= 0.0001) return null;
+    const path = arcPath(size / 2, size / 2, outer, inner, a0, a0 + sweep);
     return <Path key={s.key} d={path} fill={colour(s, i)} stroke={colors.bg.canvas} strokeWidth={slices.length > 1 ? 1.5 : 0} />;
   });
   return (
@@ -100,10 +105,12 @@ export interface CandlesProps {
   summary: string;
   testID: string;
   height?: number;
+  /** The entrance: each candle grows from the scale's foot (0–1). */
+  progress?: number;
 }
 
 /** Weekly candles, time running from the reading start (right to left in Hebrew), with a ₪ scale. */
-export function Candles({ candles, labelOf, tickText, summary, testID, height = 180 }: CandlesProps) {
+export function Candles({ candles, labelOf, tickText, summary, testID, height = 180, progress = 1 }: CandlesProps) {
   const { colors } = useTheme();
   const [width, setWidth] = useState(320);
   const onLayout = (e: LayoutChangeEvent) => setWidth(Math.max(200, Math.round(e.nativeEvent.layout.width)));
@@ -118,7 +125,9 @@ export function Candles({ candles, labelOf, tickText, summary, testID, height = 
   const min = ticks[0]!;
   const max = ticks[ticks.length - 1]!;
   const plot = width - axis;
-  const y = (v: number) => top + (1 - (v - min) / (max - min || 1)) * (height - top - bottom);
+  const yAxis = (v: number) => top + (1 - (v - min) / (max - min || 1)) * (height - top - bottom);
+  // Candles rise from the scale's foot on entrance; the grid and labels stay put.
+  const y = (v: number) => yAxis(min + (v - min) * progress);
   const slot = plot / Math.max(1, candles.length);
   const body = Math.max(4, Math.min(22, slot * 0.5));
   // The scale sits on the left; time runs from the reading start: left to right in English, right
@@ -130,8 +139,8 @@ export function Candles({ candles, labelOf, tickText, summary, testID, height = 
         <Svg width={width} height={height}>
           {ticks.map((v) => (
             <G key={v}>
-              <Line x1={axis} x2={width} y1={y(v)} y2={y(v)} stroke={colors.border.subtle} strokeWidth={1} />
-              <SvgText x={axis - 6} y={y(v) + 4} fontSize={10} fill={colors.text.secondary} textAnchor="end">
+              <Line x1={axis} x2={width} y1={yAxis(v)} y2={yAxis(v)} stroke={colors.border.subtle} strokeWidth={1} />
+              <SvgText x={axis - 6} y={yAxis(v) + 4} fontSize={10} fill={colors.text.secondary} textAnchor="end">
                 {tickText(v)}
               </SvgText>
             </G>
