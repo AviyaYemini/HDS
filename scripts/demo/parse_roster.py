@@ -404,6 +404,8 @@ def main() -> int:
                     projects[k].setdefault("needs_by_date", {})[day] = n
 
     out_projects = []
+    # One company spelt two ways in the sheet becomes one client (the overrides say which).
+    client_alias = overrides.get("clients", {})
     for k, p in projects.items():
         if not any(s["project"] == k and s["people"] for s in shifts):
             continue  # a task nobody worked in these weeks
@@ -423,7 +425,8 @@ def main() -> int:
             "key": k,
             "name": o.get("name", k),
             "description": p["texts"].most_common(1)[0][0],
-            "client": o.get("client") or (p["clients"].most_common(1)[0][0] if p["clients"] else None),
+            "client": client_alias.get(client, client) if (client := o.get("client") or (
+                p["clients"].most_common(1)[0][0] if p["clients"] else None)) else None,
             "manager": o.get("manager") or (p["managers"].most_common(1)[0][0] if p["managers"] else None),
             "site": o.get("site", k),
             "type": o.get("type", "training" if "עיון" in k or "הדרכ" in k or "קורס" in k else "security"),
