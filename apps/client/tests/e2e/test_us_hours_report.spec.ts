@@ -18,6 +18,7 @@ test("an Admin sees the month's hours with pay, both ways", async ({ page }) => 
   if (inEarlierMonth(startsAt)) await page.getByTestId("preset-last-pay-period").click();
   await expect(page.getByTestId("figure-hours")).toHaveAttribute("data-value", /^\d+(\.\d+)?$/);
   await expect(page.getByTestId("figure-pay")).toBeVisible();
+  // demo/ceo: hours and costs opens by project, with a table instead of bars that open.
   await page.getByTestId("group-project").click();
-  await expect(page.getByTestId("report-bar").filter({ hasText: "Night Watch" }).first()).toBeVisible();
+  await expect(page.getByTestId("hc-table")).toContainText("Night Watch");
 });
