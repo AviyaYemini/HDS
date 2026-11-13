@@ -1177,5 +1177,8 @@
   "runs.drafts_keep_small_other": "בטווח כבר יש {{count}} משמרות טיוטה: הריצה תשנה מעט ככל האפשר ותמלא את החסר.",
   "runsum.added": "נוספו",
   "runsum.accept_by_project": "אישור לפי פרויקט ({{count}})",
-  "runsum.accept_short": "אישור"
+  "runsum.accept_short": "אישור",
+  "pay.change_up_same": "עלייה של {{amount}} מול אותם ימים בחודש הקודם",
+  "pay.change_down_same": "ירידה של {{amount}} מול אותם ימים בחודש הקודם",
+  "pay.previous_total": "בחודש הקודם: {{amount}}"
 }

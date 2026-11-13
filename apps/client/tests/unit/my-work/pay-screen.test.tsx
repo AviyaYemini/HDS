@@ -34,7 +34,8 @@ it("asks for the month's shifts to its last day and shows rows that add up to th
   expect(rows[1]).toHaveTextContent(/137\.5%/);
   expect(units("937.50")).toBe(9375000n);
   expect(screen.getByTestId("pay-estimate-label")).toBeTruthy();
-  expect(screen.getByTestId("pay-change")).toHaveTextContent(/537\.50/);
+  // A finished month says last month's total plainly, in agorot, never a "drop".
+  expect(screen.getByTestId("pay-change")).toHaveTextContent(/^Last month: \u2066₪400\.00\u2069$/);
   await waitFor(() => expect(api.calls("GET", "/me/shifts")).toHaveLength(1));
   expect(api.calls("GET", "/me/shifts")[0]?.query).toBe("?from=2026-10-01&to=2026-10-31");
   await fireEvent.press(screen.getByTestId("view-hours"));

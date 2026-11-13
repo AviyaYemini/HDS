@@ -214,3 +214,10 @@ test("a short range drops the first date's year when both share it (R79)", () =>
   expect(formatShortNumericRange("2026-12-06", "2026-12-12")).toBe("⁦06/12 – 12/12/2026⁩");
   expect(formatShortNumericRange("2026-12-27", "2027-01-02")).toBe("⁦27/12/2026 – 02/01/2027⁩");
 });
+
+test("a typed name keeps its times and dates whole inside text of either direction", () => {
+  const { nameText, LRI, PDI, FSI } = jest.requireActual<typeof import("../../src/locale")>("../../src/locale");
+  expect(nameText("בוקר 07:00–19:00")).toBe(`${FSI}בוקר ${LRI}07:00–19:00${PDI}${PDI}`);
+  expect(nameText("Gate 3")).toBe(`${FSI}Gate 3${PDI}`);
+  expect(nameText("קורס 7 · 15/11")).toBe(`${FSI}קורס 7 · ${LRI}15/11${PDI}${PDI}`);
+});

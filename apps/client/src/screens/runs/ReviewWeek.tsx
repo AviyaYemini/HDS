@@ -16,7 +16,7 @@ import { useSession } from "../../api/SessionContext";
 import { Button, InlineBanner, Sheet, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { formatHeaderDate, formatNumericRange } from "../../locale";
+import { nameText, formatHeaderDate, formatNumericRange } from "../../locale";
 import { Disclosure, KeyFigures, SectionHead, type KeyFigure } from "../deck/parts";
 import { useEntrance } from "../deck/useEntrance";
 import { useLoad } from "../useLoad";
@@ -84,7 +84,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   const open = shown.state === "open";
   const name = (id: string) => names.people.get(id) ?? people.find((p) => p.id === id)?.full_name ?? t("runs.unknown_person");
   const placeName = (slot: ReviewSlot) =>
-    [names.projects.get(slot.project_id), names.types.get(slot.shift_type_id), formatHeaderDate(slot.date, i18n.language)].filter(Boolean).join(" · ");
+    [names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter((x): x is string => Boolean(x)).map(nameText).concat(formatHeaderDate(slot.date, i18n.language)).join(" · ");
 
   const byDay = slotsByDay(shown);
   const empty = shown.slots.filter((slot) => slot.places > 0);

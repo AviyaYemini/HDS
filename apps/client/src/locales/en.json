@@ -1177,5 +1177,8 @@
   "runs.drafts_keep_small_other": "The range already holds {{count}} draft shifts: the run will change as little as it can and fill the gaps.",
   "runsum.added": "added",
   "runsum.accept_by_project": "Accept by project ({{count}})",
-  "runsum.accept_short": "Accept"
+  "runsum.accept_short": "Accept",
+  "pay.change_up_same": "{{amount}} more than the same days of last month",
+  "pay.change_down_same": "{{amount}} less than the same days of last month",
+  "pay.previous_total": "Last month: {{amount}}"
 }

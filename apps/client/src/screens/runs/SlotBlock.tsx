@@ -9,7 +9,7 @@ import { Button, Txt } from "../../design/components";
 import { Icon } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { DEFAULT_TIME_ZONE, formatTimeRange } from "../../locale";
+import { nameText, DEFAULT_TIME_ZONE, formatTimeRange } from "../../locale";
 import type { Names } from "./model";
 import { MARK_ICON, openMarks, type Pair, type ReviewSlot } from "./review";
 import { styles } from "./reviewStyles";
@@ -48,7 +48,7 @@ export function SlotBlock({ slot, names, name, editable, selectable, chosen, onT
       ) : (
         <>
           <Txt role="label" numberOfLines={2}>
-            {[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}
+            {[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter((x): x is string => Boolean(x)).map(nameText).join(" · ")}
           </Txt>
           <Txt role="meta" tone="secondary" numeric>
             {formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}

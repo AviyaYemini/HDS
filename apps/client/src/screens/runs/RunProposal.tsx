@@ -8,7 +8,7 @@ import { StyleSheet, View } from "react-native";
 import { Txt } from "../../design/components";
 import { webProps } from "../../design/web";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import { DEFAULT_TIME_ZONE, formatNumericDate, formatTimeRange } from "../../locale";
+import { nameText, DEFAULT_TIME_ZONE, formatNumericDate, formatTimeRange } from "../../locale";
 import { numbersOf, reasonKey } from "./review";
 import type { Job, Names } from "./model";
 
@@ -34,7 +34,7 @@ export function Proposal({ job, names }: { job: Job; names: Names }) {
               <View key={gap.key} testID="unfilled" style={[styles.row, { borderColor: colors.border.subtle }]}>
                 {slot ? (
                   <View style={styles.when}>
-                    <Txt role="label">{[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter(Boolean).join(" · ")}</Txt>
+                    <Txt role="label">{[names.projects.get(slot.project_id), names.types.get(slot.shift_type_id)].filter((x): x is string => Boolean(x)).map(nameText).join(" · ")}</Txt>
                     <Txt role="meta" tone="secondary" numeric>
                       {`${formatNumericDate(slot.date)} ${formatTimeRange(slot.starts_at, slot.ends_at, DEFAULT_TIME_ZONE)}`}
                     </Txt>

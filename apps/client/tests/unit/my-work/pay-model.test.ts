@@ -1,5 +1,5 @@
 /** My pay's arithmetic (specs/007-ux-redesign FR-024): exact, never through floating point. */
-import { amount, breakdownByRate, cents, changeSince, fromCents, nextPeriod, previousPeriod, shortHours, units, type PayLine } from "../../../src/screens/my-work/pay/model";
+import { amount, breakdownByRate, cents, changeSince, fromCents, nextPeriod, payUpTo, previousPeriod, sameDayBefore, shortHours, units, type PayLine } from "../../../src/screens/my-work/pay/model";
 
 const line = (base_rate: string | null, parts: { hours: string; rate_pct: string; pay?: string | null }[], pay: string | null, pay_enabled = true): PayLine => ({
   base_rate,
@@ -50,11 +50,22 @@ it("reads and writes agorot exactly", () => {
 });
 
 it("tells the change since the last period and walks the periods", () => {
-  expect(changeSince("1220.8331", "1000.0000")).toBe("220.8331");
-  expect(changeSince("900", "1000.5")).toBe("-100.5000");
+  // In agorot: the API prices to agorot, and four decimals read as noise (the owner, 2026-11-13).
+  expect(changeSince("1220.8300", "1000.0000")).toBe("220.83");
+  expect(changeSince("900", "1000.5")).toBe("-100.50");
+  expect(changeSince("8550.0000", "17100.0000")).toBe("-8550.00");
   expect(changeSince(null, "1")).toBeNull();
   expect(previousPeriod("2026-01")).toBe("2025-12");
   expect(nextPeriod("2026-12")).toBe("2027-01");
   expect(shortHours("37.5000")).toBe("37.5");
   expect(shortHours("8.0000")).toBe("8");
+});
+
+test("a month in progress compares with the same days of the month before", () => {
+  const line = (date: string, pay: string | null, enabled = true) => ({ date, pay, pay_enabled: enabled }) as unknown as PayLine;
+  const before = { lines: [line("2026-10-02", "400.00"), line("2026-10-13", "300.50"), line("2026-10-14", "999.00"), line("2026-10-05", null), line("2026-10-06", "50.00", false)] };
+  expect(payUpTo(before, "2026-10-13")).toBe("700.50");
+  expect(sameDayBefore("2026-11", 13)).toBe("2026-10-13");
+  expect(sameDayBefore("2027-03", 31)).toBe("2027-02-28");
+  expect(sameDayBefore("2026-01", 15)).toBe("2025-12-15");
 });

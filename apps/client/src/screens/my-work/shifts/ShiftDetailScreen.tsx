@@ -19,7 +19,7 @@ import { Button, EmptyState, InlineBanner, PageTitle, SkeletonRows, StatusChip, 
 import { Screen } from "../../../design/components/Screen";
 import { Icon } from "../../../design/icons/Icon";
 import { useTheme } from "../../../design/theme/ThemeProvider";
-import { formatLongDate, formatTimeRange, isolateLtr } from "../../../locale";
+import { nameText, formatLongDate, formatTimeRange, isolateLtr } from "../../../locale";
 import { ContactCard } from "../../client/ClientScreens";
 import { useLoad } from "../../useLoad";
 import { icsFor, mapLinks, shiftDate, type ShiftDetail } from "./model";
@@ -96,7 +96,7 @@ export function ShiftDetailScreen() {
       ) : (
         <>
           <PageTitle eyebrow={[t("app.name"), t("shifts.title")]} title={formatLongDate(shiftDate(shift.data), i18n.language)}>
-            <StatusChip status="neutral" label={shift.data.shift_type} />
+            <StatusChip status="neutral" label={nameText(shift.data.shift_type)} />
           </PageTitle>
           {/* A word from whoever placed or moved them here (008 T042g). */}
           {shift.data.note ? <InlineBanner tone="info" title={t("shifts.note_title")} testID="shift-note"><Txt role="body">{shift.data.note}</Txt></InlineBanner> : null}

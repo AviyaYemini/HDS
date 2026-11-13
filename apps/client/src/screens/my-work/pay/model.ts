@@ -75,10 +75,28 @@ export function breakdownByRate(pay: Pick<PayToDate, "lines">): RateRow[] {
     .map((rate) => ({ ratePct: rate, hours: shortHours(amount(hours.get(rate)!)), amount: fromCents(money.get(rate)!) }));
 }
 
-/** The change from `previous` to `current`, as a signed four-decimal string, or null without both. */
+/** The change from `previous` to `current`, in agorot, as a signed two-decimal string, or null without both. */
 export function changeSince(current: string | null | undefined, previous: string | null | undefined): string | null {
   if (current === null || current === undefined || previous === null || previous === undefined) return null;
-  return amount(units(current) - units(previous));
+  return fromCents(cents(current) - cents(previous));
+}
+
+/**
+ * The pay of `pay`'s lines up to and including `lastDate` (a month in progress compared with the
+ * same days of the month before), exactly, in agorot; lines without pay count as nothing.
+ */
+export function payUpTo(pay: Pick<PayToDate, "lines">, lastDate: string): string {
+  let total = 0n;
+  for (const line of pay.lines) if (line.pay_enabled && line.pay != null && line.date <= lastDate) total += cents(line.pay);
+  return fromCents(total);
+}
+
+/** The same day of the month before `period`'s `day`, kept inside that month (31 → 30, 29 → 28). */
+export function sameDayBefore(period: string, day: number): string {
+  const before = previousPeriod(period);
+  const [year, month] = before.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${before}-${String(Math.min(day, last)).padStart(2, "0")}`;
 }
 
 /** The month before `period` (`YYYY-MM`). */
