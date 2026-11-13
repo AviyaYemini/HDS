@@ -9,9 +9,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
-import { useErrorText } from "../../api/errors";
+import { call, useErrorText } from "../../api/errors";
+import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { previewsEnabled } from "../../config/previews";
 import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, Txt, showToast } from "../../design/components";
@@ -24,6 +25,7 @@ import { Block } from "./Block";
 import { PersonSheet } from "./PersonSheet";
 import { PublishSheet } from "./PublishSheet";
 import { RosterSheet } from "./RosterSheet";
+import { useLoad } from "../useLoad";
 import { cellOf, isOvernight, placed, shiftDays, weekDays, type Alert, type Shift } from "./model";
 import { useCopyNextWeek } from "./useCopyNextWeek";
 import { useAssignInputs, useRosterData } from "./useRosterData";
@@ -45,6 +47,17 @@ export function RosterScreen() {
   const runnable = project !== null && capabilities.has("schedule.generate") && editable;
 
   const { types, shifts, people, nameOf } = useRosterData(project, week);
+  const session = useSession();
+  const today = todayIn(DEFAULT_TIME_ZONE);
+  // The project's name, client and site for the header.
+  const projectInfo = useLoad(async () => (project ? await call(session.api.GET("/api/v1/projects/{id}", { params: { path: { id: project } } })) : null), [project]);
+  const places = useLoad(async () => {
+    const [clients, sites] = await Promise.all([call(session.api.GET("/api/v1/clients")), call(session.api.GET("/api/v1/sites"))]);
+    return { clients: clients.items, sites: sites.items };
+  }, []);
+  const where = projectInfo.data
+    ? [places.data?.clients.find((c) => c.id === projectInfo.data!.client_id)?.name, places.data?.sites.find((x) => x.id === projectInfo.data!.site_id)?.name].filter(Boolean).join(" · ")
+    : "";
   const [assignTo, setAssignTo] = useState<Shift | null>(null);
   const [personOn, setPersonOn] = useState<{ shift: Shift; assignmentId: string; userId: string } | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -81,7 +94,12 @@ export function RosterScreen() {
 
   return (
     <Screen testID="screen-roster" fixed={isDesktop}>
-      <PageTitle eyebrow={[t("app.name"), t("nav.group.manage")]} title={t("nav.roster")}>
+      {/* The project's own name, with its client and site, and the week (the owner, 2026-11-13). */}
+      <PageTitle
+        eyebrow={[t("app.name"), t("nav.roster"), ...(where ? [where] : [])]}
+        title={projectInfo.data?.name ?? t("nav.roster")}
+        documentTitle={projectInfo.data?.name ?? t("nav.roster")}
+      >
         {/* Every project, the read-only ones included, even for the manager of one (group O review). */}
         <LinkPressable href={`/roster?week=${week}`} testID="action-all-projects" style={styles.allProjects}>
           <Txt role="label">{t("roster.all_projects")}</Txt>
@@ -104,6 +122,16 @@ export function RosterScreen() {
           />
         ) : null}
       </PageTitle>
+      <View style={styles.weekSwitch} testID="roster-week-switch">
+        <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => router.setParams({ week: addDays(week, -7) } as never)} testID="action-prev-week" />
+        <Txt role="section" numeric testID="roster-week-range">
+          {`\u2066${Number(days[0]!.slice(8))}.${Number(days[0]!.slice(5, 7))} – ${Number(days[6]!.slice(8))}.${Number(days[6]!.slice(5, 7))}\u2069`}
+        </Txt>
+        <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={t("sheet.next_week")} onPress={() => router.setParams({ week: addDays(week, 7) } as never)} testID="action-next-week" />
+        {week !== startOfWeek(todayIn(DEFAULT_TIME_ZONE)) ? (
+          <Button variant="secondary" label={t("sheet.this_week")} onPress={() => router.setParams({ week: startOfWeek(todayIn(DEFAULT_TIME_ZONE)) } as never)} testID="action-this-week" />
+        ) : null}
+      </View>
       {stale ? <InlineBanner tone="warning" testID="banner-roster-changed" title={t("roster.changed")} onDismiss={dismissStale} /> : null}
       {previewsEnabled ? (
         <EmptyState testID="preview-cost-strip" icon="wallet" badge={t("preview.badge")} title={t("preview.cost_strip_title")} body={t("preview.cost_strip_body")} feature={t("preview.comes_with", { feature: "011" })} />
@@ -113,12 +141,23 @@ export function RosterScreen() {
       ) : loading ? (
         <SkeletonRows rows={6} />
       ) : isDesktop ? (
-        <ScrollView horizontal contentContainerStyle={styles.week}>
+        // All seven days side by side, sharing the width, today shaded (the owner, 2026-11-13).
+        <View style={styles.week}>
           {days.map((day) => (
-            <View key={day} testID="roster-day" {...webProps({ dataSet: { date: day } })} style={[styles.day, { borderColor: colors.border.subtle }]}>
-              <Txt role="label" style={styles.dayHead}>
-                {formatHeaderDate(day, i18n.language)}
-              </Txt>
+            <View
+              key={day}
+              testID="roster-day"
+              {...webProps({ dataSet: { date: day } })}
+              style={[styles.day, { borderColor: colors.border.subtle }, day === today ? { backgroundColor: colors.bg.selected } : null]}
+            >
+              <View style={styles.dayHead} accessibilityLabel={formatHeaderDate(day, i18n.language)}>
+                <Txt role="eyebrow" tone="secondary">
+                  {t(`sheet.weekday.${new Date(`${day}T12:00:00Z`).getUTCDay()}`)}
+                </Txt>
+                <Txt role="section" numeric>
+                  {`${Number(day.slice(8))}.${Number(day.slice(5, 7))}`}
+                </Txt>
+              </View>
               {types.data!.map((type) => (
                 <View key={type.id} testID="roster-row" {...webProps({ dataSet: { shiftType: type.id } })} style={styles.row}>
                   {(byCell.get(cellOf(day, type.id)) ?? []).map(block)}
@@ -135,7 +174,7 @@ export function RosterScreen() {
               ))}
             </View>
           ))}
-        </ScrollView>
+        </View>
       ) : (
         <View testID="roster-agenda" style={styles.agenda}>
           {shownDays.map((day) => {
@@ -245,8 +284,9 @@ export function RosterScreen() {
 const styles = StyleSheet.create({
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   allProjects: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
-  week: { flexDirection: "row", gap: 8 },
-  day: { width: 168, borderWidth: 1, padding: 6, gap: 6 },
+  week: { flexDirection: "row", gap: 6 },
+  day: { flex: 1, flexBasis: 0, minWidth: 0, borderWidth: 1, padding: 6, gap: 6 },
+  weekSwitch: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   dayHead: { paddingBottom: 4 },
   row: { gap: 6, minHeight: 40 },
   continuation: { borderWidth: 1, borderStyle: "dashed", padding: 6 },

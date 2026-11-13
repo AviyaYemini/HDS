@@ -74,7 +74,7 @@ describe("HomeScreen (FR-006)", () => {
       .on("GET", "/api/v1/availability-windows", json(200, { items: [{ id: "w", starts_on: "2026-11-15", ends_on: "2026-11-21", deadline: "2026-11-12T10:00:00Z", is_open: true }] }));
     await renderWith(await signedIn(api), <HomeScreen />);
     expect(await screen.findByTestId("home-next-shift")).toBeTruthy();
-    expect(screen.getByText("Night Watch · Night")).toBeTruthy();
+    expect(screen.getByText("\u2068Night Watch\u2069 · \u2068Night\u2069")).toBeTruthy();
     expect(screen.getByText(/22:00–06:00 \+1/)).toBeTruthy();
     expect(await screen.findByTestId("home-deadline")).toHaveTextContent(/12\/11\/2026/);
     // "Open availability" goes to the availability screen (R27).

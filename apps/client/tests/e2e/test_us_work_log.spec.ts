@@ -14,16 +14,14 @@ test("a Manager sees who worked at a project", async ({ page }) => {
   await signIn(page, "manager");
   await page.getByTestId("nav-work-log").click();
   await expect(page).toHaveURL(/\/reports\/work-log$/);
-  // The report opens on this pay period; the shift may have been in the last one.
-  if (inEarlierMonth(startsAt)) await page.getByTestId("preset-last-pay-period").click();
+  // The log opens on this month; the shift may have been in the last one.
+  if (inEarlierMonth(startsAt)) await page.getByTestId("preset-last-month").click();
   await page.getByTestId("scope-project").click();
   await page.getByTestId("report-scope-picker").click();
   await page.getByTestId("report-scope-picker-sheet").getByText("Night Watch").first().click();
   await expect(page.getByTestId("figure-shifts")).toBeVisible();
-  // Each project is a bar that opens into who worked there.
-  const bar = page.getByTestId("report-bar").filter({ hasText: "Night Watch" }).first();
-  await bar.click();
-  await expect(page.getByTestId("report-rows").first().getByTestId("report-row").first()).toBeVisible();
+  // Who worked there, in the table under the figures (the owner, 2026-11-13).
+  await expect(page.getByTestId("wl-table")).toContainText("Night Watch");
 });
 
 test("an employee has no reports in the bar", async ({ page }) => {

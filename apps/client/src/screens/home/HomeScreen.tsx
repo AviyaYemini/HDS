@@ -25,7 +25,7 @@ import {
 import { Screen } from "../../design/components/Screen";
 import { Icon, type IconName } from "../../design/icons/Icon";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import {
+import { nameText,
   DEFAULT_TIME_ZONE,
   addDays,
   dateOf,
@@ -83,7 +83,7 @@ export function NextShiftPanel() {
         {t("home.next_shift")}
       </Txt>
       <Txt role="section" heading={2}>
-        {`${next.project.name} · ${next.shift_type}`}
+        {`${nameText(next.project.name)} · ${nameText(next.shift_type)}`}
       </Txt>
       <Txt role="body" numeric>
         {`${formatHeaderDate(date, i18n.language)}, ${formatTimeRange(next.starts_at, next.ends_at, next.timezone)}`}
