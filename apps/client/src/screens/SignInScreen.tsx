@@ -11,6 +11,7 @@ import { StyleSheet, View } from "react-native";
 import { useErrorText } from "../api/errors";
 import { useSession } from "../api/SessionContext";
 import { safeReturnPath } from "../auth/returnPath";
+import { forgetLocation } from "../auth/SignInRedirect";
 import { clearSessionEnded, useSessionEnded } from "../auth/sessionEnded";
 import { capabilitiesOf } from "../capabilities";
 import { Button, FeaturePanel, InlineBanner, SurfaceContext, TextField, Txt } from "../design/components";
@@ -47,6 +48,7 @@ export function SignInScreen() {
     setBusy(false);
     if (refused === null) {
       clearSessionEnded();
+      forgetLocation();
       // Back to the address the person was sent from, when it is one of this app's (ui-routes.md).
       router.replace((safeReturnPath(next) ?? homeFor(capabilitiesOf(session.user))) as never);
     } else {
