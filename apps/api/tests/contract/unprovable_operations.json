@@ -308,6 +308,13 @@
       "operation_id": "get_overview_api_v1_reports_overview_get",
       "suites": ["pytest", "cli"],
       "reason": "to on or after from and at most 366 days later spans two parameters, as the hours report (CEO demo); answered 422 reports.range_invalid"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/roster/warnings",
+      "operation_id": "roster_warnings_api_v1_roster_warnings_get",
+      "suites": ["pytest", "cli"],
+      "reason": "to on or after from and at most 31 days later spans two parameters (CEO demo); answered 422 shifts.date_range_invalid"
     }
   ]
 }

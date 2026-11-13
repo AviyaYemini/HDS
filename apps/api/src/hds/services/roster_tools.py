@@ -320,6 +320,59 @@ class RosterToolsService:
         ensure_role(actor, *MANAGER_ROLES)
         return await self._overrides.for_assignments(actor.organisation_id, assignment_ids)
 
+    # ---------------------------------------------------------- the week's warnings (CEO demo)
+
+    async def warnings_in_range(self, actor: User, first: date, last: date) -> list[dict[str, Any]]:
+        """Every rule the roster's shifts on ``first`` to ``last`` break, across projects.
+
+        Drafts and published alike, judged as an edit would be; each warning says whether every
+        assignment it concerns kept it with a reason (``overridden``). At most 31 days.
+
+        Raises:
+            ForbiddenError: ``users.manager_required`` (HTTP 403).
+            DomainValidationError: ``shifts.date_range_invalid`` (HTTP 422).
+        """
+        ensure_role(actor, *MANAGER_ROLES)
+        if last < first or (last - first).days > 30:
+            raise DomainValidationError(
+                code="shifts.date_range_invalid",
+                detail="The range must not end before it starts, nor be longer than 31 days.",
+            )
+        views = []
+        after = None
+        while True:
+            page, after = await self._roster.list_shifts(
+                actor,
+                first=first,
+                last=last,
+                project_id=None,
+                status=None,
+                after=after,
+                limit=200,
+            )
+            views.extend(page)
+            if after is None:
+                break
+        if not views:
+            return []
+        found = await self._roster.judge(actor, [v.shift.id for v in views])
+        by_person_shift = {(a.user_id, v.shift.id): a.id for v in views for a in v.assignments}
+        overridden = {
+            (o.assignment_id, o.warning_code)
+            for o in await self._overrides.for_assignments(
+                actor.organisation_id, list(by_person_shift.values())
+            )
+        }
+        for w in found:
+            ids = [
+                by_person_shift.get((w["employee_id"], s))
+                for s in w["shift_ids"]
+                if w["employee_id"] is not None
+            ]
+            ids = [i for i in ids if i is not None]
+            w["overridden"] = bool(ids) and all((i, w["code"]) in overridden for i in ids)
+        return found
+
     # ---------------------------------------------------------- publish review
 
     async def _drafts(
