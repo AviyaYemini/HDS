@@ -51,14 +51,18 @@ test("the dashboard asks this month and shows the API's figures, the panel, the 
   expect(screen.getAllByTestId("bar-column")).toHaveLength(2);
 });
 
-test("with pay hidden, no pay figure, bar or legend shows", async () => {
-  const hidden = { ...OVERVIEW, pay_actual: null, pay_forecast: null, margin_pct: null, weeks: OVERVIEW.weeks.map((w) => ({ ...w, pay: null })), projects: OVERVIEW.projects.map((p) => ({ ...p, pay: null, margin_pct: null })) };
+test("where pay is hidden the API sends no money: hours stand in, with no margin or money anywhere", async () => {
+  const { billing_actual, billing_forecast, pay_actual, pay_forecast, margin_pct, ...rest } = OVERVIEW;
+  void [billing_actual, billing_forecast, pay_actual, pay_forecast, margin_pct];
+  const hidden = { ...rest, weeks: OVERVIEW.weeks.map(({ week_start, hours, forecast }) => ({ week_start, hours, forecast })), projects: OVERVIEW.projects.map(({ billing, pay, margin_pct: m, ...p }) => (void [billing, pay, m], p)) };
   const api = new FakeApi().on("GET", "/api/v1/reports/overview", json(200, hidden));
   await renderWith(await signedIn(api), <OverviewScreen />);
-  expect(await screen.findByTestId("figure-billing", {}, { timeout: 5000 })).not.toHaveTextContent(/Pay/);
+  expect(await screen.findByTestId("figure-hours", {}, { timeout: 5000 })).toHaveTextContent(/01\s*Hours · so far\s*1,984/);
+  expect(screen.getByTestId("figure-forecast")).toHaveTextContent(/4,310/);
+  expect(screen.queryByTestId("figure-billing")).toBeNull();
   expect(screen.queryByText(/margin/i)).toBeNull();
-  expect(screen.getByText("Billing · by week")).toBeTruthy();
-  expect(screen.queryByText(/light pay/)).toBeNull();
+  expect(screen.queryByText(/₪/)).toBeNull();
+  expect(screen.getByText("Hours · by week")).toBeTruthy();
 });
 
 test("switching to the quarter asks the quarter", async () => {

@@ -15,12 +15,10 @@ import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl,
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { DEFAULT_TIME_ZONE, formatMoney, todayIn } from "../../locale";
+import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { useLoad } from "../useLoad";
-import { coveragePercent, formatPercent, healthChip, periodRange, weekLabel, type Overview, type OverviewProject, type Period } from "./model";
-
-/** `GET /api/v1/reports/overview`, untyped until the generated client carries it. */
-type UntypedGet = (path: string, init: { params: { query: Record<string, string> } }) => Promise<{ data?: Overview; error?: unknown; response: Response }>;
+import { coveragePercent, formatPercent, healthChip, periodRange, weekLabel, type OverviewProject, type Period } from "./model";
 
 export function OverviewScreen() {
   const { t, i18n } = useTranslation();
@@ -30,7 +28,7 @@ export function OverviewScreen() {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const [period, setPeriod] = useState<Period>("month");
   const range = periodRange(period, today);
-  const overview = useLoad(async () => call<Overview>((api.GET as unknown as UntypedGet)("/api/v1/reports/overview", { params: { query: range } })), [range.from, range.to]);
+  const overview = useLoad(async () => call(api.GET("/api/v1/reports/overview", { params: { query: range } })), [range.from, range.to]);
   const money = (amount: string) => formatMoney(amount, i18n.language);
   const d = overview.data;
 
@@ -44,27 +42,35 @@ export function OverviewScreen() {
   const coverage = d ? coveragePercent(d.coverage) : null;
   const figures: KeyFigure[] = d
     ? [
-        {
-          key: "billing",
-          label: t("snapshot.figure.billing"),
-          value: money(d.billing_actual),
-          raw: d.billing_actual,
-          detail: d.pay_actual != null ? t("snapshot.figure.billing_detail", { pay: money(d.pay_actual), hours: d.hours_actual }) : t("snapshot.figure.billing_hours", { hours: d.hours_actual }),
-        },
-        {
-          key: "forecast",
-          label: t(`snapshot.figure.forecast.${period}`),
-          value: money(d.billing_forecast),
-          raw: d.billing_forecast,
-          detail: d.margin_pct != null ? t("snapshot.figure.forecast_margin", { margin: formatPercent(d.margin_pct) }) : t("snapshot.figure.forecast_detail"),
-          tone: d.margin_pct != null && Number(d.margin_pct) < 0 ? "danger" : "primary",
-        },
+        // Where pay is hidden the API sends no money at all: the first two figures are hours then.
+        ...(d.billing_actual != null && d.billing_forecast != null
+          ? [
+              {
+                key: "billing",
+                label: t("snapshot.figure.billing"),
+                value: money(d.billing_actual),
+                raw: d.billing_actual,
+                detail: d.pay_actual != null ? t("snapshot.figure.billing_detail", { pay: money(d.pay_actual), hours: formatHoursFigure(d.hours_actual, i18n.language) }) : t("snapshot.figure.billing_hours", { hours: formatHoursFigure(d.hours_actual, i18n.language) }),
+              },
+              {
+                key: "forecast",
+                label: t(`snapshot.figure.forecast.${period}`),
+                value: money(d.billing_forecast),
+                raw: d.billing_forecast,
+                detail: d.margin_pct != null ? t("snapshot.figure.forecast_margin", { margin: formatPercent(d.margin_pct) }) : t("snapshot.figure.forecast_detail"),
+                tone: (d.margin_pct != null && Number(d.margin_pct) < 0 ? "danger" : "primary") as KeyFigure["tone"],
+              },
+            ]
+          : [
+              { key: "hours", label: t("snapshot.figure.hours"), value: formatHoursFigure(d.hours_actual, i18n.language), raw: d.hours_actual, detail: t("snapshot.figure.hours_detail") },
+              { key: "forecast", label: t(`snapshot.figure.forecast_hours.${period}`), value: formatHoursFigure(d.hours_forecast, i18n.language), raw: d.hours_forecast, detail: t("snapshot.figure.forecast_detail") },
+            ]),
         {
           key: "coverage",
           label: t("snapshot.figure.coverage"),
           value: coverage === null ? "—" : `${coverage}%`,
           raw: coverage === null ? "" : String(coverage),
-          detail: t("snapshot.figure.coverage_detail", { count: d.coverage.empty_places, projects: d.coverage.projects_with_gaps }),
+          detail: d.coverage.empty_places === 0 ? t("snapshot.figure.coverage_full") : t("snapshot.figure.coverage_detail", { count: d.coverage.empty_places, projects: d.coverage.projects_with_gaps }),
         },
         {
           key: "people",
@@ -77,15 +83,17 @@ export function OverviewScreen() {
       ]
     : [];
 
+  // Billing against pay by week; hours alone where the money is hidden.
+  const showBilling = (d?.weeks ?? []).some((w) => w.billing != null);
+  const showPay = (d?.weeks ?? []).some((w) => w.pay != null);
   const bars: BarColumn[] = (d?.weeks ?? []).map((w) => ({
     key: w.week_start,
     label: w.forecast ? `${weekLabel(w.week_start)} · ${t("snapshot.forecast_short")}` : weekLabel(w.week_start),
-    dark: Number(w.billing),
+    dark: showBilling ? Number(w.billing ?? 0) : Number(w.hours),
     light: w.pay != null ? Number(w.pay) : null,
     faded: w.forecast,
-    title: `${weekLabel(w.week_start)}: ${t("snapshot.bar_title", { billing: money(w.billing) })}${w.pay != null ? ` · ${t("snapshot.bar_pay", { pay: money(w.pay) })}` : ""}`,
+    title: `${weekLabel(w.week_start)}: ${w.billing != null ? t("snapshot.bar_title", { billing: money(w.billing) }) : t("pay.hours", { hours: w.hours })}${w.pay != null ? ` · ${t("snapshot.bar_pay", { pay: money(w.pay) })}` : ""}`,
   }));
-  const showPay = (d?.weeks ?? []).some((w) => w.pay != null);
 
   const columns: Column<OverviewProject>[] = [
     {
@@ -132,7 +140,7 @@ export function OverviewScreen() {
           <KeyFigures figures={figures} />
           <Split>
             <View style={styles.left}>
-              <SectionHead title={showPay ? t("snapshot.bars_title") : t("snapshot.bars_title_billing")} />
+              <SectionHead title={showPay ? t("snapshot.bars_title") : showBilling ? t("snapshot.bars_title_billing") : t("snapshot.bars_title_hours")} />
               <ColumnBars columns={bars} legend={showPay ? t("snapshot.legend") : t("snapshot.legend_billing")} />
               {d.people.temporary > 0 ? (
                 <FeaturePanel testID="panel-temporary">

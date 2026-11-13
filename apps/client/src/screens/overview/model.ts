@@ -1,57 +1,17 @@
 /**
- * The snapshot dashboard's data (specs/demo-ceo/plan.md, "API changes" §2): the shape of
- * `GET /api/v1/reports/overview`, written out by hand until the generated client carries it, and
- * the pure parts the screen needs: the period's range and how a project's status reads. Money is
+ * The snapshot dashboard's data (specs/demo-ceo/plan.md, "API changes" §2): the generated shape of
+ * `GET /api/v1/reports/overview`, and the pure parts the screen needs: the period's range and how a project's status reads. Money is
  * an `Amount` and hours are `HoursOut`, strings with two decimals; the client never adds them up.
  */
+import type { components } from "@hds/api-client";
+
 import { addDays } from "../../locale";
 
-export type Amount = string;
-export type HoursOut = string;
-export type ProjectHealth = "ok" | "gaps" | "loss" | "no_rate";
-
-export interface OverviewWeek {
-  week_start: string;
-  hours: HoursOut;
-  billing: Amount;
-  pay: Amount | null;
-  forecast: boolean;
-}
-
-export interface OverviewProject {
-  id: string;
-  name: string;
-  client_name: string;
-  managers: string[];
-  type: "security" | "training";
-  hours: HoursOut;
-  billing: Amount;
-  pay: Amount | null;
-  margin_pct: string | null;
-  coverage_pct: string | null;
-  empty_places: number;
-  temporary_workers: number;
-  terms_estimated: boolean;
-  status: ProjectHealth;
-}
-
-export interface Overview {
-  from: string;
-  to: string;
-  today: string;
-  billing_actual: Amount;
-  billing_forecast: Amount;
-  pay_actual: Amount | null;
-  pay_forecast: Amount | null;
-  margin_pct: string | null;
-  hours_actual: HoursOut;
-  hours_forecast: HoursOut;
-  coverage: { week_start: string; filled: number; needed: number; empty_places: number; projects_with_gaps: number };
-  people: { active: number; working_this_week: number; temporary: number; temporary_ending_soon: number; near_weekly_limit: number };
-  weeks: OverviewWeek[];
-  projects: OverviewProject[];
-  terms_estimated: boolean;
-}
+/** The answer of `GET /api/v1/reports/overview`; the money fields are absent where pay is hidden. */
+export type Overview = components["schemas"]["OverviewRead"];
+export type OverviewProject = components["schemas"]["OverviewProjectRead"];
+export type OverviewWeek = components["schemas"]["OverviewWeekRead"];
+export type ProjectHealth = OverviewProject["status"];
 
 export type Period = "month" | "quarter" | "year";
 
@@ -76,8 +36,8 @@ export function coveragePercent(coverage: Overview["coverage"]): number | null {
 }
 
 /** A "12.50" percent as the table shows it: "12.5%", a loss with a true minus sign. */
-export function formatPercent(value: string | null): string {
-  if (value === null) return "—";
+export function formatPercent(value: string | null | undefined): string {
+  if (value == null) return "—";
   const n = Number(value);
   const text = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(Math.abs(n));
   return `${n < 0 ? "−" : ""}${text}%`;

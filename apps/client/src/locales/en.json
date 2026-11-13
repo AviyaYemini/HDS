@@ -1097,5 +1097,12 @@
   "sheet.no_shifts_body": "Copy last week, go to another week, or show every project.",
   "hc.preset.this-pay-period": "This period",
   "hc.preset.last-pay-period": "Last period",
-  "hc.preset.last-30-days": "30 days"
+  "hc.preset.last-30-days": "30 days",
+  "snapshot.figure.hours": "Hours · so far",
+  "snapshot.figure.hours_detail": "Published shifts that are over",
+  "snapshot.figure.forecast_hours.month": "Hours · forecast to month end",
+  "snapshot.figure.forecast_hours.quarter": "Hours · forecast to quarter end",
+  "snapshot.figure.forecast_hours.year": "Hours · forecast to year end",
+  "snapshot.bars_title_hours": "Hours · by week",
+  "snapshot.figure.coverage_full": "Every place is filled"
 }
