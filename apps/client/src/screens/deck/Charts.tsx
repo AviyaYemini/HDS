@@ -82,7 +82,8 @@ export function Donut({ slices, colorOf, amountText, centre, summary, testID, pr
             <View style={[styles.swatch, { backgroundColor: colour(s, i), borderColor: colors.border.strong }]} />
             {/* The name on its own line, the share and the amount under it: nothing cut or wrapped mid-number. */}
             <View style={styles.legendText}>
-              <Txt role="meta" numberOfLines={1}>
+              {/* A name someone typed: its own direction, whatever the UI's. */}
+              <Txt role="meta" numberOfLines={1} dir="auto">
                 {s.label}
               </Txt>
               <Txt role="meta" tone="secondary" numeric numberOfLines={1}>
