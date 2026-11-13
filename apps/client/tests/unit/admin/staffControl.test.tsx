@@ -3,7 +3,7 @@
  * hours report by employee (no weekly-limit flag), the temporary chip with its end date and
  * the permanent/temporary filter from the address; plus the 3-month cap. Made-up names only.
  */
-import { screen } from "@testing-library/react-native";
+import { screen, waitFor } from "@testing-library/react-native";
 import * as Router from "expo-router";
 
 import type { Me } from "../../../src/api/session";
@@ -95,4 +95,15 @@ test("a temporary worker within 14 days of the end gets an 'ending soon' chip", 
   await renderWith(await signedIn(fake), <StaffScreen />);
   expect(await screen.findByTestId("card-ending-u2", {}, { timeout: 5000 })).toHaveTextContent(/Ends in [45] days/);
   expect(screen.queryByTestId("card-ending-u1")).toBeNull();
+});
+
+test("staff open sorted by this month's hours, the most first", async () => {
+  router.__setSearchParams({});
+  const fake = api().on("GET", "/api/v1/reports/hours", json(200, { from: "x", to: "y", group_by: "employee", hours: "0", shifts: 0, shifts_missing_rate: 0, groups: [
+    { id: "u1", name: "Dana Levi", hours: "120.00", shifts: 15, shifts_missing_rate: 0, rows: [] },
+    { id: "u2", name: "Omer Katz", hours: "200.00", shifts: 25, shifts_missing_rate: 0, rows: [] },
+  ] }));
+  await renderWith(await signedIn(fake), <StaffScreen />);
+  await waitFor(() => expect(screen.getAllByTestId("table-row")[0]).toHaveTextContent(/Omer Katz/));
+  expect(screen.getAllByTestId("table-row")[1]).toHaveTextContent(/Dana Levi/);
 });

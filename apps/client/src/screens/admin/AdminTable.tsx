@@ -64,6 +64,8 @@ export interface AdminTableProps<Row> {
   filter?: (row: Row) => boolean;
   /** On a phone: the card's second line, key numbers and chips, in place of the columns as one line. */
   phoneCard?: (row: Row) => PhoneCard;
+  /** The order before the reader picks one (the address has no sort yet). */
+  defaultSort?: { key: string; direction: "asc" | "desc" };
 }
 
 type Saved = { id: string; name: string; query: string };
@@ -97,6 +99,7 @@ export function AdminTable<Row>({
   toolbar,
   filter,
   phoneCard,
+  defaultSort,
 }: AdminTableProps<Row>) {
   const { t, i18n } = useTranslation();
   const session = useSession();
@@ -141,7 +144,8 @@ export function AdminTable<Row>({
   const [deleting, setDeleting] = useState<Row | null>(null);
 
   const listed = (rows.data ?? []).filter((r) => !removing.has(keyOf(r)) && (filter ? filter(r) : true));
-  const shown = sorted(searched(listed, state.q, searchText), state.sort, sortValue, i18n.language);
+  const sort = state.sort ?? defaultSort ?? null;
+  const shown = sorted(searched(listed, state.q, searchText), sort, sortValue, i18n.language);
   const openRow = state.open && state.open !== "new" ? ((rows.data ?? []).find((r) => keyOf(r) === state.open) ?? null) : null;
   const panelOpen = state.open === "new" || openRow !== null;
   // Closing a record with unsaved changes asks first, as leaving the screen does (FR-045).
@@ -415,7 +419,7 @@ export function AdminTable<Row>({
           rows={shown}
           loading={rows.data === null}
           keyOf={keyOf}
-          sort={state.sort}
+          sort={sort}
           onSort={(key, direction) => go({ sort: { key, direction }, view: null })}
           onOpen={(row) => {
             const openIt = () => go({ open: keyOf(row) });
@@ -433,7 +437,7 @@ export function AdminTable<Row>({
           rows={shown}
           keyOf={keyOf}
           loading={rows.data === null}
-          sort={state.sort}
+          sort={sort}
           onSort={(key: string, direction: SortDirection) => go({ sort: { key, direction }, view: null })}
           onRowPress={(row) => {
             // Another record while this one has unsaved edits: ask first (group F review).

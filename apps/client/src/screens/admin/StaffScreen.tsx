@@ -13,7 +13,7 @@ import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
-import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
+import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
 import { allShifts } from "../roster/allShifts";
 import { useLoad } from "../useLoad";
@@ -99,13 +99,18 @@ export function StaffScreen() {
               {initials(u.full_name)}
             </Txt>
           </View>
-          <Txt role="label" numberOfLines={1} style={styles.name}>
-            {u.full_name}
-          </Txt>
+          <View style={styles.name}>
+            <Txt role="label" numberOfLines={1}>
+              {u.full_name}
+            </Txt>
+            {/* The e-mail as a quiet second line, not a column of its own (the helper, 2026-11-13). */}
+            <Txt role="meta" tone="secondary" numberOfLines={1} dir="ltr">
+              {u.email}
+            </Txt>
+          </View>
         </View>
       ),
     },
-    { key: "email", title: t("entity.email"), sortable: true, width: 200, render: (u) => isolateLtr(u.email) },
     { key: "role", title: t("entity.role"), sortable: true, width: 80, render: (u) => t(`role.${u.role}`) },
     { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, width: 96, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
     {
@@ -158,6 +163,8 @@ export function StaffScreen() {
       sortValue={(u, key) => (key === "week" ? (weekHours?.get(u.id) ?? 0) : key === "month" ? (monthHours?.get(u.id) ?? 0) : key === "rate" ? (u.default_hourly_rate ? Number(u.default_hourly_rate) : null) : key === "email" ? u.email : key === "role" ? u.role : key === "active" ? (u.is_active ? 1 : 0) : u.full_name)}
       emptyTitle={t("admin.empty.staff_title")}
       emptyBody={t("admin.empty.staff_body")}
+      // This month's hours first, the most first: who is working, not one-off names (the helper, 2026-11-13).
+      defaultSort={{ key: "month", direction: "desc" }}
       filter={(u) => passesType(u, typeFilter)}
       // A phone's card: the role and e-mail, the hours this week and month and the rate, and the chips.
       phoneCard={(u) => {
@@ -252,5 +259,5 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   nameCell: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
   avatar: { width: 30, height: 30, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  name: { flexShrink: 1 },
+  name: { flexShrink: 1, minWidth: 0 },
 });
