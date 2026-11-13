@@ -1,8 +1,9 @@
 /**
  * The roster's edits (specs/007-ux-redesign FR-030 to FR-038; 008 T042d, T042f, T042g, FR-018):
  * assign, take off, move or swap, lock, and Undo for unpublished changes, each step undone only once
- * its request succeeds. Each keeps the warnings the API answers for its shifts; a stale read (412)
- * raises the banner and reads the week again.
+ * its request succeeds. A change is simply stored: the rule warnings the API answers are not shown
+ * (out of the app's scope, the owner, 2026-11-13). A stale read (412) raises the banner and reads
+ * the week again.
  */
 import { useState } from "react";
 
@@ -10,29 +11,25 @@ import { ApiError, call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { showToast } from "../../design/components";
 import type { Loaded } from "../useLoad";
-import type { Alert, RosterChange, Shift, Warning } from "./model";
+import type { Alert, RosterChange, Shift } from "./model";
 
 interface Options {
   shifts: Loaded<Shift[]>;
   /** The note and who hears of it, for the edit being made now (T042g). */
   note: string;
   alert: Alert;
-  /** The rule a choice made now breaks is named in a dialog that only informs (T042d). */
-  onBreaks: (shift: Shift) => void;
 }
 
-export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
+export function useRosterEdits({ shifts, note, alert }: Options) {
   const session = useSession();
   const errorText = useErrorText();
-  const [warnings, setWarnings] = useState<Map<string, Warning[]>>(() => new Map());
   const [history, setHistory] = useState<RosterChange[]>([]);
   const [stale, setStale] = useState(false);
 
   /** Run one roster change; a stale read (412) shows the banner and the latest version. */
-  const change = async (run: () => Promise<{ shift_etag: string; warnings: Warning[] } | null>, shiftId: string): Promise<boolean> => {
+  const change = async (run: () => Promise<unknown>): Promise<boolean> => {
     try {
-      const answer = await run();
-      if (answer) setWarnings((map) => new Map(map).set(shiftId, answer.warnings.filter((w) => w.shift_ids.includes(shiftId))));
+      await run();
       setStale(false);
       await shifts.reload();
       return true;
@@ -49,7 +46,6 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
 
   const assign = async (shift: Shift, userId: string, times?: { starts_at: string | null; ends_at: string | null }, record = true): Promise<string | null> => {
     let created: string | null = null;
-    let breaks = false;
     const done = await change(async () => {
       const answer = await call(
         session.api.POST("/api/v1/shifts/{id}/assignments", {
@@ -63,12 +59,8 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
         }),
       );
       created = answer.assignment.id;
-      breaks = answer.warnings.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id));
       return answer;
-    }, shift.id);
-    // The assignment is made; any rule it breaks is then named in a dialog that only informs
-    // (T042d). Only for a choice made now, never for undo re-making an assignment.
-    if (done && breaks && record) onBreaks(shift);
+    });
     if (done && record && created) setHistory((h) => [...h, { kind: "assigned", assignmentId: created!, shiftId: shift.id, userId }]);
     return done ? created : null;
   };
@@ -85,7 +77,7 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
       );
       etag = answer.shift_etag;
       return answer;
-    }, shift.id);
+    });
     if (done && record && before) {
       setHistory((h) => [
         ...h,
@@ -107,25 +99,16 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
   };
 
   /** Move an assignment to ``shift``, or swap it with ``swapWith`` there, in one step (T042f). */
-  const move = async (assignmentId: string, userId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
+  const move = async (assignmentId: string, fromShiftId: string, shift: Shift, swapWith: string | null, record = true): Promise<boolean> => {
     try {
-      const answer = await call(
+      await call(
         session.api.POST("/api/v1/assignments/{id}/move", {
           params: { path: { id: assignmentId } },
           body: { to_shift_id: shift.id, ...(swapWith ? { swap_with: swapWith } : {}), alert: record ? alert : "none", ...(record && note.trim() ? { note: note.trim() } : {}) },
         }),
       );
-      const found = answer.warnings as Warning[];
-      setWarnings((map) => {
-        const next = new Map(map);
-        for (const id of [fromShiftId, shift.id]) next.set(id, found.filter((w) => w.shift_ids.includes(id)));
-        return next;
-      });
       await shifts.reload();
-      if (record) {
-        setHistory((h) => [...h, { kind: "moved", assignmentId, shiftId: shift.id, fromShiftId, swapWith }]);
-        if (found.some((w) => w.employee_id === userId && w.shift_ids.includes(shift.id))) onBreaks(shift);
-      }
+      if (record) setHistory((h) => [...h, { kind: "moved", assignmentId, shiftId: shift.id, fromShiftId, swapWith }]);
       return true;
     } catch (failure) {
       showToast(errorText(codeOf(failure)), { tone: "warning" });
@@ -141,7 +124,7 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
     if (last.kind === "moved") {
       // Back to the shift it came from (in any project), swapping again when it was a swap.
       const back = { id: last.fromShiftId } as Shift;
-      if (await move(last.assignmentId, "", last.shiftId, back, last.swapWith, false)) setHistory((h) => h.slice(0, -1));
+      if (await move(last.assignmentId, last.shiftId, back, last.swapWith, false)) setHistory((h) => h.slice(0, -1));
       return;
     }
     const shift = shifts.data?.find((s) => s.id === last.shiftId);
@@ -157,12 +140,9 @@ export function useRosterEdits({ shifts, note, alert, onBreaks }: Options) {
     );
   };
 
-  /** An override covers the rule: its warning leaves the shift's list (FR-040). */
-  const dropWarning = (shiftId: string, code: string, employee: string | null) =>
-    setWarnings((map) => new Map(map).set(shiftId, (map.get(shiftId) ?? []).filter((w) => !(w.code === code && w.employee_id === employee))));
   /** After a publish, nothing left to undo (FR-037). */
   const clearHistory = () => setHistory([]);
   const dismissStale = () => setStale(false);
 
-  return { warnings, dropWarning, history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment };
+  return { history, clearHistory, stale, dismissStale, assign, unassign, move, undo, lockAssignment };
 }
