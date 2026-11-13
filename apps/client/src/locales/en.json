@@ -1206,5 +1206,5 @@
   "clients.col.projects": "Projects",
   "clients.col.billing": "Billing this month",
   "projects.col.manager": "Manager",
-  "projects.col.hours": "Hours this month"
+  "projects.col.hours": "Hours (month)"
 }

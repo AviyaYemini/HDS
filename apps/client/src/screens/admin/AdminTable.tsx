@@ -274,7 +274,8 @@ export function AdminTable<Row>({
           {
             key: "__select",
             title: t("admin.select"),
-            width: 56,
+            // Wide enough for its title on one line in either language, never "SELE / CT".
+            width: 76,
             render: (row) => (
               <Pressable
                 role="checkbox"
