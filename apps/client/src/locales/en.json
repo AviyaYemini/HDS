@@ -1189,5 +1189,18 @@
   "wl.col.project": "Project",
   "wl.col.shifts": "Shifts",
   "wl.col.hours": "Hours",
-  "wl.col.dates": "First–last"
+  "wl.col.dates": "First–last",
+  "subs.figure.submitted": "Submitted",
+  "subs.figure.share": "Share submitted",
+  "subs.figure.drafts": "In draft",
+  "subs.figure.drafts_detail": "started, not yet submitted",
+  "subs.none_yet": "0 of {{total}} submitted · {{left}}",
+  "subs.days_left": "{{count}} days left",
+  "subs.days_left_one": "1 day left",
+  "subs.days_left_other": "{{count}} days left",
+  "subs.deadline_today": "the deadline is today",
+  "subs.deadline_passed": "the deadline has passed",
+  "subs.window": "Window {{range}} · deadline {{deadline}} · {{left}}",
+  "subs.progress": "{{submitted}} of {{total}} submitted",
+  "subs.search": "Search by name"
 }

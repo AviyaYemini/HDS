@@ -1189,5 +1189,18 @@
   "wl.col.project": "פרויקט",
   "wl.col.shifts": "משמרות",
   "wl.col.hours": "שעות",
-  "wl.col.dates": "ראשון–אחרון"
+  "wl.col.dates": "ראשון–אחרון",
+  "subs.figure.submitted": "הגישו",
+  "subs.figure.share": "אחוז הגשה",
+  "subs.figure.drafts": "בטיוטה",
+  "subs.figure.drafts_detail": "התחילו ועוד לא הגישו",
+  "subs.none_yet": "0 מתוך {{total}} הגישו · {{left}}",
+  "subs.days_left": "נותרו {{count}} ימים",
+  "subs.days_left_one": "נותר יום אחד",
+  "subs.days_left_other": "נותרו {{count}} ימים",
+  "subs.deadline_today": "המועד האחרון היום",
+  "subs.deadline_passed": "המועד האחרון עבר",
+  "subs.window": "חלון {{range}} · מועד אחרון {{deadline}} · {{left}}",
+  "subs.progress": "{{submitted}} מתוך {{total}} הגישו",
+  "subs.search": "חיפוש בשם"
 }
