@@ -17,8 +17,14 @@ This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry
   - the people block, including temporary workers.
 
   Managers see only their own projects, and money only where pay is open to them.
-- **The roster week** in the layout the managers know from the sheet: projects as rows grouped by client, and days as columns. Empty places are dashed. A "זמני" chip marks temporary workers. A warnings strip comes from `GET /api/v1/roster/warnings`.
-- **Staff control:** hours this week and this month, a near-48-hour flag, a permanent/temporary filter and the engagement fields.
+- **Charts on the overview:**
+  - a donut of billing by client, the top five plus the rest;
+  - a donut of permanent against temporary staff;
+  - candles of daily billing for each week (open, close, high and low), from the overview's new `days[]`.
+- **The roster week** in the layout the managers know from the sheet: projects as rows grouped by client, and days as columns. Empty places are dashed, and a "זמני" chip marks temporary workers.
+- **Staff control:** hours this week and this month, a permanent/temporary filter and the engagement fields.
+- **Phone layout:** below 768px the tables become cards, and the roster shows one day at a time.
+- **No rule warnings in the demo screens:** the owner considers them out of scope for the app. `GET /api/v1/roster/warnings` stays in the API, unused, for a later cherry-pick.
 - **Hours and costs** in the deck's style. The hours report now includes billing.
 - **The demo data:**
   - `scripts/demo/parse_roster.py` reads the weekly Google Sheets export. It handles tasks, clients, managers, hours, sums, open places and merged spellings.
@@ -42,8 +48,11 @@ Open http://localhost:8081 and sign in as `admin@hds.test`, or as `manager1@hds.
 **Checked locally:**
 - API: 1,539 unit and integration tests for what changed (temporary workers, the overview, the hours report, employees); lint and format are clean.
 - The OpenAPI contract has no drift, and the generated client is up to date.
-- Client: tsc, ESLint and all 379 unit tests.
-- The demo run from the workbook, from a fresh database, in Hebrew at 1440px and in English at 390px. That includes saving a temporary worker's end date and the three-month rule on the form.
+- Client: tsc, ESLint and all 384 unit tests.
+- The demo run from the workbook, from a fresh database:
+  - in Hebrew at 1440px and 390px, and in English at 390px;
+  - the charts and the phone cards and roster;
+  - saving a temporary worker's end date, and the three-month rule on the form.
 
 **Left to CI:** the full suites, Schemathesis, and the four end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`).
 

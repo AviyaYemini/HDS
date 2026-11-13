@@ -19,14 +19,15 @@ About ten minutes, in Hebrew, on a laptop. The data comes from the team's real r
 
 | # | Screen | What to show | The point |
 | --- | --- | --- | --- |
-| 1 | **מבט כולל** (overview, where you land) | The month at a glance:<br>- billing so far and the forecast to the end of the month;<br>- gross pay and margin;<br>- this week's coverage;<br>- people, and how many are near the 48-hour limit. | The whole business in one screen, from the roster that already exists. No more adding things up in a spreadsheet. |
-| 2 | Same screen: the weekly bars | Past weeks solid, the current and next weeks lighter (forecast from the roster). | Cash flow forward, not only backward. |
+| 1 | **מבט כולל** (overview, where you land) | The month at a glance:<br>- billing so far and the forecast to the end of the month;<br>- gross pay and margin;<br>- this week's coverage;<br>- people. | The whole business in one screen, from the roster that already exists. No more adding things up in a spreadsheet. |
+| 2 | Same screen: the weekly bars and the candles | Bars: past weeks solid, the current and next weeks lighter (forecast from the roster). Candles: each week's daily billing (open, close, highest and lowest day). Switch to רבעון to see the trend. | Cash flow forward, not only backward. |
+| 2a | Same screen: the two donuts | Billing by client (who the business depends on) and the permanent/temporary mix. | Concentration risk and staffing mix at a glance. |
 | 3 | Same screen: the project table | Coverage, margin and a status chip for each project. One project shows a **loss**: its pay with night premiums is above its billing. A "*" marks estimated terms. | Spot the loss-making contract before the month ends. |
 | 4 | Same screen: the dark panel, **עובדים זמניים** | How many temporary workers there are, how many end soon, and a link to the list. | The CEO's request, already working. |
-| 5 | **סידור עבודה** (roster), this week | The same layout as the sheet: projects as rows grouped by client, days as columns, names as blocks, "זמני" chips, warnings. | Familiar to the managers on day one. |
-| 6 | Roster, **שבוע הבא** | Next week's drafts: the dashed "ריק" places are the "?" cells from the sheet. Then the warnings strip. | Gaps and rule breaks show before publishing, not after. |
-| 7 | Roster: open one project, assign a temporary worker to another project | The warning "עובד זמני משובץ מחוץ לפרויקטים או לתאריכים שלו". | A temporary worker stays on their projects and dates. The auto-scheduler never places them outside. |
-| 8 | **צוות** (staff) | Hours this week and this month, the "near 48h" flag, the permanent/temporary filter, and the "זמני · עד …" chip. Then open a temporary worker's card: type, dates (3 months at most) and projects. | Staff control in one table. |
+| 5 | **סידור עבודה** (roster), this week | The same layout as the sheet: projects as rows grouped by client, days as columns, names as blocks, "זמני" chips. | Familiar to the managers on day one. |
+| 6 | Roster, **שבוע הבא** | Next week's drafts: the dashed "ריק" places are the "?" cells from the sheet. | Gaps show before publishing, not after. |
+| 7 | On a phone (or a narrow window) | The roster one day at a time with a day strip; the overview and staff as cards. | The same tool in the field. |
+| 8 | **צוות** (staff) | Hours this week and this month, the permanent/temporary filter, and the "זמני · עד …" chip. Then open a temporary worker's card: type, dates (3 months at most) and projects. | Staff control in one table. A temporary worker stays on their projects and dates; the auto-scheduler never places them outside. |
 | 9 | **דוח שעות** (hours and costs) | Hours, billing and gross pay by project, with bars. | What used to take a day of spreadsheet work. |
 | 10 | Second tab, as a manager | The same overview, showing only that manager's projects. | Each manager sees their own work, nothing else. |
 
