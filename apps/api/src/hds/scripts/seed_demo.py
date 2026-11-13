@@ -98,6 +98,7 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
     )
 
     def account(email: str, name: str, role: UserRole, **extra: Any) -> User:
+        """Add an active account with the demo's password."""
         user = User(
             id=uuid.uuid4(),
             organisation_id=org.id,
@@ -259,8 +260,8 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
     # Assignments go in after their shifts: no relationship tells the session the order.
     pending: list[Assignment] = []
     for s in data["shifts"]:
-        project = projects.get(s["project"])
-        if project is None or s["headcount"] < 1:
+        on = projects.get(s["project"])
+        if on is None or s["headcount"] < 1:
             continue
         day = dt.date.fromisoformat(s["date"])
         kind = (
@@ -280,7 +281,7 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
         shift = Shift(
             id=uuid.uuid4(),
             organisation_id=org.id,
-            project_id=project.id,
+            project_id=on.id,
             shift_type_id=kind.id,
             starts_at=starts_at,
             ends_at=ends_at,
@@ -293,10 +294,10 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
         shifts += 1
         seen: set[uuid.UUID] = set()
         for e in s["people"]:
-            user = people.get(e["name"])
-            if user is None or user.id in seen:
+            person = people.get(e["name"])
+            if person is None or person.id in seen:
                 continue
-            seen.add(user.id)
+            seen.add(person.id)
             own_start = own_end = None
             if "start" in e and "end" in e and (e["start"], e["end"]) != (s["start"], s["end"]):
                 own_start, own_end = _span(day, e["start"], e["end"])
@@ -305,7 +306,7 @@ async def load(db: AsyncSession, data: dict[str, Any], today: dt.date) -> dict[s
                     id=uuid.uuid4(),
                     organisation_id=org.id,
                     shift_id=shift.id,
-                    user_id=user.id,
+                    user_id=person.id,
                     source="manual",
                     starts_at=own_start,
                     ends_at=own_end,

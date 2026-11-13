@@ -6,7 +6,6 @@ endpoints are public because the caller has no session yet; the one-time token i
 
 import uuid
 from collections.abc import Callable
-from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -19,7 +18,7 @@ from hds.core.config import get_settings
 from hds.core.database import after_commit, get_session_factory, get_unit_of_work, unit_of_work
 from hds.core.deps import require_manager
 from hds.core.mail import DeferredMailer, MailSender, get_mail_sender
-from hds.core.types import Email, Password, Token
+from hds.core.types import Email, Password, StrictDate, Token
 from hds.models.user import User, UserRole
 from hds.repositories.client import ClientRepository
 from hds.repositories.group import GroupRepository
@@ -44,8 +43,8 @@ class InviteRequest(BaseModel):
     employment_type: Literal["permanent", "temporary"] | None = Field(
         default=None, description="Temporary for a worker on given projects for up to 3 months."
     )
-    engaged_from: date | None = None
-    engaged_until: date | None = None
+    engaged_from: StrictDate | None = None
+    engaged_until: StrictDate | None = None
     project_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
 

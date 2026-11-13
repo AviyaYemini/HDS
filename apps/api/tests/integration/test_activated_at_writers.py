@@ -14,6 +14,8 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "hds"
 ALLOWED = {
     ("services/invitation.py", "accept_invitation"),
     ("repositories/user.py", "_with_activation"),
+    # the CEO demo's seed loads accounts that are created active, as the repository step does
+    ("scripts/seed_demo.py", "account"),
 }
 MODELS = "models/"
 

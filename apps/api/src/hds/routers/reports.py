@@ -6,6 +6,7 @@ and Admins only (005 FR-023 to FR-028).
 
 import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -421,7 +422,7 @@ def read_overview(o: Overview) -> OverviewRead:
                 billing=r.money.billing_forecast if r.money.money_shown else None,
                 pay=r.money.pay_forecast if r.money.money_shown else None,
                 margin_pct=r.margin_pct,
-                coverage_pct=(r.filled * 100 / r.needed) if r.needed else None,
+                coverage_pct=(Decimal(r.filled * 100) / r.needed) if r.needed else None,
                 empty_places=r.needed - r.filled,
                 empty_places_next=r.needed_next - r.filled_next,
                 temporary_workers=r.temporary_workers,

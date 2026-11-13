@@ -89,7 +89,7 @@ class OverviewRepository(BaseRepository[Shift]):
         )
         if project_ids is not None:
             query = query.where(Shift.project_id.in_(list(project_ids)))
-        return [ScheduledLine(*row) for row in (await self.session.execute(query)).all()]
+        return [ScheduledLine(*row[:10]) for row in (await self.session.execute(query)).all()]
 
     async def cover(
         self,

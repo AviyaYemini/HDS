@@ -1,14 +1,22 @@
 """A temporary worker's engagement: at most three months, on at least one project (CEO demo)."""
 
+import uuid
 from datetime import date
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from hds.core.exceptions import DomainValidationError
+from hds.models.user import User
 from hds.services.temporary import add_months, as_employee, resolve
 
-PROJECT = "11111111-1111-1111-1111-111111111111"
+PROJECT = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+
+def stub(**fields: Any) -> User:
+    """A stand-in for an account, with only the fields the rules read."""
+    return cast(User, SimpleNamespace(**fields))
 
 
 def test_three_calendar_months_end_on_a_shorter_month_s_last_day() -> None:
@@ -42,7 +50,9 @@ def test_a_temporary_worker_for_up_to_three_months_on_a_project_is_accepted() ->
         (None, date(2026, 12, 1), "employees.temporary_period_invalid"),
     ],
 )
-def test_a_period_too_long_backwards_or_open_is_refused(first, last, code) -> None:
+def test_a_period_too_long_backwards_or_open_is_refused(
+    first: date | None, last: date, code: str
+) -> None:
     with pytest.raises(DomainValidationError) as err:
         resolve(
             None,
@@ -71,7 +81,7 @@ def test_a_temporary_worker_needs_a_project() -> None:
 
 
 def test_making_someone_permanent_clears_the_dates_and_projects() -> None:
-    target = SimpleNamespace(
+    target = stub(
         employment_type="temporary",
         engaged_from=date(2026, 11, 1),
         engaged_until=date(2026, 12, 1),
@@ -86,12 +96,12 @@ def test_making_someone_permanent_clears_the_dates_and_projects() -> None:
 
 
 def test_an_edit_that_touches_nothing_of_the_engagement_changes_nothing() -> None:
-    target = SimpleNamespace(employment_type="permanent")
+    target = stub(employment_type="permanent")
     assert resolve(target, {"full_name": "Dana Levi"}) is None
 
 
 def test_an_edit_keeps_what_it_does_not_send() -> None:
-    target = SimpleNamespace(
+    target = stub(
         employment_type="temporary",
         engaged_from=date(2026, 11, 1),
         engaged_until=date(2026, 12, 1),
@@ -103,7 +113,7 @@ def test_an_edit_keeps_what_it_does_not_send() -> None:
 
 
 def test_the_rules_see_a_temporary_worker_s_engagement_and_not_a_permanent_one_s() -> None:
-    temp = SimpleNamespace(
+    temp = stub(
         id="t",
         is_active=True,
         employment_type="temporary",
@@ -111,7 +121,7 @@ def test_the_rules_see_a_temporary_worker_s_engagement_and_not_a_permanent_one_s
         engaged_until=date(2026, 12, 1),
         project_ids=[PROJECT],
     )
-    staff = SimpleNamespace(
+    staff = stub(
         id="s",
         is_active=True,
         employment_type="permanent",
@@ -119,6 +129,7 @@ def test_the_rules_see_a_temporary_worker_s_engagement_and_not_a_permanent_one_s
         engaged_until=None,
         project_ids=[],
     )
-    assert as_employee(temp).engagement is not None
-    assert as_employee(temp).engagement.covers(PROJECT, date(2026, 11, 15))
+    engagement = as_employee(temp).engagement
+    assert engagement is not None
+    assert engagement.covers(PROJECT, date(2026, 11, 15))
     assert as_employee(staff).engagement is None

@@ -225,11 +225,12 @@ class OverviewService:
         lines = await self._rows.lines(org_id, range_from, range_before, scope)
 
         def local(moment: datetime, tz: str) -> date:
+            """The calendar day of ``moment`` at the site."""
             return moment.astimezone(ZoneInfo(tz)).date()
 
         paid = [s for s in lines if s.project_id in visible]
-        days = await self._days.for_projects(org_id, visible, *spanned(paid)) if paid else []
-        pricing = Pricing(org, days)
+        special = await self._days.for_projects(org_id, visible, *spanned(paid)) if paid else []
+        pricing = Pricing(org, special)
         clients = {
             c.id: c.name
             for c in await self._clients.get_many(org_id, {p.client_id for p in projects.values()})

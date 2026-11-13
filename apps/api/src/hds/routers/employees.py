@@ -6,8 +6,7 @@ caller's organisation, because the services take that user id as already verifie
 """
 
 import uuid
-from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -23,6 +22,7 @@ from hds.core.types import (
     Name,
     Password,
     Phone,
+    StrictDate,
     omittable,
 )
 from hds.models.group import Group
@@ -64,8 +64,8 @@ class UserCreateRequest(BaseModel):
     employment_type: EmploymentType | None = Field(
         default=None, description="Permanent when left out (CEO demo)."
     )
-    engaged_from: date | None = None
-    engaged_until: date | None = None
+    engaged_from: StrictDate | None = None
+    engaged_until: StrictDate | None = None
     project_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
 
@@ -77,9 +77,9 @@ class UserUpdateRequest(ChangeRequest):
     role: AssignableRole = omittable()
     default_hourly_rate: Money | None = None
     employment_type: EmploymentType = omittable()
-    engaged_from: date | None = None
-    engaged_until: date | None = None
-    project_ids: list[uuid.UUID] = Field(default=None, max_length=50)
+    engaged_from: StrictDate | None = None
+    engaged_until: StrictDate | None = None
+    project_ids: Annotated[list[uuid.UUID], Field(max_length=50)] = omittable()
 
 
 class IDListRequest(BaseModel):
