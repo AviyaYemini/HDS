@@ -66,6 +66,8 @@ export interface AdminTableProps<Row> {
   phoneCard?: (row: Row) => PhoneCard;
   /** The order before the reader picks one (the address has no sort yet). */
   defaultSort?: { key: string; direction: "asc" | "desc" };
+  /** What an empty list says when the screen's own filter leaves nothing (no search on). */
+  filteredEmpty?: string | null;
 }
 
 type Saved = { id: string; name: string; query: string };
@@ -100,6 +102,7 @@ export function AdminTable<Row>({
   filter,
   phoneCard,
   defaultSort,
+  filteredEmpty = null,
 }: AdminTableProps<Row>) {
   const { t, i18n } = useTranslation();
   const session = useSession();
@@ -426,7 +429,7 @@ export function AdminTable<Row>({
             const openIt = () => go({ open: keyOf(row) });
             if (mayLeaveFor(openIt)) openIt();
           }}
-          emptyText={t("admin.no_match")}
+          emptyText={!state.q && filteredEmpty ? filteredEmpty : t("admin.no_match")}
           selecting={selecting}
           selected={chosen}
           onToggle={toggle}
@@ -446,7 +449,7 @@ export function AdminTable<Row>({
             if (mayLeaveFor(openIt)) openIt();
           }}
           selectedKey={openRow ? keyOf(openRow) : null}
-          empty={<Txt role="body" tone="secondary">{t("admin.no_match")}</Txt>}
+          empty={<Txt role="body" tone="secondary">{!state.q && filteredEmpty ? filteredEmpty : t("admin.no_match")}</Txt>}
         />
       )}
       {isDesktop ? (

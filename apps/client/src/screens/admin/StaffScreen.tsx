@@ -5,13 +5,14 @@
  * temporary filter (`?type=`), and a "temporary · until 12.02" chip.
  */
 import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
+import { Button, SegmentedControl, Sheet, StatusChip, Txt, showToast, type Column } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
@@ -147,8 +148,31 @@ export function StaffScreen() {
       },
     },
   ];
+  const [inviting, setInviting] = useState(false);
   const setType = (type: TypeFilter) => router.setParams({ type: type === "all" ? undefined : type } as never);
+  const inviteFields: FieldSpec[] = [
+    { name: "email", label: t("entity.email"), kind: "email", required: true },
+    { name: "role", label: t("entity.role"), kind: "choice", options: roles.map((r) => ({ value: r, label: t(`role.${r}`) })) },
+    ...employmentFields,
+  ];
   return (
+    <>
+    <Sheet open={inviting} onClose={() => setInviting(false)} title={t("invite.title")} testID="invite-sheet">
+      <RecordForm
+        key={inviting ? "open" : "closed"}
+        existing={false}
+        fields={inviteFields}
+        testID="invite-form"
+        initial={{ email: "", role: "employee", employment_type: "permanent", engaged_from: "", engaged_until: "", project_ids: "" }}
+        onSave={async (v) => {
+          // Regular unless "temporary" is chosen; a temporary invitee needs the dates and projects.
+          const job = v.employment_type === "temporary" ? { employment_type: "temporary" as const, engaged_from: v.engaged_from, engaged_until: v.engaged_until, project_ids: (v.project_ids ?? "").split(",").filter(Boolean) } : {};
+          await call(api.POST("/auth/invite", { body: { email: v.email!.trim(), role: v.role as (typeof roles)[number], ...job } }));
+          setInviting(false);
+          showToast(t("invite.sent", { email: v.email!.trim() }), { tone: "success" });
+        }}
+      />
+    </Sheet>
     <AdminTable<Row>
       screen="admin_staff"
       testID="screen-admin-staff"
@@ -188,14 +212,20 @@ export function StaffScreen() {
         };
       }}
       toolbar={
-        <SegmentedControl<TypeFilter>
-          label={t("staff.type_filter")}
-          options={(["all", "permanent", "temporary"] as const).map((v) => ({ value: v, label: t(`staff.type.${v}`), testID: `type-${v}` }))}
-          value={typeFilter}
-          onChange={setType}
-          testID="staff-type-filter"
-        />
+        <>
+          <SegmentedControl<TypeFilter>
+            label={t("staff.type_filter")}
+            options={(["all", "permanent", "temporary"] as const).map((v) => ({ value: v, label: t(`staff.type.${v}`), testID: `type-${v}` }))}
+            value={typeFilter}
+            onChange={setType}
+            testID="staff-type-filter"
+          />
+          {/* Invite by e-mail, regular unless an Admin marks the invitee temporary (the owner, 2026-11-13). */}
+          <Button icon="mail" label={t("invite.open")} onPress={() => setInviting(true)} testID="action-invite" />
+        </>
       }
+      // No temporary worker yet: say how one is marked, never a bare "no match".
+      filteredEmpty={typeFilter === "temporary" ? t("staff.no_temporary") : null}
       active={{
         of: (u) => u.is_active,
         // Never your own account: a bulk deactivation would sign you out partway (code review, PR 5).
@@ -252,6 +282,7 @@ export function StaffScreen() {
         );
       }}
     />
+    </>
   );
 }
 

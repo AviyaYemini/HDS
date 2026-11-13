@@ -287,7 +287,7 @@ export function OverviewScreen() {
                 <Donut slices={clientSlices} amountText={(sl) => whole(sl.amount)} summary={clientsSummary} testID="chart-clients" progress={progress} />
               </View>
             ) : null}
-            {peopleSlices.length > 0 ? (
+            {peopleSlices.length > 0 && d.people.temporary > 0 ? (
               <View style={styles.chart}>
                 <SectionHead title={t("snapshot.chart.people_title")} />
                 <Donut
@@ -300,27 +300,43 @@ export function OverviewScreen() {
                   progress={progress}
                 />
               </View>
+            ) : d.people.active > 0 ? (
+              // Everyone regular: a plain line reads better than a donut of one colour.
+              <View style={styles.chart} testID="chart-people">
+                <SectionHead title={t("snapshot.chart.people_title")} />
+                <Txt role="display" numeric>
+                  {String(d.people.active)}
+                </Txt>
+                <Txt role="body" tone="secondary">
+                  {t("snapshot.all_regular", { count: d.people.active })}
+                </Txt>
+              </View>
             ) : null}
-            {d.people.temporary > 0 ? (
-              <View style={styles.chart}>
-                <FeaturePanel testID="panel-temporary">
-                  <Txt role="eyebrow" tone="accent">
-                    {t("snapshot.temp_eyebrow")}
-                  </Txt>
-                  <Txt role="display" numeric>
-                    {String(d.people.temporary)}
-                  </Txt>
+            <View style={styles.chart}>
+              <FeaturePanel testID="panel-temporary">
+                <Txt role="eyebrow" tone="accent">
+                  {t("snapshot.temp_eyebrow")}
+                </Txt>
+                <Txt role="display" numeric>
+                  {String(d.people.temporary)}
+                </Txt>
+                {d.people.temporary > 0 ? (
                   <Txt role="meta" tone="secondary">
                     {t("snapshot.temp_ending", { count: d.people.temporary_ending_soon })}
                   </Txt>
-                  <LinkPressable href="/admin/staff?type=temporary" testID="link-temporary">
-                    <Txt role="label" tone="accent">
-                      {t("snapshot.temp_open")}
-                    </Txt>
-                  </LinkPressable>
-                </FeaturePanel>
-              </View>
-            ) : null}
+                ) : (
+                  // None yet: say how one is marked, as an option, never an alarm (the owner, 2026-11-13).
+                  <Txt role="meta" tone="secondary" testID="temp-none">
+                    {t("snapshot.temp_none")}
+                  </Txt>
+                )}
+                <LinkPressable href={d.people.temporary > 0 ? "/admin/staff?type=temporary" : "/admin/staff"} testID="link-temporary">
+                  <Txt role="label" tone="accent">
+                    {d.people.temporary > 0 ? t("snapshot.temp_open") : t("snapshot.temp_staff")}
+                  </Txt>
+                </LinkPressable>
+              </FeaturePanel>
+            </View>
           </Split>
           {/* The project table at full width: Hebrew names stay on one line (the helper's review). */}
           <View style={styles.table}>

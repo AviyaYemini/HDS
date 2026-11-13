@@ -3,7 +3,7 @@
  * hours report by employee (no weekly-limit flag), the temporary chip with its end date and
  * the permanent/temporary filter from the address; plus the 3-month cap. Made-up names only.
  */
-import { screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 import * as Router from "expo-router";
 
 import type { Me } from "../../../src/api/session";
@@ -106,4 +106,34 @@ test("staff open sorted by this month's hours, the most first", async () => {
   await renderWith(await signedIn(fake), <StaffScreen />);
   await waitFor(() => expect(screen.getAllByTestId("table-row")[0]).toHaveTextContent(/Omer Katz/));
   expect(screen.getAllByTestId("table-row")[1]).toHaveTextContent(/Dana Levi/);
+});
+
+test("an invitation is regular unless 'temporary' is chosen, which asks for dates and projects", async () => {
+  router.__setSearchParams({});
+  const fake = api()
+    .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p1", name: "Harbour gate", status: "active" }] }))
+    .on("POST", "/auth/invite", json(202, {}));
+  await renderWith(await signedIn(fake), <StaffScreen />);
+  await fireEvent.press(await screen.findByTestId("action-invite", {}, { timeout: 5000 }));
+  const form = await screen.findByTestId("invite-form");
+  // Regular by default: no dates or projects asked.
+  expect(screen.queryByTestId("field-engaged_from")).toBeNull();
+  await fireEvent.changeText(within(form).getByTestId("field-email"), "new.guard@hds.test");
+  await fireEvent.press(within(form).getByTestId("action-save"));
+  await waitFor(() => expect(fake.calls("POST", "/auth/invite")).toHaveLength(1));
+  expect(fake.calls("POST", "/auth/invite")[0]!.body).toEqual({ email: "new.guard@hds.test", role: "employee" });
+
+  // Temporary: the dates and the projects appear.
+  await fireEvent.press(await screen.findByTestId("action-invite"));
+  const again = await screen.findByTestId("invite-form");
+  await fireEvent.press(within(again).getByTestId("field-employment_type-temporary"));
+  expect(within(again).getByTestId("field-engaged_from")).toBeTruthy();
+  expect(within(again).getByTestId("field-project_ids-p1")).toBeTruthy();
+});
+
+test("with no temporary workers, the temporary filter says how one is marked", async () => {
+  router.__setSearchParams({ type: "temporary" });
+  const fake = api().on("GET", "/api/v1/employees", json(200, { items: [DANA] }));
+  await renderWith(await signedIn(fake), <StaffScreen />);
+  expect(await screen.findByText(/No temporary workers\. Mark someone temporary/, {}, { timeout: 5000 })).toBeTruthy();
 });

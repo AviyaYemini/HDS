@@ -113,3 +113,12 @@ test("switching to the quarter asks the quarter", async () => {
   const asked = new URLSearchParams(api.calls("GET", "/api/v1/reports/overview").at(-1)!.query);
   expect(asked.get("from")).toBe(periodRange("quarter", todayIn(DEFAULT_TIME_ZONE)).from);
 });
+
+test("with no temporary workers, the panel says how one is marked and the mix is one plain line", async () => {
+  const none = { ...OVERVIEW, people: { ...OVERVIEW.people, temporary: 0, temporary_ending_soon: 0 } };
+  const api = new FakeApi().on("GET", "/api/v1/reports/overview", json(200, none));
+  await renderWith(await signedIn(api), <OverviewScreen />);
+  expect(await screen.findByTestId("temp-none", {}, { timeout: 5000 })).toHaveTextContent(/No temporary workers/);
+  expect(screen.getByTestId("chart-people")).toHaveTextContent(/All 14 people are regular staff/);
+  expect(screen.queryByTestId("chart-people-legend")).toBeNull();
+});
