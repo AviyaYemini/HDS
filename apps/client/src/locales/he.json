@@ -1214,5 +1214,6 @@
   "staff.no_temporary": "אין עובדים זמניים. אפשר לסמן עובד כזמני בכרטיס העובד או בהזמנה.",
   "snapshot.temp_none": "אין עובדים זמניים · אפשר לסמן עובד כזמני בכרטיס העובד",
   "snapshot.temp_staff": "לרשימת הצוות ←",
-  "snapshot.all_regular": "כל {{count}} העובדים קבועים"
+  "snapshot.all_regular": "כל {{count}} העובדים קבועים",
+  "runsum.figure.filled_so_far": "מקומות מאוישים עד כה"
 }

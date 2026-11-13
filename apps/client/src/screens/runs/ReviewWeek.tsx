@@ -16,14 +16,15 @@ import { useSession } from "../../api/SessionContext";
 import { Button, InlineBanner, Sheet, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
-import { nameText, formatHeaderDate, formatNumericRange } from "../../locale";
+import { nameText, formatHeaderDate } from "../../locale";
 import { Disclosure, KeyFigures, SectionHead, type KeyFigure } from "../deck/parts";
 import { useEntrance } from "../deck/useEntrance";
 import { useLoad } from "../useLoad";
 import { HonestyLabel } from "./HonestyLabel";
-import { peoplePlaced, proposalSheet, scopeOf, solveSeconds } from "./runSummary";
+import { RunScope } from "./RunScope";
+import { peoplePlaced, proposalSheet, solveSeconds } from "./runSummary";
 import { FairnessPanel } from "./FairnessPanel";
-import { coveredText, weeksOf, type Job, type Names } from "./model";
+import { weeksOf, type Job, type Names } from "./model";
 import { hasOpen, menuFor, hours, openDaysAndProjects, partOfPairs, slotsByDay, type ReviewSlot } from "./review";
 
 import { styles } from "./reviewStyles";
@@ -102,13 +103,6 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   // Filled over needed from the review's slots: each slot's places are the ones still empty.
   const count = { filled: shown.slots.reduce((n, sl) => n + (sl.headcount - sl.places), 0), required: shown.slots.reduce((n, sl) => n + sl.headcount, 0) };
   const seconds = solveSeconds(job);
-  const scope = scopeOf(job.project_ids ?? [], (projects.data ?? []).map((p) => ({ id: p.id, name: p.name, type: p.type })));
-  const range = formatNumericRange(job.from, job.to);
-  const scopeText = scope.all
-    ? t("runsum.scope.all", { range })
-    : scope.names
-      ? t("runsum.scope.named", { names: scope.names.join(", "), range })
-      : t(`runsum.scope.${scope.type}`, { count: scope.count, range });
   const figures: KeyFigure[] = [
     {
       key: "filled",
@@ -204,11 +198,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
     <View style={styles.weeks} testID="proposal-review" {...webProps({ dataSet: { version: String(shown.version) } })}>
       {/* The run at a glance, as the deck draws figures (the owner, 2026-11-13). */}
       <KeyFigures figures={figures} progress={progress} />
-      <Disclosure testID="run-projects-covered" summary={scopeText} showLabel={t("runsum.show_names")} hideLabel={t("runsum.hide")}>
-        <Txt role="meta" tone="secondary">
-          {coveredText(job.project_ids ?? [], names.projects, t("runs.every_project"))}
-        </Txt>
-      </Disclosure>
+      <RunScope job={job} names={names} />
       {shown.no_availability.length > 0 ? (
         <Disclosure testID="no-availability" summary={t("runsum.no_availability", { count: shown.no_availability.length })} showLabel={t("runsum.show_names")} hideLabel={t("runsum.hide")}>
           <Txt role="meta" tone="secondary">

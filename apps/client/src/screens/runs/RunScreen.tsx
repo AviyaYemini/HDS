@@ -21,8 +21,9 @@ import { formatNumericRange, startOfWeek } from "../../locale";
 import { rosterHref } from "../roster/ProjectChooser";
 import { RecordPanel } from "./RecordPanel";
 import { ReviewWeek } from "./ReviewWeek";
-import { STATUS_TONE, coveredText, isActive, projectsOf } from "./model";
+import { STATUS_TONE, isActive, projectsOf } from "./model";
 import { Proposal } from "./RunProposal";
+import { RunScope } from "./RunScope";
 import { RunStop } from "./RunStop";
 import { useJob, useNames, useRunBar } from "./useRun";
 import { shared } from "./runStyles";
@@ -51,11 +52,8 @@ export function RunScreen() {
         <SkeletonRows rows={4} />
       ) : (
         <View style={styles.section}>
-          {job.status !== "succeeded" ? (
-            <Txt role="body" testID="run-projects-covered">
-              {t("runs.covers", { projects: coveredText(job.project_ids, names.projects, t("runs.every_project")) })}
-            </Txt>
-          ) : null}
+          {/* While it works, the same one-line scope as the finished page (the owner, 2026-11-13). */}
+          {job.status !== "succeeded" ? <RunScope job={job} names={names} /> : null}
           <View style={shared.summary}>
             <StatusChip status={STATUS_TONE[job.status]} label={t(`runs.status.${job.status}`)} testID="run-status" />
             {job.status === "succeeded" && job.proposal_state !== "open" && job.proposal_state !== null ? (

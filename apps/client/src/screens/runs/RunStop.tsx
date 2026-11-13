@@ -4,11 +4,13 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { Button, Txt, showToast } from "../../design/components";
+import { Button, showToast } from "../../design/components";
+import { useTheme } from "../../design/theme/ThemeProvider";
+import { KeyFigures } from "../deck/parts";
 import { type Job } from "./model";
 import { shared } from "./runStyles";
 
@@ -17,6 +19,7 @@ export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void })
   const { t } = useTranslation();
   const session = useSession();
   const errorText = useErrorText();
+  const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
   const progress = job.progress;
   const hasResult = progress?.filled != null;
@@ -31,13 +34,31 @@ export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void })
       setBusy(false);
     }
   };
+  const filled = progress?.filled ?? 0;
+  const needed = progress?.needed ?? 0;
+  const share = needed > 0 ? Math.min(100, (filled / needed) * 100) : 0;
   return (
-    <View style={shared.summary} testID="run-best-so-far">
+    <View style={styles.root} testID="run-best-so-far">
       {hasResult ? (
-        <Txt role="body" numeric testID="run-best">
-          {t("runs.best_so_far", { filled: progress!.filled, needed: progress!.needed })}
-        </Txt>
+        // The live count as the finished page's figure 01, with a bar, so the jump is calm (the owner, 2026-11-13).
+        <>
+          <KeyFigures
+            figures={[
+              {
+                key: "filled",
+                label: t("runsum.figure.filled_so_far"),
+                value: `${filled}/${needed}`,
+                valueTestID: "run-best",
+                detail: t("runs.best_so_far", { filled, needed }),
+              },
+            ]}
+          />
+          <View style={[styles.track, { backgroundColor: colors.bg.selected }]} accessibilityLabel={t("runs.best_so_far", { filled, needed })} testID="run-best-bar">
+            <View style={[styles.fill, { width: `${share}%`, backgroundColor: colors.text.primary }]} />
+          </View>
+        </>
       ) : null}
+      <View style={shared.summary}>
       <Button
         variant="secondary"
         icon="close"
@@ -47,7 +68,14 @@ export function RunStop({ job, onStopped }: { job: Job; onStopped: () => void })
         onPress={() => void stop()}
         testID="action-stop-run"
       />
+      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { gap: 12 },
+  track: { height: 8 },
+  fill: { height: 8 },
+});
 

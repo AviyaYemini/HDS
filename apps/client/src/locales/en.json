@@ -1214,5 +1214,6 @@
   "staff.no_temporary": "No temporary workers. Mark someone temporary on their record or when inviting them.",
   "snapshot.temp_none": "No temporary workers · mark someone temporary on their staff record",
   "snapshot.temp_staff": "Open the staff list →",
-  "snapshot.all_regular": "All {{count}} people are regular staff"
+  "snapshot.all_regular": "All {{count}} people are regular staff",
+  "runsum.figure.filled_so_far": "Places filled so far"
 }
