@@ -73,6 +73,8 @@ class ReportLine:
     rate_missing: bool
     client_id: uuid.UUID | None = None
     client_name: str = ""
+    # CEO demo: hours × the project's billing rate, where pay is shown; ``None`` elsewhere.
+    billing: Decimal | None = None
 
 
 @dataclass
@@ -81,6 +83,7 @@ class _Totals:
 
     hours: Decimal = _ZERO
     pay: Decimal | None = None
+    billing: Decimal | None = None
     shift_ids: set[uuid.UUID] = field(default_factory=set, repr=False)
     missing_ids: set[uuid.UUID] = field(default_factory=set, repr=False)
 
@@ -104,6 +107,8 @@ class _Totals:
         self.shift_ids.add(line.shift_id)
         if not line.pay_shown:
             return
+        if line.billing is not None:
+            self.billing = (self.billing or _ZERO) + line.billing
         if line.pay is None:
             self.missing_ids.add(line.shift_id)
         else:
@@ -468,11 +473,20 @@ class ReportsService:
                     rate_missing=priced.rate_missing,
                     client_id=project.client_id,
                     client_name=clients.get(project.client_id, ""),
+                    billing=billed(priced.hours, project),
                 )
             )
         report = aggregate(lines, group_by)
         report.first, report.last = first, last
         return report
+
+
+def billed(hours: Decimal, project: Project) -> Decimal | None:
+    """What the client is billed for ``hours`` of work on ``project`` (CEO demo), two decimals."""
+    rate = getattr(project, "billing_rate", None)  # stand-ins in older unit tests have none
+    if not rate:
+        return None
+    return shown(hours * rate)
 
 
 def _hours(shift: ReportShift) -> Decimal:
