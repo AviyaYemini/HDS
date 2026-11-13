@@ -29,7 +29,16 @@ This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry
   - `previous`: the month, quarter or year before, with the same days so far;
   - `coverage_next`: the week being prepared;
   - a weekly series for each project's trend line.
-- **Auto-scheduler on the real data:** staffing needs only for live tasks, so a run for a week fills every place in about two seconds.
+- **Auto-scheduler on the real data:** staffing needs only for live tasks, so a run for a week fills every place in about two seconds. A hand edit in the proposal review that breaks a person rule is kept as made, with no reason demanded; an inactive employee and a part whose roster changed since the run are still refused.
+- **Polish:**
+  - sign-in in the deck's title-slide style;
+  - a greeting, whole-shekel figures with ▲/▼ against the period before (like for like with where the roster stops), and numbers and charts that grow in;
+  - trend lines in the project table, with rows that open the project's week;
+  - hours and costs with full-name bars;
+  - the roster with today shaded and a card on each name;
+  - staff with avatars, sorted by this month's hours;
+  - home without the setup card once the company is set up;
+  - page titles, loading skeletons and a dark-mode pass.
 - **Hours and costs** in the deck's style. The hours report now includes billing.
 - **The demo data:**
   - `scripts/demo/parse_roster.py` reads the weekly Google Sheets export. It handles tasks, clients, managers, hours, sums, open places and merged spellings.
@@ -51,15 +60,15 @@ Open http://localhost:8081 and sign in as `admin@hds.test`, or as `manager1@hds.
 ## Testing
 
 **Checked locally:**
-- API: 1,539 unit and integration tests for what changed (temporary workers, the overview, the hours report, employees); lint and format are clean.
+- API: 1,707 unit, integration and contract tests for what changed (temporary workers, the overview, the hours report, employees, proposal review); lint and format are clean.
 - The OpenAPI contract has no drift, and the generated client is up to date.
-- Client: tsc, ESLint and all 384 unit tests.
+- Client: tsc, ESLint and all 395 unit tests.
 - The demo run from the workbook, from a fresh database:
   - in Hebrew at 1440px and 390px, and in English at 390px;
   - the charts and the phone cards and roster;
   - saving a temporary worker's end date, and the three-month rule on the form.
 
-**Left to CI:** the full suites, Schemathesis, and the four end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`).
+**Left to CI:** the full suites, Schemathesis, and the end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`, `ux/i-proposal-review`, `ux/j-empty-slots`, `ux/l-run-flow`).
 
 **Not covered:** native iOS and Android builds.
 
