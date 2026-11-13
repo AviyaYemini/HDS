@@ -43,12 +43,16 @@ Say these if asked:
 - **Who is temporary:** nobody, until an admin marks them, at invitation, creation or later in the worker's card. The demo data starts with no temporary workers.
 - **The client portal** is not in this demo; it is the next feature (009).
 
-## The walkthrough video
+## The walkthrough videos
 
-The demo must be running, on clean data. A two-minute walkthrough in Hebrew, with Hebrew captions and no voice-over, comes from:
+The demo must be running, on clean data. Two short videos in Hebrew, with Hebrew captions and no voice-over: a desktop cut (about 45 seconds, 1920×1080) and a vertical phone cut (about 40 seconds, 1080×1920).
 
 ```bash
-node scripts/demo/record_walkthrough.mjs demo-data/video
+node scripts/demo/record_walkthrough.mjs demo-data/video-wide --mode=wide
+```
+
+```bash
+node scripts/demo/record_walkthrough.mjs demo-data/video-tall --mode=tall
 ```
 
 ```bash
@@ -56,10 +60,14 @@ swiftc -O scripts/demo/compose_video.swift -o demo-data/compose
 ```
 
 ```bash
-HDS_FONT_DIR="$(ls -d node_modules/.pnpm/@expo-google-fonts+ibm-plex-sans-hebrew*/node_modules/@expo-google-fonts/ibm-plex-sans-hebrew)" demo-data/compose demo-data/video "demo-data/HDS סיור במערכת.mp4"
+HDS_FONT_DIR="$(ls -d node_modules/.pnpm/@expo-google-fonts+ibm-plex-sans-hebrew*/node_modules/@expo-google-fonts/ibm-plex-sans-hebrew)" demo-data/compose demo-data/video-wide "demo-data/HDS סיור קצר.mp4"
 ```
 
-The recording starts a schedule run, so reload with `DEMO_FRESH=1` afterwards. The video shows real names: it stays in `demo-data/`.
+```bash
+HDS_FONT_DIR="$(ls -d node_modules/.pnpm/@expo-google-fonts+ibm-plex-sans-hebrew*/node_modules/@expo-google-fonts/ibm-plex-sans-hebrew)" demo-data/compose demo-data/video-tall "demo-data/HDS סיור בטלפון.mp4" 1080 1920
+```
+
+Each recording starts a schedule run, so reload with `DEMO_FRESH=1` between and after them. The videos show real names: they stay in `demo-data/`.
 
 ## Stop
 
