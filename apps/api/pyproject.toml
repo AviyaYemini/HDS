@@ -21,10 +21,10 @@ dependencies = [
     "prometheus-client>=0.26.0",
     # Traces (specs/006 research R8). Pinned exactly: the SDK and its instrumentation are released
     # together and must match (infra/VERSIONS.md).
-    "opentelemetry-sdk==1.45.1",
-    "opentelemetry-exporter-otlp-proto-http==1.45.1",
-    "opentelemetry-instrumentation-fastapi==0.66b1",
-    "opentelemetry-instrumentation-sqlalchemy==0.66b1",
+    "opentelemetry-sdk==1.45.2",
+    "opentelemetry-exporter-otlp-proto-http==1.45.2",
+    "opentelemetry-instrumentation-fastapi==0.66b2",
+    "opentelemetry-instrumentation-sqlalchemy==0.66b2",
 ]
 
 [project.optional-dependencies]
