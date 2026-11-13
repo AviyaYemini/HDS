@@ -9,9 +9,10 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from hds.models.project import Project
+from hds.models.project_member import ProjectMember
 from hds.models.shift import Assignment, Shift
 from hds.models.site import Site
 from hds.models.user import User, UserRole
@@ -120,12 +121,35 @@ class OverviewRepository(BaseRepository[Shift]):
             query = query.where(Shift.project_id.in_(list(project_ids)))
         return [ShiftCover(*row) for row in (await self.session.execute(query)).all()]
 
-    async def staff(self, org_id: uuid.UUID) -> list[tuple[uuid.UUID, str, date | None]]:
-        """The active, non-deleted Employees and Managers: id, employment type, last day."""
+    async def staff(
+        self,
+        org_id: uuid.UUID,
+        project_ids: Collection[uuid.UUID] | None = None,
+        starts_from: datetime | None = None,
+        starts_before: datetime | None = None,
+    ) -> list[tuple[uuid.UUID, str, date | None]]:
+        """The active, non-deleted Employees and Managers: id, employment type, last day.
+
+        With ``project_ids``, only those on one of the projects' teams or on one of their shifts
+        starting in the window (a Manager's own people).
+        """
         query = select(User.id, User.employment_type, User.engaged_until).where(
             User.organisation_id == org_id,
             User.is_active.is_(True),
             User.is_deleted.is_(False),
             User.role.in_([UserRole.employee, UserRole.manager]),
         )
+        if project_ids is not None:
+            ids = list(project_ids)
+            members = select(ProjectMember.user_id).where(ProjectMember.project_id.in_(ids))
+            worked = (
+                select(Assignment.user_id)
+                .join(Shift, Shift.id == Assignment.shift_id)
+                .where(Shift.project_id.in_(ids))
+            )
+            if starts_from is not None and starts_before is not None:
+                worked = worked.where(
+                    Shift.starts_at >= starts_from, Shift.starts_at < starts_before
+                )
+            query = query.where(or_(User.id.in_(members), User.id.in_(worked)))
         return [(r[0], r[1], r[2]) for r in (await self.session.execute(query)).all()]

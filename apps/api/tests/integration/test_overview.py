@@ -161,6 +161,8 @@ async def test_a_manager_sees_only_the_projects_they_manage(
     body = r.json()
     assert [p["name"] for p in body["projects"]] == ["Managed Patrol"]
     assert body["hours_forecast"] == "16.00"
+    # Their people only: the one employee on the managed project's shifts.
+    assert body["people"]["active"] == 1
     # The project's pay is not open to Managers, so no money at all.
     assert "billing_forecast" not in body or body["billing_forecast"] is None
     assert body["projects"][0]["billing"] is None

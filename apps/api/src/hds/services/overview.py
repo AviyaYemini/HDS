@@ -243,7 +243,13 @@ class OverviewService:
             table[c.project_id].needed += c.headcount
             table[c.project_id].filled += on
 
-        staff = await self._rows.staff(org_id)
+        # An Admin sees the whole organisation; a Manager the people of their own projects.
+        staff = await self._rows.staff(
+            org_id,
+            None if actor.role == UserRole.admin else scope,
+            range_from,
+            range_before,
+        )
         limit = timedelta(hours=org.max_weekly_hours) - NEAR_LIMIT
         rows = sorted(
             table.values(),
