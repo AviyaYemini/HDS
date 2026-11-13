@@ -1,12 +1,12 @@
-/** The hours report; today's screen until group G rebuilds it. */
+/** Hours and costs in the deck's style (CEO demo, slide 9). */
 import { RequireCapability } from "../../../src/capabilities";
-import { HoursReportScreen } from "../../../src/screens/reports/ReportScreens";
+import { HoursCostsScreen } from "../../../src/screens/reports/HoursCostsScreen";
 import { NoAccessScreen } from "../../../src/screens/no-access/NoAccessScreen";
 
 export default function Route() {
   return (
     <RequireCapability need="reports.read" denied={<NoAccessScreen />}>
-      <HoursReportScreen />
+      <HoursCostsScreen />
     </RequireCapability>
   );
 }
