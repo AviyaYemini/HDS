@@ -12,13 +12,13 @@ import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions 
 import { call, codeOf, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, SkeletonRows, StatusChip, Txt, showToast } from "../../design/components";
+import { Button, EmptyState, InlineBanner, LinkPressable, PageTitle, Sheet, StatusChip, Txt, showToast } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, addDays, formatTimeRange, startOfWeek, todayIn } from "../../locale";
 import { dayMonth, scheduledHours } from "../admin/staffModel";
-import { SmallFigures } from "../deck/parts";
+import { DashboardSkeleton, SmallFigures } from "../deck/parts";
 import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
 import { weekDays, type Shift } from "./model";
@@ -117,7 +117,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   return (
     <PersonCardContext.Provider value={setCard}>
     <Screen testID="screen-roster-sheet" fixed={false}>
-      <PageTitle eyebrow={[t("app.name"), t("nav.roster")]} title={rangeText}>
+      <PageTitle eyebrow={[t("app.name"), t("nav.roster")]} title={rangeText} documentTitle={t("nav.roster")}>
         <Button variant="quiet" icon="chevron-back" label={t("sheet.prev_week")} onPress={() => goWeek(addDays(week, -7))} testID="action-prev-week" />
         <Button variant="secondary" label={t("sheet.this_week")} onPress={() => goWeek(startOfWeek(today))} disabled={week === startOfWeek(today)} testID="action-this-week" />
         <Button variant="quiet" icon="chevron-next" iconPosition="trailing" label={t("sheet.next_week")} onPress={() => goWeek(addDays(week, 7))} testID="action-next-week" />
@@ -149,7 +149,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
       {failure ? (
         <InlineBanner tone="warning" title={errorText(failure)} action={{ label: t("common.retry"), onPress: () => void Promise.all([projects.reload(), clients.reload(), shifts.reload()]) }} />
       ) : groups === null ? (
-        <SkeletonRows rows={8} />
+        <DashboardSkeleton figures={5} charts={0} rows={8} testID="sheet-skeleton" />
       ) : allGroups!.length === 0 ? (
         <EmptyState icon="calendar" title={t("roster.no_projects")} body={t("roster.no_projects_body")} />
       ) : !isDesktop ? (

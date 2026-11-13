@@ -12,7 +12,7 @@ import { StyleSheet, View } from "react-native";
 
 import { call, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Table, Txt, type Column } from "../../design/components";
+import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, StatusChip, Table, Txt, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
@@ -21,7 +21,7 @@ import { DEFAULT_TIME_ZONE, formatHeaderDate, formatMoney, isolateLtr, todayIn }
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { Candles, Donut } from "../deck/Charts";
 import { pieSlices, sumAmounts, weeklyCandles } from "../deck/chartMath";
-import { CardList, ColumnBars, KeyFigures, SectionHead, Sparkline, Split, type BarColumn, type KeyFigure } from "../deck/parts";
+import { CardList, DashboardSkeleton, ColumnBars, KeyFigures, SectionHead, Sparkline, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { changePct, changePoints, firstName, formatChange, formatMoneyWhole, greetingKey } from "../deck/polish";
 import { useEntrance } from "../deck/useEntrance";
 import { rosterHref } from "../roster/ProjectChooser";
@@ -250,7 +250,7 @@ export function OverviewScreen() {
       <Txt role="body" tone="secondary" testID="greeting">
         {greeting}
       </Txt>
-      <PageTitle eyebrow={[t("app.name"), t("nav.overview")]} title={title}>
+      <PageTitle eyebrow={[t("app.name"), t("nav.overview")]} title={title} documentTitle={t("nav.overview")}>
         <SegmentedControl<Period>
           label={t("snapshot.period")}
           options={(["month", "quarter", "year"] as const).map((p) => ({ value: p, label: t(`snapshot.period_${p}`), testID: `period-${p}` }))}
@@ -261,7 +261,7 @@ export function OverviewScreen() {
       {overview.error ? (
         <InlineBanner tone="warning" title={errorText(overview.error)} action={{ label: t("common.retry"), onPress: () => void overview.reload() }} />
       ) : d === null ? (
-        <SkeletonRows rows={6} />
+        <DashboardSkeleton />
       ) : (
         <View style={styles.body}>
           <KeyFigures figures={figures} progress={progress} />

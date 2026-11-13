@@ -8,7 +8,7 @@ import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Polyline } from "react-native-svg";
 
-import { Txt } from "../../design/components";
+import { Skeleton, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { sparkPoints } from "./polish";
@@ -261,6 +261,9 @@ const styles = StyleSheet.create({
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
   small: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  skeleton: { gap: 28 },
+  skeletonChart: { flex: 1, minWidth: 0 },
+  skeletonGap: { marginTop: 8 },
   smallItem: { borderTopWidth: 1, paddingTop: 6, minWidth: 96, flexGrow: 1, flexBasis: 96 },
   hbars: { gap: 10 },
   hrow: { flexDirection: "row", alignItems: "center", gap: 16 },
@@ -342,6 +345,38 @@ export function Sparkline({ values, rtl, width = 72, height = 22, testID }: { va
         <Polyline points={points} fill="none" stroke={colors.border.strong} strokeWidth={1.5} />
         <Circle cx={Number(last[0])} cy={Number(last[1])} r={2.5} fill={colors.text.primary} />
       </Svg>
+    </View>
+  );
+}
+
+/**
+ * A dashboard's loading shape (the owner, 2026-11-13): the strip of figures, the chart blocks and
+ * the table's rows where they will be, so nothing jumps when the answer comes.
+ */
+export function DashboardSkeleton({ figures = 4, charts = 2, chartHeight = 150, rows = 6, testID = "dashboard-skeleton" }: { figures?: number; charts?: number; chartHeight?: number; rows?: number; testID?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.skeleton} testID={testID}>
+      <View style={styles.figures}>
+        {Array.from({ length: figures }, (_, i) => (
+          <View key={i} style={[styles.figure, { borderTopColor: colors.border.strong }]}>
+            <Skeleton width={90} height={10} />
+            <Skeleton width="70%" height={30} style={styles.skeletonGap} />
+            <Skeleton width="55%" height={10} style={styles.skeletonGap} />
+          </View>
+        ))}
+      </View>
+      {charts > 0 ? (
+        <Split>
+          {Array.from({ length: charts }, (_, i) => (
+            <View key={i} style={styles.skeletonChart}>
+              <Skeleton width={140} height={10} />
+              <Skeleton height={chartHeight} style={styles.skeletonGap} />
+            </View>
+          ))}
+        </Split>
+      ) : null}
+      {rows > 0 ? <SkeletonRows rows={rows} /> : null}
     </View>
   );
 }

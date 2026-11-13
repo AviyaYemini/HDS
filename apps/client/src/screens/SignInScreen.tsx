@@ -14,6 +14,7 @@ import { safeReturnPath } from "../auth/returnPath";
 import { clearSessionEnded, useSessionEnded } from "../auth/sessionEnded";
 import { capabilitiesOf } from "../capabilities";
 import { Button, FeaturePanel, InlineBanner, SurfaceContext, TextField, Txt } from "../design/components";
+import { useDocumentTitle } from "../design/components/PageTitle";
 import { Screen, useDirectionProps } from "../design/components/Screen";
 import { useTheme } from "../design/theme/ThemeProvider";
 import { homeFor } from "../navigation/destinations";
@@ -26,6 +27,7 @@ export function SignInScreen() {
   const router = useRouter();
   const { colors, isDesktop } = useTheme();
   const direction = useDirectionProps();
+  useDocumentTitle(t("auth.sign_in"));
   const ended = useSessionEnded();
   const { next } = useLocalSearchParams<{ next?: string | string[] }>();
   const [email, setEmail] = useState("");

@@ -4,8 +4,9 @@
  *
  * Actions sit on the trailing side on a desktop window and under the title on a phone.
  */
-import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { useEffect, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { Platform, StyleSheet, View } from "react-native";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { Txt } from "./Text";
@@ -16,12 +17,15 @@ export interface PageTitleProps {
   title: string;
   /** Buttons or chips beside the title. */
   children?: ReactNode;
+  /** The browser tab's name when the visible title is not it (a month, a week); the title by default. */
+  documentTitle?: string;
   testID?: string;
 }
 
 /** A page title. */
-export function PageTitle({ eyebrow, title, children, testID = "page-title" }: PageTitleProps) {
+export function PageTitle({ eyebrow, title, children, documentTitle, testID = "page-title" }: PageTitleProps) {
   const { isDesktop } = useTheme();
+  useDocumentTitle(documentTitle ?? title);
   return (
     <View testID={testID ? `${testID}-root` : undefined} style={[styles.root, isDesktop ? styles.rootDesktop : null]}>
       <View style={styles.text}>
@@ -43,3 +47,12 @@ const styles = StyleSheet.create({
   text: { gap: 8, flexShrink: 1 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "center" },
 });
+
+/** The browser tab's title on the web: "<name> · HDS". */
+export function useDocumentTitle(name: string): void {
+  const { t } = useTranslation();
+  const app = t("app.name");
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") document.title = `${name} · ${app}`;
+  }, [name, app]);
+}

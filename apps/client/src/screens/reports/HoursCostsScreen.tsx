@@ -11,11 +11,11 @@ import { StyleSheet, View } from "react-native";
 
 import { call, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
-import { InlineBanner, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Table, Txt, type Column } from "../../design/components";
+import { InlineBanner, PageTitle, SegmentedControl, StatusChip, Table, Txt, type Column } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { Screen } from "../../design/components/Screen";
 import { DEFAULT_TIME_ZONE, formatMoney, formatNumericRange, presetRange, todayIn } from "../../locale";
-import { CardList, HBars, KeyFigures, SectionHead, type HBar, type KeyFigure } from "../deck/parts";
+import { CardList, DashboardSkeleton, HBars, KeyFigures, SectionHead, type HBar, type KeyFigure } from "../deck/parts";
 import { formatMoneyWhole } from "../deck/polish";
 import { useEntrance } from "../deck/useEntrance";
 import { formatPercent } from "../overview/model";
@@ -152,7 +152,7 @@ export function HoursCostsScreen() {
       {report.error ? (
         <InlineBanner tone="warning" title={errorText(report.error)} action={{ label: t("common.retry"), onPress: () => void report.reload() }} />
       ) : data === null ? (
-        <SkeletonRows rows={5} />
+        <DashboardSkeleton charts={1} chartHeight={260} rows={6} />
       ) : (
         <View style={styles.body}>
           <Txt role="meta" tone="secondary" numeric>
