@@ -57,7 +57,11 @@ test("projects show under their clients, with names, the temporary chip and the 
   await renderWith(await signedIn(fake), <RosterSheet weekParam={WEEK} />);
   expect(await screen.findByTestId("roster-sheet", {}, { timeout: 5000 })).toBeTruthy();
   expect(screen.getByText("Alpha Security")).toBeTruthy();
-  expect(screen.getByText("Beta Guarding")).toBeTruthy();
+  // A project with no shifts this week waits behind the toggle, which says how many there are.
+  expect(screen.queryByText("Beta Guarding")).toBeNull();
+  await fireEvent.press(screen.getByTestId("action-toggle-quiet-projects"));
+  expect(await screen.findByText("Beta Guarding")).toBeTruthy();
+  expect(screen.getByText("No shifts this week")).toBeTruthy();
   expect(screen.getByText("Dana L.")).toBeTruthy();
   expect(screen.getAllByTestId("chip-temporary")).toHaveLength(1);
   expect(screen.getByTestId("sheet-empty")).toHaveTextContent("1 empty");

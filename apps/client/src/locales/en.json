@@ -1087,5 +1087,15 @@
   "employees.temporary_period_invalid": "A temporary worker needs a start and an end, at most 3 months apart.",
   "employees.temporary_projects_required": "A temporary worker needs at least one project.",
   "employees.project_invalid": "One of the chosen projects does not exist or has ended.",
-  "warnings.temporary_outside": "A temporary worker is placed outside their projects or dates."
+  "warnings.temporary_outside": "A temporary worker is placed outside their projects or dates.",
+  "sheet.row_none": "No shifts this week",
+  "sheet.show_all": "Also show {{count}} projects with no shifts this week",
+  "sheet.show_all_one": "Also show 1 project with no shifts this week",
+  "sheet.show_all_other": "Also show {{count}} projects with no shifts this week",
+  "sheet.hide_quiet": "Hide projects with no shifts",
+  "sheet.no_shifts_title": "No shifts this week",
+  "sheet.no_shifts_body": "Copy last week, go to another week, or show every project.",
+  "hc.preset.this-pay-period": "This period",
+  "hc.preset.last-pay-period": "Last period",
+  "hc.preset.last-30-days": "30 days"
 }

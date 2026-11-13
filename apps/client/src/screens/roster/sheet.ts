@@ -120,3 +120,15 @@ export function keptWarnings(shifts: readonly Shift[]): KeptWarning[] {
       }
   return out;
 }
+
+/** Only the projects with shifts this week, and how many were left out (the sheet's default view). */
+export function withShifts(groups: readonly ClientGroup[]): { groups: ClientGroup[]; hidden: number } {
+  let hidden = 0;
+  const out: ClientGroup[] = [];
+  for (const g of groups) {
+    const rows = g.rows.filter((r) => r.cells.some((c) => c.length > 0));
+    hidden += g.rows.length - rows.length;
+    if (rows.length > 0) out.push({ ...g, rows });
+  }
+  return { groups: out, hidden };
+}

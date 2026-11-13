@@ -29,8 +29,19 @@ export function ordinal(index: number): string {
   return String(index + 1).padStart(2, "0");
 }
 
+/**
+ * The figure's size: smaller than a page title, as on the deck, and smaller again when a value is
+ * long (an amount with its agorot is never rounded to fit; FR-058).
+ */
+export function figureSize(values: readonly string[], desktop: boolean): { fontSize: number; lineHeight: number } {
+  const long = values.some((v) => v.length > 12);
+  const size = desktop ? (long ? 28 : 34) : long ? 22 : 26;
+  return { fontSize: size, lineHeight: Math.round(size * 1.15) };
+}
+
 export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
-  const { colors } = useTheme();
+  const { colors, isDesktop } = useTheme();
+  const size = figureSize(figures.map((f) => f.value), isDesktop);
   return (
     <View style={styles.figures} testID="key-figures">
       {figures.map((f, i) => (
@@ -44,7 +55,7 @@ export function KeyFigures({ figures }: { figures: readonly KeyFigure[] }) {
             </Txt>
           </View>
           <View style={styles.valueRow}>
-            <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr">
+            <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr" style={size}>
               {f.value}
             </Txt>
             {f.unit ? (
@@ -130,7 +141,7 @@ export function Split({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   figures: { flexDirection: "row", flexWrap: "wrap", gap: 24 },
-  figure: { flexGrow: 1, flexShrink: 1, flexBasis: 180, borderTopWidth: 1, paddingTop: 8, gap: 2 },
+  figure: { flexGrow: 1, flexShrink: 1, flexBasis: 200, borderTopWidth: 1, paddingTop: 8, gap: 2, minWidth: 0 },
   figureLabel: { flexDirection: "row", gap: 6, alignItems: "center" },
   valueRow: { flexDirection: "row", alignItems: "baseline", gap: 6, flexWrap: "wrap" },
   section: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, paddingBottom: 6, gap: 12, flexWrap: "wrap" },

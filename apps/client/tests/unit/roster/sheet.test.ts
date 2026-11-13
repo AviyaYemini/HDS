@@ -4,7 +4,7 @@
  * once, and names written the way the managers' sheet writes them. Made-up names only.
  */
 import type { Assignment, Shift } from "../../../src/screens/roster/model";
-import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName } from "../../../src/screens/roster/sheet";
+import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, withShifts } from "../../../src/screens/roster/sheet";
 import { weekDays } from "../../../src/screens/roster/model";
 
 const ZONE = "Asia/Jerusalem";
@@ -76,4 +76,12 @@ test("kept warnings: one line per person, rule and shift", () => {
   const override = { warning_code: "rest_too_short", reason: "phone ok", created_at: "", created_by: "" };
   const s = shift("k", "p1", "2026-12-07T05:00:00Z", 1, [person("u1", { overrides: [override, override] })]);
   expect(keptWarnings([s]).map((w) => [w.userId, w.code, w.reason])).toEqual([["u1", "rest_too_short", "phone ok"]]);
+});
+
+test("the default view keeps only projects with shifts, and counts the rest", () => {
+  const groups = buildSheet(projects, clients, [shift("x", "p2", "2026-12-08T05:00:00Z", 1, [])], WEEK, "en");
+  const { groups: shown, hidden } = withShifts(groups);
+  expect(shown.map((g) => g.clientName)).toEqual(["Zeta Guarding"]);
+  expect(shown[0]!.rows.map((r) => r.project.id)).toEqual(["p2"]);
+  expect(hidden).toBe(2);
 });

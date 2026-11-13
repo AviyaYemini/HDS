@@ -12,12 +12,15 @@ import { call, useErrorText } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { InlineBanner, PageTitle, SegmentedControl, SkeletonRows, Table, Txt, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
-import { formatMoney, formatNumericRange } from "../../locale";
+import { DEFAULT_TIME_ZONE, formatMoney, formatNumericRange, presetRange, todayIn } from "../../locale";
 import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
 import { useLoad } from "../useLoad";
-import { ReportRange, usePage, useReportRange } from "./parts";
+import { usePage, useReportRange } from "./parts";
 
 type GroupBy = "project" | "employee" | "client";
+
+const HC_PRESETS = ["this-pay-period", "last-pay-period", "last-30-days"] as const;
+type HcPreset = (typeof HC_PRESETS)[number];
 
 /** A group or total as the API answers it; `billing` is read defensively until the field lands. */
 interface Figures {
@@ -46,7 +49,14 @@ export function HoursCostsScreen() {
   const { t, i18n } = useTranslation();
   const { api } = useSession();
   const errorText = useErrorText();
-  const { range, setRange, asked, today } = useReportRange();
+  const { setRange, asked } = useReportRange();
+  const today = todayIn(DEFAULT_TIME_ZONE);
+  // The deck's period buttons (slide 9) instead of an open calendar: the report's first screen is its figures.
+  const [preset, setPreset] = useState<HcPreset>("this-pay-period");
+  const choose = (next: HcPreset) => {
+    setPreset(next);
+    setRange(presetRange(next, today));
+  };
   const [groupBy, setGroupBy] = useState<GroupBy>("project");
   const report = useLoad(async () => call(api.GET("/api/v1/reports/hours", { params: { query: { ...asked, group_by: groupBy } } })), [asked.from, asked.to, groupBy]);
   // A project's type colours its bar (security dark, training light).
@@ -95,9 +105,12 @@ export function HoursCostsScreen() {
     <Screen testID="screen-hours-costs">
       <PageTitle eyebrow={[t("app.name"), t("nav.reports")]} title={t("hc.title")} />
       <View style={styles.controls}>
-        <View style={styles.range}>
-          <ReportRange range={range} setRange={setRange} today={today} />
-        </View>
+        <SegmentedControl<HcPreset>
+          label={t("reports.range_label")}
+          options={HC_PRESETS.map((p) => ({ value: p, label: t(`hc.preset.${p}`), testID: `preset-${p}` }))}
+          value={preset}
+          onChange={choose}
+        />
         <SegmentedControl<GroupBy>
           label={t("reports.group_by")}
           options={(["project", "employee", "client"] as const).map((g) => ({ value: g, label: t(`reports.by_${g}`), testID: `group-${g}` }))}
@@ -139,8 +152,7 @@ export function HoursCostsScreen() {
 
 const styles = StyleSheet.create({
   controls: { flexDirection: "row", flexWrap: "wrap", gap: 16, alignItems: "flex-end" },
-  range: { flexGrow: 1, flexBasis: 280, maxWidth: 420 },
   body: { gap: 24 },
-  chart: { flex: 1.1, gap: 12, minWidth: 0 },
-  table: { flex: 1, gap: 8, minWidth: 0 },
+  chart: { flex: 1, gap: 12, minWidth: 0 },
+  table: { flex: 1.5, gap: 8, minWidth: 0 },
 });

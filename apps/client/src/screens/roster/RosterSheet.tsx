@@ -21,10 +21,20 @@ import { useLoad } from "../useLoad";
 import { allShifts } from "./allShifts";
 import { weekDays } from "./model";
 import { rosterHref } from "./ProjectChooser";
-import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, type SheetRow } from "./sheet";
+import { buildSheet, isTemporary, keptWarnings, rowEmpty, sheetTotals, shortName, withShifts, type SheetRow } from "./sheet";
 
 const LABEL_WIDTH = 176;
 const DAY_MIN_WIDTH = 124;
+/** On a phone the sheet scrolls sideways; narrower columns show more of it at once. */
+const PHONE_LABEL_WIDTH = 120;
+const PHONE_DAY_MIN_WIDTH = 104;
+
+function useWidths(): { label: { width: number }; day: { minWidth: number }; total: number } {
+  const { isDesktop } = useTheme();
+  const label = isDesktop ? LABEL_WIDTH : PHONE_LABEL_WIDTH;
+  const day = isDesktop ? DAY_MIN_WIDTH : PHONE_DAY_MIN_WIDTH;
+  return { label: { width: label }, day: { minWidth: day }, total: label + day * 7 };
+}
 
 export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const { t, i18n } = useTranslation();
@@ -33,6 +43,7 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const capabilities = useCapabilities();
   const errorText = useErrorText();
   const { colors } = useTheme();
+  const widths = useWidths();
   const today = todayIn(DEFAULT_TIME_ZONE);
   const week = startOfWeek(weekParam ?? today);
   const days = weekDays(week);
@@ -42,8 +53,12 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
   const shifts = useLoad(() => allShifts(api, week, addDays(week, 6)), [week]);
 
   // Plain values: the React Compiler memoizes them.
-  const groups = projects.data && clients.data && shifts.data ? buildSheet(projects.data, clients.data, shifts.data, days, i18n.language) : null;
-  const totals = groups ? sheetTotals(groups) : null;
+  const allGroups = projects.data && clients.data && shifts.data ? buildSheet(projects.data, clients.data, shifts.data, days, i18n.language) : null;
+  const totals = allGroups ? sheetTotals(allGroups) : null;
+  // Projects without a shift this week stay out of the way unless asked for (most of a real sheet's tasks rest most weeks).
+  const [showAll, setShowAll] = useState(false);
+  const trimmed = allGroups ? withShifts(allGroups) : null;
+  const groups = allGroups && trimmed ? (showAll ? allGroups : trimmed.groups) : null;
   const kept = keptWarnings(shifts.data ?? []);
   const names = new Map<string, string>();
   for (const s of shifts.data ?? []) for (const a of s.assignments) if (a.full_name) names.set(a.user_id, a.full_name);
@@ -105,19 +120,31 @@ export function RosterSheet({ weekParam }: { weekParam?: string }) {
           {totals.temporary > 0 ? ` · ${t("sheet.temporary_count", { count: totals.temporary })}` : ""}
         </Txt>
       ) : null}
+      {trimmed && trimmed.hidden > 0 && (groups?.length ?? 0) > 0 ? (
+        <View style={styles.toggle}>
+          <Button
+            variant="quiet"
+            label={showAll ? t("sheet.hide_quiet") : t("sheet.show_all", { count: trimmed.hidden })}
+            onPress={() => setShowAll(!showAll)}
+            testID="action-toggle-quiet-projects"
+          />
+        </View>
+      ) : null}
       {failure ? (
         <InlineBanner tone="warning" title={errorText(failure)} action={{ label: t("common.retry"), onPress: () => void Promise.all([projects.reload(), clients.reload(), shifts.reload()]) }} />
       ) : groups === null ? (
         <SkeletonRows rows={8} />
-      ) : groups.length === 0 ? (
+      ) : allGroups!.length === 0 ? (
         <EmptyState icon="calendar" title={t("roster.no_projects")} body={t("roster.no_projects_body")} />
+      ) : groups.length === 0 && !showAll ? (
+        <EmptyState icon="calendar" title={t("sheet.no_shifts_title")} body={t("sheet.no_shifts_body")} action={{ label: t("sheet.show_all", { count: trimmed!.hidden }), onPress: () => setShowAll(true) }} />
       ) : (
         <ScrollView horizontal contentContainerStyle={styles.scroller}>
-          <View testID="roster-sheet" style={[styles.grid, { borderColor: colors.border.strong, minWidth: LABEL_WIDTH + DAY_MIN_WIDTH * 7 }]}>
+          <View testID="roster-sheet" style={[styles.grid, { borderColor: colors.border.strong, minWidth: widths.total }]}>
             <View style={styles.line}>
-              <View style={[styles.head, styles.label, { backgroundColor: colors.bg.canvas, borderColor: colors.border.subtle }]} />
+              <View style={[styles.head, styles.label, widths.label, { backgroundColor: colors.bg.canvas, borderColor: colors.border.subtle }]} />
               {days.map((day, i) => (
-                <View key={day} testID="sheet-day" {...webProps({ dataSet: { date: day } })} style={[styles.head, styles.day, { backgroundColor: day === today ? colors.bg.selected : colors.bg.canvas, borderColor: colors.border.subtle }]}>
+                <View key={day} testID="sheet-day" {...webProps({ dataSet: { date: day } })} style={[styles.head, styles.day, widths.day, { backgroundColor: day === today ? colors.bg.selected : colors.bg.canvas, borderColor: colors.border.subtle }]}>
                   <Txt role="eyebrow" tone="secondary">
                     {t(`sheet.weekday.${i}`)}
                   </Txt>
@@ -173,19 +200,20 @@ function formatDay(date: string): string {
 function ProjectRow({ row, week, nameOf }: { row: SheetRow; week: string; nameOf: (id: string, full?: string | null) => string }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const widths = useWidths();
   const empty = rowEmpty(row);
   return (
     <View style={styles.line} testID="sheet-row" {...webProps({ dataSet: { projectId: row.project.id } })}>
-      <LinkPressable href={rosterHref(row.project.id, week)} testID="sheet-project" style={[styles.cell, styles.label, { backgroundColor: colors.bg.canvas, borderColor: colors.border.subtle }]}>
+      <LinkPressable href={rosterHref(row.project.id, week)} testID="sheet-project" style={[styles.cell, styles.label, widths.label, { backgroundColor: colors.bg.canvas, borderColor: colors.border.subtle }]}>
         <Txt role="label" numberOfLines={2}>
           {row.project.name}
         </Txt>
         <Txt role="meta" tone={empty > 0 ? "danger" : "secondary"} numeric>
-          {empty > 0 ? t("sheet.row_empty", { count: empty }) : t("sheet.row_full")}
+          {row.cells.every((c) => c.length === 0) ? t("sheet.row_none") : empty > 0 ? t("sheet.row_empty", { count: empty }) : t("sheet.row_full")}
         </Txt>
       </LinkPressable>
       {row.cells.map((cell, i) => (
-        <View key={i} style={[styles.cell, styles.day, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
+        <View key={i} style={[styles.cell, styles.day, widths.day, { borderColor: colors.border.subtle, backgroundColor: colors.bg.surface }]}>
           {cell.map((shift) => {
             const open = Math.max(0, shift.headcount - shift.assignments.length);
             const published = shift.status === "published";
@@ -243,8 +271,9 @@ const styles = StyleSheet.create({
   grid: { borderWidth: 1, flexGrow: 1 },
   line: { flexDirection: "row" },
   head: { paddingVertical: 4, paddingHorizontal: 6, borderStartWidth: 1, borderTopWidth: 1 },
-  label: { width: LABEL_WIDTH, flexShrink: 0 },
-  day: { flex: 1, minWidth: DAY_MIN_WIDTH },
+  label: { flexShrink: 0 },
+  day: { flex: 1 },
+  toggle: { flexDirection: "row" },
   clientRow: { paddingVertical: 4, paddingHorizontal: 8, borderTopWidth: 1 },
   cell: { padding: 6, borderStartWidth: 1, borderTopWidth: 1, minHeight: 52, gap: 2 },
   shift: { gap: 3, marginBottom: 4 },

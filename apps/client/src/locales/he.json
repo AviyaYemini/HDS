@@ -1087,5 +1087,15 @@
   "employees.temporary_period_invalid": "להעסקה זמנית צריך תאריך התחלה ותאריך סוף, עד 3 חודשים ביניהם.",
   "employees.temporary_projects_required": "להעסקה זמנית צריך לבחור לפחות פרויקט אחד.",
   "employees.project_invalid": "אחד הפרויקטים שנבחרו לא קיים או שהסתיים.",
-  "warnings.temporary_outside": "עובד זמני משובץ מחוץ לפרויקטים או לתאריכים שלו."
+  "warnings.temporary_outside": "עובד זמני משובץ מחוץ לפרויקטים או לתאריכים שלו.",
+  "sheet.row_none": "אין משמרות השבוע",
+  "sheet.show_all": "להציג גם {{count}} פרויקטים בלי משמרות השבוע",
+  "sheet.show_all_one": "להציג גם פרויקט אחד בלי משמרות השבוע",
+  "sheet.show_all_other": "להציג גם {{count}} פרויקטים בלי משמרות השבוע",
+  "sheet.hide_quiet": "להסתיר פרויקטים בלי משמרות",
+  "sheet.no_shifts_title": "אין משמרות בשבוע הזה",
+  "sheet.no_shifts_body": "אפשר להעתיק משבוע שעבר, לעבור לשבוע אחר או להציג את כל הפרויקטים.",
+  "hc.preset.this-pay-period": "תקופה נוכחית",
+  "hc.preset.last-pay-period": "תקופה קודמת",
+  "hc.preset.last-30-days": "30 יום"
 }
