@@ -26,5 +26,5 @@ export const OVERVIEW: Overview = {
     { id: "p3", name: "Training · course 7", client_name: "Alpha Security", managers: [], type: "training", hours: "228.00", billing: "20000.00", pay: "20800.00", margin_pct: "-4.00", coverage_pct: null, empty_places: 0, temporary_workers: 0, terms_estimated: false, status: "loss", empty_places_next: 0, weeks: [] },
   ],
   terms_estimated: true,
-  previous: { from: "2026-10-01", to: "2026-10-31", hours: "4100.00", billing: "452000.00", pay: "371000.00", margin_pct: "17.92", hours_to_date: "1800.00", billing_to_date: "201000.00" },
+  previous: { from: "2026-10-01", to: "2026-10-31", hours: "4100.00", billing: "452000.00", pay: "371000.00", margin_pct: "17.92", hours_to_date: "1800.00", billing_to_date: "201000.00", hours_to_rostered: "3000.00", billing_to_rostered: "330000.00" },
 };

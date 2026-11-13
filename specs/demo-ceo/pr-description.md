@@ -24,7 +24,12 @@ This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry
 - **The roster week** in the layout the managers know from the sheet: projects as rows grouped by client, and days as columns. Empty places are dashed, and a "זמני" chip marks temporary workers.
 - **Staff control:** hours this week and this month, a permanent/temporary filter and the engagement fields.
 - **Phone layout:** below 768px the tables become cards, and the roster shows one day at a time.
-- **No rule warnings in the demo screens:** the owner considers them out of scope for the app. `GET /api/v1/roster/warnings` stays in the API, unused, for a later cherry-pick.
+- **No rule warnings anywhere in the demo screens:** the owner considers them out of scope for the app. That covers the roster sheet, the per-project editor (assign, move and swap simply save) and the publish review. `GET /api/v1/roster/warnings` stays in the API, unused, for a later cherry-pick.
+- **Comparisons and next week on the overview:**
+  - `previous`: the month, quarter or year before, with the same days so far;
+  - `coverage_next`: the week being prepared;
+  - a weekly series for each project's trend line.
+- **Auto-scheduler on the real data:** staffing needs only for live tasks, so a run for a week fills every place in about two seconds.
 - **Hours and costs** in the deck's style. The hours report now includes billing.
 - **The demo data:**
   - `scripts/demo/parse_roster.py` reads the weekly Google Sheets export. It handles tasks, clients, managers, hours, sums, open places and merged spellings.

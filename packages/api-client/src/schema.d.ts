@@ -3564,6 +3564,11 @@ export interface components {
              */
             billing_to_date?: string | null;
             /**
+             * Billing To Rostered
+             * @description Its billing up to the same day as this range's last rostered day: compare the forecast with this, as the forecast stops where the roster does.
+             */
+            billing_to_rostered?: string | null;
+            /**
              * From
              * Format: date
              */
@@ -3579,6 +3584,12 @@ export interface components {
              * @example 7.50
              */
             hours_to_date: string;
+            /**
+             * Hours To Rostered
+             * @description Its hours up to the same day as this range's last rostered day.
+             * @example 7.50
+             */
+            hours_to_rostered: string;
             /** Margin Pct */
             margin_pct?: string | null;
             /** Pay */
@@ -3705,6 +3716,11 @@ export interface components {
             previous?: components["schemas"]["OverviewPreviousRead"] | null;
             /** Projects */
             projects: components["schemas"]["OverviewProjectRead"][];
+            /**
+             * Rostered Until
+             * @description The last day in the range with work on the roster.
+             */
+            rostered_until?: string | null;
             /** Terms Estimated */
             terms_estimated: boolean;
             /**
