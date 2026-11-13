@@ -93,8 +93,10 @@ export function destinationsFor(capabilities: Capabilities): Destination[] {
 
 /** The groups of the side navigation, each with its destinations, groups with none left out. */
 export function groupsFor(capabilities: Capabilities): { group: NavGroup; items: Destination[] }[] {
-  const order: NavGroup[] = ["my-work", "manage", "admin", "client"];
   const items = destinationsFor(capabilities);
+  // Whoever manages sees the management first and their own work last (the owner, 2026-11-13).
+  const manages = items.some((item) => item.group === "manage");
+  const order: NavGroup[] = manages ? ["manage", "admin", "my-work", "client"] : ["my-work", "manage", "admin", "client"];
   return order
     .map((group) => ({ group, items: items.filter((item) => item.group === group) }))
     .filter((entry) => entry.items.length > 0);
