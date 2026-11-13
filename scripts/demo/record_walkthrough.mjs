@@ -70,7 +70,8 @@ async function scroll(page, pixels, steps = 12) {
 
 async function signIn(page, email) {
   await page.goto(`${WEB}/sign-in?lang=he`);
-  await page.getByLabel("דוא״ל").waitFor();
+  await page.getByLabel("דוא״ל").waitFor({ timeout: 60000 });
+  await settle(page, 600);
   return async (film = true) => {
     await page.getByLabel("דוא״ל").fill("");
     for (const ch of email) {
@@ -83,9 +84,11 @@ async function signIn(page, email) {
   };
 }
 
+/** Wait for a screen to load; the wait is not filmed, so the cut to it is instant. */
 async function settle(page, ms = 900) {
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.waitForTimeout(ms);
+  last = Date.now();
 }
 
 const scenes = {
@@ -141,8 +144,12 @@ const scenes = {
     await hold(page, 2);
     await page.getByText("הפקה", { exact: true }).first().click();
     await page.waitForURL(/\/runs\/[0-9a-f-]{36}/, { timeout: 30000 });
+    await settle(page, 300);
+    say("07 · שיבוץ אוטומטי", "המערכת מחפשת את הסידור הטוב ביותר, ומראה כמה מקומות כבר מאוישים.");
+    await hold(page, 3);
+    await page.getByText("אופטימלי").first().waitFor({ timeout: 30000 }).catch(() => {});
+    await settle(page, 600);
     say("07 · שיבוץ אוטומטי", "תוך שניות כל המקומות מאוישים. עובדים זמניים נשארים בפרויקטים ובתאריכים שלהם.");
-    await settle(page, 1500);
     await hold(page, 6);
     say("07 · שיבוץ אוטומטי", "ההצעה מוצגת כשבוע סידור, עם השינויים מסומנים. המנהל מאשר הכול, לפי פרויקט או לפי יום.");
     await scroll(page, 520);
