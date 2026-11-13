@@ -1140,5 +1140,6 @@
   "sheet.card_hours": "{{hours}} h rostered this week",
   "staff.ending_soon": "Ends in {{count}} days",
   "staff.ending_soon_one": "Ends tomorrow",
-  "staff.ending_soon_other": "Ends in {{count}} days"
+  "staff.ending_soon_other": "Ends in {{count}} days",
+  "home.unpublished": "Unpublished shifts"
 }

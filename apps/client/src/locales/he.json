@@ -1140,5 +1140,6 @@
   "sheet.card_hours": "{{hours}} שעות בסידור השבוע",
   "staff.ending_soon": "מסתיים בעוד {{count}} ימים",
   "staff.ending_soon_one": "מסתיים מחר",
-  "staff.ending_soon_other": "מסתיים בעוד {{count}} ימים"
+  "staff.ending_soon_other": "מסתיים בעוד {{count}} ימים",
+  "home.unpublished": "משמרות שטרם פורסמו"
 }

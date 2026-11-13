@@ -82,6 +82,26 @@ describe("HomeScreen (FR-006)", () => {
     expect(router.push).toHaveBeenCalledWith("/my/availability");
   });
 
+  it("an Admin's home counts drafts across the coming weeks and hides set-up once there are projects and staff", async () => {
+    const admin: Me = { ...EMPLOYEE_ME, role: "admin", capabilities: [...EMPLOYEE_ME.capabilities, "roster.read", "special_days.edit", "staff.manage"] };
+    const draft = (id: string, starts: string) => ({ id, project_id: "p", shift_type_id: "t", starts_at: starts, ends_at: starts, timezone: "Asia/Jerusalem", headcount: 1, status: "draft", etag: "e", pay_rate: null, published_at: null, assignments: [] });
+    const api = new FakeApi()
+      .on("GET", "/me", json(200, admin))
+      .on("GET", "/me/shifts", json(200, { items: [] }))
+      .on("GET", "/api/v1/availability-windows", json(200, { items: [] }))
+      .on("GET", "/api/v1/projects", json(200, { items: [{ id: "p", name: "Harbour gate" }] }))
+      .on("GET", "/api/v1/employees", json(200, { items: [{ id: "u9", role: "employee", full_name: "Dana Levi" }] }))
+      .on("GET", "/api/v1/shifts", (seen) =>
+        json(200, new URLSearchParams(seen.query).get("status") === "draft" ? { items: [draft("d2", "2026-12-15T05:00:00Z"), draft("d1", "2026-12-08T05:00:00Z")], next_cursor: null } : { items: [], next_cursor: null }),
+      );
+    await renderWith(await signedIn(api), <HomeScreen />);
+    // Two drafts in two weeks; the card opens the first of those weeks.
+    await waitFor(() => expect(screen.getByTestId("home-card-unpublished")).toHaveTextContent(/2$/));
+    const asked = new URLSearchParams(api.calls("GET", "/api/v1/shifts").find((c) => c.query.includes("status=draft"))!.query);
+    expect(Number(new Date(asked.get("to")!)) - Number(new Date(asked.get("from")!))).toBe(27 * 86_400_000);
+    await waitFor(() => expect(screen.queryByTestId("home-setup")).toBeNull());
+  });
+
   it("shows placeholders, never numbers, on the manager's cards", async () => {
     const manager: Me = { ...EMPLOYEE_ME, role: "manager", capabilities: [...EMPLOYEE_ME.capabilities, "roster.read", "schedule.generate", "availability.read_others"] };
     const api = new FakeApi().on("GET", "/me", json(200, manager)).on("GET", "/me/shifts", json(200, { items: [] })).on("GET", "/api/v1/availability-windows", json(200, { items: [] }));
