@@ -149,33 +149,55 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
                   web={{ dataSet: { projectId: project } }}
                 />
               ))}</View> : null;
+  const acceptAll = <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />;
+  const byProjectToggle =
+    openProjects.length > 1 ? (
+      // One project at a time behind a toggle, not a wall of buttons (the owner, 2026-11-13).
+      <Button
+        variant="quiet"
+        icon={byProject ? "chevron-up" : "chevron-down"}
+        label={t("runsum.accept_by_project", { count: openProjects.length })}
+        onPress={() => setByProject(!byProject)}
+        testID="action-accept-by-project"
+        web={{ "aria-expanded": String(byProject) }}
+      />
+    ) : null;
+  const acceptChosen = (
+    <Button
+      label={t("review.accept_selected", { count: chosen.length })}
+      disabled={busy !== null || chosen.length === 0}
+      disabledReason={chosen.length === 0 ? t("review.choose_first") : undefined}
+      busy={busy === "selected"}
+      onPress={() => void accept(partOfPairs(chosen), "selected")}
+      testID="action-accept-selected"
+    />
+  );
+  const undoButton = (compact: boolean) => (
+    <Button variant="quiet" icon="undo" label={compact ? "" : t("review.undo")} accessibilityLabel={t("review.undo")} busy={busy === "undo"} disabled={busy !== null} onPress={() => void undo()} testID="action-undo" />
+  );
+  const discardButton = <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />;
+  // A desktop's bar after the figures: every action in one row.
   const actionBar = showBar ? (
-        <View testID="accept-bar" style={styles.bar}>
-          <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />
-          {openProjects.length > 1 ? (
-            // One project at a time behind a toggle, not a wall of buttons (the owner, 2026-11-13).
-            <Button
-              variant="quiet"
-              icon={byProject ? "chevron-up" : "chevron-down"}
-              label={t("runsum.accept_by_project", { count: openProjects.length })}
-              onPress={() => setByProject(!byProject)}
-              testID="action-accept-by-project"
-              web={{ "aria-expanded": String(byProject) }}
-            />
-          ) : null}
-          {!isDesktop ? (
-          <Button
-            label={t("review.accept_selected", { count: chosen.length })}
-            disabled={busy !== null || chosen.length === 0}
-            disabledReason={chosen.length === 0 ? t("review.choose_first") : undefined}
-            busy={busy === "selected"}
-            onPress={() => void accept(partOfPairs(chosen), "selected")}
-            testID="action-accept-selected"
-          />
-          ) : null}
-          <Button variant="quiet" icon="undo" label={t("review.undo")} busy={busy === "undo"} disabled={busy !== null} onPress={() => void undo()} testID="action-undo" />
-          <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />
-        </View>
+    <View testID="accept-bar" style={styles.bar}>
+      {acceptAll}
+      {byProjectToggle}
+      {undoButton(false)}
+      {discardButton}
+    </View>
+  ) : null;
+  // A phone's bar sticks to the bottom: one compact row; the rarer actions sit just above it.
+  const phoneMore = showBar ? (
+    <View style={styles.bar}>
+      {byProjectToggle}
+      {acceptChosen}
+    </View>
+  ) : null;
+  const phoneBar = showBar ? (
+    <View testID="accept-bar" style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
+      {acceptAll}
+      {discardButton}
+      {undoButton(true)}
+    </View>
   ) : null;
 
   return (
@@ -217,8 +239,8 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
       {/* The actions right after the figures, before the long week, on every width. Pinning them to
           a phone's bottom waits on the shell: its page wrapper keeps a transform, which holds any
           "fixed" element inside the page instead of the window. */}
-      {actionBar}
-      {projectButtons}
+      {isDesktop ? actionBar : null}
+      {isDesktop ? projectButtons : null}
       {/* Only the weeks that hold a slot of the run: calendar weeks with none add nothing (T042a). */}
       {weeksOf(job.from, job.to)
         .filter((days) => days.some((day) => byDay.has(day)))
@@ -366,6 +388,10 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
           </View>
         );
       })}
+      {/* On a phone the actions follow the week and stick to the bottom while it scrolls past. */}
+      {!isDesktop ? phoneMore : null}
+      {!isDesktop ? projectButtons : null}
+      {!isDesktop ? phoneBar : null}
       {/* The details below the week: fairness, the trade-offs and the chips. */}
       <SectionHead title={t("runsum.details")} />
       <FairnessPanel
@@ -506,6 +532,9 @@ const SHEET_DAY = 120;
 
 const sheetStyles = StyleSheet.create({
   sheetScroll: { flexGrow: 1 },
+  // "sticky" is the web's; React Native's types know only absolute and relative.
+  sticky: { position: "sticky" as "relative", bottom: 0, zIndex: 5, borderTopWidth: 1, paddingVertical: 8 },
+  phoneBar: { flexDirection: "row", alignItems: "center", gap: 8 },
   sheet: { borderWidth: 1, flexGrow: 1 },
   sheetLine: { flexDirection: "row" },
   sheetHead: { padding: 6, borderStartWidth: 1, borderTopWidth: 1, gap: 2 },

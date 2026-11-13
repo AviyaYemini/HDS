@@ -113,7 +113,8 @@ describe("destinations by capability (FR-001)", () => {
 
   it("groups the staff navigation and marks previews", () => {
     const groups = groupsFor(capabilitiesOf(me("admin", ADMIN)));
-    expect(groups.map((group) => group.group)).toEqual(["my-work", "manage", "admin"]);
+    // Whoever manages sees the management first and their own work last (the owner, 2026-11-13).
+    expect(groups.map((group) => group.group)).toEqual(["manage", "admin", "my-work"]);
     const previews = destinationsFor(capabilitiesOf(me("admin", ADMIN))).filter((item) => item.preview);
     expect(previews.map((item) => item.key).sort()).toEqual(["approvals", "audit-log", "manage-requests", "requests"]);
     expect(groupsFor(capabilitiesOf(me("employee", EMPLOYEE))).map((group) => group.group)).toEqual(["my-work"]);

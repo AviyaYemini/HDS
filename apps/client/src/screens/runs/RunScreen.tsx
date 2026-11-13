@@ -41,7 +41,9 @@ export function RunScreen() {
   const stamp = job ? `${job.status}:${job.ended ?? ""}:${String(job.stop_requested)}:${job.proposal_state ?? ""}:${version}` : "";
 
   return (
-    <Screen testID="screen-run">
+    // No scroll view of its own: the shell's is the one that scrolls, so the review's action bar can
+    // stick to the bottom of a phone's screen (the owner, 2026-11-13).
+    <Screen testID="screen-run" fixed>
       <PageTitle eyebrow={[t("app.name"), t("nav.runs")]} title={job ? formatNumericRange(job.from, job.to) : t("nav.runs")} />
       {error ? (
         <InlineBanner tone="warning" title={errorText(error)} action={{ label: t("common.retry"), onPress: reload }} />

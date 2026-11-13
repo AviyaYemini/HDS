@@ -8,6 +8,8 @@ import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import { InlineBanner, SkeletonRows, type Column } from "../../design/components";
 import { formatMoney } from "../../locale";
+import { formatHoursFigure } from "../reports/HoursCostsScreen";
+import { useMonthOverview } from "./useMonthOverview";
 import { useLoad } from "../useLoad";
 import { AdminTable, orDash } from "./AdminTable";
 import { ManagersEditor } from "./ManagersEditor";
@@ -43,13 +45,26 @@ export function ProjectsScreen() {
     { name: "end_date", label: t("entity.end_date"), kind: "date", validate: (end, all) => (all.start_date && end < all.start_date ? t("projects.date_range_invalid") : null) },
     { name: "billing_rate", label: t("entity.billing_rate"), kind: "money", required: true, scope: t("scope.billing_rate"), validate: (rate) => (Number(rate) > 0 ? null : t("projects.billing_rate_positive")) },
   ];
+  // This month's hours and the managers, from the snapshot (the owner, 2026-11-13).
+  const month = useMonthOverview();
+  const monthHours = (id: string) => (month?.get(id) ? Number(month.get(id)!.hours) : 0);
+  const estimated = (p: Row) => (p as Row & { terms_estimated?: boolean }).terms_estimated ?? month?.get(p.id)?.terms_estimated ?? false;
   const columns: Column<Row>[] = [
-    { key: "name", title: t("entity.name"), sortable: true, render: (p) => p.name },
-    { key: "client", title: t("entity.client"), sortable: true, render: (p) => orDash(clientName(p.client_id)) },
-    { key: "site", title: t("entity.site"), sortable: true, render: (p) => orDash(siteName(p.site_id)) },
-    { key: "type", title: t("entity.type"), sortable: true, render: (p) => t(`project.type.${p.type}`) },
-    { key: "status", title: t("entity.status"), sortable: true, render: (p) => t(`project.status.${p.status}`) },
-    { key: "rate", title: t("entity.billing_rate"), sortable: true, numeric: true, render: (p) => formatMoney(moneyText(p.billing_rate), i18n.language) },
+    { key: "name", title: t("entity.name"), sortable: true, render: (p) => (estimated(p) ? `${p.name} *` : p.name) },
+    { key: "client", title: t("entity.client"), sortable: true, width: 140, render: (p) => orDash(clientName(p.client_id)) },
+    { key: "manager", title: t("projects.col.manager"), sortable: true, width: 80, render: (p) => orDash(month?.get(p.id)?.managers.join(", ") ?? "") },
+    {
+      key: "hours",
+      title: t("projects.col.hours"),
+      sortable: true,
+      numeric: true,
+      width: 100,
+      render: (p) => (month === null ? "…" : month.get(p.id) ? formatHoursFigure(month.get(p.id)!.hours, i18n.language) : "—"),
+    },
+    { key: "site", title: t("entity.site"), sortable: true, width: 130, render: (p) => orDash(siteName(p.site_id)) },
+    { key: "type", title: t("entity.type"), sortable: true, width: 80, render: (p) => t(`project.type.${p.type}`) },
+    { key: "status", title: t("entity.status"), sortable: true, width: 70, render: (p) => t(`project.status.${p.status}`) },
+    { key: "rate", title: t("entity.billing_rate"), sortable: true, numeric: true, width: 100, render: (p) => formatMoney(moneyText(p.billing_rate), i18n.language) },
   ];
   return (
     <AdminTable<Row>
@@ -64,8 +79,10 @@ export function ProjectsScreen() {
       nameOf={(p) => p.name}
       searchText={(p) => `${p.name} ${clientName(p.client_id)} ${siteName(p.site_id)}`}
       sortValue={(p, key) =>
-        key === "client" ? clientName(p.client_id) : key === "site" ? siteName(p.site_id) : key === "type" ? p.type : key === "status" ? p.status : key === "rate" ? Number(p.billing_rate) : p.name
+        key === "hours" ? monthHours(p.id) : key === "manager" ? (month?.get(p.id)?.managers.join(", ") ?? "") : key === "client" ? clientName(p.client_id) : key === "site" ? siteName(p.site_id) : key === "type" ? p.type : key === "status" ? p.status : key === "rate" ? Number(p.billing_rate) : p.name
       }
+      // The busiest projects this month first (the owner, 2026-11-13).
+      defaultSort={{ key: "hours", direction: "desc" }}
       emptyTitle={t("admin.empty.projects_title")}
       emptyBody={t("admin.empty.projects_body")}
       onDelete={capabilities.has("projects.delete") ? async (p, urgent) => void (await call(api.DELETE("/api/v1/projects/{id}", { params: { path: { id: p.id } }, keepalive: urgent }))) : null}

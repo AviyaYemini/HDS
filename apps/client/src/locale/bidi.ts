@@ -44,5 +44,6 @@ const NUMERIC_RUN = /\d{1,2}[:.]\d{2}(?:\s*[–-]\s*\d{1,2}[:.]\d{2})?|\d{1,2}\/
  * an English line breaks "בוקר 07:00–19:00" into "–07:00 / 19:00" (the owner, 2026-11-13).
  */
 export function nameText(name: string): string {
-  return isolate(name.replace(NUMERIC_RUN, (run) => isolateLtr(run)));
+  // Word joiners hold a range's dash to its times, so a narrow line never breaks "07:00–" from "19:00".
+  return isolate(name.replace(NUMERIC_RUN, (run) => isolateLtr(run.replace(/\s*([–-])\s*/, "\u2060$1\u2060"))));
 }

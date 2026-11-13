@@ -1,24 +1,30 @@
 /**
  * Clients: a table with a record panel; deleting only for whoever may (specs/007-ux-redesign FR-043 to FR-049).
  */
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
 import type { Column } from "../../design/components";
-import { formatNumericDate } from "../../locale";
+import { formatMoney, formatNumericDate } from "../../locale";
+import { sumAmounts } from "../deck/chartMath";
+import { useLoad } from "../useLoad";
+import { useMonthOverview } from "./useMonthOverview";
 import { AdminTable, orDash } from "./AdminTable";
 import { RecordForm, type FieldSpec } from "./RecordForm";
 import { orNull } from "./text";
 
 export function ClientsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { api } = useSession();
   const capabilities = useCapabilities();
   type Row = Awaited<ReturnType<typeof loadClients>>[number];
   async function loadClients() {
-    return (await call(api.GET("/api/v1/clients"))).items;
+    const items = (await call(api.GET("/api/v1/clients"))).items;
+    setAnyContact(items.some((c) => c.contact_name || c.contact_email || c.contact_phone));
+    return items;
   }
   const fields: FieldSpec[] = [
     { name: "name", label: t("entity.name"), required: true },
@@ -33,9 +39,34 @@ export function ClientsScreen() {
     { name: "contact_email", label: t("entity.contact_email"), kind: "email" },
     { name: "contact_phone", label: t("entity.contact_phone") },
   ];
+  // Each client's projects and this month's billing (the owner, 2026-11-13).
+  const projects = useLoad(async () => (await call(api.GET("/api/v1/projects"))).items, []);
+  const month = useMonthOverview();
+  const projectsOf = (clientId: string) => (projects.data ?? []).filter((p) => p.client_id === clientId);
+  const billingOf = (clientId: string): string | null => {
+    if (month === null) return null;
+    const amounts = projectsOf(clientId)
+      .map((p) => month.get(p.id)?.billing)
+      .filter((b): b is string => b != null);
+    return amounts.length > 0 ? sumAmounts(amounts) : null;
+  };
+  // The contact column only when someone has a contact.
+  const [anyContact, setAnyContact] = useState(false);
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.name"), sortable: true, render: (c) => c.name },
-    { key: "contact", title: t("entity.contact_name"), sortable: true, render: (c) => orDash(c.contact_name) },
+    { key: "projects", title: t("clients.col.projects"), sortable: true, numeric: true, width: 110, render: (c) => (projects.data ? String(projectsOf(c.id).length) : "…") },
+    {
+      key: "billing",
+      title: t("clients.col.billing"),
+      sortable: true,
+      numeric: true,
+      width: 160,
+      render: (c) => {
+        const billing = billingOf(c.id);
+        return billing === null ? "—" : formatMoney(billing, i18n.language);
+      },
+    },
+    ...(anyContact ? [{ key: "contact", title: t("entity.contact_name"), sortable: true, render: (c: Row) => orDash(c.contact_name) }] : []),
     { key: "start", title: t("entity.contract_start"), sortable: true, render: (c) => formatNumericDate(c.contract_start) },
     { key: "end", title: t("entity.contract_end"), sortable: true, render: (c) => (c.contract_end ? formatNumericDate(c.contract_end) : "—") },
   ];
@@ -51,7 +82,11 @@ export function ClientsScreen() {
       keyOf={(c) => c.id}
       nameOf={(c) => c.name}
       searchText={(c) => `${c.name} ${c.contact_name ?? ""} ${c.contact_email ?? ""}`}
-      sortValue={(c, key) => (key === "contact" ? (c.contact_name ?? null) : key === "start" ? c.contract_start : key === "end" ? (c.contract_end ?? null) : c.name)}
+      sortValue={(c, key) =>
+        key === "billing" ? Number(billingOf(c.id) ?? 0) : key === "projects" ? projectsOf(c.id).length : key === "contact" ? (c.contact_name ?? null) : key === "start" ? c.contract_start : key === "end" ? (c.contract_end ?? null) : c.name
+      }
+      // The clients that bring in the most first (the owner, 2026-11-13).
+      defaultSort={{ key: "billing", direction: "desc" }}
       emptyTitle={t("admin.empty.clients_title")}
       emptyBody={t("admin.empty.clients_body")}
       active={{

@@ -1202,5 +1202,9 @@
   "subs.deadline_passed": "the deadline has passed",
   "subs.window": "Window {{range}} · deadline {{deadline}} · {{left}}",
   "subs.progress": "{{submitted}} of {{total}} submitted",
-  "subs.search": "Search by name"
+  "subs.search": "Search by name",
+  "clients.col.projects": "Projects",
+  "clients.col.billing": "Billing this month",
+  "projects.col.manager": "Manager",
+  "projects.col.hours": "Hours this month"
 }

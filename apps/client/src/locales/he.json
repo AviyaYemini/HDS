@@ -1202,5 +1202,9 @@
   "subs.deadline_passed": "המועד האחרון עבר",
   "subs.window": "חלון {{range}} · מועד אחרון {{deadline}} · {{left}}",
   "subs.progress": "{{submitted}} מתוך {{total}} הגישו",
-  "subs.search": "חיפוש בשם"
+  "subs.search": "חיפוש בשם",
+  "clients.col.projects": "פרויקטים",
+  "clients.col.billing": "חיוב החודש",
+  "projects.col.manager": "מנהל",
+  "projects.col.hours": "שעות החודש"
 }
