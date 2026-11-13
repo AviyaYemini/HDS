@@ -1,5 +1,7 @@
 feat(demo): ceo demo, the schedule, staff control and dashboards on the real roster
 
+## Summary
+
 A demo for the CEO on the team's real roster workbook: the schedule, staff control and dashboards, in the style of Fable's features deck. Temporary workers come first, as the CEO asked.
 
 This branch is a demo off main (1.0 POC). It is not meant to merge as is; cherry-pick what's useful.
@@ -79,6 +81,26 @@ Open http://localhost:8081 and sign in as `admin@hds.test`, or as `manager1@hds.
 **Left to CI:** the full suites, Schemathesis, and the end-to-end specs updated for the new screens (`test_us_hours_report`, `ux/g-reports`, `ux/d-roster`, `ux/h-a11y-sweep`, `ux/i-proposal-review`, `ux/j-empty-slots`, `ux/k-*`, `ux/l-run-flow`, `ux/o-owner-requests`, `test_us_work_log`).
 
 **Not covered:** native iOS and Android builds.
+
+## After review and CI
+
+CI's failures and CodeRabbit's review were fixed on this branch:
+- the API now passes mypy, the docstring gate, the role matrix and the contract tests;
+- the demo screens pass the accessibility sweep at both widths, and focus never lands under the phone's sticky bar;
+- a date in a query string is `YYYY-MM-DD` text only on every router. FastAPI drops the validator with a `Query()` default, so `0` read as 1970-01-01. This is also on main;
+- OpenTelemetry is at 1.45.2 for CVE-2026-126360. This is also on main;
+- review points on the seed, the parser, the roster's copy, the run form and the reports.
+
+Two points are left for later: unknown pay counted as zero in the overview totals, and the workbook's explicit staffing counts.
+
+## Spec reference
+
+Proposed: a CEO demo beyond the original spec, planned in `specs/demo-ceo/` (plan, tasks, walkthrough). Temporary workers are Proposed too; project teams are their start.
+
+## Checklist
+
+- [x] No constitution principle (I–XI) is violated by this change. The owner let this demo skip parts of the Spec Kit flow for speed; the hooks' mechanical rules and CI's gates still apply and pass.
+- [x] Docs updated: docstrings, READMEs, ADRs and OpenAPI descriptions that describe this change ship in this pull request (Constitution XI).
 
 Built by two Claude Code sessions: the HDS helper did the data and the API, and the CLI session did the screens.
 
