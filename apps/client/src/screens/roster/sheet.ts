@@ -3,9 +3,7 @@
  * rows grouped by client, the seven days as columns, and in each cell the day's shifts with their
  * people and empty places. Pure, so the grouping and the counts are tested on their own.
  */
-import type { components } from "@hds/api-client";
-
-import { groupWarnings, shiftDays, type Assignment, type Shift, type WarningGroup } from "./model";
+import { shiftDays, type Assignment, type Shift } from "./model";
 
 /** What the sheet needs of a project and a client. */
 export interface SheetProject {
@@ -98,32 +96,6 @@ export function sheetTotals(groups: readonly ClientGroup[]): SheetTotals {
 /** A row's empty places this week. */
 export function rowEmpty(row: SheetRow): number {
   return row.cells.flat().reduce((n, s) => n + Math.max(0, s.headcount - s.assignments.length), 0);
-}
-
-/** The week's warnings across projects (`GET /api/v1/roster/warnings`). */
-export type RosterWarning = components["schemas"]["RosterWarningRead"];
-
-/**
- * The strip's view of the week's warnings: the open ones grouped by person and rule (one line each,
- * however many shifts clash), how many were kept with a reason, and which person's block on which
- * shift carries an open warning.
- */
-export function weekWarnings(warnings: readonly RosterWarning[]): { open: WarningGroup<RosterWarning>[]; kept: number; flagged: Set<string> } {
-  // An open place is drawn and counted as an empty place already; the strip is for the rest.
-  const shown = warnings.filter((w) => w.code !== UNDER_HEADCOUNT);
-  const openOnes = shown.filter((w) => !w.overridden);
-  const flagged = new Set<string>();
-  for (const w of openOnes) if (w.employee_id) for (const id of w.shift_ids) flagged.add(flagKey(id, w.employee_id));
-  // A person's rule once, however many shifts clash; a warning about a shift itself, once per shift.
-  return { open: groupWarnings(openOnes, (w) => w.employee_id ?? `shift:${w.shift_ids[0] ?? ""}`), kept: shown.length - openOnes.length, flagged };
-}
-
-/** The rule an open place breaks; the sheet shows it as a dashed empty place instead. */
-export const UNDER_HEADCOUNT = "warnings.under_headcount";
-
-/** The key of a person's block on a shift, for `flagged`. */
-export function flagKey(shiftId: string, userId: string): string {
-  return `${shiftId}|${userId}`;
 }
 
 /** Only the projects with shifts this week, and how many were left out (the sheet's default view). */

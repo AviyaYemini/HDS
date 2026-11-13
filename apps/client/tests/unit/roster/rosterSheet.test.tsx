@@ -44,10 +44,6 @@ function api() {
       { id: "p2", name: "City museum", client_id: "c2", status: "active" },
     ] }))
     .on("GET", "/api/v1/clients", json(200, { items: [{ id: "c1", name: "Alpha Security" }, { id: "c2", name: "Beta Guarding" }] }))
-    .on("GET", "/api/v1/roster/warnings", json(200, { from: WEEK, to: "2026-12-12", warnings: [
-      { code: "warnings.weekly_hours_exceeded", detail: "", employee_id: "u1", shift_ids: ["s1"], overridden: false, values: { hours: "52", maximum_hours: "48" } },
-      { code: "warnings.rest_too_short", detail: "", employee_id: "u2", shift_ids: ["s1"], overridden: true, values: {} },
-    ] }))
     .on("GET", "/api/v1/shifts", json(200, { items: [shift("s1", "p1", 3, [{ user: "u1", name: "Dana Levi" }, { user: "u2", name: "Omer Katz", temporary: true }])], next_cursor: null }));
 }
 
@@ -70,10 +66,10 @@ test("projects show under their clients, with names, the temporary chip and the 
   expect(screen.getAllByTestId("chip-temporary")).toHaveLength(1);
   expect(screen.getByTestId("sheet-empty")).toHaveTextContent("1 empty");
   expect(screen.getByTestId("sheet-totals")).toHaveTextContent(/3 places · 2 filled · 1 empty/);
-  // The week's warnings: the open one with its numbers, the kept one counted.
-  expect(screen.getByTestId("warnings-strip")).toHaveTextContent(/1 warning · 1 kept with a reason/);
-  expect(screen.getByTestId("sheet-warning")).toHaveTextContent(/Dana Levi · Harbour gate · 7\.12 .*weekly maximum.*52 h in this week; the maximum is 48 h\./);
-  expect(screen.getByTestId("sheet-totals")).toHaveTextContent(/1 warnings/);
+  // Warnings are out of the app's scope (the owner, 2026-11-13): no strip, no count, no call.
+  expect(screen.queryByTestId("warnings-strip")).toBeNull();
+  expect(screen.getByTestId("sheet-totals")).not.toHaveTextContent(/warning/i);
+  expect(fake.calls("GET", "/api/v1/roster/warnings")).toHaveLength(0);
   // The whole week across projects: no project in the query.
   const asked = new URLSearchParams(fake.calls("GET", "/api/v1/shifts")[0]!.query);
   expect(asked.get("from")).toBe(WEEK);

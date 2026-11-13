@@ -1,7 +1,7 @@
 /**
  * Staff: the people of the organisation as a table with a record panel (specs/007-ux-redesign FR-043 to FR-049).
  * Staff control for the CEO demo (specs/demo-ceo/plan.md, screen 3; slide 8): this week's and this
- * month's hours from the hours report by employee, a flag near the weekly maximum, a permanent or
+ * month's hours from the hours report by employee (no weekly-limit flag: warnings are out of scope), a permanent or
  * temporary filter (`?type=`), and a "temporary · until 12.02" chip.
  */
 import { router, useLocalSearchParams } from "expo-router";
@@ -11,14 +11,14 @@ import { StyleSheet, View } from "react-native";
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
+import { SegmentedControl, StatusChip, type Column } from "../../design/components";
 import { DEFAULT_TIME_ZONE, addDays, formatMoney, formatNumericDate, isolateLtr, startOfWeek, todayIn } from "../../locale";
 import { periodRange } from "../overview/model";
 import { allShifts } from "../roster/allShifts";
 import { useLoad } from "../useLoad";
 import { AdminTable } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec } from "./RecordForm";
-import { dayMonth, employmentOf, maxEngagedUntil, nearWeeklyLimit, passesType, scheduledHours, typeFilterOf, type TypeFilter } from "./staffModel";
+import { dayMonth, employmentOf, maxEngagedUntil, passesType, scheduledHours, typeFilterOf, type TypeFilter } from "./staffModel";
 import { orNull } from "./text";
 
 /** Hours by person over `from`–`to`, from the hours report (published shifts that are over). */
@@ -44,13 +44,11 @@ export function StaffScreen() {
   const today = todayIn(DEFAULT_TIME_ZONE);
   const week = startOfWeek(today);
   const month = periodRange("month", today);
-  // This week: scheduled hours, drafts included, the overview's own rule for "near the limit".
+  // This week: rostered hours, drafts included.
   const weekShifts = useLoad(() => allShifts(api, week, addDays(week, 6)), [week]);
   const weekHours = weekShifts.error ? new Map<string, number>() : weekShifts.data ? scheduledHours(weekShifts.data) : null;
   // This month: hours worked, from the report (never past today; only shifts that are over).
   const monthHours = useHoursByPerson(month.from, today);
-  const limits = useLoad(async () => (await call(api.GET("/api/v1/organisation/scheduling"))).max_weekly_hours, []);
-  const maxWeekly = limits.data ?? null;
   const hoursText = (map: Map<string, number> | null, id: string) => (map === null ? "…" : map.has(id) ? t("pay.hours", { hours: map.get(id)!.toFixed(1).replace(/\.0$/, "") }) : "—");
   const roles = ["employee", "manager", "admin"] as const;
   // The projects a temporary worker can be on (CEO demo §1): the active ones.
@@ -95,15 +93,7 @@ export function StaffScreen() {
       title: t("staff.col.week"),
       sortable: true,
       numeric: true,
-      text: (u) => [hoursText(weekHours, u.id), nearWeeklyLimit(weekHours?.get(u.id) ?? 0, maxWeekly) ? t("staff.near_limit", { max: maxWeekly }) : ""].filter(Boolean).join(" · "),
-      render: (u) => (
-        <View style={styles.hours}>
-          <Txt role="body" numeric>
-            {hoursText(weekHours, u.id)}
-          </Txt>
-          {nearWeeklyLimit(weekHours?.get(u.id) ?? 0, maxWeekly) ? <StatusChip status="warning" label={t("staff.near_limit", { max: maxWeekly })} testID={`near-limit-${u.id}`} /> : null}
-        </View>
-      ),
+      render: (u) => hoursText(weekHours, u.id),
     },
     { key: "month", title: t("staff.col.month"), sortable: true, numeric: true, render: (u) => hoursText(monthHours, u.id) },
     {
@@ -214,6 +204,5 @@ export function StaffScreen() {
 }
 
 const styles = StyleSheet.create({
-  hours: { gap: 4, alignItems: "flex-end" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
 });

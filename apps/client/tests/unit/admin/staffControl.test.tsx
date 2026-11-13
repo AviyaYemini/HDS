@@ -1,6 +1,6 @@
 /**
  * Staff control (specs/demo-ceo/plan.md, screen 3): this week's and this month's hours from the
- * hours report by employee, the near-the-weekly-limit flag, the temporary chip with its end date and
+ * hours report by employee (no weekly-limit flag), the temporary chip with its end date and
  * the permanent/temporary filter from the address; plus the 3-month cap. Made-up names only.
  */
 import { screen } from "@testing-library/react-native";
@@ -9,7 +9,7 @@ import * as Router from "expo-router";
 import type { Me } from "../../../src/api/session";
 import { setupI18n } from "../../../src/i18n";
 import { StaffScreen } from "../../../src/screens/admin";
-import { daysLeft, dayMonth, employmentOf, maxEngagedUntil, nearWeeklyLimit, passesType, scheduledHours, typeFilterOf } from "../../../src/screens/admin/staffModel";
+import { daysLeft, dayMonth, employmentOf, maxEngagedUntil, passesType, scheduledHours, typeFilterOf } from "../../../src/screens/admin/staffModel";
 import { FakeApi, ME, json, renderWith, signedIn } from "../fakeApi";
 
 const router = Router as unknown as { __setSearchParams: (p: Record<string, string>) => void };
@@ -24,8 +24,7 @@ function api() {
     .on("GET", "/me", json(200, ADMIN))
     .on("GET", "/me/saved-views", json(200, { items: [] }))
     .on("GET", "/api/v1/employees", json(200, { items: [DANA, OMER] }))
-    .on("GET", "/api/v1/organisation/scheduling", json(200, { max_weekly_hours: 48, min_rest_hours: 8 }))
-    // This week Dana is rostered for five 9-hour shifts, 45 h (near 48), drafts included; Omer for 8 h.
+    // This week Dana is rostered for five 9-hour shifts, 45 h, drafts included; Omer for 8 h.
     .on("GET", "/api/v1/shifts", json(200, { items: [
       { id: "s1", assignments: [0, 1, 2, 3, 4].map((d) => ({ user_id: "u1", starts_at: `2026-11-1${d}T05:00:00Z`, ends_at: `2026-11-1${d}T14:00:00Z` })).concat([{ user_id: "u2", starts_at: "2026-11-10T05:00:00Z", ends_at: "2026-11-10T13:00:00Z" }]) },
     ], next_cursor: null }))
@@ -37,14 +36,15 @@ beforeEach(async () => {
   await setupI18n("en");
 });
 
-test("hours, the near-limit flag and the temporary chip", async () => {
+test("hours and the temporary chip, with no weekly-limit flag", async () => {
   router.__setSearchParams({});
   await renderWith(await signedIn(api()), <StaffScreen />);
   // At phone width (the tests' default) each record is a card whose second line carries the columns as text.
   expect(await screen.findByText(/Active · Temporary · until 12\.02/, {}, { timeout: 5000 })).toBeTruthy();
-  expect(await screen.findByText(/45 h · Near 48 h/, {}, { timeout: 5000 })).toBeTruthy();
+  expect(await screen.findByText(/45 h/, {}, { timeout: 5000 })).toBeTruthy();
+  // No weekly-limit flag: warnings are out of the app's scope (the owner, 2026-11-13).
+  expect(screen.queryByText(/Near 48/)).toBeNull();
   expect(screen.getByText(/120 h/)).toBeTruthy();
-  expect(screen.getAllByText(/Near 48 h/)).toHaveLength(1);
   expect(screen.getAllByText(/Temporary · until/)).toHaveLength(1);
 });
 
@@ -63,11 +63,6 @@ test("the model: employment, filter, limit, dates", () => {
   expect(passesType(DANA, "all")).toBe(true);
   expect(typeFilterOf("temporary")).toBe("temporary");
   expect(typeFilterOf("nonsense")).toBe("all");
-  expect(nearWeeklyLimit(44, 48)).toBe(true);
-  expect(nearWeeklyLimit(43.5, 48)).toBe(false);
-  expect(nearWeeklyLimit(50, 48)).toBe(true);
-  expect(nearWeeklyLimit(0, 4)).toBe(false);
-  expect(nearWeeklyLimit(47, null)).toBe(false);
   expect(dayMonth("2027-02-12")).toBe("12.02");
   expect(maxEngagedUntil("2026-11-13")).toBe("2027-02-13");
   expect(maxEngagedUntil("2026-11-30")).toBe("2027-02-28");

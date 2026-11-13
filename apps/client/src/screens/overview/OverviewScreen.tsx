@@ -79,7 +79,7 @@ export function OverviewScreen() {
           value: String(d.people.working_this_week),
           unit: t("snapshot.figure.people_unit", { active: d.people.active }),
           raw: String(d.people.working_this_week),
-          detail: t("snapshot.figure.people_detail", { count: d.people.near_weekly_limit }),
+          detail: t("snapshot.figure.people_detail"),
         },
       ]
     : [];
