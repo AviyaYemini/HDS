@@ -3,7 +3,7 @@
  * to FR-026, T041): the guarantee line and override count, the summary in words, each chip's state
  * in words, and outliers marked by words, not colour alone; a new version reads it again.
  */
-import { screen } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 
 import { FairnessPanel } from "../../../src/screens/runs/FairnessPanel";
 import { FakeApi, json, renderWith, signedIn } from "../fakeApi";
@@ -36,6 +36,20 @@ test("the guarantees, the summary, the chips and the outliers read in words", as
   expect(screen.getByText("2 locked assignments kept.")).toBeTruthy();
   expect(screen.getByText("1 place left empty.")).toBeTruthy();
   expect(screen.getByText("Ann: at most 2 nights: not met: meeting it would leave a place empty")).toBeTruthy();
-  expect(screen.getByText("hours well above average · nights well above average")).toBeTruthy();
+  // Above the average in a quiet tone, most hours first, no warning icon (the owner, 2026-11-13).
+  expect(screen.getByText("hours above average · nights above average")).toBeTruthy();
   expect(screen.getAllByTestId("fairness-outlier")).toHaveLength(1);
+});
+
+test("fairness lists the most hours first, the top ten until 'show all'", async () => {
+  const id = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+  const shares = Array.from({ length: 12 }, (_, i) => ({ user_id: id(i), minutes: 60 * (i + 1), nights: 0, weekends: 0, hours_outlier: false, nights_outlier: false, weekends_outlier: false }));
+  const api = new FakeApi().on("GET", `/api/v1/schedule-jobs/${JOB}/fairness`, json(200, { ...answer, shares, chips: [], totals: { people: 12, minutes: 4680, nights: 0, weekends: 0 } }));
+  const session = await signedIn(api);
+  await renderWith(session, <FairnessPanel jobId={JOB} version={0} name={(u) => `P${Number(u.slice(-12))}`} place={() => ""} type={() => ""} />);
+  const rows = await screen.findAllByTestId("fairness-row");
+  expect(rows).toHaveLength(10);
+  expect(rows[0]).toHaveTextContent(/^P11/);
+  await fireEvent.press(screen.getByTestId("fairness-show-all"));
+  expect(screen.getAllByTestId("fairness-row")).toHaveLength(12);
 });

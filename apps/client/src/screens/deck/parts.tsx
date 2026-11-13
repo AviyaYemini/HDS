@@ -4,11 +4,11 @@
  * forecast columns, and a bordered section heading. Every number shown is one the API answered;
  * the client never adds money up.
  */
-import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Polyline } from "react-native-svg";
 
-import { Skeleton, SkeletonRows, Txt } from "../../design/components";
+import { Button, Skeleton, SkeletonRows, Txt } from "../../design/components";
 import { useTheme } from "../../design/theme/ThemeProvider";
 import { webProps } from "../../design/web";
 import { sparkPoints } from "./polish";
@@ -28,6 +28,12 @@ export interface KeyFigure {
   change?: string | null;
   /** Counts up to `to` on entrance, drawn by `format`; `value` once the entrance is done. */
   count?: { to: number; format: (n: number) => string };
+  /** A chip beside the value ("Optimal"). */
+  chip?: ReactNode;
+  /** The value's own test id, where a screen's tests know it by another name. */
+  valueTestID?: string;
+  /** The figure's own test id, in place of `figure-<key>`. */
+  testID?: string;
 }
 
 /** "01", "02"… the deck's numbering. */
@@ -51,7 +57,7 @@ export function KeyFigures({ figures, progress = 1 }: { figures: readonly KeyFig
   return (
     <View style={styles.figures} testID="key-figures">
       {figures.map((f, i) => (
-        <View key={f.key} testID={`figure-${f.key}`} {...webProps({ dataSet: { value: f.raw ?? f.value } })} style={[styles.figure, { borderTopColor: colors.border.strong }]}>
+        <View key={f.key} testID={f.testID ?? `figure-${f.key}`} {...webProps({ dataSet: { value: f.raw ?? f.value } })} style={[styles.figure, { borderTopColor: colors.border.strong }]}>
           <View style={styles.figureLabel}>
             <Txt role="eyebrow" tone="secondary" numeric>
               {ordinal(i)}
@@ -61,9 +67,10 @@ export function KeyFigures({ figures, progress = 1 }: { figures: readonly KeyFig
             </Txt>
           </View>
           <View style={styles.valueRow}>
-            <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr" style={size}>
+            <Txt role="display" numeric tone={f.tone ?? "primary"} dir="ltr" style={size} testID={f.valueTestID}>
               {f.count && progress < 1 ? f.count.format(f.count.to * progress) : f.value}
             </Txt>
+            {f.chip ?? null}
             {f.unit ? (
               <Txt role="meta" tone="secondary">
                 {f.unit}
@@ -106,6 +113,32 @@ export function SmallFigures({ items, testID }: { items: readonly { key: string;
           </Txt>
         </View>
       ))}
+    </View>
+  );
+}
+
+/**
+ * One quiet line with a "show" toggle for what would otherwise be a wall of names (the owner,
+ * 2026-11-13): the summary always, the rest only when asked.
+ */
+export function Disclosure({ summary, children, testID, showLabel, hideLabel }: { summary: string; children: ReactNode; testID: string; showLabel: string; hideLabel: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View testID={testID} style={styles.disclosure}>
+      <View style={styles.disclosureLine}>
+        <Txt role="body" tone="secondary" style={styles.disclosureText}>
+          {summary}
+        </Txt>
+        <Button
+          variant="quiet"
+          icon={open ? "chevron-up" : "chevron-down"}
+          label={open ? hideLabel : showLabel}
+          onPress={() => setOpen(!open)}
+          testID={`${testID}-toggle`}
+          web={{ "aria-expanded": String(open) }}
+        />
+      </View>
+      {open ? children : null}
     </View>
   );
 }
@@ -261,6 +294,9 @@ const styles = StyleSheet.create({
   labels: { flexDirection: "row", gap: 12 },
   label: { flex: 1, textAlign: "center" },
   small: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
+  disclosure: { gap: 6 },
+  disclosureLine: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  disclosureText: { flexShrink: 1 },
   skeleton: { gap: 28 },
   skeletonChart: { flex: 1, minWidth: 0 },
   skeletonGap: { marginTop: 8 },
