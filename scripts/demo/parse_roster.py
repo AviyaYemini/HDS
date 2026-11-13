@@ -448,11 +448,9 @@ def main() -> int:
                 first_seen = min(first_seen, start)
                 break
         last_seen = dt.date.fromisoformat(dates[-1])
-        span = (last_seen - first_seen).days
-        # New in the last twelve weeks, still working in the last three, on one or two projects.
-        temp = (span < TEMP_MAX_DAYS and len(info["projects"]) <= 2
-                and first_seen >= today - dt.timedelta(days=84) and last_seen >= today - dt.timedelta(days=21))
-        temp = overrides.get("temporary", {}).get(name, temp)
+        # Nobody is temporary unless the owner says so (overrides "temporary"): an Admin marks a
+        # temporary worker in the app, at creation, invitation or later (owner, 2026-11-13).
+        temp = bool(overrides.get("temporary", {}).get(name, False))
         person = {"name": name, "aliases": sorted(a for a, c in canon.items() if c == name and a != name),
                   "first_seen": str(first_seen), "last_seen": str(last_seen), "shifts": len(dates),
                   "projects": [k for k, _ in info["projects"].most_common()], "temporary": temp}
