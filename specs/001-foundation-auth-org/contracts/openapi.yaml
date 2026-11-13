@@ -6974,6 +6974,40 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /roster/warnings:
+
+    get:
+      operationId: roster_warnings
+      summary: The rules the roster breaks in a range (Manager+, CEO demo)
+      description: >
+        Every warning the shifts that start on from to to (at most 31 days, else 422
+        shifts.date_range_invalid) have now, across projects, drafts and published alike, judged
+        as an edit would be; overridden says it was kept with a reason. The response schema is
+        the served document's RosterWarningsRead (CEO demo, Proposed).
+      tags: [Roster]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+        - name: to
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/ISODate"}
+      responses:
+        "200":
+          description: The warnings.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /reports/overview:
 
     get:

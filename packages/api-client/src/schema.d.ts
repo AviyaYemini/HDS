@@ -1006,6 +1006,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/roster/warnings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The rules the roster breaks in a range (CEO demo)
+         * @description Manager or Admin. Every warning the shifts that start on `from` to `to` (dates in the organisation's time zone, at most 31 days, else 422 `shifts.date_range_invalid`) have now, across projects, drafts and published alike, judged as an edit would be: rest, overlap, weekly hours, availability, headcount, inactive people and temporary workers outside their projects or dates. `overridden` says it was kept with a reason.
+         */
+        get: operations["roster_warnings_api_v1_roster_warnings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule-jobs": {
         parameters: {
             query?: never;
@@ -4474,6 +4494,47 @@ export interface components {
              * Format: date-time
              */
             starts_at: string;
+        };
+        /**
+         * RosterWarningRead
+         * @description A rule the roster breaks now; ``overridden`` when it was kept with a reason.
+         */
+        RosterWarningRead: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /** Employee Id */
+            employee_id: string | null;
+            /** Overridden */
+            overridden: boolean;
+            /** Shift Ids */
+            shift_ids: string[];
+            /**
+             * Values
+             * @description The rule's numbers, so a screen can say them in its own language: `rest_hours` and `minimum_hours` for a short rest, `hours` and `maximum_hours` for the weekly maximum.
+             */
+            values?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * RosterWarningsRead
+         * @description Every rule the roster's shifts in the range break (CEO demo).
+         */
+        RosterWarningsRead: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Warnings */
+            warnings: components["schemas"]["RosterWarningRead"][];
         };
         /**
          * SavedViewCreate
@@ -10393,6 +10454,56 @@ export interface operations {
             };
             /** @description The referenced resource does not exist in the caller's organisation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    roster_warnings_api_v1_roster_warnings_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterWarningsRead"];
+                };
+            };
+            /** @description Missing, invalid or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Authenticated but the role or data scope does not allow this. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

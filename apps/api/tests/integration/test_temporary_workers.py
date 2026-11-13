@@ -204,3 +204,53 @@ async def test_the_roster_marks_them_and_warns_outside_their_projects(
     )
     assert outside.status_code == 201, outside.text
     assert "warnings.temporary_outside" in {w["code"] for w in outside.json()["warnings"]}
+
+
+async def test_the_week_s_warnings_list_a_temporary_worker_outside_their_projects(
+    async_client: AsyncClient,
+    projects: dict[str, Project],
+    test_db: AsyncSession,
+    seed_org: Organisation,
+) -> None:
+    admin = await _headers(async_client, "admin@hds.test")
+    made = await async_client.post(
+        "/api/v1/employees", json=_temporary([projects["north"]]), headers=admin
+    )
+    temp_id = made.json()["id"]
+    shift_type = (
+        (await test_db.execute(select(ShiftType).where(ShiftType.organisation_id == seed_org.id)))
+        .scalars()
+        .first()
+    )
+    assert shift_type is not None
+    start = datetime.combine(TODAY, datetime.min.time(), UTC) + timedelta(hours=5)
+    shift = Shift(
+        id=uuid.uuid4(),
+        organisation_id=seed_org.id,
+        project_id=projects["south"].id,
+        shift_type_id=shift_type.id,
+        starts_at=start,
+        ends_at=start + timedelta(hours=8),
+        headcount=1,
+        status="draft",
+    )
+    test_db.add(shift)
+    await test_db.commit()
+    r = await async_client.post(
+        f"/api/v1/shifts/{shift.id}/assignments", json={"user_id": temp_id}, headers=admin
+    )
+    assert r.status_code == 201, r.text
+
+    week = await async_client.get(
+        f"/api/v1/roster/warnings?from={TODAY - timedelta(days=1)}&to={TODAY + timedelta(days=1)}",
+        headers=admin,
+    )
+    assert week.status_code == 200, week.text
+    found = [w for w in week.json()["warnings"] if w["code"] == "warnings.temporary_outside"]
+    assert [(w["employee_id"], w["shift_ids"], w["overridden"]) for w in found] == [
+        (temp_id, [str(shift.id)], False)
+    ]
+    too_long = await async_client.get(
+        f"/api/v1/roster/warnings?from={TODAY}&to={TODAY + timedelta(days=40)}", headers=admin
+    )
+    assert too_long.status_code == 422
