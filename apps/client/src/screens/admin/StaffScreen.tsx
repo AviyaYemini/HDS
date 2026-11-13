@@ -1,16 +1,33 @@
 /**
  * Staff: the people of the organisation as a table with a record panel (specs/007-ux-redesign FR-043 to FR-049).
+ * Staff control for the CEO demo (specs/demo-ceo/plan.md, screen 3; slide 8): this week's and this
+ * month's hours from the hours report by employee, a flag near the weekly maximum, a permanent or
+ * temporary filter (`?type=`), and a "temporary · until 12.02" chip.
  */
+import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { StyleSheet, View } from "react-native";
 
 import { call } from "../../api/errors";
 import { useSession } from "../../api/SessionContext";
 import { useCapabilities } from "../../capabilities";
-import type { Column } from "../../design/components";
-import { formatMoney, isolateLtr } from "../../locale";
+import { SegmentedControl, StatusChip, Txt, type Column } from "../../design/components";
+import { DEFAULT_TIME_ZONE, formatMoney, isolateLtr, startOfWeek, todayIn } from "../../locale";
+import { periodRange } from "../overview/model";
+import { useLoad } from "../useLoad";
 import { AdminTable } from "./AdminTable";
 import { RecordForm, moneyText, type FieldSpec } from "./RecordForm";
+import { dayMonth, employmentOf, nearWeeklyLimit, passesType, typeFilterOf, type TypeFilter } from "./staffModel";
 import { orNull } from "./text";
+
+/** Hours by person over `from`–`to`, from the hours report (published shifts that are over). */
+function useHoursByPerson(from: string, to: string): Map<string, number> | null {
+  const { api } = useSession();
+  const report = useLoad(async () => (await call(api.GET("/api/v1/reports/hours", { params: { query: { from, to, group_by: "employee" } } }))).groups, [from, to]);
+  // A failed report reads as no hours ("—"), never as loading for ever; the table still works.
+  if (report.error) return new Map();
+  return report.data ? new Map(report.data.map((g) => [g.id, Number(g.hours)])) : null;
+}
 
 export function StaffScreen() {
   const { t, i18n } = useTranslation();
@@ -21,6 +38,17 @@ export function StaffScreen() {
   async function loadStaff() {
     return (await call(api.GET("/api/v1/employees"))).items.filter((u) => u.role !== "client");
   }
+  const params = useLocalSearchParams<{ type?: string }>();
+  const typeFilter = typeFilterOf(params.type);
+  const today = todayIn(DEFAULT_TIME_ZONE);
+  const week = startOfWeek(today);
+  const month = periodRange("month", today);
+  // Reports never ask past today (the hours report counts only shifts that are over).
+  const weekHours = useHoursByPerson(week, today);
+  const monthHours = useHoursByPerson(month.from, today);
+  const limits = useLoad(async () => (await call(api.GET("/api/v1/organisation/scheduling"))).max_weekly_hours, []);
+  const maxWeekly = limits.data ?? null;
+  const hoursText = (map: Map<string, number> | null, id: string) => (map === null ? "…" : map.has(id) ? t("pay.hours", { hours: map.get(id)!.toFixed(1).replace(/\.0$/, "") }) : "—");
   const roles = ["employee", "manager", "admin"] as const;
   const fields = (existing: boolean): FieldSpec[] => [
     { name: "full_name", label: t("entity.full_name"), required: true },
@@ -35,8 +63,45 @@ export function StaffScreen() {
     { key: "email", title: t("entity.email"), sortable: true, render: (u) => isolateLtr(u.email) },
     { key: "role", title: t("entity.role"), sortable: true, render: (u) => t(`role.${u.role}`) },
     { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
-    { key: "active", title: t("entity.status"), sortable: true, render: (u) => (u.is_active ? t("entity.active") : t("entity.inactive")) },
+    {
+      key: "week",
+      title: t("staff.col.week"),
+      sortable: true,
+      numeric: true,
+      text: (u) => [hoursText(weekHours, u.id), nearWeeklyLimit(weekHours?.get(u.id) ?? 0, maxWeekly) ? t("staff.near_limit", { max: maxWeekly }) : ""].filter(Boolean).join(" · "),
+      render: (u) => (
+        <View style={styles.hours}>
+          <Txt role="body" numeric>
+            {hoursText(weekHours, u.id)}
+          </Txt>
+          {nearWeeklyLimit(weekHours?.get(u.id) ?? 0, maxWeekly) ? <StatusChip status="warning" label={t("staff.near_limit", { max: maxWeekly })} testID={`near-limit-${u.id}`} /> : null}
+        </View>
+      ),
+    },
+    { key: "month", title: t("staff.col.month"), sortable: true, numeric: true, render: (u) => hoursText(monthHours, u.id) },
+    {
+      key: "active",
+      title: t("entity.status"),
+      sortable: true,
+      text: (u) => {
+        const job = employmentOf(u);
+        const temp = job.employment_type === "temporary" ? (job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")) : "";
+        return [u.is_active ? t("entity.active") : t("entity.inactive"), temp].filter(Boolean).join(" · ");
+      },
+      render: (u) => {
+        const job = employmentOf(u);
+        return (
+          <View style={styles.chips}>
+            <StatusChip status={u.is_active ? "success" : "neutral"} label={u.is_active ? t("entity.active") : t("entity.inactive")} />
+            {job.employment_type === "temporary" ? (
+              <StatusChip status="info" label={job.engaged_until ? t("staff.temporary_until", { date: dayMonth(job.engaged_until) }) : t("staff.temporary")} testID={`chip-temporary-${u.id}`} />
+            ) : null}
+          </View>
+        );
+      },
+    },
   ];
+  const setType = (type: TypeFilter) => router.setParams({ type: type === "all" ? undefined : type } as never);
   return (
     <AdminTable<Row>
       screen="admin_staff"
@@ -49,9 +114,19 @@ export function StaffScreen() {
       keyOf={(u) => u.id}
       nameOf={(u) => u.full_name}
       searchText={(u) => `${u.full_name} ${u.email} ${u.phone ?? ""}`}
-      sortValue={(u, key) => (key === "rate" ? (u.default_hourly_rate ? Number(u.default_hourly_rate) : null) : key === "email" ? u.email : key === "role" ? u.role : key === "active" ? (u.is_active ? 1 : 0) : u.full_name)}
+      sortValue={(u, key) => (key === "week" ? (weekHours?.get(u.id) ?? 0) : key === "month" ? (monthHours?.get(u.id) ?? 0) : key === "rate" ? (u.default_hourly_rate ? Number(u.default_hourly_rate) : null) : key === "email" ? u.email : key === "role" ? u.role : key === "active" ? (u.is_active ? 1 : 0) : u.full_name)}
       emptyTitle={t("admin.empty.staff_title")}
       emptyBody={t("admin.empty.staff_body")}
+      filter={(u) => passesType(u, typeFilter)}
+      toolbar={
+        <SegmentedControl<TypeFilter>
+          label={t("staff.type_filter")}
+          options={(["all", "permanent", "temporary"] as const).map((v) => ({ value: v, label: t(`staff.type.${v}`), testID: `type-${v}` }))}
+          value={typeFilter}
+          onChange={setType}
+          testID="staff-type-filter"
+        />
+      }
       active={{
         of: (u) => u.is_active,
         // Never your own account: a bulk deactivation would sign you out partway (code review, PR 5).
@@ -90,3 +165,8 @@ export function StaffScreen() {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  hours: { gap: 4, alignItems: "flex-end" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+});

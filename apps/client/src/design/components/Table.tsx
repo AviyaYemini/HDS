@@ -33,6 +33,8 @@ export interface Column<Row> {
   sortable?: boolean;
   /** The cell; the row's value under `key` by default. */
   render?: (row: Row) => ReactNode;
+  /** The cell as plain text, where `render` draws more than text (a phone's list line). */
+  text?: (row: Row) => string;
 }
 
 export interface TableProps<Row> {

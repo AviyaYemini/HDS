@@ -1065,5 +1065,14 @@
   "snapshot.status.gaps_other": "{{count}} ריקים",
   "snapshot.status.loss": "שלילי",
   "snapshot.status.no_rate": "אין תעריף",
-  "snapshot.estimated_note": "* חלק מהתעריפים הם הערכה: בפרויקטים המסומנים התעריף לא הופיע בגיליון הסידור."
+  "snapshot.estimated_note": "* חלק מהתעריפים הם הערכה: בפרויקטים המסומנים התעריף לא הופיע בגיליון הסידור.",
+  "staff.col.week": "השבוע",
+  "staff.col.month": "החודש",
+  "staff.near_limit": "קרוב ל-{{max}} ש׳",
+  "staff.temporary": "זמני",
+  "staff.temporary_until": "זמני · עד {{date}}",
+  "staff.type_filter": "סוג העסקה",
+  "staff.type.all": "כולם",
+  "staff.type.permanent": "קבועים",
+  "staff.type.temporary": "זמניים"
 }
