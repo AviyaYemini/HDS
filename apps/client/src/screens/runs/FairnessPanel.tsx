@@ -18,6 +18,9 @@ import { useLoad } from "../useLoad";
 import { hours } from "./review";
 import { average, chipWords, type Chip } from "./steering";
 
+/** The average mark is taller than its track on purpose (the overflow check's designed overhang). */
+const OVERHANG = webProps({ dataSet: { overflow: "intended" } as const });
+
 interface Props {
   jobId: string;
   /** The proposal's version: a new one reads the panel again (FR-026). */
@@ -136,7 +139,7 @@ export function FairnessPanel({ jobId, version, name, place, type }: Props) {
               <View style={[styles.track, { backgroundColor: colors.bg.selected }]}>
                 <View style={[styles.fill, { width, backgroundColor: share.hours_outlier ? colors.text.primary : colors.border.strong }]} />
                 {/* The average, a thin mark across the track. */}
-                <View style={[styles.average, { start: `${(averageMinutes / largest) * 100}%`, backgroundColor: colors.accent.default }]} />
+                <View style={[styles.average, { start: `${(averageMinutes / largest) * 100}%`, backgroundColor: colors.accent.default }]} {...OVERHANG} />
               </View>
               {outliers.length > 0 ? (
                 <Txt role="meta" tone="secondary" testID="fairness-outlier">

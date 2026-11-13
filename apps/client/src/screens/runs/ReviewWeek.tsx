@@ -32,6 +32,9 @@ import { EmptyReasons } from "./EmptyReasons";
 import { SlotBlock } from "./SlotBlock";
 import { useProposalReview } from "./useProposalReview";
 
+/** The phone bar sticks to the bottom: the accessibility check knows what it covers by this mark. */
+const STICKY = webProps({ dataSet: { sticky: "bottom" } as const });
+
 interface Props {
   job: Job;
   names: Names;
@@ -143,7 +146,11 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
                   web={{ dataSet: { projectId: project } }}
                 />
               ))}</View> : null;
-  const acceptAll = <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" />;
+  // On a phone the two labelled actions share the sticky row and wrap rather than push past it.
+  const acceptAllButton = (phone = false) => (
+    <Button variant="primary" icon="check" label={t("review.accept_all")} busy={busy === "all"} disabled={busy !== null} onPress={() => void accept(null, "all")} testID="action-accept" wrap={phone} style={phone ? sheetStyles.phoneAction : undefined} />
+  );
+  const acceptAll = acceptAllButton();
   const byProjectToggle =
     openProjects.length > 1 ? (
       // One project at a time behind a toggle, not a wall of buttons (the owner, 2026-11-13).
@@ -169,7 +176,10 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
   const undoButton = (compact: boolean) => (
     <Button variant="quiet" icon="undo" label={compact ? "" : t("review.undo")} accessibilityLabel={t("review.undo")} busy={busy === "undo"} disabled={busy !== null} onPress={() => void undo()} testID="action-undo" />
   );
-  const discardButton = <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" />;
+  const discardButtonFor = (phone = false) => (
+    <Button label={t("review.discard_rest")} busy={busy === "discard"} disabled={busy !== null} onPress={() => void discardRest()} testID="action-discard" wrap={phone} style={phone ? sheetStyles.phoneAction : undefined} />
+  );
+  const discardButton = discardButtonFor();
   // A desktop's bar after the figures: every action in one row.
   const actionBar = showBar ? (
     <View testID="accept-bar" style={styles.bar}>
@@ -186,10 +196,19 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
       {acceptChosen}
     </View>
   ) : null;
+  // Who had no availability for the range, behind a disclosure (the owner, 2026-11-13).
+  const noAvailability =
+    shown.no_availability.length > 0 ? (
+      <Disclosure testID="no-availability" summary={t("runsum.no_availability", { count: shown.no_availability.length })} showLabel={t("runsum.show_names")} hideLabel={t("runsum.hide")}>
+        <Txt role="meta" tone="secondary">
+          {shown.no_availability.map((id) => name(id)).join(", ")}
+        </Txt>
+      </Disclosure>
+    ) : null;
   const phoneBar = showBar ? (
-    <View testID="accept-bar" style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
-      {acceptAll}
-      {discardButton}
+    <View testID="accept-bar" {...STICKY} style={[sheetStyles.sticky, sheetStyles.phoneBar, { backgroundColor: colors.bg.canvas, borderTopColor: colors.border.strong }]}>
+      {acceptAllButton(true)}
+      {discardButtonFor(true)}
       {undoButton(true)}
     </View>
   ) : null;
@@ -199,13 +218,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
       {/* The run at a glance, as the deck draws figures (the owner, 2026-11-13). */}
       <KeyFigures figures={figures} progress={progress} />
       <RunScope job={job} names={names} />
-      {shown.no_availability.length > 0 ? (
-        <Disclosure testID="no-availability" summary={t("runsum.no_availability", { count: shown.no_availability.length })} showLabel={t("runsum.show_names")} hideLabel={t("runsum.hide")}>
-          <Txt role="meta" tone="secondary">
-            {shown.no_availability.map((id) => name(id)).join(", ")}
-          </Txt>
-        </Disclosure>
-      ) : null}
+      {isDesktop ? noAvailability : null}
       {problem ? <InlineBanner tone="warning" testID="review-problem" title={errorText(problem)} /> : null}
       {empty.length > 0 ? (
         // The slots left with empty places, first and in red with an icon and words; each opens
@@ -240,7 +253,7 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
           // The week as the roster sheet: projects as rows by client, days as columns (the owner, 2026-11-13).
           const groups = proposalSheet(shown.slots, days, projects.data ?? [], clients.data ?? [], i18n.language);
           return (
-            <ScrollView key={days[0]} horizontal testID="proposal-week" contentContainerStyle={sheetStyles.sheetScroll} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
+            <ScrollView key={days[0]} horizontal focusable accessibilityLabel={t("review.week_label")} testID="proposal-week" contentContainerStyle={sheetStyles.sheetScroll} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
               {/* A definite width: in a sideways scroll the columns would otherwise grow to fit every
                   name on one line instead of sharing the space and wrapping. */}
               <View testID="proposal-sheet" style={[sheetStyles.sheet, { borderColor: colors.border.strong, width: Math.max(sheetWidth, SHEET_LABEL + SHEET_DAY * 7) }]}>
@@ -379,6 +392,8 @@ export function ReviewWeek({ job, names, people, onDecided, onVersion }: Props) 
         );
       })}
       {/* On a phone the actions follow the week and stick to the bottom while it scrolls past. */}
+      {/* A phone keeps who had no availability with the rarer actions, never under the sticky bar. */}
+      {!isDesktop ? noAvailability : null}
       {!isDesktop ? phoneMore : null}
       {!isDesktop ? projectButtons : null}
       {!isDesktop ? phoneBar : null}
@@ -525,6 +540,7 @@ const sheetStyles = StyleSheet.create({
   // "sticky" is the web's; React Native's types know only absolute and relative.
   sticky: { position: "sticky" as "relative", bottom: 0, zIndex: 5, borderTopWidth: 1, paddingVertical: 8 },
   phoneBar: { flexDirection: "row", alignItems: "center", gap: 8 },
+  phoneAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   sheet: { borderWidth: 1, flexGrow: 1 },
   sheetLine: { flexDirection: "row" },
   sheetHead: { padding: 6, borderStartWidth: 1, borderTopWidth: 1, gap: 2 },

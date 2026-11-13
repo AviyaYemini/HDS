@@ -183,7 +183,7 @@ export function ColumnBars({ columns, legend, height = 120, progress = 1 }: { co
     <View style={styles.barsBlock}>
       <View style={[styles.bars, { height, borderBottomColor: colors.border.strong }]} testID="column-bars">
         {columns.map((c) => (
-          <View key={c.key} style={[styles.column, c.faded ? styles.faded : null]} accessibilityLabel={c.title} {...webProps({ title: c.title, dataSet: { forecast: String(!!c.faded) } })} testID="bar-column">
+          <View key={c.key} role="img" style={[styles.column, c.faded ? styles.faded : null]} accessibilityLabel={c.title} {...webProps({ title: c.title, dataSet: { forecast: String(!!c.faded) } })} testID="bar-column">
             <View style={[styles.bar, { height: pct(c.dark), backgroundColor: colors.text.primary }]} />
             {c.light != null ? <View style={[styles.bar, { height: pct(c.light), backgroundColor: colors.border.strong }]} /> : null}
           </View>

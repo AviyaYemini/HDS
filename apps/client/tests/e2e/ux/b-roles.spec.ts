@@ -32,6 +32,8 @@ const PHONE_TABS: Record<Role, string[]> = {
 const EMPLOYEE_NAV = ["home", "availability", "my-shifts", "pay"];
 const MANAGER_NAV = [
   ...EMPLOYEE_NAV,
+  // the snapshot dashboard, a real screen since the CEO demo
+  "overview",
   "roster",
   "submissions",
   "runs",
@@ -64,7 +66,6 @@ const ROUTED_PREVIEWS: { path: string; id: string; roles: Role[] }[] = [
   { path: "/client/billing", id: "preview-billing", roles: ["client"] },
   { path: "/client/requests", id: "preview-requests", roles: ["client"] },
   { path: "/manage/requests", id: "preview-requests", roles: ["manager", "admin"] },
-  { path: "/manage/overview", id: "preview-overview", roles: ["manager", "admin"] },
   { path: "/manage/approvals", id: "preview-approvals", roles: ["manager", "admin"] },
   { path: "/my/requests", id: "preview-absence-requests", roles: ["employee", "manager", "admin"] },
   { path: "/inbox", id: "preview-inbox", roles: ["employee", "manager", "admin", "client"] },

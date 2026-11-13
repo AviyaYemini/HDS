@@ -268,7 +268,6 @@ function DayView({ days, day, today, onDay, groups, week, nameOf }: { days: read
               role="tab"
               aria-selected={on}
               accessibilityState={{ selected: on }}
-              accessibilityLabel={`${t(`sheet.weekday.${i}`)} ${Number(d.slice(8))}`}
               testID={`day-${d}`}
               onPress={() => onDay(d)}
               style={[styles.stripDay, { borderTopColor: on ? colors.accent.default : "transparent", backgroundColor: on ? colors.bg.selected : d === today ? colors.bg.surface : "transparent" }]}
@@ -391,11 +390,10 @@ function ShiftBlock({ shift, showTime, nameOf }: { shift: Shift; showTime: boole
               key={a.id}
               testID="sheet-person"
               role="button"
-              accessibilityLabel={nameOf(a.user_id, a.full_name)}
               onPress={(e) => at(e as never, true)}
               onHoverIn={(e) => at(e as never, false)}
               onHoverOut={() => showCard?.((c) => (c && c.pinned ? c : null))}
-              {...webProps({ dataSet: { userId: a.user_id, temporary: String(temp) } })}
+              {...webProps({ title: nameOf(a.user_id, a.full_name), dataSet: { userId: a.user_id, temporary: String(temp) } })}
               style={[
                 styles.blk,
                 { borderStartColor: colors.text.primary, backgroundColor: published ? colors.bg.surface : colors.bg.selected },

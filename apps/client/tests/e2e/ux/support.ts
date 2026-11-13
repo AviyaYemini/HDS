@@ -82,7 +82,34 @@ export async function checkA11y(page: Page, context: string): Promise<void> {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
-  const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  // A phone's sticky action bar (`data-sticky="bottom"`, the run page) covers whatever scrolls
+  // under it, and axe cannot scroll: a full-size target (24 px or more each way) that the bar only
+  // partly hides is reachable by scrolling, so it is left out, as the overflow check leaves out
+  // what is fixed to the window (the owner, 2026-11-13). Anything smaller still fails.
+  const blocking: typeof serious = [];
+  for (const v of serious) {
+    if (v.id !== "target-size") {
+      blocking.push(v);
+      continue;
+    }
+    const nodes = [];
+    for (const n of v.nodes) {
+      const underBar = await page.evaluate((selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return false;
+        const box = el.getBoundingClientRect();
+        if (box.width < 24 || box.height < 24) return false;
+        return Array.from(document.querySelectorAll('[data-sticky="bottom"]')).some((bar) => {
+          if (bar.contains(el)) return false;
+          const edge = bar.getBoundingClientRect();
+          return box.bottom > edge.top && box.top < edge.bottom && box.right > edge.left && box.left < edge.right;
+        });
+      }, n.target.join(" "));
+      if (!underBar) nodes.push(n);
+    }
+    if (nodes.length > 0) blocking.push({ ...v, nodes });
+  }
   // Each finding names its elements (the first five selectors), so a failure says what to fix.
   const described = blocking.map((v) => {
     const targets = v.nodes.slice(0, 5).map((n) => n.target.join(" "));

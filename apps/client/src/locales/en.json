@@ -777,6 +777,7 @@
   "runs.proposal.partly_accepted": "Partly accepted",
   "review.counts": "Against the roster: {{added}} added, {{changed}} changed, {{removed}} removed, {{unchanged}} unchanged",
   "review.accept_all": "Accept all",
+  "review.week_label": "The proposed week, by project and day",
   "review.accept_project": "Accept {{project}}",
   "review.accept_day": "Accept this day",
   "review.accept_selected_one": "Accept {{count}} chosen",

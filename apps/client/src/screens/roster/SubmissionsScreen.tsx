@@ -75,7 +75,15 @@ export function SubmissionsScreen() {
             </Txt>
           ) : null}
           <KeyFigures figures={figures} progress={progress} />
-          <View style={[styles.track, { backgroundColor: colors.bg.selected }]} accessibilityLabel={t("subs.progress", { submitted: count.submitted, total: count.total })} testID="subs-progress">
+          <View
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(count.pct)}
+            style={[styles.track, { backgroundColor: colors.bg.selected }]}
+            accessibilityLabel={t("subs.progress", { submitted: count.submitted, total: count.total })}
+            testID="subs-progress"
+          >
             <View style={[styles.fill, { width: `${count.pct * progress}%`, backgroundColor: colors.text.primary }]} />
           </View>
           <TextField label={t("subs.search")} hideLabel placeholder={t("subs.search")} value={query} onChangeText={setQuery} testID="subs-search" />

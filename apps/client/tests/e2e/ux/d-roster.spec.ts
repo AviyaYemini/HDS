@@ -196,6 +196,8 @@ for (const language of LANGUAGES) {
 
       await signIn(page, "manager", language);
       await openRoster(page, language, p);
+      // Count once the week has drawn its people, not while it is still loading.
+      await expect(block(page, b.id).getByTestId("block-person").first()).toBeVisible();
       const before = await page.locator('[data-testid="block-person"]').count();
       await block(page, b.id).getByTestId("block-person").first().click();
       await page.getByTestId("action-unassign").click();
@@ -351,6 +353,18 @@ for (const language of LANGUAGES) {
       await nav.locator('a[href^="/roster"]').first().click();
       const list = page.getByTestId("sheet-project").first();
       const week = page.getByTestId(isPhone(testInfo) ? "roster-agenda" : "roster-day").first();
+      if (isPhone(testInfo)) {
+        // A phone shows the sheet one day at a time: step through the day strip to a day with work.
+        await expect(page.getByTestId("roster-day-view")).toBeVisible();
+        const days = page.getByTestId("day-strip").getByRole("tab");
+        for (let i = 0; i < (await days.count()) && !(await list.isVisible()); i += 1) await days.nth(i).click();
+        if (!(await list.isVisible())) {
+          // A week with no work at all still shows the strip and says so.
+          await expect(page.getByTestId("day-empty")).toBeVisible();
+          await checkA11y(page, `roster day (${role}, ${language})`);
+          return;
+        }
+      }
       await expect(list.or(week).first()).toBeVisible();
       if (await list.isVisible()) {
         await checkA11y(page, `roster projects (${role}, ${language})`);

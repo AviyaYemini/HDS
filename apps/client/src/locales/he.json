@@ -777,6 +777,7 @@
   "runs.proposal.partly_accepted": "אושר בחלקו",
   "review.counts": "מול הסידור: {{added}} נוספו, {{changed}} הוחלפו, {{removed}} הוסרו, {{unchanged}} ללא שינוי",
   "review.accept_all": "אישור הכול",
+  "review.week_label": "השבוע המוצע, לפי פרויקט ויום",
   "review.accept_project": "אישור {{project}}",
   "review.accept_day": "אישור היום הזה",
   "review.accept_selected_one": "אישור {{count}} שנבחר",

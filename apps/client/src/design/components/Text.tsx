@@ -12,6 +12,7 @@ import { Text, type Role, type StyleProp, type TextProps, type TextStyle } from 
 
 import { isRtlLanguage } from "../../i18n";
 import { useTheme } from "../theme/ThemeProvider";
+import { contrastRatio } from "../tokens/contrast";
 import { webProps } from "../web";
 import type { FontWeight } from "../theme/fonts";
 import { tabular, textStyle, type TextRole } from "../theme/typography";
@@ -63,7 +64,10 @@ export function toneColor(colors: ReturnType<typeof useTheme>["colors"], tone: T
     case "secondary":
       return surface === "inverse" ? colors.inverse.textSecondary : colors.text.secondary;
     case "accent":
-      return surface === "inverse" ? colors.cta.bg : colors.accent.default;
+      // The brand accent on a dark panel only where it reads (4.5:1, WCAG 1.4.3): the light
+      // theme's does; the other themes' panels take their own text colour instead.
+      if (surface !== "inverse") return colors.accent.default;
+      return contrastRatio(colors.cta.bg, colors.inverse.bg) >= 4.5 ? colors.cta.bg : colors.inverse.text;
     case "cta":
       return colors.cta.text;
     case "warning":
