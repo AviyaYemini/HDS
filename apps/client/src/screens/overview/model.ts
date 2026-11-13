@@ -5,7 +5,7 @@
  */
 import type { components } from "@hds/api-client";
 
-import { addDays } from "../../locale";
+import { addDays, isolateLtr } from "../../locale";
 
 /** The answer of `GET /api/v1/reports/overview`; the money fields are absent where pay is hidden. */
 export type Overview = components["schemas"]["OverviewRead"];
@@ -40,7 +40,8 @@ export function formatPercent(value: string | null | undefined): string {
   if (value == null) return "—";
   const n = Number(value);
   const text = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(Math.abs(n));
-  return `${n < 0 ? "−" : ""}${text}%`;
+  // Isolated left to right, so a loss's minus stays in front of the number inside Hebrew.
+  return isolateLtr(`${n < 0 ? "−" : ""}${text}%`);
 }
 
 /** The chip a project's status shows. */

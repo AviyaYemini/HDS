@@ -1108,5 +1108,7 @@
   "sheet.warnings_kept": "{{count}} kept with a reason",
   "sheet.warnings_kept_one": "1 kept with a reason",
   "sheet.warnings_kept_other": "{{count}} kept with a reason",
-  "sheet.warnings_more": "and {{count}} more"
+  "sheet.warnings_more": "and {{count}} more",
+  "snapshot.col.hours": "Hours",
+  "snapshot.col.billing": "Billing"
 }

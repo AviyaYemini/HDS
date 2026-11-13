@@ -1108,5 +1108,7 @@
   "sheet.warnings_kept": "{{count}} נשמרו עם סיבה",
   "sheet.warnings_kept_one": "אחת נשמרה עם סיבה",
   "sheet.warnings_kept_other": "{{count}} נשמרו עם סיבה",
-  "sheet.warnings_more": "ועוד {{count}}"
+  "sheet.warnings_more": "ועוד {{count}}",
+  "snapshot.col.hours": "שעות",
+  "snapshot.col.billing": "חיוב"
 }

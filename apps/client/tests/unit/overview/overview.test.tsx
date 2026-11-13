@@ -6,7 +6,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { setupI18n } from "../../../src/i18n";
-import { DEFAULT_TIME_ZONE, todayIn } from "../../../src/locale";
+import { DEFAULT_TIME_ZONE, isolateLtr, todayIn } from "../../../src/locale";
 import { coveragePercent, formatPercent, healthChip, periodRange } from "../../../src/screens/overview/model";
 import { OverviewScreen } from "../../../src/screens/overview/OverviewScreen";
 import { FakeApi, json, renderWith, signedIn } from "../fakeApi";
@@ -25,8 +25,8 @@ test("periods: the month, quarter and year holding today", () => {
 });
 
 test("percents, coverage and chips", () => {
-  expect(formatPercent("12.50")).toBe("12.5%");
-  expect(formatPercent("-4.00")).toBe("−4%");
+  expect(formatPercent("12.50")).toBe(isolateLtr("12.5%"));
+  expect(formatPercent("-4.00")).toBe(isolateLtr("−4%"));
   expect(formatPercent(null)).toBe("—");
   expect(coveragePercent({ ...OVERVIEW.coverage, filled: 96, needed: 100 })).toBe(96);
   expect(coveragePercent({ ...OVERVIEW.coverage, filled: 3, needed: 0 })).toBeNull();
@@ -40,7 +40,7 @@ test("the dashboard asks this month and shows the API's figures, the panel, the 
   expect(await screen.findByTestId("figure-billing", {}, { timeout: 5000 })).toHaveTextContent(/01\s*Billing · so far/);
   const asked = new URLSearchParams(api.calls("GET", "/api/v1/reports/overview")[0]!.query);
   expect(asked.get("from")).toBe(periodRange("month", todayIn(DEFAULT_TIME_ZONE)).from);
-  expect(screen.getByTestId("figure-forecast")).toHaveTextContent(/margin 18%/);
+  expect(screen.getByTestId("figure-forecast")).toHaveTextContent(/margin \u206618%\u2069/);
   expect(screen.getByTestId("figure-coverage")).toHaveTextContent(/96%.*4 empty places in 2 projects/);
   expect(screen.getByTestId("figure-people")).toHaveTextContent(/11\s*\/ 14 active/);
   expect(screen.getByTestId("panel-temporary")).toHaveTextContent(/3.*1 ends in the next two weeks/);

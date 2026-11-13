@@ -14,6 +14,7 @@ import { useSession } from "../../api/SessionContext";
 import { FeaturePanel, InlineBanner, LinkPressable, PageTitle, SegmentedControl, SkeletonRows, StatusChip, Table, Txt, type Column } from "../../design/components";
 import { Screen } from "../../design/components/Screen";
 import { useTheme } from "../../design/theme/ThemeProvider";
+import { webProps } from "../../design/web";
 import { DEFAULT_TIME_ZONE, formatMoney, todayIn } from "../../locale";
 import { formatHoursFigure } from "../reports/HoursCostsScreen";
 import { ColumnBars, KeyFigures, SectionHead, Split, type BarColumn, type KeyFigure } from "../deck/parts";
@@ -100,8 +101,11 @@ export function OverviewScreen() {
       key: "name",
       title: t("snapshot.col.project"),
       render: (p) => (
-        <View>
-          <Txt role="label">{p.terms_estimated ? `${p.name} *` : p.name}</Txt>
+        <View style={styles.nameCell} {...webProps({ title: p.name })}>
+          {/* One line, the estimate mark right after the name; the full name on hover. */}
+          <Txt role="label" numberOfLines={1}>
+            {p.terms_estimated ? `${p.name} *` : p.name}
+          </Txt>
           <Txt role="meta" tone="secondary" numberOfLines={1}>
             {p.client_name}
             {p.temporary_workers > 0 ? ` · ${t("snapshot.temp_on_project", { count: p.temporary_workers })}` : ""}
@@ -109,14 +113,19 @@ export function OverviewScreen() {
         </View>
       ),
     },
-    { key: "coverage", title: t("snapshot.col.coverage"), numeric: true, render: (p) => <Txt role="body" numeric>{formatPercent(p.coverage_pct)}</Txt> },
+    { key: "hours", title: t("snapshot.col.hours"), numeric: true, width: 90, render: (p) => <Txt role="body" numeric>{formatHoursFigure(p.hours, i18n.language)}</Txt> },
+    ...(d?.projects.some((p) => p.billing != null)
+      ? [{ key: "billing", title: t("snapshot.col.billing"), numeric: true, width: 140, render: (p: OverviewProject) => <Txt role="body" numeric numberOfLines={1}>{p.billing != null ? money(p.billing) : "—"}</Txt> }]
+      : []),
+    { key: "coverage", title: t("snapshot.col.coverage"), numeric: true, width: 90, render: (p) => <Txt role="body" numeric>{formatPercent(p.coverage_pct)}</Txt> },
     // Margin needs pay: where the API hides pay there is no margin column at all, never a dash.
     ...(d?.projects.some((p) => p.margin_pct != null)
-      ? [{ key: "margin", title: t("snapshot.col.margin"), numeric: true, render: (p: OverviewProject) => <Txt role="body" numeric tone={p.margin_pct != null && Number(p.margin_pct) < 0 ? "danger" : "primary"}>{formatPercent(p.margin_pct)}</Txt> }]
+      ? [{ key: "margin", title: t("snapshot.col.margin"), numeric: true, width: 90, render: (p: OverviewProject) => <Txt role="body" numeric tone={p.margin_pct != null && Number(p.margin_pct) < 0 ? "danger" : "primary"}>{formatPercent(p.margin_pct)}</Txt> }]
       : []),
     {
       key: "status",
       title: t("snapshot.col.status"),
+      width: 130,
       render: (p) => <StatusChip status={healthChip(p.status)} label={p.status === "gaps" ? t("snapshot.status.gaps", { count: p.empty_places }) : t(`snapshot.status.${p.status}`)} testID={`status-${p.id}`} />,
     },
   ];
@@ -139,10 +148,12 @@ export function OverviewScreen() {
         <View style={styles.body}>
           <KeyFigures figures={figures} />
           <Split>
-            <View style={styles.left}>
+            <View style={styles.bars}>
               <SectionHead title={showPay ? t("snapshot.bars_title") : showBilling ? t("snapshot.bars_title_billing") : t("snapshot.bars_title_hours")} />
               <ColumnBars columns={bars} legend={showPay ? t("snapshot.legend") : t("snapshot.legend_billing")} />
-              {d.people.temporary > 0 ? (
+            </View>
+            {d.people.temporary > 0 ? (
+              <View style={styles.panel}>
                 <FeaturePanel testID="panel-temporary">
                   <Txt role="eyebrow" tone="accent">
                     {t("snapshot.temp_eyebrow")}
@@ -159,13 +170,14 @@ export function OverviewScreen() {
                     </Txt>
                   </LinkPressable>
                 </FeaturePanel>
-              ) : null}
-            </View>
-            <View style={styles.right}>
-              <SectionHead title={t("snapshot.projects_title")} note={t("snapshot.projects_note", { count: d.projects.length })} />
-              <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
-            </View>
+              </View>
+            ) : null}
           </Split>
+          {/* The project table at full width: Hebrew names stay on one line (the helper's review). */}
+          <View style={styles.table}>
+            <SectionHead title={t("snapshot.projects_title")} note={t("snapshot.projects_note", { count: d.projects.length })} />
+            <Table columns={columns} rows={d.projects} keyOf={(p) => p.id} caption={t("snapshot.projects_title")} testID="overview-projects" />
+          </View>
           {d.terms_estimated ? (
             <View testID="note-estimated" style={[styles.note, { borderColor: colors.border.strong }]}>
               <Txt role="meta" tone="secondary">
@@ -181,7 +193,9 @@ export function OverviewScreen() {
 
 const styles = StyleSheet.create({
   body: { gap: 28 },
-  left: { flex: 1.2, gap: 16, minWidth: 0 },
-  right: { flex: 1, gap: 8, minWidth: 0 },
+  bars: { flex: 1.8, gap: 12, minWidth: 0 },
+  panel: { flex: 1, minWidth: 0 },
+  table: { gap: 8 },
+  nameCell: { minWidth: 0 },
   note: { borderTopWidth: 1, paddingTop: 8 },
 });
