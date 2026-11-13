@@ -111,7 +111,7 @@ export function StaffScreen() {
         </View>
       ),
     },
-    { key: "role", title: t("entity.role"), sortable: true, width: 80, render: (u) => t(`role.${u.role}`) },
+    { key: "role", title: t("entity.role"), sortable: true, width: 110, render: (u) => t(`role.${u.role}`) },
     { key: "rate", title: t("entity.default_hourly_rate"), sortable: true, numeric: true, width: 96, render: (u) => (u.default_hourly_rate ? formatMoney(moneyText(u.default_hourly_rate), i18n.language) : "—") },
     {
       key: "week",

@@ -103,7 +103,8 @@ export function Table<Row>({
     const sortable = interactive && column.sortable && onSort;
     const sortProps = webProps({ "aria-sort": sortable ? ariaSort(active) : undefined });
     const label = (
-      <Txt role="eyebrow" tone={active ? "primary" : "secondary"} numberOfLines={1} style={column.numeric ? styles.end : null}>
+      // Up to two lines, never cut to "…" (the owner, 2026-11-13); the full title on hover as well.
+      <Txt role="eyebrow" tone={active ? "primary" : "secondary"} numberOfLines={2} style={[styles.headLabel, column.numeric ? styles.end : null]} {...webProps({ title: column.title })}>
         {column.title}
       </Txt>
     );
@@ -258,6 +259,7 @@ export function Table<Row>({
 }
 
 const styles = StyleSheet.create({
+  headLabel: { flexShrink: 1 },
   fill: { alignSelf: "stretch" },
   table: { alignSelf: "stretch" },
   scrollContent: { flexGrow: 1 },

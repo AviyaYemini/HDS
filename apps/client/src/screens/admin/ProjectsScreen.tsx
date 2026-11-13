@@ -52,7 +52,7 @@ export function ProjectsScreen() {
   const columns: Column<Row>[] = [
     { key: "name", title: t("entity.name"), sortable: true, render: (p) => (estimated(p) ? `${p.name} *` : p.name) },
     { key: "client", title: t("entity.client"), sortable: true, width: 140, render: (p) => orDash(clientName(p.client_id)) },
-    { key: "manager", title: t("projects.col.manager"), sortable: true, width: 80, render: (p) => orDash(month?.get(p.id)?.managers.join(", ") ?? "") },
+    { key: "manager", title: t("projects.col.manager"), sortable: true, width: 104, render: (p) => orDash(month?.get(p.id)?.managers.join(", ") ?? "") },
     {
       key: "hours",
       title: t("projects.col.hours"),
@@ -63,7 +63,7 @@ export function ProjectsScreen() {
     },
     { key: "site", title: t("entity.site"), sortable: true, width: 130, render: (p) => orDash(siteName(p.site_id)) },
     { key: "type", title: t("entity.type"), sortable: true, width: 80, render: (p) => t(`project.type.${p.type}`) },
-    { key: "status", title: t("entity.status"), sortable: true, width: 70, render: (p) => t(`project.status.${p.status}`) },
+    { key: "status", title: t("entity.status"), sortable: true, width: 92, render: (p) => t(`project.status.${p.status}`) },
     { key: "rate", title: t("entity.billing_rate"), sortable: true, numeric: true, width: 100, render: (p) => formatMoney(moneyText(p.billing_rate), i18n.language) },
   ];
   return (

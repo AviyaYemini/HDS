@@ -17,6 +17,7 @@ import "@formatjs/intl-datetimeformat/locale-data/en.js";
 import "@formatjs/intl-datetimeformat/locale-data/he.js";
 import "@formatjs/intl-datetimeformat/add-golden-tz.js";
 
+import { joined } from "./ranges";
 import {
   crossesClockChange,
   dateOf,
@@ -41,9 +42,9 @@ describe("locale plumbing on the Intl polyfill (R13, R1)", () => {
     expect(todayIn(ZONE, new Date("2026-11-07T08:00:00Z"))).toBe("2026-11-07");
     expect(todayIn(ZONE, new Date("2026-11-07T23:30:00Z"))).toBe("2026-11-08");
     expect(dateOf("2026-11-08T04:00:00Z", ZONE)).toBe("2026-11-08");
-    expect(stripIsolates(formatTimeRange("2026-11-07T20:00:00Z", "2026-11-08T04:00:00Z", ZONE))).toBe("22:00–06:00 +1");
+    expect(stripIsolates(formatTimeRange("2026-11-07T20:00:00Z", "2026-11-08T04:00:00Z", ZONE))).toBe(joined("22:00–06:00 +1"));
     // Midnight to 07:30 on the same calendar day in Jerusalem: no "+1".
-    expect(stripIsolates(formatTimeRange("2026-11-07T22:00:00Z", "2026-11-08T05:30:00Z", ZONE))).toBe("00:00–07:30");
+    expect(stripIsolates(formatTimeRange("2026-11-07T22:00:00Z", "2026-11-08T05:30:00Z", ZONE))).toBe(joined("00:00–07:30"));
   });
 
   it("spells English headers day first and Hebrew headers in Hebrew", () => {
