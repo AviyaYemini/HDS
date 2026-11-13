@@ -150,6 +150,11 @@ async def test_an_admin_sees_actual_and_forecast_billing_cover_and_people(
     assert {p["name"] for p in body["projects"]} == {"Managed Patrol", "Other Patrol"}
     assert {p["status"] for p in body["projects"]} == {"gaps"}
     assert [w["forecast"] for w in body["weeks"]] == [False, True]
+    # One day of each week has work: last week's (done) and this Saturday's (to come).
+    assert [(d["billing"], d["forecast"]) for d in body["days"]] == [
+        ("1600.00", False),
+        ("1600.00", True),
+    ]
 
 
 async def test_a_manager_sees_only_the_projects_they_manage(

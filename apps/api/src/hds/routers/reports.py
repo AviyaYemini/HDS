@@ -256,6 +256,16 @@ class OverviewWeekRead(BaseModel):
     forecast: bool
 
 
+class OverviewDayRead(BaseModel):
+    """One day of the range with work on it, for the daily candles (CEO demo)."""
+
+    date: date
+    hours: HoursOut
+    billing: Amount | None = None
+    pay: Amount | None = None
+    forecast: bool = Field(description="True from today on: still a forecast from the roster.")
+
+
 class OverviewProjectRead(BaseModel):
     """One project's row: its money in the range and this week's cover."""
 
@@ -293,6 +303,7 @@ class OverviewRead(BaseModel):
     coverage: CoverageRead
     people: PeopleRead
     weeks: list[OverviewWeekRead]
+    days: list[OverviewDayRead]
     projects: list[OverviewProjectRead]
     terms_estimated: bool
 
@@ -341,6 +352,16 @@ def read_overview(o: Overview) -> OverviewRead:
                 forecast=start + timedelta(days=6) >= o.today,
             )
             for start, m in o.weeks
+        ],
+        days=[
+            OverviewDayRead(
+                date=day,
+                hours=m.hours_forecast,
+                billing=m.billing_forecast if m.money_shown else None,
+                pay=m.pay_forecast if m.money_shown else None,
+                forecast=day >= o.today,
+            )
+            for day, m in o.days
         ],
         projects=[
             OverviewProjectRead(

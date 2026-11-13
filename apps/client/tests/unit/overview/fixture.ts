@@ -14,6 +14,7 @@ export const OVERVIEW: Overview = {
   hours_forecast: "4310.00",
   coverage: { week_start: "2026-11-08", filled: 96, needed: 100, empty_places: 4, projects_with_gaps: 2 },
   people: { active: 14, working_this_week: 11, temporary: 3, temporary_ending_soon: 1, near_weekly_limit: 2 },
+  days: [],
   weeks: [
     { week_start: "2026-11-01", hours: "980.00", billing: "108000.00", pay: "88500.00", forecast: false },
     { week_start: "2026-11-08", hours: "1004.00", billing: "111860.00", pay: "90060.00", forecast: true },

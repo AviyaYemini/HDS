@@ -123,6 +123,7 @@ class Overview:
     temporary_ending_soon: int
     near_weekly_limit: int
     weeks: list[tuple[date, Money]]
+    days: list[tuple[date, Money]]
     projects: list[ProjectLine]
     terms_estimated: bool
 
@@ -203,6 +204,7 @@ class OverviewService:
 
         total = Money()
         weeks: dict[date, Money] = defaultdict(Money)
+        days: dict[date, Money] = defaultdict(Money)
         week_hours: dict[uuid.UUID, timedelta] = defaultdict(timedelta)
         working: set[uuid.UUID] = set()
         for s in lines:
@@ -231,6 +233,7 @@ class OverviewService:
                 billing = pay = None
             total.add(hours, billing, pay, done)
             weeks[sunday(day)].add(hours, billing, pay, done)
+            days[day].add(hours, billing, pay, done)
             table[s.project_id].money.add(hours, billing, pay, done)
 
         needed = filled = 0
@@ -274,6 +277,7 @@ class OverviewService:
             ),
             near_weekly_limit=sum(1 for h in week_hours.values() if h >= limit),
             weeks=sorted(weeks.items()),
+            days=sorted(days.items()),
             projects=[r for r in rows if r.money.hours_forecast or r.needed],
             terms_estimated=any(
                 r.project.terms_estimated for r in rows if r.money.hours_forecast or r.needed

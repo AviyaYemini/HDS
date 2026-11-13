@@ -3527,6 +3527,31 @@ export interface components {
             warning_code: string;
         };
         /**
+         * OverviewDayRead
+         * @description One day of the range with work on it, for the daily candles (CEO demo).
+         */
+        OverviewDayRead: {
+            /** Billing */
+            billing?: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Forecast
+             * @description True from today on: still a forecast from the roster.
+             */
+            forecast: boolean;
+            /**
+             * Hours
+             * @example 7.50
+             */
+            hours: string;
+            /** Pay */
+            pay?: string | null;
+        };
+        /**
          * OverviewProjectRead
          * @description One project's row: its money in the range and this week's cover.
          */
@@ -3588,6 +3613,8 @@ export interface components {
             /** Billing Forecast */
             billing_forecast?: string | null;
             coverage: components["schemas"]["CoverageRead"];
+            /** Days */
+            days: components["schemas"]["OverviewDayRead"][];
             /**
              * From
              * Format: date
